@@ -1,0 +1,1 @@
+-- Spawns NPCs and checks recipe accuracy (payout + tips)
