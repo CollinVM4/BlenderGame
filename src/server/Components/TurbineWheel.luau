@@ -82,7 +82,7 @@ function TurbineWheel.Init()
                 smoothieClone:SetAttribute("IsFinished", true)
                 smoothieClone.Parent = backpack
                 player:SetAttribute("HasSmoothie", true)
-                player:SetAttribute("CurrentSmoothieName", "Fruit Smoothie")
+                player:SetAttribute("CurrentRecipeName", "Fruit Smoothie")
             end
         else
             label.Text = "NOT READY!"
