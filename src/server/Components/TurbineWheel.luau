@@ -17,6 +17,7 @@ function TurbineWheel.Init()
     local blendProgress = 0
     local targetProgress = activeRecipe.RequiredProgress
     local hasDinged = false
+    local labelOverrideUntil = 0
 
     -- 1. Setup Audio
     local blendSound = Instance.new("Sound")
@@ -35,6 +36,22 @@ function TurbineWheel.Init()
     dingSound.RollOffMaxDistance = 50
     dingSound.RollOffMinDistance = 10
     dingSound.Parent = spinningPart
+
+    local pourSound = Instance.new("Sound")
+    pourSound.SoundId = "rbxassetid://9114612188"
+    pourSound.Looped = false
+    pourSound.Volume = 1
+    pourSound.RollOffMaxDistance = 50
+    pourSound.RollOffMinDistance = 10
+    pourSound.Parent = spinningPart
+
+    local notReadySound = Instance.new("Sound")
+    notReadySound.SoundId = "rbxassetid://90524619811521"
+    notReadySound.Looped = false
+    notReadySound.Volume = 1
+    notReadySound.RollOffMaxDistance = 50
+    notReadySound.RollOffMinDistance = 10
+    notReadySound.Parent = spinningPart
 
     -- 2. Setup Particles
     local splashParticles = Instance.new("ParticleEmitter")
@@ -57,6 +74,13 @@ function TurbineWheel.Init()
     fill.Size = UDim2.new(0, 0, 1, 0)
     fill.BackgroundColor3 = activeRecipe.Color
 
+    local failFlash = Instance.new("Frame", background)
+    failFlash.Size = UDim2.fromScale(1, 1)
+    failFlash.BackgroundColor3 = Color3.fromRGB(255, 90, 90)
+    failFlash.BackgroundTransparency = 1
+    failFlash.BorderSizePixel = 0
+    failFlash.ZIndex = 2
+
     local label = Instance.new("TextLabel", debugGui)
     label.Size = UDim2.fromScale(1, 1)
     label.BackgroundTransparency = 1
@@ -74,20 +98,28 @@ function TurbineWheel.Init()
         if blendProgress >= targetProgress then
             blendProgress = 0
             hasDinged = false
+            labelOverrideUntil = 0
             fill.Size = UDim2.new(0, 0, 1, 0)
             label.Text = "0%"
+            pourSound:Play()
 
+            local backpack = player:FindFirstChild("Backpack") or player:FindFirstChildOfClass("Backpack")
             local smoothieTool = ServerStorage:FindFirstChild("Smoothie")
-            if smoothieTool then
+
+            if smoothieTool and backpack then
                 local smoothieClone = smoothieTool:Clone()
-                smoothieClone.Parent = player.Backpack
+                smoothieClone.Parent = backpack
             end
         else
             label.Text = "NOT READY!"
-            task.delay(1, function()
-                if blendProgress < targetProgress then
-                    label.Text = string.format("%.1f%%", (blendProgress / targetProgress) * 100)
-                end
+            labelOverrideUntil = os.clock() + 1
+            fill.BackgroundColor3 = Color3.fromRGB(255, 90, 90)
+            failFlash.BackgroundTransparency = 0.45
+            notReadySound:Play()
+
+            task.delay(0.2, function()
+                fill.BackgroundColor3 = activeRecipe.Color
+                failFlash.BackgroundTransparency = 1
             end)
         end
     end)
@@ -97,10 +129,14 @@ function TurbineWheel.Init()
         local magnitude = spinningPart.AssemblyAngularVelocity.Magnitude
         local clampedVelocity = math.clamp(magnitude, 0, 50)
 
+        if labelOverrideUntil > 0 and os.clock() >= labelOverrideUntil then
+            labelOverrideUntil = 0
+        end
+
         if blendProgress < targetProgress then
             -- Advance progress
             blendProgress += clampedVelocity * 0.05
-            
+
             -- Scale SFX and VFX dynamically with speed
             blendSound.Volume = math.clamp(clampedVelocity / 20, 0, 1)
             blendSound.PlaybackSpeed = 0.5 + (clampedVelocity / 25)
@@ -116,15 +152,23 @@ function TurbineWheel.Init()
                 hasDinged = true
             end
 
-            label.Text = "READY TO DISPENSE!"
+            if labelOverrideUntil == 0 then
+                label.Text = "READY TO DISPENSE!"
+            end
         end
 
         -- Update UI Math based on dynamic recipe target
         local progressRatio = math.clamp(blendProgress / targetProgress, 0, 1)
         fill.Size = UDim2.new(progressRatio, 0, 1, 0)
-        
-        if blendProgress < targetProgress then
+
+        if blendProgress < targetProgress and labelOverrideUntil == 0 then
             label.Text = string.format("%.1f%%", (blendProgress / targetProgress) * 100)
+        end
+
+        if blendProgress >= targetProgress then
+            dispensePrompt.ActionText = "Dispense Smoothie"
+        else
+            dispensePrompt.ActionText = "Not Ready"
         end
     end)
 end
