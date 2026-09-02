@@ -1,6 +1,6 @@
 # Be a Blender! (Project: BlenderGame)
 
-**Pitch:** You are running a giant smoothie station take orders from customers and serve for $
+**Pitch:** You are running a giant smoothie station. Serve customers, earn $, buy upgrades. Collect rare fruits for Offline cash and __% more tips.
 **Category:** Tycoon, Time Management. 
 
 ## Core Gameplay Loop
