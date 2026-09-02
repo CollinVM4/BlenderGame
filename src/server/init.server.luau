@@ -1,5 +1,8 @@
--- Bootstrapper (init.server.luau)
+--!strict
+local CustomerService = require(script.Services.CustomerService)
+local TycoonService = require(script.Services.TycoonService)
 local TurbineWheel = require(script.Components.TurbineWheel)
 
--- Initialize components
+TycoonService.Init()
+CustomerService.Init()
 TurbineWheel.Init()
