@@ -32,7 +32,7 @@ local CustomerService: {
     ActiveCustomer = nil,
 }
 
-
+-- helper function to accurately index a recipe name regardless of case sensitivity
 local function normalizeRecipeName(value: string): string
     return tostring(value):lower()
 end
