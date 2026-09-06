@@ -1,150 +1,20 @@
 --!strict
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CollectionService = game:GetService("CollectionService")
-
+local Shared = game:GetService("ReplicatedStorage").Shared
+local ServerStorage = game:GetService("ServerStorage")
+local Debris = game:GetService("Debris")
+local Customers = require(Shared.Constants.Customers)
+local Economy = require(Shared.Constants.Economy)
+local Upgrades = require(Shared.Constants.Upgrades)
+local Types = require(Shared.Types)
+local WorldUtil = require(script.Parent.WorldUtil)
 local AudioService = require(script.Parent.AudioService)
-local TycoonService = require(script.Parent.TycoonService)
-local Recipes = require(ReplicatedStorage.Shared.Constants.Recipes)
-
-type RecipeTemplate = {
-    Name: string,
-    Pay: number,
-}
-
-type CustomerData = {
-    Order: RecipeTemplate,
-    TextLabel: TextLabel?,
-    Prompt: ProximityPrompt?,
-    DialogueSound: Sound?,
-    PlotOwner: Player?,
-}
-
-local activeTypingTasks = {}
-
-local CustomerService: {
-    Templates: { RecipeTemplate },
-    ActiveCustomers: { [Model]: CustomerData },
-    ActiveCustomer: Model?,
-} = {
-    Templates = {},
-    ActiveCustomers = {},
-    ActiveCustomer = nil,
-}
-
--- helper function to accurately index a recipe name regardless of case sensitivity
-local function normalizeRecipeName(value: string): string
-    return tostring(value):lower()
-end
-
-local function buildTemplatesFromRecipes(): { RecipeTemplate }
-    local templates: { RecipeTemplate } = {}
-
-    for recipeName, recipeData in pairs(Recipes) do
-        table.insert(templates, {
-            Name = tostring(recipeName),
-            Pay = tonumber(recipeData and recipeData.Pay) or 25,
-        })
-    end
-
-    if #templates == 0 then
-        return {
-            {
-                Name = "Fruit Smoothie",
-                Pay = 25,
-            },
-        }
-    end
-
-    table.sort(templates, function(a: RecipeTemplate, b: RecipeTemplate)
-        return a.Name < b.Name
-    end)
-
-    return templates
-end
-
-local function pickRandomOrder(): RecipeTemplate
-    local templates = buildTemplatesFromRecipes()
-    local index = math.random(1, #templates)
-    return templates[index]
-end
-
-local function getSmoothieName(player: Player, item: Instance?): string?
-    if item then
-        local recipeName = item:GetAttribute("RecipeName")
-        if recipeName then
-            return tostring(recipeName)
-        end
-
-        return tostring(item.Name)
-    end
-
-    local character = player.Character
-    if character then
-        local heldItem = character:FindFirstChild("Smoothie")
-        if heldItem then
-            local recipeName = heldItem:GetAttribute("RecipeName")
-            if recipeName then
-                return tostring(recipeName)
-            end
-
-            return tostring(heldItem.Name)
-        end
-    end
-
-    local backpack = player:FindFirstChild("Backpack")
-    if backpack then
-        local heldItem = backpack:FindFirstChild("Smoothie")
-        if heldItem then
-            local recipeName = heldItem:GetAttribute("RecipeName")
-            if recipeName then
-                return tostring(recipeName)
-            end
-
-            return tostring(heldItem.Name)
-        end
-    end
-
-    local currentRecipeName = player:GetAttribute("CurrentRecipeName")
-    if currentRecipeName then
-        return tostring(currentRecipeName)
-    end
-
-    return nil
-end
-
-function CustomerService:GetSatisfaction(player: Player, item: Instance?, orderName: string?): string
-    local smoothieName = getSmoothieName(player, item)
-    if not smoothieName or smoothieName == "" then
-        return "Bad"
-    end
-
-    local normalizedName = normalizeRecipeName(smoothieName)
-    local activeOrderName = orderName or ""
-
-    if normalizeRecipeName(activeOrderName) == normalizedName then
-        return "Good"
-    end
-
-    if Recipes[smoothieName] then
-        return "Good"
-    end
-
-    return "Bad"
-end
-
-function CustomerService:ServeCheck(player: Player, item: Instance?): boolean
-    if not player then
-        return false
-    end
-
-    local smoothieName = getSmoothieName(player, item)
-    if not smoothieName or smoothieName == "" then
-        return false
-    end
-
-    return Recipes[smoothieName] ~= nil
-end
+local CustomerService = {}
+local deps: any
+local onServed: (Player, Types.Grade) -> ()
+local canServe: (Player) -> boolean
+local active: { [Player]: any } = {}
+local ownedModels: { [Player]: { [Model]: boolean } } = {}
+local activeTypingTasks = setmetatable({}, { __mode = "k" })
 
 local function ensureCustomerCounterGlow(customerModel: Model): ParticleEmitter?
     local existingGlow = customerModel:FindFirstChild("CustomerCounterGlow")
@@ -186,7 +56,7 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
 
     task.spawn(function()
         for index = 1, #message do
-            if activeTypingTasks[textLabel] ~= currentToken then
+            if not textLabel.Parent or activeTypingTasks[textLabel] ~= currentToken then
                 return
             end
 
@@ -198,17 +68,18 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
                 and character ~= " "
                 and (index % dialogueStep == 0 or index == #message)
 
-            if shouldPlayDialogueSound then
+            if shouldPlayDialogueSound and dialogueSound then
                 dialogueSound.TimePosition = 0
                 dialogueSound.PlaybackSpeed = math.random(90, 120) / 100
 
-                local pitchShift = dialogueSound:FindFirstChildOfClass("PitchShiftSoundEffect")
+                local pitchShift: PitchShiftSoundEffect? = dialogueSound:FindFirstChildOfClass("PitchShiftSoundEffect")
                 if not pitchShift then
-                    pitchShift = Instance.new("PitchShiftSoundEffect")
-                    pitchShift.Parent = dialogueSound
+                    local created = Instance.new("PitchShiftSoundEffect")
+                    created.Parent = dialogueSound
+                    pitchShift = created
                 end
 
-                pitchShift.Octave = math.random(92, 108) / 100
+                (pitchShift :: PitchShiftSoundEffect).Octave = math.random(92, 108) / 100
                 dialogueSound:Play()
             end
 
@@ -221,339 +92,289 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
     end)
 end
 
-function CustomerService:RefreshOrder(customerModel: Model)
-    local customerData = self.ActiveCustomers[customerModel]
-    if not customerData then
-        return
-    end
-
-    customerData.Order = pickRandomOrder()
-
-    if customerData.TextLabel then
-        typewriterText(customerData.TextLabel, "Need a " .. customerData.Order.Name, customerData.DialogueSound)
-    end
-
-    if customerData.Prompt then
-        customerData.Prompt.ActionText = "Serve " .. customerData.Order.Name
-    end
+function CustomerService.Init(services, servedCallback, servingCallback)
+    deps = services
+    onServed = servedCallback
+    canServe = servingCallback
 end
 
-local function resolveSpawnCFrame(spawnTarget: any): CFrame
-    if typeof(spawnTarget) == "CFrame" then
-        return spawnTarget
-    end
-
-    if typeof(spawnTarget) == "Vector3" then
-        return CFrame.new(spawnTarget)
-    end
-
-    if typeof(spawnTarget) == "Instance" then
-        if spawnTarget:IsA("BasePart") then
-            return spawnTarget.CFrame
+-- Grade and reaction are deliberately independent, pure decision functions.
+function CustomerService.CalculateGrade(result: Types.Smoothie, preference: string): Types.Grade
+    if preference == "Surprise Me" then
+        local unique = {}
+        for _, id in result.Ingredients do
+            unique[id] = true
         end
-
-        if spawnTarget:IsA("Model") then
-            local rootPart = spawnTarget:FindFirstChild("HumanoidRootPart") or spawnTarget.PrimaryPart
-            if rootPart and rootPart:IsA("BasePart") then
-                return rootPart.CFrame
-            end
+        local count = 0
+        for _ in unique do
+            count += 1
+        end
+        return if count >= 3 then "A" elseif count == 2 then "B" else "C"
+    end
+    local matching = 0
+    for _, id in result.Ingredients do
+        if table.find(deps.IngredientService.GetDefinition(id).Tags, preference) then
+            matching += 1
         end
     end
-
-    return CFrame.new(Vector3.new(-18.96, 0.87, 100.89))
+    local ratio = matching / math.max(1, #result.Ingredients)
+    return if ratio >= 2 / 3 then "A" elseif ratio >= 1 / 3 then "B" elseif matching > 0 then "C" else "D"
 end
-
-local function getRigRoot(model: Model): BasePart?
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.RootPart and humanoid.RootPart:IsA("BasePart") then
-        return humanoid.RootPart
+function CustomerService.SelectReaction(): string
+    local total = 0
+    for _, reaction in Customers.Reactions do
+        total += reaction.Weight
     end
-
-    if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then
-        return model.PrimaryPart
-    end
-
-    local humanoidRootPart = model:FindFirstChild("HumanoidRootPart")
-    if humanoidRootPart and humanoidRootPart:IsA("BasePart") then
-        return humanoidRootPart
-    end
-
-    local torso = model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso") or model:FindFirstChild("LowerTorso")
-    if torso and torso:IsA("BasePart") then
-        return torso
-    end
-
-    for _, descendant in ipairs(model:GetDescendants()) do
-        if descendant:IsA("BasePart") then
-            return descendant
+    local roll = math.random() * total
+    for _, reaction in Customers.Reactions do
+        roll -= reaction.Weight
+        if roll <= 0 then
+            return reaction.Id
         end
     end
-
-    return nil
+    return Customers.Reactions[1].Id
 end
-
-local function ensureCustomerRig(model: Model): BasePart?
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if not humanoid then
-        humanoid = Instance.new("Humanoid")
-        humanoid.Parent = model
-    end
-
-    local rigRoot = getRigRoot(model)
-    if rigRoot then
-        model.PrimaryPart = rigRoot
-        return rigRoot
-    end
-
-    local generatedRoot = Instance.new("Part")
-    generatedRoot.Name = "HumanoidRootPart"
-    generatedRoot.Transparency = 1
-    generatedRoot.Size = Vector3.new(2, 2, 1)
-    generatedRoot.CanCollide = false
-    generatedRoot.Parent = model
-
-    model.PrimaryPart = generatedRoot
-    return generatedRoot
+function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): number
+    local upgrade = Upgrades.Payout[deps.PlayerDataService.GetUpgrade(player, "Payout")].Value
+    local multiplier = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    return math.floor(Economy.BasePayout * Economy.GradeMultiplier[grade] * upgrade * multiplier)
 end
-
-local function attachCustomerPrompt(customerModel: Model, rootPart: BasePart, textLabel: TextLabel, customerServeAudio: any)
-    local existingPrompt = customerModel:FindFirstChild("ServePrompt")
-    if existingPrompt and existingPrompt:IsA("ProximityPrompt") then
-        existingPrompt:Destroy()
+function CustomerService.CanSpawn(player: Player): (boolean, string?)
+    if active[player] then
+        return false, "Customer already active"
     end
-
-    local prompt = Instance.new("ProximityPrompt")
-    prompt.Name = "ServePrompt"
-    prompt.ActionText = "Start interaction"
-    prompt.ObjectText = "Customer"
-    prompt.RequiresLineOfSight = false -- generated root part occludes the raycast otherwise
-    prompt.MaxActivationDistance = 10
-    prompt.HoldDuration = 0.5
-    prompt.Parent = rootPart
-
-    prompt.Triggered:Connect(function(player: Player)
-        local customerData = CustomerService.ActiveCustomers[customerModel]
-        if not customerData then
-            return
+    for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
+        if not deps.TycoonService.GetReference(player, name) then
+            warn("[CustomerService] Missing " .. name .. " in " .. player.Name .. "'s plot")
+            return false, "Missing " .. name
         end
-
-        local heldItem = nil
-        local character = player.Character
-        if character then
-            heldItem = character:FindFirstChild("Smoothie")
+    end
+    return true
+end
+-- Simple deterministic waypoint movement for the filming skeleton, not pathfinding.
+local function move(record: any, destination: CFrame, finished: () -> ())
+    local start: CFrame = record.Model:GetPivot()
+    local duration = math.max(0.1, (start.Position - destination.Position).Magnitude / 8)
+    task.spawn(function()
+        local elapsed = 0
+        while record.Model.Parent and elapsed < duration do
+            elapsed += task.wait()
+            record.Model:PivotTo(start:Lerp(destination, math.min(1, elapsed / duration)))
         end
-
-        if not heldItem and player:FindFirstChild("Backpack") then
-            heldItem = player.Backpack:FindFirstChild("Smoothie")
+        if record.Model.Parent then
+            finished()
         end
-
-        local currentOrder = customerData.Order
-        local isCorrect = CustomerService:ServeCheck(player, heldItem)
-        local satisfaction = CustomerService:GetSatisfaction(player, heldItem, currentOrder.Name)
-        player:SetAttribute("CustomerSatisfaction", satisfaction)
-
-        if not isCorrect then
-            customerServeAudio.notReadySound:Play()
-            typewriterText(textLabel, "Wrong smoothie!", customerServeAudio.dialogueSound)
-            task.delay(1.2, function()
-                typewriterText(textLabel, "Need a " .. currentOrder.Name, customerServeAudio.dialogueSound)
-            end)
-            return
-        end
-
-        if heldItem then
-            heldItem:Destroy()
-        end
-
-        player:SetAttribute("HasSmoothie", false)
-        player:SetAttribute("CurrentRecipeName", "")
-        TycoonService.AddCash(player, currentOrder.Pay)
-
-        typewriterText(textLabel, "Cash +$" .. tostring(currentOrder.Pay) .. " (" .. satisfaction .. ")", customerServeAudio.dialogueSound)
-        prompt.ActionText = "Thanks!"
-
-        local counterGlow = customerModel:FindFirstChild("CustomerCounterGlow")
-        if not counterGlow or not counterGlow:IsA("ParticleEmitter") then
-            counterGlow = ensureCustomerCounterGlow(customerModel)
-        end
-
-        if counterGlow and counterGlow:IsA("ParticleEmitter") then
-            counterGlow.Rate = 30
-            counterGlow:Emit(20)
-        end
-
-        customerServeAudio.customerServeSound:Play()
-
-        task.delay(1.2, function()
-            typewriterText(textLabel, "Need a " .. currentOrder.Name, customerServeAudio.dialogueSound)
-            prompt.ActionText = "Serve " .. currentOrder.Name
-            if counterGlow and counterGlow:IsA("ParticleEmitter") then
-                counterGlow.Rate = 0
-            end
-        end)
-
-        task.delay(3, function()
-            CustomerService:RefreshOrder(customerModel)
-        end)
     end)
-
-    local customerData = CustomerService.ActiveCustomers[customerModel]
-    if customerData then
-        customerData.Prompt = prompt
-    end
 end
-
-function CustomerService:CreateCustomer(spawnTarget: any, plotOwner: Player?): Model
-    self.Templates = buildTemplatesFromRecipes()
-
-    local customerModel: Model
-    local desiredSpawnCFrame: CFrame
-
-    if typeof(spawnTarget) == "Instance" and spawnTarget:IsA("Model") then
-        customerModel = spawnTarget
+function CustomerService.SpawnForPlayer(player: Player): Model?
+    if not CustomerService.CanSpawn(player) then
+        return nil
+    end
+    local spawn = deps.TycoonService.GetReference(player, "CustomerSpawn")
+    local counter = deps.TycoonService.GetReference(player, "CustomerCounter")
+    local exit = deps.TycoonService.GetReference(player, "CustomerExit")
+    local template = ServerStorage:FindFirstChild("Customer")
+    local model: Model
+    if template and template:IsA("Model") and WorldUtil.Part(template) then
+        model = template:Clone()
     else
-        customerModel = Instance.new("Model")
-        customerModel.Name = "CustomerNPC"
-        customerModel.Parent = Workspace
-
+        model = Instance.new("Model")
         local torso = Instance.new("Part")
         torso.Name = "Torso"
         torso.Size = Vector3.new(2, 2.5, 1)
         torso.Color = Color3.fromRGB(220, 170, 110)
-        torso.Anchored = true
-        torso.Parent = customerModel
-
+        torso.Parent = model
         local head = Instance.new("Part")
         head.Name = "Head"
         head.Size = Vector3.new(2, 1, 1)
-        head.Position = torso.Position + Vector3.new(0, 2, 0)
-        head.Anchored = true
+        head.Position = Vector3.new(0, 2, 0)
         head.Color = Color3.fromRGB(245, 205, 170)
-        head.Parent = customerModel
-
-        local root = Instance.new("Part")
-        root.Name = "HumanoidRootPart"
-        root.Size = Vector3.new(2, 2, 1)
-        root.Transparency = 1
-        root.CanCollide = false
-        root.Anchored = true
-        root.Parent = customerModel
-
-        local humanoid = Instance.new("Humanoid")
-        humanoid.Parent = customerModel
-
-        customerModel.PrimaryPart = root
-        customerModel:PivotTo(CFrame.new(Vector3.new(-18.96, 0.87, 100.89)))
-
-        local prompt = customerModel:FindFirstChild("ServePrompt")
-        if prompt and prompt:IsA("ProximityPrompt") then
-            prompt:Destroy()
+        head.Parent = model
+        model.PrimaryPart = torso
+    end
+    model.Name = "CustomerNPC"
+    for _, part in model:GetDescendants() do
+        if part:IsA("BasePart") then
+            part.Anchored = true
+            part.CanCollide = false
         end
     end
-
-    if customerModel.Parent == nil then
-        customerModel.Parent = Workspace
-    end
-
-    if customerModel:FindFirstChildOfClass("Humanoid") == nil then
-        local generatedHumanoid = Instance.new("Humanoid")
-        generatedHumanoid.Parent = customerModel
-    end
-
-    local rigRoot = ensureCustomerRig(customerModel)
-    desiredSpawnCFrame = resolveSpawnCFrame(spawnTarget)
-    customerModel:PivotTo(desiredSpawnCFrame)
-
-    if customerModel.Name ~= "CustomerNPC" then
-        customerModel.Name = "CustomerNPC"
-    end
-
-    if not CollectionService:HasTag(customerModel, "StoreCustomer") then
-        CollectionService:AddTag(customerModel, "StoreCustomer")
-    end
-
-    if self.ActiveCustomer and self.ActiveCustomer ~= customerModel then
-        local oldCustomerData = self.ActiveCustomers[self.ActiveCustomer]
-        if oldCustomerData and oldCustomerData.TextLabel and oldCustomerData.TextLabel.Parent then
-            oldCustomerData.TextLabel:Destroy()
-        end
-        self.ActiveCustomers[self.ActiveCustomer] = nil
-    end
-
-    local billboardTarget = customerModel:FindFirstChild("Head") or rigRoot
-    local label = Instance.new("BillboardGui")
-    label.Name = "OrderBubble"
-    label.Size = UDim2.fromOffset(190, 42)
-    label.StudsOffset = Vector3.new(0, 3.2, 0)
-    label.AlwaysOnTop = true
-    label.MaxDistance = 80
-    label.Parent = billboardTarget
-
-    local function updateBubbleScale()
-        local camera = Workspace.CurrentCamera
-        if not camera then
-            label.Size = UDim2.fromOffset(190, 42)
-            return
-        end
-
-        local distance = (camera.CFrame.Position - billboardTarget.Position).Magnitude
-        local scale = math.clamp(1 - (distance / 80), 0.45, 1)
-        label.Size = UDim2.fromOffset(190 * scale, 42 * scale)
-    end
-
-    task.spawn(function()
-        while label.Parent do
-            updateBubbleScale()
-            task.wait(0.1)
-        end
-    end)
-
-    local background = Instance.new("Frame")
-    background.Size = UDim2.fromScale(1, 1)
-    background.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
-    background.BorderSizePixel = 0
-    background.Parent = label
-
+    model:PivotTo(spawn.CFrame)
+    model.Parent = workspace
+    local root = WorldUtil.Part(model) :: BasePart
+    model.PrimaryPart = root
+    ownedModels[player] = ownedModels[player] or {}
+    ownedModels[player][model] = true
+    local bubble = Instance.new("BillboardGui")
+    bubble.Name = "OrderBubble"
+    bubble.Size = UDim2.fromOffset(210, 48)
+    bubble.StudsOffset = Vector3.new(0, 3.2, 0)
+    bubble.AlwaysOnTop = true
+    bubble.MaxDistance = 80
+    bubble.Parent = root
     local text = Instance.new("TextLabel")
     text.Size = UDim2.fromScale(1, 1)
-    text.BackgroundTransparency = 1
-    text.Text = ""
+    text.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+    text.TextColor3 = Color3.new(1, 1, 1)
     text.Font = Enum.Font.GothamBold
     text.TextSize = 14
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.Parent = label
-
-    local customerServeAudio = AudioService.CreateBlendGroup(billboardTarget)
-    local customerData: CustomerData = {
-        Order = pickRandomOrder(),
-        TextLabel = text,
-        Prompt = nil,
-        DialogueSound = customerServeAudio.dialogueSound,
-        PlotOwner = plotOwner,
+    text.TextWrapped = true
+    text.Parent = bubble
+    local audio = AudioService.CreateBlendGroup(root)
+    local prompt = WorldUtil.Prompt(root, "ServePrompt", "Serve smoothie")
+    prompt.Enabled = false
+    local preference = Customers.Preferences[math.random(1, #Customers.Preferences)]
+    local record = {
+        Model = model,
+        Root = root,
+        Preference = preference,
+        Ready = false,
+        Text = text,
+        Audio = audio,
+        Prompt = prompt,
+        Exit = exit.CFrame,
+        ForcedReaction = nil,
     }
-
-    self.ActiveCustomers[customerModel] = customerData
-    self.ActiveCustomer = customerModel
-
-    ensureCustomerCounterGlow(customerModel)
-    attachCustomerPrompt(customerModel, rigRoot, text, customerServeAudio)
-    self:RefreshOrder(customerModel)
-
-    return customerModel
+    active[player] = record
+    model:SetAttribute("Preference", preference)
+    model:SetAttribute("OwnerUserId", player.UserId)
+    prompt.Triggered:Connect(function(actor)
+        if actor == player then
+            CustomerService.Serve(actor)
+        end
+    end)
+    model.Destroying:Connect(function()
+        activeTypingTasks[text] = nil
+        if ownedModels[player] then
+            ownedModels[player][model] = nil
+        end
+        if active[player] == record then
+            active[player] = nil
+        end
+    end)
+    typewriterText(text, "Something " .. preference .. "!", audio.dialogueSound)
+    move(record, counter.CFrame, function()
+        if active[player] == record then
+            record.Ready = true
+            prompt.Enabled = true
+        end
+    end)
+    return model
 end
-
-function CustomerService.Init()
-    local taggedCustomers = CollectionService:GetTagged("StoreCustomer")
-    if #taggedCustomers > 0 then
-        for _, customerModel in ipairs(taggedCustomers) do
-            if customerModel:IsA("Model") then
-                CustomerService:CreateCustomer(customerModel)
+function CustomerService.GetSnapshot(player: Player): { Preference: string, Ready: boolean, Model: Model }?
+    local record = active[player]
+    if not record then
+        return nil
+    end
+    return { Preference = record.Preference, Ready = record.Ready, Model = record.Model }
+end
+function CustomerService.Serve(player: Player): (boolean, string?)
+    local record = active[player]
+    if
+        not record
+        or not record.Ready
+        or not canServe(player)
+        or not WorldUtil.Near(player, record.Root, Economy.InteractionDistance)
+    then
+        return false, "No customer ready nearby"
+    end
+    local result = deps.BlendService.ConsumeCup(player)
+    if not result then
+        record.Audio.notReadySound:Play()
+        return false, "No valid cup"
+    end
+    -- No yield between consumption, payout, and removal from active state.
+    record.Ready = false
+    record.Prompt.Enabled = false
+    active[player] = nil
+    local grade: Types.Grade = CustomerService.CalculateGrade(result, record.Preference)
+    local reaction = record.ForcedReaction or CustomerService.SelectReaction()
+    local payout = CustomerService.CalculatePayout(player, grade)
+    deps.PlayerDataService.AddCash(player, payout)
+    deps.PlayerDataService.IncrementStat(player, "CustomersServed")
+    player:SetAttribute("CustomerSatisfaction", grade)
+    player:SetAttribute("CustomerReaction", reaction)
+    record.Model:SetAttribute("Reaction", reaction)
+    record.Model:SetAttribute("Grade", grade)
+    typewriterText(record.Text, grade .. " | " .. reaction .. " | +$" .. payout, record.Audio.dialogueSound)
+    local glow = ensureCustomerCounterGlow(record.Model)
+    if glow then
+        glow:Emit(20)
+    end
+    record.Audio.customerServeSound:Play()
+    Debris:AddItem(record.Model, 15)
+    task.delay(2, function()
+        if record.Model.Parent then
+            move(record, record.Exit, function()
+                record.Model:Destroy()
+            end)
+        end
+    end)
+    onServed(player, grade)
+    return true
+end
+-- Only DevContentService exposes this through its Studio gate; no remote.
+function CustomerService.SetForcedReaction(player: Player, reaction: string?): boolean
+    if not active[player] then
+        return false
+    end
+    if reaction then
+        local valid = false
+        for _, definition in Customers.Reactions do
+            if definition.Id == reaction then
+                valid = true
             end
         end
-        return
+        if not valid then
+            return false
+        end
     end
-
-    CustomerService:CreateCustomer()
+    active[player].ForcedReaction = reaction
+    return true
 end
-
+-- Legacy colon-call compatibility. Unowned auto-spawns and attribute-based cup checks were removed.
+function CustomerService:CreateCustomer(_spawnTarget: any, plotOwner: Player?): Model?
+    if not plotOwner then
+        warn("[CustomerService] CreateCustomer now requires a plot owner")
+        return nil
+    end
+    return CustomerService.SpawnForPlayer(plotOwner)
+end
+function CustomerService:ServeCheck(player: Player, item: Instance?): boolean
+    return deps.BlendService.GetCup(player, item) ~= nil
+end
+function CustomerService:GetSatisfaction(player: Player, item: Instance?, preference: string?): string
+    local result = deps.BlendService.GetCup(player, item)
+    if not result then
+        return "D"
+    end
+    return CustomerService.CalculateGrade(
+        result,
+        preference or (active[player] and active[player].Preference) or "Surprise Me"
+    )
+end
+function CustomerService:RefreshOrder(model: Model)
+    for _, record in active do
+        if record.Model == model then
+            record.Preference = Customers.Preferences[math.random(1, #Customers.Preferences)]
+            model:SetAttribute("Preference", record.Preference)
+            typewriterText(record.Text, "Something " .. record.Preference .. "!", record.Audio.dialogueSound)
+        end
+    end
+end
+function CustomerService.RemovePlayer(player: Player)
+    local record = active[player]
+    active[player] = nil
+    if record then
+        activeTypingTasks[record.Text] = nil
+        record.Model:Destroy()
+    end
+    local models = ownedModels[player]
+    ownedModels[player] = nil
+    if models then
+        for model in models do
+            model:Destroy()
+        end
+    end
+end
 return CustomerService

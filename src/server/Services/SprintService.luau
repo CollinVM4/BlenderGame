@@ -63,6 +63,9 @@ function SprintService.Init()
     end)
 
     sprintEvent.OnServerEvent:Connect(function(player: Player, wantsToSprint: boolean)
+        if type(wantsToSprint) ~= "boolean" then
+            return
+        end
         setSprinting(player, wantsToSprint)
     end)
 
@@ -71,21 +74,25 @@ function SprintService.Init()
             ensurePlayer(player)
 
             if isSprinting[player] then
-                staminaCurrent[player] = math.max(0, staminaCurrent[player] - SprintConfig.STAMINA_DRAIN_RATE * deltaTime)
+                staminaCurrent[player] =
+                    math.max(0, staminaCurrent[player] - SprintConfig.STAMINA_DRAIN_RATE * deltaTime)
                 if staminaCurrent[player] <= 0 then
                     isSprinting[player] = false
                 end
             else
-                staminaCurrent[player] = math.min(staminaMax[player], staminaCurrent[player] + SprintConfig.STAMINA_REGEN_RATE * deltaTime)
+                staminaCurrent[player] =
+                    math.min(staminaMax[player], staminaCurrent[player] + SprintConfig.STAMINA_REGEN_RATE * deltaTime)
             end
 
             player:SetAttribute("StaminaCurrent", staminaCurrent[player])
 
             local humanoid = getHumanoid(player)
             if humanoid then
-                humanoid.WalkSpeed = isSprinting[player]
-                    and SprintConfig.WALK_SPEED_NORMAL * SprintConfig.SPRINT_SPEED_MULTIPLIER
-                    or SprintConfig.WALK_SPEED_NORMAL
+                humanoid.WalkSpeed = if os.clock() < (player:GetAttribute("StunnedUntil") or 0)
+                    then 0
+                    else isSprinting[player]
+                            and SprintConfig.WALK_SPEED_NORMAL * SprintConfig.SPRINT_SPEED_MULTIPLIER
+                        or SprintConfig.WALK_SPEED_NORMAL
             end
 
             sprintEvent:FireClient(player, isSprinting[player], staminaCurrent[player], staminaMax[player])

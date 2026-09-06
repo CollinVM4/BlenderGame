@@ -18,18 +18,17 @@ function AudioService.ConstructAudioCue(parent: Instance, soundId: string, volum
     return sound
 end
 
-function AudioService.CreateBlendGroup(parent: Instance)
+function AudioService.CreateBlendGroup(parent: Instance): { [string]: Sound }
     local blendSound = AudioService.ConstructAudioCue(parent, "rbxassetid://365965609", 0, true)
     local dingSound = AudioService.ConstructAudioCue(parent, "rbxassetid://110253665387820", 1, false)
     local pourSound = AudioService.ConstructAudioCue(parent, "rbxassetid://9114612188", 1, false)
     local notReadySound = AudioService.ConstructAudioCue(parent, "rbxassetid://90524619811521", 1, false)
     local customerServeSound = AudioService.ConstructAudioCue(parent, "rbxassetid://135165335432475", 1, false)
     -- randomize dialogue chirp
-    local dialogueSoundId = DIALOGUE_SOUND_IDS[math.random(1, #DIALOGUE_SOUND_IDS)] 
+    local dialogueSoundId = DIALOGUE_SOUND_IDS[math.random(1, #DIALOGUE_SOUND_IDS)]
     local dialogueSound = AudioService.ConstructAudioCue(parent, dialogueSoundId, 1, false)
 
-    return 
-    {
+    return {
         blendSound = blendSound,
         dingSound = dingSound,
         pourSound = pourSound,
@@ -38,7 +37,6 @@ function AudioService.CreateBlendGroup(parent: Instance)
         dialogueSound = dialogueSound,
     }
 end
-
 
 -- Dynamically adjust volume based on the blades RPM / blend strength.
 function AudioService.UpdateBlendGroup(group: { blendSound: Sound }, blendStrength: number)
