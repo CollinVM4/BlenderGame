@@ -15,7 +15,7 @@ Fill a % based on recipe
 Run down to a turbine. spinning the wheel turns the blades, blending the fruit, and progressing the blend meter.
 
 **Dispense Smoothie**
-Jump on a hanging rope pulled down by your weight to open the valve and fill the cup.
+Press dispense to collect the smoothie.
 
 **Serve Customer and Payout**
 Hand off the smoothie, collect massive stacks of cash and buy upgrades

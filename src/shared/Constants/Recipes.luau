@@ -6,7 +6,7 @@ local Recipes = {
         Pay = 40,
     },
     ["Fruit Smoothie"] = {
-        RequiredProgress = 80, -- Harder to blend
+        RequiredProgress = 8, -- Harder to blend
         Color = Color3.fromRGB(255, 105, 180),
         Pay = 25,
     },

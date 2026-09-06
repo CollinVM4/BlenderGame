@@ -486,7 +486,27 @@ function CustomerService:CreateCustomer(spawnTarget: any, plotOwner: Player?): M
     label.Size = UDim2.fromOffset(190, 42)
     label.StudsOffset = Vector3.new(0, 3.2, 0)
     label.AlwaysOnTop = true
+    label.MaxDistance = 80
     label.Parent = billboardTarget
+
+    local function updateBubbleScale()
+        local camera = Workspace.CurrentCamera
+        if not camera then
+            label.Size = UDim2.fromOffset(190, 42)
+            return
+        end
+
+        local distance = (camera.CFrame.Position - billboardTarget.Position).Magnitude
+        local scale = math.clamp(1 - (distance / 80), 0.45, 1)
+        label.Size = UDim2.fromOffset(190 * scale, 42 * scale)
+    end
+
+    task.spawn(function()
+        while label.Parent do
+            updateBubbleScale()
+            task.wait(0.1)
+        end
+    end)
 
     local background = Instance.new("Frame")
     background.Size = UDim2.fromScale(1, 1)
