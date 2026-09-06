@@ -3,7 +3,6 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local HttpService = game:GetService("HttpService")
 local ServerStorage = game:GetService("ServerStorage")
 local Economy = require(Shared.Constants.Economy)
-local Upgrades = require(Shared.Constants.Upgrades)
 local Recipes = require(Shared.Constants.Recipes)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
@@ -13,7 +12,6 @@ local deps: any
 type Batch = { State: Types.BlendState, Ingredients: { string }, Progress: number, Result: Types.Smoothie? }
 local batches: { [Player]: Batch } = {}
 local cups: { [Player]: { Tool: Tool, Result: Types.Smoothie } } = {}
-local nextInteraction: { [Player]: number } = {}
 
 local function publish(player: Player)
     local batch = batches[player]
@@ -35,7 +33,6 @@ function BlendService.Init(services)
 end
 function BlendService.Reset(player: Player)
     batches[player] = { State = "EMPTY", Ingredients = {}, Progress = 0, Result = nil }
-    nextInteraction[player] = nil
     publish(player)
     Film.Log("Blend", "reset")
 end
@@ -132,12 +129,11 @@ local function makeResult(ids: { string }): Types.Smoothie
         Discovery = discovery,
     }
 end
--- Server components report physical spin or a fixed prompt interaction. No progress remote exists.
+-- Server Heartbeat reports measured physical spin. No progress remote exists.
 function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number): boolean
     local batch = batches[player]
     if
         not batch
-        or not WorldUtil.Near(player, wheel, Economy.InteractionDistance)
         or deps.TycoonService.GetOwner(wheel) ~= player
         or delta ~= delta
         or delta <= 0
@@ -158,8 +154,7 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
         Film.Log("Blend", "BLENDING")
     end
     local oldProgress = batch.Progress
-    local speed = Upgrades.BlendSpeed[deps.PlayerDataService.GetUpgrade(player, "BlendSpeed")].Value
-    batch.Progress = math.min(Economy.RequiredProgress, batch.Progress + math.min(delta, 10) * speed)
+    batch.Progress = math.min(Economy.RequiredProgress, batch.Progress + delta)
     Film.Emit(player, "BlendProgressChanged", { Progress = batch.Progress })
     if math.floor(oldProgress / 10) ~= math.floor(batch.Progress / 10) then
         Film.Log("Blend", string.format("progress %.0f", batch.Progress))
@@ -185,14 +180,6 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     end
     publish(player)
     return true
-end
-function BlendService.Interact(player: Player, wheel: BasePart): boolean
-    local now = os.clock()
-    if now < (nextInteraction[player] or 0) then
-        return false
-    end
-    nextInteraction[player] = now + 0.25
-    return BlendService.AddProgress(player, wheel, 10)
 end
 function BlendService.GetCup(player: Player, requested: Instance?): Types.Smoothie?
     local cup = cups[player]
@@ -287,6 +274,5 @@ end
 function BlendService.RemovePlayer(player: Player)
     BlendService.ClearCup(player)
     batches[player] = nil
-    nextInteraction[player] = nil
 end
 return BlendService

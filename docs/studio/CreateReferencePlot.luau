@@ -39,7 +39,23 @@ input.CanCollide = false
 input.CanQuery = true
 input.Transparency = 1
 part("IngredientSpawn", Vector3.new(0, 2, 9), Vector3.new(10, 1, 4), "IngredientSpawn")
-part("TurbineWheel", Vector3.new(7, 3, -4), Vector3.new(2, 2, 2), "TurbineWheel", Color3.fromRGB(70, 180, 240))
+-- Free physical blade: push either end to spin it around the vertical axle.
+local axle = part("TurbineAxle", Vector3.new(7, 2, -4), Vector3.new(0.5, 3, 0.5))
+axle.CanCollide = false
+local blade = part("blade", Vector3.new(7, 3, -4), Vector3.new(6, 0.5, 1), "TurbineWheel", Color3.fromRGB(70, 180, 240))
+blade.Anchored = false
+local fixedAttachment = Instance.new("Attachment")
+fixedAttachment.Position = Vector3.new(0, 1, 0)
+fixedAttachment.Axis = Vector3.yAxis
+fixedAttachment.Parent = axle
+local bladeAttachment = Instance.new("Attachment")
+bladeAttachment.Axis = Vector3.yAxis
+bladeAttachment.Parent = blade
+local hinge = Instance.new("HingeConstraint")
+hinge.Attachment0 = fixedAttachment
+hinge.Attachment1 = bladeAttachment
+hinge.ActuatorType = Enum.ActuatorType.None
+hinge.Parent = axle
 part("DispenseButton", Vector3.new(7, 3, 0), Vector3.new(2, 1, 2), "DispenseButton", Color3.fromRGB(100, 230, 120))
 part("StartDayButton", Vector3.new(7, 3, 5), Vector3.new(2, 1, 2), "StartDayButton", Color3.fromRGB(250, 210, 70))
 for name, position in

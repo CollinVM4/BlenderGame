@@ -7,6 +7,7 @@ return {
     GradeScore = { A = 4, B = 3, C = 2, D = 1 },
     MaxIngredients = 3,
     RequiredProgress = 100,
+    BlendProgressScale = 3, -- Progress per radian of physical blade rotation.
     InteractionDistance = 12,
     NormalStash = { Slots = 5, Protected = 2 },
     VIPStash = { Slots = 10, Protected = 5 },

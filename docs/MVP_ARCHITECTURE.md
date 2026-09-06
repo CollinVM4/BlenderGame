@@ -20,7 +20,7 @@ The bootstrap explicitly loads services, injects dependencies, initializes exist
 | TycoonService | Assign one plot, release ownership, resolve fixtures. `AssignPlot`, `GetPlot`, `GetOwner`, `GetReference`. Old cash methods forward to PlayerDataService. Physical upgrade installation is TODO. |
 | IngredientService | Sole world-unit registry and central definition access. `Spawn(id, cframe, owner?, claimable?)`, `Resolve`, `GetRecord`, `Consume`. Tagged/attributed objects without a server record are invalid. |
 | InventoryService | Separate carried counts and indexed stash stacks. `AddUnit`, `RemoveUnit`, `ClaimWorldItem`, `ReleaseUnit`, `DropOne`, `Deposit`, `Withdraw`, `Steal`, `GetSnapshot`. Transfers take one unit, without yielding. |
-| BlendService | Batch state, progress, contents, color, discoveries, genuine cup identity. `TryInput`, `Ready`, `AddProgress`, `Interact`, `Dispense`, `GetCup`, `ConsumeCup`, `Reset`, `ClearCup`, `GetSnapshot`. |
+| BlendService | Batch state, progress, contents, color, discoveries, genuine cup identity. `TryInput`, `Ready`, `AddProgress`, `Dispense`, `GetCup`, `ConsumeCup`, `Reset`, `ClearCup`, `GetSnapshot`. |
 | CustomerService | Owned customers, waypoint movement, preferences, serving transaction, separate `CalculateGrade`, `SelectReaction`, `CalculatePayout`. `SpawnForPlayer`, `CanSpawn`, `Serve`, `GetSnapshot`; served callback notifies GameService. |
 | GameService | Per-player orchestration only. `StartDay`, `IsServing`, `CustomerServed`, `FinishDay`, `ResumeDay`, `Reset`, `GetSnapshot`. No inventory, grading, or payout implementation here. |
 | MarketService | One physical stock unit per registered pedestal; weighted rarity selection, atomic claims and respawn. `Register`, `Unregister`, `Step`, `Claim`, `SelectIngredient`, `SpawnDrop` for future ants. |
@@ -28,7 +28,7 @@ The bootstrap explicitly loads services, injects dependencies, initializes exist
 | DevContentService | Opt-in Studio filming operations: `SpawnIngredient`, `ClearBlender`/`ResetBlender`, `PrepareCombination`, `SpawnCustomer`, `ForceReaction`, `ResetPlot`/`ResetScene`, `IsEnabled`. No dev remote. |
 | GameplayService | Narrow, throttled client request adapter for a future inventory UI. Does not own gameplay state. |
 | SprintService | Existing sprint/stamina behavior. Rejects non-boolean requests and respects the server's short movement stun. |
-| PhysicsService | Existing spin sampling. `GetBlendDelta(part, dt?)` supports framerate-independent progress and preserves one-argument behavior. |
+| PhysicsService | `GetSpinStrength` measures `AssemblyAngularVelocity.Magnitude`. `GetBlendDelta(part, dt?)` multiplies it by `Economy.BlendProgressScale` and elapsed seconds (default 1/60). `GetRPM` is display/debugging only. |
 | AudioService | Existing sound assets and blend group behavior retained; return type clarified. |
 | FilmingUtil | Output-only GameplayPresentation events and Studio-only DebugFilmLoop logging. |
 | WorldUtil | Internal part lookup, living-player distance checks, prompt creation, tag attachment/cleanup; not a gameplay service. |
@@ -37,9 +37,9 @@ The bootstrap explicitly loads services, injects dependencies, initializes exist
 
 `EMPTY → LOADING → READY → BLENDING → COMPLETE → DISPENSED → EMPTY`
 
-- First/second units enter LOADING; three units enter READY. The first positive turbine interaction seals a 1–2 unit batch through READY. Nothing loads while blending or complete.
+- First/second units enter LOADING; three units enter READY. The first measured physical spin seals a 1–2 unit batch through READY. Nothing loads while blending or complete.
 - Inputs require a registered world unit owned by the plot owner and actual server overlap with that plot's detector. Rejected units are not consumed. Detector must have `CanQuery` enabled.
-- Turbine component only reports server-observed spin using delta time or a fixed prompt interaction. BlendService validates living-player proximity, plot ownership, state, finite positive delta, upgrades, and the completion cap. Prompt turns are limited to one per 0.25 seconds.
+- Turbine Heartbeat reports only server-observed physical angular speed times `Economy.BlendProgressScale` times delta time. Stationary blades add zero; faster spin adds proportionally more, with no speed threshold, speed cap, per-frame cap, or upgrade multiplier. BlendService validates plot ownership, state, finite positive delta, and the completion cap. Physical coasting continues regardless of owner proximity.
 - COMPLETE produces a record at 100%; discovery and smoothie stats increment once. Dispense requires ownership, proximity, Backpack, and no existing valid cup. A supplied `ServerStorage.Smoothie` Tool is cloned; otherwise a plain cup Tool is generated.
 - The server stores the Tool's identity and result, independently of Tool attributes. Serving destroys/consumes it once. Attributes are presentation only. Dispense publishes DISPENSED, then defers EMPTY; the cup record survives that batch reset.
 - `Reset` discards only the loaded batch. `ClearCup` removes a cup separately. Respawn clears the cup and reserved held prop, retains the batch/day/ordinary inventory, and clears movement stun. Leaving removes all per-player state and owned world items.
@@ -70,7 +70,7 @@ Create physical models in Studio. Put plot fixtures under their owning plot; tag
 | `PlayerPlot` | Tag a Model/Folder per player plot, or use direct children of `workspace.Plots`. Assigned in name order; `OwnerUserId` is written by the server. A legacy `workspace.Blender` is treated as a single plot. |
 | `BlenderInput` | One invisible anchored BasePart at the blender opening, inside the plot. `Transparency=1`, `CanCollide=false`, `CanQuery=true`. Make it deep/wide enough for the 0.1s overlap polling interval. |
 | `IngredientSpawn` | Level collidable staging table BasePart in the plot (10?1?4 for the reference). Dev commands place props above it for pickup. |
-| `TurbineWheel` | Tag the actual spinning blade/stem BasePart (or Model with PrimaryPart) inside the plot. Preserve your existing turbine constraints. A generated Turn prompt also supplies manual progress for filming. Stand within 12 studs of the tagged part. No rope. |
+| `TurbineWheel` | Prefer tagging the actual spinning blade BasePart inside the plot. Legacy Models must resolve to that blade. Keep the blade unanchored and preserve the physical turbine constraints so it can rotate. Physically push the wheel; progress comes only from server Heartbeat sampling. |
 | `DispenseButton` | BasePart or Model with PrimaryPart inside plot. Component generates a Dispense prompt. |
 | `StartDayButton` | BasePart/Model with PrimaryPart inside plot, near counter. Component generates Start Day prompt. |
 | `CustomerSpawn` | Anchored marker BasePart inside each plot; CFrame marks the NPC's pivot, not its foot. |

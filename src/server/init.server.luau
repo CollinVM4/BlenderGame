@@ -1,7 +1,5 @@
 --!strict
 local Players = game:GetService("Players")
-local CollectionService = game:GetService("CollectionService")
-local WorldUtil = require(script.Services.WorldUtil)
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
     TycoonService = require(script.Services.TycoonService),
@@ -35,33 +33,7 @@ if direct then
     table.insert(roots, direct)
 end
 for _, plot in roots do
-    CollectionService:AddTag(plot, "PlayerPlot")
-    for _, name in
-        {
-            "BlenderInput",
-            "IngredientSpawn",
-            "DispenseButton",
-            "CustomerSpawn",
-            "CustomerCounter",
-            "CustomerExit",
-            "StartDayButton",
-            "PlayerStash",
-        }
-    do
-        local object = plot:FindFirstChild(name, true)
-        if object then
-            CollectionService:AddTag(object, name)
-        end
-    end
-    local turbine = plot:FindFirstChild("Turbine", true)
-    if turbine then
-        local part = turbine:FindFirstChild("blade", true)
-            or turbine:FindFirstChild("stem", true)
-            or WorldUtil.Part(turbine)
-        if part then
-            CollectionService:AddTag(part, "TurbineWheel")
-        end
-    end
+    services.TycoonService.AutoTagLegacyPlot(plot)
 end
 
 local characterConnections: { [Player]: RBXScriptConnection } = {}

@@ -34,10 +34,6 @@ function TurbineWheel.Init(services: any)
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.Parent = gui
-        local prompt = WorldUtil.Prompt(part, "TurnPrompt", "Turn turbine")
-        local interaction = prompt.Triggered:Connect(function(player)
-            services.BlendService.Interact(player, part)
-        end)
         local wasComplete = false
         local heartbeat = RunService.Heartbeat:Connect(function(dt)
             local owner = services.TycoonService.GetOwner(part)
@@ -62,9 +58,7 @@ function TurbineWheel.Init(services: any)
             wasComplete = state == "COMPLETE"
         end)
         return function()
-            interaction:Disconnect()
             heartbeat:Disconnect()
-            prompt:Destroy()
             particles:Destroy()
             gui:Destroy()
             for _, sound in audio do

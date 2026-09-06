@@ -152,13 +152,32 @@ local function instance(class)
     function object:IsA(name)
         return name == self.ClassName or (name == "BasePart" and self.ClassName == "Part")
     end
-    function object:FindFirstChild(name)
+    function object:FindFirstChild(name, recursive)
         for _, child in self:GetChildren() do
             if child.Name == name then
                 return child
             end
         end
+        if recursive then
+            for _, child in self:GetDescendants() do
+                if child.Name == name then
+                    return child
+                end
+            end
+        end
         return self.Children[name]
+    end
+    function object:GetFullName()
+        return (if self.Parent and self.Parent.GetFullName then self.Parent:GetFullName() .. "." else "")
+            .. (self.Name or self.ClassName)
+    end
+    function object:FindFirstChildWhichIsA(class, recursive)
+        for _, child in (if recursive then self:GetDescendants() else self:GetChildren()) do
+            if child:IsA(class) then
+                return child
+            end
+        end
+        return nil
     end
     function object:SetAttribute(key, value)
         self.Attributes[key] = value
@@ -198,6 +217,7 @@ local workspaceFake = {
         return input.Overlaps or {}
     end,
 }
+local tags = {}
 local services = {
     ReplicatedStorage = { Shared = shared },
     ServerStorage = storage,
@@ -213,7 +233,27 @@ local services = {
     },
     Players = {},
     Debris = { AddItem = function() end },
-    CollectionService = { AddTag = function() end, RemoveTag = function() end },
+    CollectionService = {
+        AddTag = function(_, object, tag)
+            tags[tag] = tags[tag] or {}
+            tags[tag][object] = true
+        end,
+        RemoveTag = function(_, object, tag)
+            if tags[tag] then
+                tags[tag][object] = nil
+            end
+        end,
+        HasTag = function(_, object, tag)
+            return tags[tag] and tags[tag][object] == true
+        end,
+        GetTagged = function(_, tag)
+            local objects = {}
+            for object in tags[tag] or {} do
+                table.insert(objects, object)
+            end
+            return objects
+        end,
+    },
 }
 local env = setmetatable({
     game = {
@@ -280,7 +320,10 @@ local cache = {
             return player.Near and target ~= nil
         end,
         Part = function(object)
-            return if object and object.ClassName == "Model" then object.PrimaryPart else object
+            if object and (object.ClassName == "Model" or object.ClassName == "Folder") then
+                return object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
+            end
+            return object
         end,
         Prompt = function(root, name)
             local prompt = instance("ProximityPrompt")
@@ -362,7 +405,9 @@ local ingredients = {
     end,
 }
 local input = { Owner = p, Overlaps = {} }
-local wheel = { Owner = p }
+local wheel = instance("Part")
+wheel.Owner = p
+wheel.AssemblyAngularVelocity = vec(0, 0, 0)
 local refs = { BlenderInput = input, PlayerStash = {}, StartDayButton = {}, CustomerCounter = {} }
 local tycoon = {
     GetOwner = function(object)
@@ -430,8 +475,29 @@ check(
 )
 check(not loadIngredient("Tire"), "fourth item rejected without consumption")
 check(not blend.AddProgress(p, wheel, 0 / 0), "invalid progress rejected")
+check(not blend.AddProgress(other, wheel, 10), "foreign wheel rejected")
+local physics = loadModule("PhysicsService")
+check(physics.GetBlendDelta(wheel, 1) == 0, "stationary blade gives zero progress")
+check(not blend.AddProgress(p, wheel, physics.GetBlendDelta(wheel, 1)), "stationary READY batch stays READY")
+wheel.AssemblyAngularVelocity = vec(0, -2 * math.pi, 0)
+check(math.abs(physics.GetRPM(wheel) - 60) < 1e-9, "RPM displays magnitude in revolutions per minute")
+wheel.AssemblyAngularVelocity = vec(0, 0.001, 0)
+check(physics.GetBlendDelta(wheel, 1) > 0, "slow spin has no minimum threshold")
+wheel.AssemblyAngularVelocity = vec(0, 60, 0)
+local spinDelta = physics.GetBlendDelta(wheel, 0.1)
+wheel.AssemblyAngularVelocity = vec(0, 120, 0)
+check(physics.GetBlendDelta(wheel, 0.1) == spinDelta * 2, "high spin remains linear without speed cap")
+check(physics.GetBlendDelta(wheel, 0.05) * 2 == spinDelta * 2, "progress scales with elapsed time")
 p.Near = false
-check(not blend.AddProgress(p, wheel, 10), "remote wheel rejected")
+check(blend.AddProgress(p, wheel, spinDelta), "physical spin continues when owner steps away")
+check(blend.GetSnapshot(p).Progress == spinDelta, "measured delta above ten is not capped")
+wheel.AssemblyAngularVelocity = vec(0, 0, 0)
+check(not blend.AddProgress(p, wheel, physics.GetBlendDelta(wheel, 1)), "stopped blade cannot advance blending")
+check(blend.GetSnapshot(p).Progress == spinDelta, "stopped progress remains unchanged")
+blend.Reset(p)
+loadIngredient("Strawberry")
+loadIngredient("Banana")
+loadIngredient("Ice")
 p.Near = true
 check(blend.AddProgress(p, wheel, 10) and blend.GetSnapshot(p).State == "BLENDING", "READY to BLENDING")
 check(not loadIngredient("Tire"), "loading locked during blend")
@@ -822,6 +888,177 @@ check(
     dev.ResetPlot(p) and not customer.GetSnapshot(p) and not blend.GetCup(p) and blend.GetSnapshot(p).State == "EMPTY",
     "reset clears customer/cup/batch"
 )
+
+-- Tag-authoritative real Plot1 lookup and read-only Studio validation.
+workspaceFake.FindFirstChild = function()
+    return nil
+end
+local realTycoon = loadModule("TycoonService")
+realTycoon.Init(data)
+local plot = instance("Model")
+plot.Name = "Plot1"
+plot.Parent = workspaceFake
+local collection = services.CollectionService
+collection:AddTag(plot, "PlayerPlot")
+local fixtureNames = {
+    BlenderInput = "InputZone",
+    TurbineWheel = "Turbine Wheel",
+    DispenseButton = "Button",
+    StartDayButton = "Start Day",
+    CustomerSpawn = "Spawn",
+    CustomerCounter = "Counter",
+    CustomerExit = "Exit",
+    PlayerStash = "Stash",
+}
+local fixtureObjects = {}
+for role, name in fixtureNames do
+    local object = instance(if role == "PlayerStash" then "Model" else "Part")
+    object.Name = name
+    object.Parent = plot
+    object.CanQuery = true
+    collection:AddTag(object, role)
+    fixtureObjects[role] = object
+end
+local slots = {}
+for index = 1, 5 do
+    local slot = instance("Part")
+    slot.Name = if index <= 2 then "LockedSlot" .. index else "Slot" .. index
+    slot.Parent = fixtureObjects.PlayerStash
+    slot:SetAttribute("SlotIndex", index)
+    slots[index] = slot
+end
+fixtureObjects.PlayerStash.PrimaryPart = slots[1]
+check(realTycoon.AssignPlot(p) == plot, "tagged human-readable plot assigned")
+deps.TycoonService = realTycoon
+for role, object in fixtureObjects do
+    check(
+        realTycoon.GetReference(p, role) == (if role == "PlayerStash" then slots[1] else object),
+        "tag lookup ignores name for " .. role
+    )
+end
+check(dev.ValidatePlot(p), "complete human-readable Plot1 passes validation")
+local outputLines = {}
+env.print = function(line)
+    table.insert(outputLines, line)
+end
+local ok, report = dev.ValidatePlot(p)
+check(
+    ok and outputLines[1] == "[Plot Validation] Plot1" and #report == 14,
+    "validator prints concise per-role and per-slot report"
+)
+local function failsWith(text)
+    local valid, lines = dev.ValidatePlot(p)
+    for _, line in lines do
+        if string.find(line, text, 1, true) then
+            return not valid
+        end
+    end
+    return false
+end
+local decoy = instance("Part")
+decoy.Name = "BlenderInput"
+decoy.Parent = plot
+realTycoon.AutoTagLegacyPlot(plot)
+check(
+    not collection:HasTag(decoy, "BlenderInput")
+        and realTycoon.GetReference(p, "BlenderInput") == fixtureObjects.BlenderInput,
+    "legacy migration does not duplicate explicit role"
+)
+fixtureObjects.BlenderInput.Name = "Any New Name"
+check(
+    realTycoon.GetReference(p, "BlenderInput") == fixtureObjects.BlenderInput,
+    "renaming tagged object preserves lookup"
+)
+collection:RemoveTag(fixtureObjects.BlenderInput, "BlenderInput")
+check(
+    not realTycoon.GetReference(p, "BlenderInput") and failsWith("FAIL BlenderInput - Missing"),
+    "runtime does not fall back to old names"
+)
+collection:AddTag(fixtureObjects.BlenderInput, "BlenderInput")
+collection:AddTag(decoy, "BlenderInput")
+check(
+    not realTycoon.GetReference(p, "BlenderInput") and failsWith("Duplicate tags"),
+    "duplicate required role rejected and reported"
+)
+collection:RemoveTag(decoy, "BlenderInput")
+fixtureObjects.BlenderInput.CanQuery = false
+check(failsWith("CanQuery must be true"), "disabled detector querying diagnosed")
+fixtureObjects.BlenderInput.CanQuery = true
+collection:RemoveTag(fixtureObjects.BlenderInput, "BlenderInput")
+local detectorModel = instance("Model")
+detectorModel.Name = "BadDetector"
+detectorModel.Parent = plot
+local detectorPart = instance("Part")
+detectorPart.Parent = detectorModel
+detectorModel.PrimaryPart = detectorPart
+collection:AddTag(detectorModel, "BlenderInput")
+check(failsWith("Tag the InputZone BasePart itself"), "detector model rejected even with PrimaryPart")
+collection:RemoveTag(detectorModel, "BlenderInput")
+collection:AddTag(fixtureObjects.BlenderInput, "BlenderInput")
+fixtureObjects.CustomerSpawn.Parent = workspaceFake
+check(
+    not realTycoon.GetReference(p, "CustomerSpawn") and failsWith("FAIL CustomerSpawn - Missing"),
+    "foreign fixture cannot satisfy assigned plot"
+)
+fixtureObjects.CustomerSpawn.Parent = plot
+collection:RemoveTag(fixtureObjects.CustomerExit, "CustomerExit")
+local invalidMarker = instance("Folder")
+invalidMarker.Parent = plot
+collection:AddTag(invalidMarker, "CustomerExit")
+check(failsWith("Must resolve to a BasePart"), "marker without physical part diagnosed")
+collection:RemoveTag(invalidMarker, "CustomerExit")
+collection:AddTag(fixtureObjects.CustomerExit, "CustomerExit")
+slots[2]:SetAttribute("SlotIndex", 1)
+check(failsWith("Duplicate SlotIndex") and failsWith("FAIL SlotIndex 2"), "duplicate and missing slots diagnosed")
+slots[2]:SetAttribute("SlotIndex", 2.5)
+check(failsWith("integer SlotIndex"), "fractional slot rejected")
+slots[2]:SetAttribute("SlotIndex", "2")
+check(failsWith("integer SlotIndex"), "string slot rejected")
+slots[2]:SetAttribute("SlotIndex", 2)
+slots[1].Name = "Anything"
+check(dev.ValidatePlot(p), "slot names never authoritative")
+local invalidSlot = instance("Folder")
+invalidSlot.Parent = fixtureObjects.PlayerStash
+invalidSlot:SetAttribute("SlotIndex", 3)
+check(failsWith("integer SlotIndex"), "attribute on non-BasePart rejected")
+invalidSlot:SetAttribute("SlotIndex", nil)
+local nested = instance("Model")
+nested.Parent = plot
+collection:AddTag(nested, "PlayerPlot")
+check(failsWith("Nested plot"), "nested plot ownership ambiguity diagnosed")
+collection:RemoveTag(nested, "PlayerPlot")
+local legacy = instance("Model")
+legacy.Name = "Legacy"
+legacy.Parent = workspaceFake
+local legacyInput = instance("Part")
+legacyInput.Name = "BlenderInput"
+legacyInput.Parent = legacy
+local turbine = instance("Model")
+turbine.Name = "Turbine"
+turbine.Parent = legacy
+local blade = instance("Part")
+blade.Name = "blade"
+blade.Parent = turbine
+realTycoon.AutoTagLegacyPlot(legacy)
+check(
+    collection:HasTag(legacyInput, "BlenderInput") and collection:HasTag(blade, "TurbineWheel"),
+    "legacy named fixtures still auto-tag"
+)
+local oldReports = #outputLines
+studio = false
+check(not dev.ValidatePlot(p) and #outputLines == oldReports, "validator blocked silently in production")
+studio = true
+storage:SetAttribute("EnableDevContent", false)
+check(not dev.ValidatePlot(p) and #outputLines == oldReports, "validator requires Studio opt-in")
+storage:SetAttribute("EnableDevContent", true)
+check(not dev.ValidatePlot(other), "unassigned player reported without assigning or mutating scene")
+check(not realTycoon.GetPlot(other), "validation does not assign plots")
+check(
+    dev.SpawnIngredient(p, "Strawberry") ~= nil and dev.PrepareCombination(p, { "Tire", "Noob" }),
+    "dev staging works without IngredientSpawn or ContentSpawnArea tag"
+)
+realTycoon.RemovePlayer(p)
+deps.TycoonService = tycoon
 
 local before = data.GetSnapshot(p).Cash
 blend.RemovePlayer(p)

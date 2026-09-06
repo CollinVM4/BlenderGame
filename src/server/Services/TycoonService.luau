@@ -23,17 +23,68 @@ function TycoonService.GetOwner(object: Instance): Player?
     end
     return nil
 end
+function TycoonService.GetFixtures(plot: Instance, role: string): { Instance }
+    local fixtures = {}
+    for _, object in CollectionService:GetTagged(role) do
+        if object:IsDescendantOf(plot) then
+            table.insert(fixtures, object)
+        end
+    end
+    return fixtures
+end
+
+-- Compatibility runs before binding. An explicitly tagged role always wins over old names.
+function TycoonService.AutoTagLegacyPlot(plot: Instance)
+    CollectionService:AddTag(plot, "PlayerPlot")
+    for _, role in
+        {
+            "BlenderInput",
+            "IngredientSpawn",
+            "DispenseButton",
+            "CustomerSpawn",
+            "CustomerCounter",
+            "CustomerExit",
+            "StartDayButton",
+            "PlayerStash",
+            "TurbineWheel",
+        }
+    do
+        if #TycoonService.GetFixtures(plot, role) == 0 then
+            local object = plot:FindFirstChild(role, true)
+            if not object and role == "TurbineWheel" then
+                local turbine = plot:FindFirstChild("Turbine", true)
+                object = turbine
+                    and (
+                        turbine:FindFirstChild("blade", true)
+                        or turbine:FindFirstChild("stem", true)
+                        or WorldUtil.Part(turbine)
+                    )
+            end
+            if object then
+                CollectionService:AddTag(object, role)
+            end
+        end
+    end
+end
+
 function TycoonService.GetReference(player: Player, name: string): BasePart?
     local plot = TycoonService.GetPlot(player)
     if not plot then
         return nil
     end
-    for _, object in CollectionService:GetTagged(name) do
-        if object:IsDescendantOf(plot) then
-            return WorldUtil.Part(object)
-        end
+    local fixtures = TycoonService.GetFixtures(plot, name)
+    if #fixtures ~= 1 then
+        return nil
     end
-    return WorldUtil.Part(plot:FindFirstChild(name, true))
+    local fixture = fixtures[1]
+    if name == "BlenderInput" and not fixture:IsA("BasePart") then
+        return nil
+    end
+    local part = WorldUtil.Part(fixture)
+    if part and (part == fixture or part:IsDescendantOf(fixture)) then
+        return part
+    end
+    return nil
 end
 function TycoonService.AssignPlot(player: Player): Instance?
     if TycoonService.GetPlot(player) then
@@ -44,6 +95,7 @@ function TycoonService.AssignPlot(player: Player): Instance?
     if folder then
         for _, plot in folder:GetChildren() do
             if not table.find(candidates, plot) then
+                TycoonService.AutoTagLegacyPlot(plot)
                 table.insert(candidates, plot)
             end
         end
