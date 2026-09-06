@@ -16,6 +16,8 @@ local services: { [string]: any } = {
     GameplayService = require(script.Services.GameplayService),
 }
 
+require(script.Services.FilmingUtil).Init()
+
 -- Inject dependencies once; service modules never require one another in cycles.
 services.TycoonService.Init(services.PlayerDataService)
 for _, name in
@@ -37,6 +39,7 @@ for _, plot in roots do
     for _, name in
         {
             "BlenderInput",
+            "IngredientSpawn",
             "DispenseButton",
             "CustomerSpawn",
             "CustomerCounter",
@@ -75,6 +78,7 @@ local function addPlayer(player: Player)
     services.TycoonService.AssignPlot(player)
     characterConnections[player] = player.CharacterAdded:Connect(function()
         services.BlendService.ClearCup(player)
+        services.InventoryService.ClearHeld(player)
         player:SetAttribute("StunnedUntil", 0)
     end)
 end
@@ -110,6 +114,7 @@ services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
+    require(script.Components.IngredientPickup),
     require(script.Components.TurbineWheel),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),

@@ -8,6 +8,7 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local AudioService = require(script.Parent.AudioService)
+local Film = require(script.Parent.FilmingUtil)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade) -> ()
@@ -296,6 +297,21 @@ function CustomerService.Serve(player: Player): (boolean, string?)
     player:SetAttribute("CustomerReaction", reaction)
     record.Model:SetAttribute("Reaction", reaction)
     record.Model:SetAttribute("Grade", grade)
+    Film.Emit(
+        player,
+        "CustomerReaction",
+        { BlendId = result.BlendId, Customer = record.Model, ReactionId = reaction, Grade = grade, Payout = payout }
+    )
+    Film.Log(
+        "Customer",
+        string.format(
+            "served blend=%s grade=%s reaction=%s payout=%d",
+            tostring(result.BlendId),
+            grade,
+            reaction,
+            payout
+        )
+    )
     typewriterText(record.Text, grade .. " | " .. reaction .. " | +$" .. payout, record.Audio.dialogueSound)
     local glow = ensureCustomerCounterGlow(record.Model)
     if glow then

@@ -43,41 +43,147 @@ local function flush()
         fn()
     end
 end
-local function instance(class)
-    local object = { ClassName = class, Children = {}, Attributes = {} }
-    object.Activated = {
-        Connect = function()
-            return { Disconnect = function() end }
+local allInstances = {}
+local presentation = {}
+local function signal()
+    local listeners = {}
+    return {
+        Connect = function(_, fn)
+            table.insert(listeners, fn)
+            return {
+                Disconnect = function()
+                    local i = table.find(listeners, fn)
+                    if i then
+                        table.remove(listeners, i)
+                    end
+                end,
+            }
+        end,
+        Fire = function(_, ...)
+            for _, fn in table.clone(listeners) do
+                fn(...)
+            end
         end,
     }
+end
+local function frame(x, y, z)
+    local cf = { Position = vec(x or 0, y or 0, z or 0), LookVector = vec(0, 0, -1) }
+    function cf:Lerp(other, alpha)
+        local v = self.Position + (other.Position - self.Position) * alpha
+        return frame(v.X, v.Y, v.Z)
+    end
+    return setmetatable(cf, {
+        __mul = function(a, b)
+            local v = a.Position + b.Position
+            return frame(v.X, v.Y, v.Z)
+        end,
+    })
+end
+local function instance(class)
+    local object = { ClassName = class, Children = {}, Attributes = {} }
+    table.insert(allInstances, object)
+    object.Activated = signal()
+    object.Triggered = signal()
+    object.Destroying = signal()
+    object.CFrame = frame()
+    object.Position = vec(0, 0, 0)
+    function object:GetChildren()
+        local found = {}
+        for _, child in allInstances do
+            if child.Parent == self then
+                table.insert(found, child)
+            end
+        end
+        return found
+    end
     function object:GetDescendants()
-        return {}
+        local found = {}
+        for _, child in self:GetChildren() do
+            table.insert(found, child)
+            for _, descendant in child:GetDescendants() do
+                table.insert(found, descendant)
+            end
+        end
+        return found
     end
     function object:IsDescendantOf(target)
-        return self.Parent == target
+        local current = self.Parent
+        while current do
+            if current == target then
+                return true
+            end
+            current = current.Parent
+        end
+        return false
+    end
+    function object:PivotTo(at)
+        self.CFrame = at
+        self.Position = at.Position
+    end
+    function object:GetPivot()
+        return self.CFrame
+    end
+    function object:CanSetNetworkOwnership()
+        return true
+    end
+    function object:SetNetworkOwner(owner)
+        self.NetworkOwner = owner
+    end
+    function object:Clone()
+        local clone = instance(self.ClassName)
+        clone.Name = self.Name
+        clone.Size = self.Size
+        clone.Color = self.Color
+        clone.CFrame = self.CFrame
+        for _, child in self:GetChildren() do
+            local c = child:Clone()
+            c.Parent = clone
+        end
+        return clone
     end
     function object:FindFirstChildOfClass(name)
+        for _, child in self:GetChildren() do
+            if child:IsA(name) then
+                return child
+            end
+        end
         return self.Children[name]
     end
     function object:IsA(name)
         return name == self.ClassName or (name == "BasePart" and self.ClassName == "Part")
     end
     function object:FindFirstChild(name)
+        for _, child in self:GetChildren() do
+            if child.Name == name then
+                return child
+            end
+        end
         return self.Children[name]
     end
     function object:SetAttribute(key, value)
         self.Attributes[key] = value
     end
+    function object:FireAllClients(moment, userId, payload)
+        table.insert(presentation, { Moment = moment, UserId = userId, Payload = payload })
+    end
+    function object:Emit() end
     function object:GetAttribute(key)
         return self.Attributes[key]
     end
     function object:Destroy()
+        if self.Destroyed then
+            return
+        end
+        self.Destroying:Fire()
+        for _, child in self:GetChildren() do
+            child:Destroy()
+        end
         self.Parent = nil
         self.Destroyed = true
     end
     return object
 end
-local shared = { Constants = {}, Types = "Types" }
+local shared = { Constants = {}, Types = "Types", Events = instance("Folder") }
 for name in sources do
     shared.Constants[name] = name
 end
@@ -106,7 +212,8 @@ local services = {
         end,
     },
     Players = {},
-    Debris = {},
+    Debris = { AddItem = function() end },
+    CollectionService = { AddTag = function() end, RemoveTag = function() end },
 }
 local env = setmetatable({
     game = {
@@ -123,6 +230,25 @@ local env = setmetatable({
         end,
     },
     Instance = { new = instance },
+    CFrame = { new = frame },
+    UDim2 = {
+        fromOffset = function()
+            return {}
+        end,
+        fromScale = function()
+            return {}
+        end,
+    },
+    NumberRange = {
+        new = function()
+            return {}
+        end,
+    },
+    ColorSequence = {
+        new = function()
+            return {}
+        end,
+    },
     os = {
         clock = function()
             return now
@@ -133,8 +259,15 @@ local env = setmetatable({
             return {}
         end,
     },
-    Enum = { RaycastFilterType = { Exclude = "Exclude" } },
+    Enum = { RaycastFilterType = { Exclude = "Exclude" }, Font = { GothamBold = "GothamBold" } },
     task = {
+        spawn = function(fn)
+            table.insert(deferred, fn)
+        end,
+        wait = function()
+            return 10
+        end,
+        delay = function() end,
         defer = function(fn)
             table.insert(deferred, fn)
         end,
@@ -147,10 +280,24 @@ local cache = {
             return player.Near and target ~= nil
         end,
         Part = function(object)
-            return object
+            return if object and object.ClassName == "Model" then object.PrimaryPart else object
+        end,
+        Prompt = function(root, name)
+            local prompt = instance("ProximityPrompt")
+            prompt.Name = name
+            prompt.Parent = root
+            return prompt
         end,
     },
-    AudioService = {},
+    AudioService = {
+        CreateBlendGroup = function()
+            local audio = {}
+            for _, name in { "dialogueSound", "notReadySound", "customerServeSound" } do
+                audio[name] = { Play = function() end, Stop = function() end }
+            end
+            return audio
+        end,
+    },
 }
 local parent = setmetatable({}, {
     __index = function(_, key)
@@ -172,6 +319,7 @@ env.require = loadModule
 local function player(name)
     local p = instance("Player")
     p.Name = name
+    p.UserId = #allInstances
     p.Near = true
     p.Parent = services.Players
     p.Backpack = instance("Backpack")
@@ -459,6 +607,221 @@ market.Step()
 check(pedestal:GetAttribute("StockIngredientId") ~= nil, "market restocks after cooldown")
 market.Unregister(pedestal)
 check(not market.Claim(p, pedestal), "unregistered pedestal rejects claims")
+
+-- Film slice: real ingredient identity, carry/throw, customer serving and day callback.
+local realIngredients = loadModule("IngredientService")
+deps.IngredientService = realIngredients
+deps.CustomerService = customer
+customer.Init(deps, days.CustomerServed, days.IsServing)
+local film = loadModule("FilmingUtil")
+film.Init()
+env.CFrame = { new = frame }
+p.Character.Children.HumanoidRootPart.CFrame = frame()
+function p.Character.Children.Humanoid:EquipTool(tool)
+    tool.Parent = p.Character
+end
+refs.IngredientSpawn = { CFrame = frame(), Size = vec(10, 1, 4) }
+for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
+    refs[name] = { CFrame = frame() }
+end
+for _, id in { "Strawberry", "Banana", "Watermelon", "Ice", "Blueberry", "Apple", "Noob", "Tire", "Mystery" } do
+    check(
+        definitions[id].Id == id and #definitions[id].Tags > 0 and definitions[id].Rarity ~= nil,
+        "test ingredient metadata: " .. id
+    )
+end
+check(dev.ResetPlot(p), "reset plot alias")
+check(not dev.PrepareCombination(p, { "Ice", "Ice", "Ice", "Ice" }), "dev rejects four units")
+check(dev.PrepareCombination(p, { "Strawberry", "Tire", "Noob" }), "prepare physical filming props")
+check(blend.GetSnapshot(p).State == "EMPTY", "prepare stages props without ingesting")
+local staged = {}
+for _, object in allInstances do
+    if realIngredients.GetRecord(object) then
+        table.insert(staged, object)
+    end
+end
+check(#staged == 3, "prepare stages exactly three genuine world units")
+check(
+    not dev.PrepareCombination(p, { "Fake" }) and realIngredients.GetRecord(staged[1]) ~= nil,
+    "invalid preparation preserves existing scene"
+)
+check(not inventory.CarryWorldItem(other, staged[1]), "foreign pickup rejected")
+check(inventory.CarryWorldItem(p, staged[1]), "physical pickup reserves one unit")
+check(
+    not realIngredients.GetRecord(staged[1]) and not inventory.CarryWorldItem(p, staged[1]),
+    "pickup consumes original once"
+)
+check(not inventory.CarryWorldItem(p, staged[2]), "one held ingredient at a time")
+local heldTool
+for _, object in allInstances do
+    if object:IsA("Tool") and object.Parent == p.Character then
+        heldTool = object
+    end
+end
+heldTool:SetAttribute("IngredientId", "Mystery")
+local thrown = inventory.ThrowHeld(p)
+check(
+    thrown and realIngredients.GetRecord(thrown).Id == "Strawberry",
+    "throw contents use server reservation, ignore forged attributes"
+)
+check(not inventory.ThrowHeld(p), "replayed throw cannot duplicate")
+check(
+    thrown.AssemblyLinearVelocity.Z == -25 and thrown.AssemblyLinearVelocity.Y == 18,
+    "server determines throw velocity"
+)
+input.Overlaps = { thrown }
+check(blend.TryInput(p, thrown, input), "genuine thrown item ingested")
+check(
+    thrown.Destroyed and not blend.TryInput(p, thrown, input),
+    "duplicate ingestion rejected and physical item destroyed"
+)
+check(not blend.Dispense(p, wheel), "LOADING cannot dispense")
+check(dev.ClearBlender(p) and blend.GetSnapshot(p).State == "EMPTY", "clear blender alias resets batch")
+check(dev.ResetPlot(p), "reset clears loose scene props")
+
+local function actualBlend(ids)
+    blend.Reset(p)
+    for _, id in ids do
+        local object = realIngredients.Spawn(id, frame(), p)
+        input.Overlaps = { object }
+        check(blend.TryInput(p, object, input), "real registry ingestion: " .. id)
+    end
+    check(not blend.Dispense(p, wheel), "unfinished batch cannot dispense")
+    local extra = realIngredients.Spawn("Ice", frame(), p)
+    input.Overlaps = { extra }
+    if #ids == 3 then
+        check(
+            not blend.TryInput(p, extra, input) and realIngredients.GetRecord(extra),
+            "max three preserves rejected unit"
+        )
+    end
+    realIngredients.Consume(extra)
+    for _ = 1, 10 do
+        blend.AddProgress(p, wheel, 10)
+    end
+    local smoothie = blend.GetSnapshot(p).Result
+    local expected = vec(0, 0, 0)
+    for _, id in ids do
+        local c = definitions[id].BlendColor
+        expected += vec(c.R, c.G, c.B)
+    end
+    expected /= #ids
+    check(
+        math.abs(smoothie.Color.R - expected.X) < 1e-8
+            and math.abs(smoothie.Color.G - expected.Y) < 1e-8
+            and math.abs(smoothie.Color.B - expected.Z) < 1e-8,
+        "deterministic RGB mean includes every unit"
+    )
+    check(blend.Dispense(p, wheel), "actual blend dispenses once")
+    flush()
+    return smoothie
+end
+local one = actualBlend({ "Mystery" })
+blend.ClearCup(p)
+local two = actualBlend({ "Mystery", "Strawberry" })
+blend.ClearCup(p)
+local repeated = actualBlend({ "Strawberry", "Mystery" })
+check(two.Color.R == repeated.Color.R and two.Color.G == repeated.Color.G, "Mystery blend color independent of order")
+blend.ClearCup(p)
+check(dev.SpawnCustomer(p) ~= nil and days.IsServing(p), "dev customer starts serveable day")
+check(dev.SpawnCustomer(p) == customer.GetSnapshot(p).Model, "dev spawn reuses active customer")
+flush()
+for index, reaction in { "Love", "Disgust", "Freeze" } do
+    local smoothie = actualBlend({ "Strawberry", "Tire", "Noob" })
+    local current = customer.GetSnapshot(p)
+    check(current.Ready, "waypoint arrival enables serving")
+    local grade = customer.CalculateGrade(smoothie, current.Preference)
+    local payout = customer.CalculatePayout(p, grade)
+    check(dev.ForceReaction(p, reaction), "force configured reaction " .. reaction)
+    check(not dev.ForceReaction(p, "Fake"), "unknown reaction rejected")
+    local cup
+    for _, object in allInstances do
+        if object.Parent == p.Backpack and object.Name == "Smoothie" then
+            cup = object
+        end
+    end
+    local authenticated = blend.GetCup(p)
+    authenticated.Ingredients[1] = "Mystery"
+    check(blend.GetCup(p).Ingredients[1] == "Strawberry", "cup snapshot cannot mutate authoritative contents")
+    cup.Parent = other.Backpack
+    check(not blend.GetCup(p) and not blend.GetCup(other, cup), "transferred tool does not authorize either player")
+    cup.Parent = p.Backpack
+    cup:SetAttribute("Payout", 999999)
+    cup:SetAttribute("BlendId", "forged")
+    p:SetAttribute("playerCash", 999999)
+    local cash = data.GetCash(p)
+    check(not customer.Serve(other), "foreign player cannot serve owner's cup/customer")
+    check(customer.Serve(p, 999999), "real serve transaction succeeds")
+    check(
+        data.GetCash(p) == cash + payout and p:GetAttribute("playerCash") == cash + payout,
+        "cash payout ignores client reward and cash attributes"
+    )
+    check(
+        p:GetAttribute("CustomerSatisfaction") == grade and p:GetAttribute("CustomerReaction") == reaction,
+        "grade independent of forced reaction"
+    )
+    check(cup.Destroyed and not blend.GetCup(p) and not customer.Serve(p), "served cup cannot be replayed")
+    check(#days.GetSnapshot(p).Grades == index, "GameService records authoritative completion")
+    flush()
+end
+check(days.GetSnapshot(p).State == "FINISHED", "real three-customer loop finishes")
+for _, reaction in { "Launch", "NoobTransform" } do
+    dev.ResetPlot(p)
+    check(
+        dev.SpawnCustomer(p) ~= nil and dev.ForceReaction(p, reaction),
+        "remaining filming reaction forceable: " .. reaction
+    )
+end
+local moments = {}
+for _, event in presentation do
+    moments[event.Moment] = (moments[event.Moment] or 0) + 1
+    check(event.UserId == p.UserId, "presentation identifies plot owner")
+end
+check(
+    moments.BlendStarted == 6
+        and moments.BlendCompleted == 6
+        and moments.SmoothieDispensed == 6
+        and moments.CustomerReaction == 3,
+    "presentation moments emitted once per transaction"
+)
+check(moments.BlendProgressChanged == 60, "progress hook emits accepted progress")
+local emittedResult
+for _, event in presentation do
+    if event.Moment == "BlendCompleted" then
+        emittedResult = event.Payload
+    end
+end
+check(
+    emittedResult.Color and #emittedResult.IngredientIds == 3 and emittedResult.BlendId,
+    "completion includes presentation safe result"
+)
+studio = false
+check(
+    not dev.SpawnIngredient(p, "Ice")
+        and not dev.PrepareCombination(p, { "Ice" })
+        and not dev.SpawnCustomer(p)
+        and not dev.ForceReaction(p, "Launch")
+        and not dev.ClearBlender(p)
+        and not dev.ResetPlot(p),
+    "all filming commands blocked in production even with opt-in"
+)
+local logs = 0
+env.print = function()
+    logs += 1
+end
+storage:SetAttribute("DebugFilmLoop", true)
+film.Log("Blend", "hidden")
+check(logs == 0, "debug output blocked in production")
+studio = true
+film.Log("Blend", "visible")
+check(logs == 1, "single Studio debug flag enables logging")
+storage:SetAttribute("DebugFilmLoop", false)
+film.Log("Blend", "hidden")
+check(logs == 1, "debug flag disables logging")
+check(
+    dev.ResetPlot(p) and not customer.GetSnapshot(p) and not blend.GetCup(p) and blend.GetSnapshot(p).State == "EMPTY",
+    "reset clears customer/cup/batch"
+)
 
 local before = data.GetSnapshot(p).Cash
 blend.RemovePlayer(p)

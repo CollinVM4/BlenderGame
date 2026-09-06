@@ -7,6 +7,7 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local Recipes = require(Shared.Constants.Recipes)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
+local Film = require(script.Parent.FilmingUtil)
 local BlendService = {}
 local deps: any
 type Batch = { State: Types.BlendState, Ingredients: { string }, Progress: number, Result: Types.Smoothie? }
@@ -22,6 +23,7 @@ local function publish(player: Player)
 end
 local function copyResult(result: Types.Smoothie): Types.Smoothie
     return {
+        BlendId = result.BlendId,
         Ingredients = table.clone(result.Ingredients),
         Tags = table.clone(result.Tags),
         Color = result.Color,
@@ -35,6 +37,7 @@ function BlendService.Reset(player: Player)
     batches[player] = { State = "EMPTY", Ingredients = {}, Progress = 0, Result = nil }
     nextInteraction[player] = nil
     publish(player)
+    Film.Log("Blend", "reset")
 end
 function BlendService.GetSnapshot(player: Player): Batch?
     local batch = batches[player]
@@ -80,8 +83,10 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
         return false
     end
     table.insert(batch.Ingredients, id)
+    Film.Log("Blend", string.format("%s accepted (%d/3)", id, #batch.Ingredients))
     batch.State = if #batch.Ingredients == Economy.MaxIngredients then "READY" else "LOADING"
     publish(player)
+    Film.Log("Blend", batch.State)
     return true
 end
 function BlendService.Ready(player: Player): boolean
@@ -91,6 +96,7 @@ function BlendService.Ready(player: Player): boolean
     end
     batch.State = "READY"
     publish(player)
+    Film.Log("Blend", "READY")
     return true
 end
 local function makeResult(ids: { string }): Types.Smoothie
@@ -119,6 +125,7 @@ local function makeResult(ids: { string }): Types.Smoothie
     end
     sum /= #ids
     return {
+        BlendId = HttpService:GenerateGUID(false),
         Ingredients = table.clone(ids),
         Tags = tags,
         Color = Color3.new(sum.X, sum.Y, sum.Z),
@@ -144,13 +151,33 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     if batch.State ~= "READY" and batch.State ~= "BLENDING" then
         return false
     end
-    batch.State = "BLENDING"
+    if batch.State == "READY" then
+        batch.State = "BLENDING"
+        publish(player)
+        Film.Emit(player, "BlendStarted", { IngredientIds = table.clone(batch.Ingredients) })
+        Film.Log("Blend", "BLENDING")
+    end
+    local oldProgress = batch.Progress
     local speed = Upgrades.BlendSpeed[deps.PlayerDataService.GetUpgrade(player, "BlendSpeed")].Value
     batch.Progress = math.min(Economy.RequiredProgress, batch.Progress + math.min(delta, 10) * speed)
+    Film.Emit(player, "BlendProgressChanged", { Progress = batch.Progress })
+    if math.floor(oldProgress / 10) ~= math.floor(batch.Progress / 10) then
+        Film.Log("Blend", string.format("progress %.0f", batch.Progress))
+    end
     if batch.Progress >= Economy.RequiredProgress then
         batch.State = "COMPLETE"
         local result = makeResult(batch.Ingredients)
         batch.Result = result
+        Film.Emit(player, "BlendCompleted", {
+            BlendId = result.BlendId,
+            Color = result.Color,
+            IngredientIds = table.clone(result.Ingredients),
+            RecipeId = result.Discovery,
+        })
+        Film.Log(
+            "Blend",
+            string.format("COMPLETE color=(%.3f,%.3f,%.3f)", result.Color.R, result.Color.G, result.Color.B)
+        )
         deps.PlayerDataService.IncrementStat(player, "SmoothiesMade")
         if result.Discovery then
             deps.PlayerDataService.RecordDiscovery(player, result.Discovery)
@@ -204,7 +231,8 @@ function BlendService.Dispense(player: Player, button: BasePart): (boolean, stri
         return false, "Not ready"
     end
     if
-        deps.TycoonService.GetOwner(button) ~= player or not WorldUtil.Near(player, button, Economy.InteractionDistance)
+        deps.TycoonService.GetOwner(button) ~= player
+        or not WorldUtil.Near(player, button, Economy.InteractionDistance)
     then
         return false, "Not your blender or too far"
     end
@@ -238,12 +266,15 @@ function BlendService.Dispense(player: Player, button: BasePart): (boolean, stri
     cupHandle.CanCollide = false
     cupHandle.Anchored = false
     tool:SetAttribute("CupId", HttpService:GenerateGUID(false))
+    tool:SetAttribute("BlendId", batch.Result.BlendId)
     tool:SetAttribute("RecipeName", batch.Result.Discovery or "Custom Smoothie")
     tool:SetAttribute("IsFinished", true)
     cups[player] = { Tool = tool, Result = copyResult(batch.Result) }
     tool.Parent = backpack
     player:SetAttribute("HasSmoothie", true)
     player:SetAttribute("CurrentRecipeName", batch.Result.Discovery or "Custom Smoothie")
+    Film.Emit(player, "SmoothieDispensed", { BlendId = batch.Result.BlendId, Color = batch.Result.Color, Cup = tool })
+    Film.Log("Blend", "DISPENSED blend=" .. tostring(batch.Result.BlendId))
     batch.State = "DISPENSED"
     publish(player)
     task.defer(function()

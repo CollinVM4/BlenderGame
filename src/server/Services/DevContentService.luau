@@ -24,12 +24,17 @@ function DevContentService.SpawnIngredient(player: Player, id: string): Instance
     if not allowed(player) then
         return nil
     end
-    local input = deps.TycoonService.GetReference(player, "BlenderInput")
-    if not input then
-        warn("[DevContentService] Missing BlenderInput")
+    deps.TycoonService.AssignPlot(player)
+    local stage = deps.TycoonService.GetReference(player, "IngredientSpawn")
+    if not stage then
+        warn("[DevContentService] Missing IngredientSpawn staging surface in your plot")
         return nil
     end
-    return deps.IngredientService.Spawn(id, input.CFrame * CFrame.new(0, 4, 0), player)
+    if not deps.IngredientService.GetDefinition(id) then
+        warn("[DevContentService] Unknown ingredient: " .. tostring(id))
+        return nil
+    end
+    return deps.IngredientService.Spawn(id, stage.CFrame * CFrame.new(0, stage.Size.Y / 2 + 2, 0), player)
 end
 function DevContentService.PrepareCombination(player: Player, ids: { string }): boolean
     if not allowed(player) or #ids < 1 or #ids > Economy.MaxIngredients then
@@ -40,30 +45,44 @@ function DevContentService.PrepareCombination(player: Player, ids: { string }): 
             return false
         end
     end
-    local input = deps.TycoonService.GetReference(player, "BlenderInput")
-    if not input then
-        warn("[DevContentService] Missing BlenderInput")
+    deps.TycoonService.AssignPlot(player)
+    local stage = deps.TycoonService.GetReference(player, "IngredientSpawn")
+    if not stage then
+        warn("[DevContentService] Missing IngredientSpawn staging surface in your plot")
         return false
     end
+    deps.InventoryService.ClearHeld(player)
     deps.IngredientService.RemovePlayer(player)
     deps.BlendService.Reset(player)
-    for _, id in ids do
-        local object = deps.IngredientService.Spawn(id, input.CFrame, player)
-        if not object or not deps.BlendService.TryInput(player, object, input) then
-            if object then
-                deps.IngredientService.Consume(object)
-            end
-            deps.BlendService.Reset(player)
+    for index, id in ids do
+        local at = stage.CFrame * CFrame.new((index - (#ids + 1) / 2) * 3, stage.Size.Y / 2 + 2, 0)
+        if not deps.IngredientService.Spawn(id, at, player) then
+            deps.IngredientService.RemovePlayer(player)
             return false
         end
     end
-    return deps.BlendService.Ready(player)
+    return true
 end
 function DevContentService.SpawnCustomer(player: Player): Model?
     if not allowed(player) then
         return nil
     end
-    return deps.CustomerService.SpawnForPlayer(player)
+    local existing = deps.CustomerService.GetSnapshot(player)
+    if existing then
+        return existing.Model
+    end
+    local ok, reason
+    if deps.GameService.IsServing(player) then
+        ok = deps.GameService.ResumeDay(player)
+    else
+        ok, reason = deps.GameService.StartDay(player)
+    end
+    if not ok then
+        warn("[DevContentService] " .. (reason or "Customer spawn failed; check plot markers"))
+        return nil
+    end
+    local customer = deps.CustomerService.GetSnapshot(player)
+    return customer and customer.Model
 end
 function DevContentService.ForceReaction(player: Player, reaction: string?): boolean
     return allowed(player) and deps.CustomerService.SetForcedReaction(player, reaction)
@@ -72,10 +91,14 @@ function DevContentService.ResetScene(player: Player): boolean
     if not allowed(player) then
         return false
     end
+    deps.InventoryService.ClearHeld(player)
     deps.GameService.Reset(player)
     deps.BlendService.Reset(player)
     deps.BlendService.ClearCup(player)
     deps.IngredientService.RemovePlayer(player)
     return true
 end
+-- Keep legacy names callable; all aliases retain the same Studio/opt-in gate.
+DevContentService.ClearBlender = DevContentService.ResetBlender
+DevContentService.ResetPlot = DevContentService.ResetScene
 return DevContentService

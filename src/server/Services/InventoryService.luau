@@ -11,6 +11,109 @@ local stashes: { [Player]: { [number]: Types.Stack } } = {}
 local stealAt: { [Player]: number } = {}
 local protectedUntil: { [Player]: number } = {}
 local releaseAt: { [Player]: number } = {}
+local held: { [Player]: { Tool: Tool, Id: string } } = {}
+
+function InventoryService.ClearHeld(player: Player)
+    local record = held[player]
+    held[player] = nil
+    if record then
+        record.Tool:Destroy()
+    end
+end
+
+-- The equipped Tool is a reserved inventory unit. Its attributes are never read for contents.
+function InventoryService.ThrowHeld(player: Player): Instance?
+    local record = held[player]
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if
+        not record
+        or record.Tool.Parent ~= player.Character
+        or not root
+        or not root:IsA("BasePart")
+        or not humanoid
+        or humanoid.Health <= 0
+    then
+        return nil
+    end
+    local object = deps.IngredientService.Spawn(record.Id, root.CFrame * CFrame.new(0, 2, -3), player)
+    if not object then
+        return nil
+    end
+    InventoryService.ClearHeld(player)
+    local part = WorldUtil.Part(object)
+    if part then
+        part.AssemblyLinearVelocity = root.CFrame.LookVector * 25 + Vector3.new(0, 18, 0)
+    end
+    return object
+end
+
+function InventoryService.CarryWorldItem(player: Player, object: Instance): boolean
+    local record = deps.IngredientService.GetRecord(object)
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if
+        held[player]
+        or not record
+        or record.Owner ~= player
+        or not record.Claimable
+        or not backpack
+        or not humanoid
+        or humanoid.Health <= 0
+        or not WorldUtil.Near(player, object, Economy.InteractionDistance)
+    then
+        return false
+    end
+    -- Clone only the visible prop. The original world identity is consumed by the inventory transaction.
+    local visual = object:Clone()
+    if not InventoryService.ClaimWorldItem(player, object) then
+        visual:Destroy()
+        return false
+    end
+    InventoryService.RemoveUnit(player, record.Id)
+    local tool = Instance.new("Tool")
+    tool.Name = record.Id .. " (click to throw)"
+    tool.CanBeDropped = false
+    local handle = Instance.new("Part")
+    handle.Name = "Handle"
+    handle.Size = Vector3.new(1, 1, 1)
+    handle.Transparency = 1
+    handle.CanCollide = false
+    handle.Massless = true
+    handle.Parent = tool
+    local physical = visual :: any
+    physical:PivotTo(handle.CFrame)
+    visual.Parent = tool
+    local parts = visual:GetDescendants()
+    table.insert(parts, visual)
+    for _, part in parts do
+        game:GetService("CollectionService"):RemoveTag(part, "IngredientWorldItem")
+        if part:IsA("ProximityPrompt") then
+            part:Destroy()
+        elseif part:IsA("BasePart") then
+            part.Anchored = false
+            part.CanCollide = false
+            part.CanTouch = false
+            part.Massless = true
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = handle
+            weld.Part1 = part
+            weld.Parent = handle
+        end
+    end
+    held[player] = { Tool = tool, Id = record.Id }
+    tool.Destroying:Connect(function()
+        if held[player] and held[player].Tool == tool then
+            held[player] = nil
+        end
+    end)
+    tool.Activated:Connect(function()
+        InventoryService.ThrowHeld(player)
+    end)
+    tool.Parent = backpack
+    humanoid:EquipTool(tool)
+    return true
+end
 
 function InventoryService.Init(services)
     deps = services
@@ -183,6 +286,7 @@ function InventoryService.Steal(player: Player, owner: Player, index: number): b
     return true
 end
 function InventoryService.RemovePlayer(player: Player)
+    InventoryService.ClearHeld(player)
     carried[player] = nil
     stashes[player] = nil
     stealAt[player] = nil

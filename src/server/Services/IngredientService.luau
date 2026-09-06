@@ -2,6 +2,7 @@
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
+local HttpService = game:GetService("HttpService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Definitions = require(Shared.Constants.Ingredients)
 local Economy = require(Shared.Constants.Economy)
@@ -31,6 +32,7 @@ function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimab
     end
     object.Name = id
     object:SetAttribute("IngredientId", id)
+    object:SetAttribute("WorldItemId", HttpService:GenerateGUID(false))
     object:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
     local physical = object :: any
     physical:PivotTo(at)
@@ -40,6 +42,7 @@ function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimab
     for _, part in parts do
         if part:IsA("BasePart") then
             part.Anchored = false
+            part.CanQuery = true
             if part:CanSetNetworkOwnership() then
                 part:SetNetworkOwner(nil)
             end
