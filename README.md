@@ -1,26 +1,14 @@
 # Be a Blender! (Project: BlenderGame)
 
-**Pitch:** You are running a giant smoothie station. Serve customers, earn $, buy upgrades. Collect rare fruits for Offline cash and __% more tips.
-**Category:** Tycoon, Time Management. 
+**Pitch:** Run a giant blender, collect and steal ingredients, serve customers with loose preferences, earn cash, and upgrade your plot.
+
+**Current status:** Executable architecture skeleton. See [MVP architecture and Studio setup](docs/MVP_ARCHITECTURE.md) for service APIs, tags, filming commands, validation, and intentionally unfinished features. Data is in memory; a complete playable release still requires Studio assets and client interaction work.
 
 ## Core Gameplay Loop
 
-**Take Order** 
-A person walks up to the counter edge with a speech bubble
- e.g. 1/3 Strawberry + 1/3 Ice Cube + 1/3 banana 
-Button to dispense ingredients
-Fill a % based on recipe 
+Prepare at the shared market and stash ingredients → Start Day → serve three customers → receive a Day grade → upgrade/prepare and repeat.
 
-**The Spinning Wheel**
-Run down to a turbine. spinning the wheel turns the blades, blending the fruit, and progressing the blend meter.
-
-**Dispense Smoothie**
-Press dispense to collect the smoothie.
-
-**Serve Customer and Payout**
-Hand off the smoothie, collect massive stacks of cash and buy upgrades
-
-[END LOOP]
+Each smoothie uses 1–3 owned physical units thrown into the blender opening. Turn the turbine, dispense the finished cup, and serve any combination. Customer preferences use ingredient tags; special recipes unlock discoveries. Customer grade affects payout, while reaction selection is independent.
 
 ---
 
@@ -31,7 +19,7 @@ This project uses a modular, scalable architecture synced via **Rojo**. Code is 
 ### File Structure Guide
 
 * **`src/server/` (ServerScriptService)**
-  * **`init.server.luau`**: The server bootstrapper. This script loops through all Services and Components to initialize them on game start.
+  * **`init.server.luau`**: The server bootstrapper. This script explicitly loads services, injects dependencies, initializes player state, and then binds Workspace components.
   * **`Services/`**: Singleton modules that handle core backend game logic (e.g., `TycoonService.luau`, `CustomerService.luau`). Services manage state, validate transactions, and communicate with the client.
   * **`Components/`**: Object-oriented modules bound to physical Workspace parts (e.g., `TurbineWheel.luau`, `Dispenser.luau`). These handle localized logic for interactables.
 
