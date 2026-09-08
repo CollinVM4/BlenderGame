@@ -11,9 +11,9 @@ function TurbineWheel.Init(services: any)
             warn("[TurbineWheel] Requires a blade/stem BasePart")
             return nil
         end
-        if part:CanSetNetworkOwnership() then
-            part:SetNetworkOwner(nil)
-        end
+        -- if part:CanSetNetworkOwnership() then
+        --     part:SetNetworkOwner(nil)
+        -- end
         local audio = AudioService.CreateBlendGroup(part)
         audio.blendSound:Play()
         local particles = Instance.new("ParticleEmitter")
