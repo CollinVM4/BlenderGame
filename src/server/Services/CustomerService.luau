@@ -393,4 +393,4 @@ function CustomerService.RemovePlayer(player: Player)
         end
     end
 end
-return CustomerService
+return require(script.Parent.StudioServices).Wrap("CustomerService", CustomerService)

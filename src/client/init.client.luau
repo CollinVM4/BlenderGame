@@ -1,4 +1,5 @@
-print("Hello world, from client!")
+local GameplayPresentationController = require(script.Controllers.GameplayPresentationController)
+GameplayPresentationController.Init()
 
 local SprintController = require(script.Controllers.SprintController)
 

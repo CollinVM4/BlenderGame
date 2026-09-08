@@ -293,4 +293,4 @@ function InventoryService.RemovePlayer(player: Player)
     protectedUntil[player] = nil
     releaseAt[player] = nil
 end
-return InventoryService
+return require(script.Parent.StudioServices).Wrap("InventoryService", InventoryService)

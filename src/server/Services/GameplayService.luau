@@ -38,4 +38,4 @@ end
 function GameplayService.RemovePlayer(player: Player)
     nextRequest[player] = nil
 end
-return GameplayService
+return require(script.Parent.StudioServices).Wrap("GameplayService", GameplayService)

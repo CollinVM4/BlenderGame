@@ -12,7 +12,10 @@ function DevContentService.IsEnabled(): boolean
     return RunService:IsStudio() and ServerStorage:GetAttribute("EnableDevContent") == true
 end
 local function allowed(player: Player): boolean
-    return DevContentService.IsEnabled() and player.Parent == game:GetService("Players")
+    if not DevContentService.IsEnabled() or player.Parent ~= game:GetService("Players") then
+        return false
+    end
+    return true
 end
 
 function DevContentService.ValidatePlot(player: Player): (boolean, { string })
@@ -133,19 +136,12 @@ function DevContentService.ValidatePlot(player: Player): (boolean, { string })
 end
 
 local function stagingFrame(player: Player): CFrame?
-    deps.TycoonService.AssignPlot(player)
-    -- Optional legacy staging tag. ContentSpawnArea and presentation visuals need no tags.
-    local stage = deps.TycoonService.GetReference(player, "IngredientSpawn")
-    if stage then
-        return stage.CFrame * CFrame.new(0, stage.Size.Y / 2 + 2, 0)
+    -- GetReference resolves a unique tagged BasePart inside the player's assigned plot.
+    local input = deps.TycoonService.GetReference(player, "BlenderInput")
+    if not input then
+        return nil
     end
-    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if root and root:IsA("BasePart") and humanoid and humanoid.Health > 0 then
-        return root.CFrame * CFrame.new(0, 2, -4)
-    end
-    warn("[DevContentService] No living character for staging; stand by ContentSpawnArea and retry")
-    return nil
+    return input.CFrame * CFrame.new(0, 4, 0)
 end
 function DevContentService.ResetBlender(player: Player): boolean
     if not allowed(player) then
@@ -231,4 +227,4 @@ end
 -- Keep legacy names callable; all aliases retain the same Studio/opt-in gate.
 DevContentService.ClearBlender = DevContentService.ResetBlender
 DevContentService.ResetPlot = DevContentService.ResetScene
-return DevContentService
+return require(script.Parent.StudioServices).Wrap("DevContentService", DevContentService)

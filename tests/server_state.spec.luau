@@ -184,6 +184,12 @@ local function instance(class)
     end
     function object:FireAllClients(moment, userId, payload)
         table.insert(presentation, { Moment = moment, UserId = userId, Payload = payload })
+        if self.OnClientEvent then
+            self.OnClientEvent:Fire(moment, userId, payload)
+        end
+    end
+    function object:Invoke(...)
+        return self.OnInvoke(...)
     end
     function object:Emit() end
     function object:GetAttribute(key)
@@ -359,6 +365,16 @@ local function loadModule(name)
     return result
 end
 env.require = loadModule
+services.RunService.IsRunning = function()
+    return true
+end
+services.RunService.IsServer = function()
+    return true
+end
+studio = true
+local runtimeAccess = loadModule("StudioServices")
+runtimeAccess.BeginBootstrap()
+studio = false
 local function player(name)
     local p = instance("Player")
     p.Name = name
@@ -681,12 +697,101 @@ deps.CustomerService = customer
 customer.Init(deps, days.CustomerServed, days.IsServing)
 local film = loadModule("FilmingUtil")
 film.Init()
+-- Run the real client startup with a fake replicated boundary and sprint controller.
+do
+    local remote = shared.Events:FindFirstChild("GameplayPresentation")
+    film.Init()
+    check(#shared.Events:GetChildren() == 1, "repeated filming Init keeps a single presentation remote")
+    local connections, received = 0, 0
+    local listener
+    remote.OnClientEvent = {
+        Connect = function(_, callback)
+            connections += 1
+            listener = callback
+        end,
+        Fire = function(_, ...)
+            received += 1
+            listener(...)
+        end,
+    }
+    local fakeEvents = {
+        WaitForChild = function(_, name)
+            assert(name == "GameplayPresentation")
+            return remote
+        end,
+    }
+    local fakeShared = {
+        WaitForChild = function(_, name)
+            assert(name == "Events")
+            return fakeEvents
+        end,
+    }
+    local fakeReplicated = {
+        WaitForChild = function(_, name)
+            assert(name == "Shared")
+            return fakeShared
+        end,
+    }
+    local controllerChunk = assert(loadstring(sources.GameplayPresentationController, "GameplayPresentationController"))
+    setfenv(
+        controllerChunk,
+        setmetatable({
+            game = {
+                GetService = function(_, name)
+                    assert(name == "ReplicatedStorage")
+                    return fakeReplicated
+                end,
+            },
+        }, { __index = env })
+    )
+    local controller = controllerChunk()
+    local sprintStarted = false
+    local bootstrap = assert(loadstring(sources.ClientBootstrap, "ClientBootstrap"))
+    setfenv(
+        bootstrap,
+        setmetatable({
+            script = { Controllers = parent },
+            require = function(name)
+                if name == "GameplayPresentationController" then
+                    return controller
+                end
+                assert(name == "SprintController")
+                return {
+                    Init = function()
+                        sprintStarted = true
+                    end,
+                }
+            end,
+        }, { __index = env })
+    )
+    bootstrap()
+    controller.Init()
+    check(sprintStarted, "presentation startup does not block sprint initialization")
+    flush()
+    check(connections == 1, "client bootstrap attaches exactly one presentation listener")
+    for _, moment in
+        {
+            "BlendStarted",
+            "BlendProgressChanged",
+            "BlendCompleted",
+            "SmoothieDispensed",
+            "CustomerReaction",
+            "FutureKind",
+        }
+    do
+        check(pcall(listener, moment, p.UserId, {}), "listener safely accepts " .. moment)
+    end
+    check(pcall(listener, nil, nil, nil), "malformed presentation is safely ignored")
+    remote:FireAllClients("FutureKind", p.UserId, {})
+    check(received == 1, "server broadcast reaches client listener")
+    table.remove(presentation) -- Synthetic event is not a gameplay transaction.
+end
 env.CFrame = { new = frame }
 p.Character.Children.HumanoidRootPart.CFrame = frame()
 function p.Character.Children.Humanoid:EquipTool(tool)
     tool.Parent = p.Character
 end
-refs.IngredientSpawn = { CFrame = frame(), Size = vec(10, 1, 4) }
+input.CFrame = frame()
 for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
     refs[name] = { CFrame = frame() }
 end
@@ -850,7 +955,7 @@ check(
         and moments.CustomerReaction == 3,
     "presentation moments emitted once per transaction"
 )
-check(moments.BlendProgressChanged == 60, "progress hook emits accepted progress")
+check(moments.BlendProgressChanged == 12, "rapid updates emit first and final progress per batch")
 local emittedResult
 for _, event in presentation do
     if event.Moment == "BlendCompleted" then
@@ -974,12 +1079,14 @@ check(
     not realTycoon.GetReference(p, "BlenderInput") and failsWith("FAIL BlenderInput - Missing"),
     "runtime does not fall back to old names"
 )
+check(not dev.SpawnIngredient(p, "Strawberry"), "staging requires tagged input despite a living character")
 collection:AddTag(fixtureObjects.BlenderInput, "BlenderInput")
 collection:AddTag(decoy, "BlenderInput")
 check(
     not realTycoon.GetReference(p, "BlenderInput") and failsWith("Duplicate tags"),
     "duplicate required role rejected and reported"
 )
+check(not dev.PrepareCombination(p, { "Strawberry" }), "staging rejects duplicate input tags")
 collection:RemoveTag(decoy, "BlenderInput")
 fixtureObjects.BlenderInput.CanQuery = false
 check(failsWith("CanQuery must be true"), "disabled detector querying diagnosed")
@@ -993,6 +1100,7 @@ detectorPart.Parent = detectorModel
 detectorModel.PrimaryPart = detectorPart
 collection:AddTag(detectorModel, "BlenderInput")
 check(failsWith("Tag the InputZone BasePart itself"), "detector model rejected even with PrimaryPart")
+check(not dev.SpawnIngredient(p, "Strawberry"), "staging rejects invalid input fixture")
 collection:RemoveTag(detectorModel, "BlenderInput")
 collection:AddTag(fixtureObjects.BlenderInput, "BlenderInput")
 fixtureObjects.CustomerSpawn.Parent = workspaceFake
@@ -1053,12 +1161,155 @@ check(not dev.ValidatePlot(p) and #outputLines == oldReports, "validator require
 storage:SetAttribute("EnableDevContent", true)
 check(not dev.ValidatePlot(other), "unassigned player reported without assigning or mutating scene")
 check(not realTycoon.GetPlot(other), "validation does not assign plots")
+check(not dev.SpawnIngredient(other, "Strawberry") and not realTycoon.GetPlot(other), "staging does not assign a plot")
+fixtureObjects.BlenderInput.Parent = workspaceFake
+check(not dev.SpawnIngredient(p, "Strawberry"), "staging ignores input outside assigned plot")
+fixtureObjects.BlenderInput.Parent = plot
+fixtureObjects.BlenderInput.CFrame = frame(20, 8, 30)
+local savedCharacter = p.Character
+p.Character = nil
+local stagedAtInput = dev.SpawnIngredient(p, "Strawberry")
 check(
-    dev.SpawnIngredient(p, "Strawberry") ~= nil and dev.PrepareCombination(p, { "Tire", "Noob" }),
-    "dev staging works without IngredientSpawn or ContentSpawnArea tag"
+    stagedAtInput ~= nil and (stagedAtInput:GetPivot().Position - vec(20, 12, 30)).Magnitude == 0,
+    "staging is four studs above assigned input without a character"
 )
+p.Character = savedCharacter
+check(dev.PrepareCombination(p, { "Tire", "Noob" }), "combination stages at assigned input")
+-- Separate module caches must still operate on runtime inventory and blender state.
+do
+    local runtimeServices = table.clone(deps)
+    runtimeServices.DevContentService = dev
+    local commandCache = {}
+    local function commandRequire(name)
+        if not runtimeServices[name] and name ~= "StudioServices" then
+            return loadModule(name)
+        end
+        if commandCache[name] then
+            return commandCache[name]
+        end
+        local chunk = assert(loadstring(sources[name], "CommandBar" .. name))
+        setfenv(
+            chunk,
+            setmetatable({
+                script = { Parent = parent },
+                require = function(dependency)
+                    return commandRequire(dependency)
+                end,
+            }, { __index = env })
+        )
+        commandCache[name] = chunk()
+        return commandCache[name]
+    end
+    local commandDev = commandRequire("DevContentService")
+    local commandBlend = commandRequire("BlendService")
+    local ok, reason = pcall(commandDev.ResetScene, p)
+    check(not ok and string.find(reason, "Runtime unavailable"), "pre-bootstrap tooling fails with clear guidance")
+    runtimeAccess.Publish(runtimeServices)
+    check(commandDev.ResetScene(p), "tool loaded before publication can reset runtime without Init")
+    storage:SetAttribute("EnableDevContent", false)
+    check(not commandDev.SpawnIngredient(p, "Strawberry"), "forwarded dev commands retain opt-in gate")
+    storage:SetAttribute("EnableDevContent", true)
+    local strawberry = commandDev.SpawnIngredient(p, "Strawberry")
+    check(
+        strawberry and realIngredients.GetRecord(strawberry),
+        "Command Bar spawn belongs to runtime ingredient registry"
+    )
+    local zone = fixtureObjects.BlenderInput
+    zone.Overlaps = { strawberry }
+    check(commandRequire("IngredientService").Resolve(strawberry) == strawberry, "direct resolver uses runtime records")
+    check(commandRequire("TycoonService").GetOwner(zone) == p, "direct owner lookup uses runtime assignments")
+    check(
+        commandBlend.TryInput(p, strawberry, zone),
+        "direct Command Bar TryInput uses initialized runtime dependencies"
+    )
+    check(blend.GetSnapshot(p).Ingredients[1] == "Strawberry", "tool ingestion updates runtime batch")
+    check(not realIngredients.GetRecord(strawberry), "tool ingestion consumes runtime ingredient exactly once")
+    check(not commandBlend.TryInput(p, strawberry, zone), "repeat ingestion is rejected")
+    local nextIngredient = commandDev.SpawnIngredient(p, "Strawberry")
+    zone.Overlaps = { nextIngredient }
+    local heartbeat = signal()
+    services.RunService.Heartbeat = heartbeat
+    local disconnectInput
+    local componentChunk = assert(loadstring(sources.BlenderInputComponent, "BlenderInputComponent"))
+    setfenv(
+        componentChunk,
+        setmetatable({
+            script = { Parent = { Parent = { Services = parent } } },
+            require = function(name)
+                assert(name == "WorldUtil")
+                return {
+                    BindTag = function(tag, attach)
+                        assert(tag == "BlenderInput")
+                        disconnectInput = attach(zone)
+                    end,
+                }
+            end,
+        }, { __index = env })
+    )
+    componentChunk().Init(runtimeServices)
+    heartbeat:Fire(0.1)
+    disconnectInput()
+    check(
+        not realIngredients.GetRecord(nextIngredient),
+        "actual BlenderInput heartbeat consumes tool-spawned ingredient"
+    )
+    check(#commandBlend.GetSnapshot(p).Ingredients == 2, "tool snapshot sees runtime component changes")
+    check(commandDev.ResetScene(p) and #blend.GetSnapshot(p).Ingredients == 0, "tool reset clears runtime batch")
+    check(commandDev.ResetPlot(p), "reset alias forwards to runtime")
+    check(not pcall(commandBlend.Init, runtimeServices), "tooling cannot reinitialize runtime services")
+    local oldServer = services.RunService.IsServer
+    services.RunService.IsServer = function()
+        return false
+    end
+    check(not pcall(commandBlend.GetSnapshot, p), "client cannot invoke tooling bridge")
+    services.RunService.IsServer = oldServer
+    studio = false
+    check(not pcall(commandBlend.GetSnapshot, p), "tooling bridge rejects non-Studio execution")
+    studio = true
+    zone.Overlaps = {}
+end
 realTycoon.RemovePlayer(p)
 deps.TycoonService = tycoon
+
+-- Keep Heartbeat authority precise while limiting presentation traffic.
+do
+    blend.Reset(p)
+    local ingredient = realIngredients.Spawn("Strawberry", frame(), p)
+    input.Overlaps = { ingredient }
+    check(blend.TryInput(p, ingredient, input), "throttle test ingests a real ingredient")
+    local firstEvent = #presentation + 1
+    local accepted = true
+    for _ = 1, 60 do
+        now += 1 / 60
+        accepted = blend.AddProgress(p, wheel, 1) and accepted
+    end
+    check(accepted and blend.GetSnapshot(p).Progress == 60, "all 60 RPM progress updates remain authoritative")
+    local updates = 0
+    local previous = 0
+    for index = firstEvent, #presentation do
+        local event = presentation[index]
+        if event.Moment == "BlendProgressChanged" then
+            updates += 1
+            check(event.Payload.Progress > previous, "progress notifications contain changed payloads")
+            previous = event.Payload.Progress
+        end
+    end
+    check(updates >= 8 and updates <= 10, "one second of Heartbeats produces at most ten progress notifications")
+    local beforeIdle = #presentation
+    check(not blend.AddProgress(p, wheel, 0) and #presentation == beforeIdle, "idle turbine sends no progress")
+    check(blend.AddProgress(p, wheel, 100), "completion is accepted inside throttle window")
+    check(
+        presentation[#presentation - 1].Moment == "BlendProgressChanged"
+            and presentation[#presentation - 1].Payload.Progress == 100
+            and presentation[#presentation].Moment == "BlendCompleted",
+        "final progress is delivered immediately before completion"
+    )
+    local afterComplete = #presentation
+    check(
+        not blend.AddProgress(p, wheel, 1) and #presentation == afterComplete,
+        "completed turbine sends no repeated updates"
+    )
+end
 
 local before = data.GetSnapshot(p).Cash
 blend.RemovePlayer(p)

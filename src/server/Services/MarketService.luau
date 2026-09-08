@@ -93,4 +93,4 @@ end
 function MarketService.SpawnDrop(at: CFrame, id: string?): Instance?
     return deps.IngredientService.Spawn(id or MarketService.SelectIngredient(), at, nil)
 end
-return MarketService
+return require(script.Parent.StudioServices).Wrap("MarketService", MarketService)

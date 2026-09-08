@@ -81,4 +81,4 @@ function PlayerDataService.RemovePlayer(player: Player)
     records[player] = nil
     entitlements[player] = nil
 end
-return PlayerDataService
+return require(script.Parent.StudioServices).Wrap("PlayerDataService", PlayerDataService)

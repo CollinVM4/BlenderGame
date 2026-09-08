@@ -9,7 +9,13 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
 local BlendService = {}
 local deps: any
-type Batch = { State: Types.BlendState, Ingredients: { string }, Progress: number, Result: Types.Smoothie? }
+type Batch = {
+    State: Types.BlendState,
+    Ingredients: { string },
+    Progress: number,
+    Result: Types.Smoothie?,
+    NextProgressPresentationAt: number,
+}
 local batches: { [Player]: Batch } = {}
 local cups: { [Player]: { Tool: Tool, Result: Types.Smoothie } } = {}
 
@@ -32,11 +38,16 @@ function BlendService.Init(services)
     deps = services
 end
 function BlendService.Reset(player: Player)
-    batches[player] = { State = "EMPTY", Ingredients = {}, Progress = 0, Result = nil }
+    batches[player] = { State = "EMPTY", Ingredients = {}, Progress = 0, Result = nil, NextProgressPresentationAt = 0 }
     publish(player)
     Film.Log("Blend", "reset")
 end
-function BlendService.GetSnapshot(player: Player): Batch?
+function BlendService.GetSnapshot(player: Player): {
+    State: Types.BlendState,
+    Ingredients: { string },
+    Progress: number,
+    Result: Types.Smoothie?,
+}?
     local batch = batches[player]
     if not batch then
         return nil
@@ -155,7 +166,14 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     end
     local oldProgress = batch.Progress
     batch.Progress = math.min(Economy.RequiredProgress, batch.Progress + delta)
-    Film.Emit(player, "BlendProgressChanged", { Progress = batch.Progress })
+    local now = os.clock()
+    if
+        batch.Progress > oldProgress
+        and (now >= batch.NextProgressPresentationAt or batch.Progress >= Economy.RequiredProgress)
+    then
+        batch.NextProgressPresentationAt = now + 0.1
+        Film.Emit(player, "BlendProgressChanged", { Progress = batch.Progress })
+    end
     if math.floor(oldProgress / 10) ~= math.floor(batch.Progress / 10) then
         Film.Log("Blend", string.format("progress %.0f", batch.Progress))
     end
@@ -275,4 +293,4 @@ function BlendService.RemovePlayer(player: Player)
     BlendService.ClearCup(player)
     batches[player] = nil
 end
-return BlendService
+return require(script.Parent.StudioServices).Wrap("BlendService", BlendService)

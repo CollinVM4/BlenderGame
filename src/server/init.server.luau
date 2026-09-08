@@ -1,5 +1,7 @@
 --!strict
 local Players = game:GetService("Players")
+local StudioServices = require(script.Services.StudioServices)
+StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
     TycoonService = require(script.Services.TycoonService),
@@ -96,4 +98,5 @@ local components: { { Init: (any) -> () } } = {
 for _, component in components do
     component.Init(services)
 end
+StudioServices.Publish(services)
 print("[Be a Blender!] MVP services initialized. Persistence is in-memory; see docs/MVP_ARCHITECTURE.md.")

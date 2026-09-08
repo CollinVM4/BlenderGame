@@ -93,4 +93,4 @@ function IngredientService.RemovePlayer(player: Player)
         IngredientService.Consume(object)
     end
 end
-return IngredientService
+return require(script.Parent.StudioServices).Wrap("IngredientService", IngredientService)

@@ -130,4 +130,4 @@ end
 function TycoonService.SetCash(player: Player, amount: number): number
     return data.SetCash(player, amount)
 end
-return TycoonService
+return require(script.Parent.StudioServices).Wrap("TycoonService", TycoonService)

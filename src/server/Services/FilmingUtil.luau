@@ -6,6 +6,15 @@ local FilmingUtil = {}
 local remote: RemoteEvent?
 
 function FilmingUtil.Init()
+    if remote then
+        return
+    end
+    local existing = Events:FindFirstChild("GameplayPresentation")
+    if existing then
+        assert(existing:IsA("RemoteEvent"), "GameplayPresentation must be a RemoteEvent")
+        remote = existing
+        return
+    end
     local event = Instance.new("RemoteEvent")
     event.Name = "GameplayPresentation"
     event.Parent = Events

@@ -69,7 +69,24 @@ game.ServerStorage:SetAttribute("DebugFilmLoop", true)
 
 Each command below is independent, with no reliance on Command Bar local variables surviving between submissions. For multiplayer replace `GetPlayers()[1]` with the intended player. APIs use the repository's **dot-call** convention.
 
-Spawn Strawberry (stand by ContentSpawnArea, facing open space):
+Wait for the server's initialized message before running commands. In Studio, bootstrap publishes a server-only `ServerStorage.StudioServiceCalls` BindableFunction after initialization. Service modules required by Command Bar return shared tooling proxies that invoke the actual runtime services, preserving their dependencies, ingredient records, plot ownership, and blender state. No manual services table or service reinitialization is needed. This applies to direct `BlendService.TryInput(...)` calls as well as `DevContentService.ResetScene(player)` and `ResetPlot(player)`. Tooling cannot call service `Init`; calls before publication, in Edit mode, or from a client report an error. DevContent methods retain their `EnableDevContent` gate. Production creates no bridge and continues to use ordinary modules and `Init(services)`.
+
+After syncing this change, stop and restart Play to rebuild the runtime and its bridge. Use dot calls, for example:
+
+```lua
+local services = game.ServerScriptService.Server.Services
+local dev = require(services.DevContentService)
+game.ServerStorage:SetAttribute("EnableDevContent", true)
+local player = game.Players:GetPlayers()[1]
+dev.SpawnIngredient(player, "Strawberry")
+print(require(services.BlendService).GetSnapshot(player))
+-- When ready to clear the scene:
+-- dev.ResetScene(player)
+```
+
+The bridge forwards method arguments/results, not the services table or mutable module internals. Runtime scripts and components keep direct access to the original services.
+
+Spawn Strawberry (four studs above your plot's tagged BlenderInput):
 
 ```lua
 local p = game.Players:GetPlayers()[1]; assert(require(game.ServerScriptService.Server.Services.DevContentService).SpawnIngredient(p, "Strawberry"))
@@ -115,7 +132,7 @@ A successful report starts `[Plot Validation] Plot1`, then `PASS PlayerPlot`, on
 
 `ResetBlender` and `ResetScene` remain aliases for `ClearBlender` and `ResetPlot`. `ForceReaction` also accepts `Love`, `Disgust`, `Freeze`, `NoobTransform`, the existing reaction IDs, or `nil` to return to weighted selection. Grade and payout never depend on the reaction.
 
-`PrepareCombination` **stages physical props**. With no optional legacy `IngredientSpawn` tag, SpawnIngredient and PrepareCombination place props four studs forward and two studs above the living character root, spreading a combination three studs apart. Stand by ContentSpawnArea and face an open landing surface; its visible name is not looked up. An existing tagged `IngredientSpawn` surface remains an optional legacy override, not a Plot1 requirement. It clears owned loose ingredients, a held ingredient, and the loaded batch. It leaves an existing smoothie cup/customer intact. `ClearBlender` only clears the batch. `ResetPlot` clears held/loose ingredients, cup, batch, active/exiting customers, and the day session; cash, upgrades and ordinary carried/stash inventory remain. A held physical unit is discarded on reset, respawn, or leaving.
+`PrepareCombination` **stages physical props**. SpawnIngredient and PrepareCombination place props four studs above the assigned plot's tagged `BlenderInput` in its local frame, spreading a combination three studs apart. Staging requires a unique tagged InputZone BasePart in that plot; it returns no result if the plot or valid input is missing. Character position and legacy `IngredientSpawn` tags do not affect staging. It clears owned loose ingredients, a held ingredient, and the loaded batch. It leaves an existing smoothie cup/customer intact. `ClearBlender` only clears the batch. `ResetPlot` clears held/loose ingredients, cup, batch, active/exiting customers, and the day session; cash, upgrades and ordinary carried/stash inventory remain. A held physical unit is discarded on reset, respawn, or leaving.
 
 `SpawnCustomer` starts a normal day, returns the existing active customer, or resumes a day whose next customer failed to spawn. It keeps normal proximity checks. The first two serves still spawn the next customer automatically; three finish the day. For one-shot takes, reset between customers. Missing markers produce warnings and a failed command, without blocking bootstrap.
 
@@ -124,7 +141,7 @@ Every dev API requires **both Studio and EnableDevContent=true**, including Vali
 ## Record the loop
 
 1. Near the tagged Start Day button, spawn a customer and optionally force a reaction.
-2. Stand by ContentSpawnArea and prepare the combination. Pick up each prop with its prompt. It equips automatically; click/tap to throw while equipped. Move close enough to face and throw into InputZone, tuning distance for your real blender placement. Repeat for up to three props. Aim follows character facing, not mouse position.
+2. Prepare the combination above your plot's InputZone. Pick up each prop with its prompt. It equips automatically; click/tap to throw while equipped. Move close enough to face and throw into InputZone, tuning distance for your real blender placement. Repeat for up to three props. Aim follows character facing, not mouse position.
 3. Check accepted count and LOADING/READY logs. One or two ingredients seal through READY on the first measured physical spin; three become READY immediately. A fourth stays in the world. Registered units must overlap this owner's detector; its 0.1-second polling accepts each only once.
 4. Physically push the turbine wheel until COMPLETE. Keep the tagged blade unanchored with working rotation constraints. Server Heartbeat measures `blade.AssemblyAngularVelocity.Magnitude`: progress is angular speed times `Economy.BlendProgressScale` (default 3) times delta time. Faster spin gives proportionally faster progress; stopping the blade gives zero, and coasting still counts after stepping away. There is no turbine prompt. The existing billboard shows progress. Output logs progress at 10-point boundaries and the resulting color. `PhysicsService.GetRPM(blade)` is available for display/debugging only.
 5. Use Dispense. A colored Smoothie Tool appears in the Backpack; equip it for the shot. One outstanding cup is allowed. DISPENSED resets the batch to EMPTY on the next deferred task, while the cup remains valid.
@@ -142,29 +159,24 @@ Owned loose props receive pickup prompts; shared market collection retains its e
 
 ## Presentation contract
 
-Listen on the client to `ReplicatedStorage.Shared.Events.GameplayPresentation.OnClientEvent(moment, ownerUserId, payload)`. It is server-created and output-only; no server listener accepts client messages. Events broadcast for observers/recording. Attribute snapshots remain available if a client misses an event.
+`FilmingUtil.Emit` is the only server sender: it calls `GameplayPresentation:FireAllClients(moment, ownerUserId, payload)`. There are no `FireClient` sends for this remote. `moment` is a string, `ownerUserId` is the owning player's numeric UserId, and `payload` is the table below. The server creates the RemoteEvent once; repeated `FilmingUtil.Init()` calls reuse it.
 
-| Moment | Payload |
-| --- | --- |
-| BlendStarted | IngredientIds (copied list) |
-| BlendProgressChanged | Progress (0–100) |
-| BlendCompleted | BlendId, Color (Color3), IngredientIds, RecipeId (optional) |
-| SmoothieDispensed | BlendId, Color, Cup (Tool; may not be replicated to other players yet) |
-| CustomerReaction | BlendId, Customer (Model), ReactionId, Grade, Payout |
+| Moment | Server call site | Payload | Frequency |
+| --- | --- | --- | --- |
+| BlendStarted | BlendService.AddProgress | `{ IngredientIds: {string} }` | Once on READY -> BLENDING |
+| BlendProgressChanged | BlendService.AddProgress | `{ Progress: number }` (0-100) | Changed progress, at most 10 Hz per batch, plus immediate final progress |
+| BlendCompleted | BlendService.AddProgress | `{ BlendId: string, Color: Color3, IngredientIds: {string}, RecipeId: string? }` | Once on completion |
+| SmoothieDispensed | BlendService.Dispense | `{ BlendId: string, Color: Color3, Cup: Tool }` | Once on successful dispense |
+| CustomerReaction | CustomerService.Serve | `{ BlendId: string, Customer: Model, ReactionId: string, Grade: string, Payout: number }` | Once on successful serve |
+
+Instance fields can arrive as nil if the instance has not replicated to an observer. Ingredient lists are copies. GameplayPresentation is output-only; no server listener accepts client messages. Attribute snapshots remain available if a client misses an event.
+
+`src/client/init.client.luau` starts `GameplayPresentationController` before SprintController. Its idempotent Init asynchronously waits for the server-created remote and attaches one `OnClientEvent` listener. The listener currently drains all kinds without adding effects, including unknown kinds and malformed payloads. Existing visuals continue to use replicated attributes and server-created UI/audio. Add future cosmetic handlers inside this controller, keeping the single subscription. No presentation event grants gameplay authority.
+
+Progress throttling affects only notifications. Every accepted RPM delta still updates the server batch and its replicated attributes; turbine ingestion, state transitions, and completion calculations are unchanged.
 
 Payout in the event is a display value after the transaction. It grants no authority. Result colors use the RGB mean of every unit, including repeated units and Mystery; there is no random color override. Recipes remain optional multiset discoveries.
 
-```lua
--- LocalScript example for a later presentation controller:
-local events = game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Events")
-events:WaitForChild("GameplayPresentation").OnClientEvent:Connect(function(moment, ownerUserId, payload)
-    if moment == "BlendCompleted" then
-        print(ownerUserId, payload.BlendId, payload.Color)
-    elseif moment == "CustomerReaction" then
-        print(ownerUserId, payload.ReactionId)
-    end
-end)
-```
 
 No new VFX controller is installed. Love/Disgust/Freeze/Launch/NoobTransform are replicated reaction IDs, not physical effects. Existing basic text/audio/sparkles remain. Final blender/ingredient/customer art, grip tuning, reaction animation/VFX, and filming camera work remain Studio tasks. Ants, stealing, PvP, HUD, monetization and persistence were not extended.
 
@@ -183,8 +195,8 @@ Studio acceptance still required: boot with no fixtures (warnings, no hang); cre
 | File | Change |
 | --- | --- |
 | `src/server/Services/TycoonService.luau` | Tag-only runtime lookup, duplicate rejection, reusable legacy auto-tagging that respects existing roles |
-| `src/server/Services/DevContentService.luau` | Read-only Studio/opt-in ValidatePlot report; optional staging tag with character-relative fallback |
+| `src/server/Services/DevContentService.luau` | Read-only Studio/opt-in ValidatePlot report; plot-scoped BlenderInput staging with a four-stud upward offset |
 | `src/server/Components/Stash.luau` | Bind unique integer SlotIndex values independently of visible names |
 | `src/server/init.server.luau` | Delegate legacy migration to TycoonService |
-| `tests/server_state.spec.luau` | Real tag lookup, migration precedence, validation failure cases, production gate and untagged staging tests |
+| `tests/server_state.spec.luau` | Real tag lookup, migration precedence, validation failure cases, production gate and plot-scoped staging tests |
 | `docs/FILMING_VERTICAL_SLICE.md` | Current hierarchy, mapping, attributes, exact commands and validation |
