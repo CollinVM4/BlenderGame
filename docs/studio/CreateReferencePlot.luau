@@ -38,7 +38,9 @@ local input = part("BlenderInput", Vector3.new(0, 4, -6), Vector3.new(9, 7, 7), 
 input.CanCollide = false
 input.CanQuery = true
 input.Transparency = 1
-part("IngredientSpawn", Vector3.new(0, 2, 9), Vector3.new(10, 1, 4), "IngredientSpawn")
+local ingredientStation = part("IngredientSpawn", Vector3.new(0, 2, 9), Vector3.new(10, 1, 4), "IngredientSpawn")
+ingredientStation:SetAttribute("IngredientId", "Strawberry")
+ingredientStation:SetAttribute("RespawnSeconds", 5)
 -- Free physical blade: push either end to spin it around the vertical axle.
 local axle = part("TurbineAxle", Vector3.new(7, 2, -4), Vector3.new(0.5, 3, 0.5))
 axle.CanCollide = false

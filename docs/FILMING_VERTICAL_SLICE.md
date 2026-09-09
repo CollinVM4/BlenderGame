@@ -58,6 +58,56 @@ Legacy startup compatibility can auto-tag old fixture names only when that role 
 
 Optional assets remain `ServerStorage.Ingredients` (Models/BaseParts named by ingredient Id), `ServerStorage.Smoothie` (Tool with Handle), and `ServerStorage.Customer` (Model with PrimaryPart). Missing templates use the existing placeholders.
 
+## Ingredient spawn stations (V1)
+
+In Edit mode, create a Folder named `Ingredient Spawns` directly under Workspace. Add three anchored, collidable Parts, about `8, 1, 8` studs, on level ground away from BlenderInput. Names are organizational; tag each **Part itself** `IngredientSpawn` using Studio's Tags property/Tag Editor. Set attributes before Play:
+
+| Part | Tag | `IngredientId` (String) | `RespawnSeconds` (Number) |
+| --- | --- | --- | --- |
+| StrawberrySpawn | IngredientSpawn | Strawberry | 5 |
+| BananaSpawn | IngredientSpawn | Banana | 5 |
+| TireSpawn | IngredientSpawn | Tire | 5 |
+
+No plot ownership, dev-content opt-in, models, or additional tags are required. Do not tag the Folder or manually add IngredientWorldItem. IngredientService.Spawn creates the registered item and supplies its definition's BlendColor cube when no optional template exists. Keep the stations level: spawn position is three studs above the station's top along its local up axis. Items are unanchored and settle under physics.
+
+Each station holds one active world item, even if it rolls away or moves elsewhere within Workspace. Consumption, destruction (including the existing 120-second world-item expiry), or leaving Workspace starts the delay. An item moved out of Workspace is destroyed so it cannot later return as duplicate stock. Removing the tag, destroying the station, or moving it out of Workspace disconnects item listeners, cancels the timer, and destroys remaining stock. Retagging/re-entry starts fresh. Station configuration is read at attachment: retag after changing attributes during Play. Missing, nonnumeric, nonpositive, NaN, or infinite delays default to 5; invalid IDs/non-BaseParts warn and do not spawn. Old tagged staging tables need a valid IngredientId or their tag removed.
+
+Short live verification (after Rojo sync and a fresh Play session):
+
+1. On the Server view, confirm one colored item per station and no duplicates after more than five seconds. Select the spawned item (direct child of Workspace) to inspect IngredientWorldItem, IngredientId, and OwnerUserId=0.
+2. With only these stations supplying unowned Strawberry items, run in the **Server Command Bar**:
+
+   ```lua
+   local ingredients = require(game.ServerScriptService.Server.Services.IngredientService)
+   for _, item in game:GetService("CollectionService"):GetTagged("IngredientWorldItem") do
+       local record = ingredients.GetRecord(item)
+       if record and record.Id == "Strawberry" and not record.Owner then
+           assert(ingredients.Consume(item) == "Strawberry")
+           break
+       end
+   end
+   ```
+
+3. Confirm Strawberry returns once after about five seconds; Banana/Tire stay at one each. Delete the new Strawberry item in Server view, then remove StrawberrySpawn's tag before five seconds elapse. Wait longer than five seconds: no replacement. Reapply the tag: one appears immediately. Delete the station: its remaining item disappears and stays gone.
+
+**Pickup/carry/throw:** unowned claimable station items and your own dev props now expose exactly one prompt, `Pickup` (`CarryPrompt`). Pickup equips a Tool; click/tap throws a new registered item owned by the thrower. A consumed station item starts that station's refill timer. Other players may see a prompt on your loose props, but their requests are rejected by the server. Nonclaimable market stock keeps its pedestal interaction.
+
+The old Dispenser component also bound IngredientWorldItem and created `PickupPrompt` with `Collect <Ingredient>`, sending the unit directly into logical inventory through ClaimWorldItem. That tag binding is removed. Dispenser retains its DispenseIngredient/ReleaseUnit API; ClaimWorldItem remains the internal transaction used by physical carry. Stop and restart Play after syncing so the previous session's prompt listeners are gone. Verify both a fresh station item and its replacement show only Pickup. Market pedestal collection is unchanged.
+
+Authorization lives in InventoryService's private `getLoosePickupRecord(player, object)`, shared by CarryWorldItem and ClaimWorldItem. It validates the current registry record, claimability, loose-item ownership (unowned or requesting owner), living character, and distance. Carry also requires a Backpack and an empty held slot. The existing AddUnit capacity check runs before consumption; claim-to-held transfer does not yield and consumes the original registry identity exactly once. The held reservation does not also count as a carried inventory unit. Failed consumption rolls back the inventory addition.
+
+This ownership rule is scoped to **loose-world pickup**, not every inventory transfer. A future stash-to-held transaction must resolve the actual server-owned stash/slot, validate proximity and protection, and explicitly authorize owner withdrawal or stealing from an unprotected slot before reserving a unit. Protected slots remain owner-only. It must not treat client-provided SlotIndex/OwnerUserId attributes as permission or add a generic bypass flag to loose pickup. Existing stash code is unchanged; no new stash interaction is included here.
+
+Live interaction verification after syncing and restarting Play:
+
+1. Keep the station setup above and the assigned plot's BlenderInput. Walk within prompt range of StrawberrySpawn's item and activate Pick up. Confirm one equipped Strawberry Tool, the original loose item disappears, and the station refills after five seconds. While holding it, try another ingredient: it must remain in the world.
+2. Face your blender opening, approach closely, and click/tap with the Tool equipped. Confirm the Tool disappears and the thrown item is accepted once: BlendIngredientCount increases by one. Repeated clicks must not create more ingredients. Throw follows character facing, not mouse aim.
+3. In Studio's Server & Clients test with two players, approach the same station item and activate its prompt at nearly the same time. Exactly one player should equip it. Repeat on the next spawn with the other player activating first.
+4. Have the winner throw onto open ground away from BlenderInput. The other player's pickup must fail; the owner can pick it up again. Move out of range and verify pickup is unavailable. For owned-dev regression, run the existing SpawnIngredient command below and confirm its owner can pick up and throw the prop as before.
+
+Station stock is independent of DevContent resets; remove a station's tag to clear it for a take. Both station items and owned DevContent props can supply the filmed pickup/throw loop below. Live physics, prompt reach, Tool grip, and multiplayer replication still require Studio verification.
+
+
 ## Exact filming commands
 
 Start **Play**, switch the Command Bar to **Server**, and run this setup once per session:
@@ -147,7 +197,7 @@ Every dev API requires **both Studio and EnableDevContent=true**, including Vali
 5. Use Dispense. A colored Smoothie Tool appears in the Backpack; equip it for the shot. One outstanding cup is allowed. DISPENSED resets the batch to EMPTY on the next deferred task, while the cup remains valid.
 6. Approach the waiting customer and use Serve smoothie. The server computes grade/payout, consumes the cup once, grants cash through PlayerDataService and calls GameService. Check the customer log, `playerCash`, and `CustomersServedToday`.
 
-Owned loose props receive pickup prompts; shared market collection retains its existing path. Pickup transfers the world unit into a server reservation owned by InventoryService, displayed using a clone of its visual model. Throw consumes that reservation and spawns a newly registered physical unit. Neither the held visual nor editable attributes authorize ingestion. The Tool can be unequipped/re-equipped without duplicating the reservation.
+Unowned claimable and owned loose props receive pickup prompts; shared market collection retains its existing path. Pickup transfers the world unit into a server reservation owned by InventoryService, displayed using a clone of its visual model. Throw consumes that reservation and spawns a newly registered physical unit. Neither the held visual nor editable attributes authorize ingestion. The Tool can be unequipped/re-equipped without duplicating the reservation.
 
 ## Tags, attributes and templates
 
@@ -178,11 +228,11 @@ Progress throttling affects only notifications. Every accepted RPM delta still u
 Payout in the event is a display value after the transaction. It grants no authority. Result colors use the RGB mean of every unit, including repeated units and Mystery; there is no random color override. Recipes remain optional multiset discoveries.
 
 
-No new VFX controller is installed. Love/Disgust/Freeze/Launch/NoobTransform are replicated reaction IDs, not physical effects. Existing basic text/audio/sparkles remain. Final blender/ingredient/customer art, grip tuning, reaction animation/VFX, and filming camera work remain Studio tasks. Ants, stealing, PvP, HUD, monetization and persistence were not extended.
+No new VFX controller is installed. Love/Disgust/Freeze/Launch/NoobTransform are replicated reaction IDs, not physical effects. Existing basic text/audio remain. Final blender/ingredient/customer art, grip tuning, reaction animation/VFX, and filming camera work remain Studio tasks. Ants, stealing, PvP, HUD, monetization and persistence were not extended.
 
 ## Validation and remaining checks
 
-Completed checks for this change: **301 domain assertions passed**, all **38 source files compiled**, Roblox-aware Luau LSP analysis passed with **zero type errors**, StyLua passed on all **5 touched Luau files** (including tests), Rojo **7.7.0** build passed, and `git diff --check` passed. The LSP emitted only its CLI watch-registration warning; automatic watch support is irrelevant to the completed one-shot analysis. Build output and sourcemap are in the system temporary tools directory. `default.project.json` is unchanged.
+Ingredient station and pickup checks: **366 server-state assertions passed**, all **41 source files compiled**, Roblox-aware Luau LSP analysis passed with **zero type errors**, StyLua passed on all **7 touched Luau files** (including tests/reference setup), Rojo **7.7.0** build passed, and `git diff --check` passed. The LSP emitted only its CLI watch-registration warning. Station tests run the real component, WorldUtil.BindTag, and IngredientService registry with simulated signals/time; they cover initial spawn/color/registration, one active item, independent/default/custom delays, consumption, removal, retag/re-entry, invalid configuration, and cleanup/cancellation. Pickup tests initialize both Dispenser and IngredientPickup with station spawning and real BindTag/Prompt creation, assert exactly one Pickup prompt before and after refill, and exercise its carry transaction. They also cover the actual prompt, distance/alive/capacity failures, both contention orders, foreign loose ownership, metadata forgery, one held unit, owned-dev regression, and throw through the actual BlenderInput component. Build output and sourcemap are in the system temporary tools directory. `default.project.json` is unchanged. Live Studio verification remains required.
 
 Run `python tests/run_state_tests.py --luau <luau-executable>`, compile `src/*.luau` recursively, run Roblox-aware Luau LSP analysis with Rojo sourcemap/definitions, check touched files with StyLua, build with Rojo, and run `git diff --check`.
 

@@ -54,7 +54,7 @@ If a marker disappears between customers, the day remains SERVING and warns. Res
 
 ### Inventory, market, combat, economy defaults
 
-- Carried inventory is one stack per ingredient ID, cap 5 (earned upgrade to 10). There is no total carried-slot limit in this skeleton. Materializing/throwing a unit removes it from carried counts; collecting it returns it to counts. Throw position/velocity are computed on the server. Owned world props now support a pickup prompt and equipped Tool throw through InventoryService. Throw position/velocity follow server-observed character facing; mouse aiming remains deferred.
+- Carried inventory is one stack per ingredient ID, cap 5 (earned upgrade to 10). There is no total carried-slot limit in this skeleton. Materializing/throwing a unit removes it from carried counts; collecting it returns it to counts. Throw position/velocity are computed on the server. Unowned claimable station props and your owned world props support a pickup prompt and equipped Tool throw through InventoryService. Its shared getLoosePickupRecord helper authorizes loose-world pickup for CarryWorldItem and ClaimWorldItem; foreign-owned loose items are rejected. Future stash-to-held acquisition must use server-validated slot/protection rights separately from loose pickup; no new stash interaction is implemented. Throw position/velocity follow server-observed character facing; mouse aiming remains deferred.
 - Normal stash: five slots, first two protected. VIP: ten slots, first five protected. Each slot is one ingredient stack. Capacity/protection use server entitlements, not attributes. Downgrading VIP preserves inaccessible upper slots in memory rather than deleting items. A production entitlement adapter must define retention across saves.
 - Steals require living-player proximity to the victim stash, an unprotected valid slot, and room in the thief's stack. One unit moves per success. Thief cooldown is 3s; victim protection is 5s. Failed transfers do not remove items.
 - Market stock is free in this skeleton. One claimant wins; full inventory leaves stock intact. Refill after claim is 12s. Unclaimed world stock expires after 120s, then refills with another rarity-weighted selection. Tags removed/re-added and objects moved out of/into Workspace detach/rebind components.
@@ -69,7 +69,7 @@ Create physical models in Studio. Put plot fixtures under their owning plot; tag
 | --- | --- |
 | `PlayerPlot` | Tag a Model/Folder per player plot, or use direct children of `workspace.Plots`. Assigned in name order; `OwnerUserId` is written by the server. A legacy `workspace.Blender` is treated as a single plot. |
 | `BlenderInput` | One invisible anchored BasePart at the blender opening, inside the plot. `Transparency=1`, `CanCollide=false`, `CanQuery=true`. Make it deep/wide enough for the 0.1s overlap polling interval. |
-| `IngredientSpawn` | Level collidable staging table BasePart in the plot (10?1?4 for the reference). Dev commands place props above it for pickup. |
+| `IngredientSpawn` | Anchored BasePart anywhere in Workspace; String `IngredientId` matching a definition and optional Number `RespawnSeconds` (default 5). Spawns one unowned registered unit three studs above its top; refills after removal/consumption. See the station playtest in FILMING_VERTICAL_SLICE.md. |
 | `TurbineWheel` | Prefer tagging the actual spinning blade BasePart inside the plot. Legacy Models must resolve to that blade. Keep the blade unanchored and preserve the physical turbine constraints so it can rotate. Physically push the wheel; progress comes only from server Heartbeat sampling. |
 | `DispenseButton` | BasePart or Model with PrimaryPart inside plot. Component generates a Dispense prompt. |
 | `StartDayButton` | BasePart/Model with PrimaryPart inside plot, near counter. Component generates Start Day prompt. |
@@ -109,7 +109,7 @@ Security follows Roblox's guidance to validate even [ProximityPrompt interaction
 
 Current setup, commands, API semantics, events, testing limits and remaining Studio work are documented in [FILMING_VERTICAL_SLICE.md](FILMING_VERTICAL_SLICE.md). Use [studio/CreateReferencePlot.luau](studio/CreateReferencePlot.luau) in an empty Studio Edit session to create all placeholder fixtures without waiting for final assets.
 
-`PrepareCombination` now stages physical props on IngredientSpawn and resets the batch; it no longer instantly ingests them. `SpawnCustomer` now starts/resumes a serveable day or returns the existing customer, keeping proximity validation. Legacy reset API names remain aliases. The new pickup/throw Tool reserves exactly one inventory unit and uses server-selected launch velocity. Reaction IDs are replicated independently of grades, with no new polished animation/VFX.
+`PrepareCombination` stages physical props above the assigned plot's tagged BlenderInput and resets the batch; it does not instantly ingest them. IngredientSpawn stations operate independently. `SpawnCustomer` starts/resumes a serveable day or returns the existing customer, keeping proximity validation. Legacy reset API names remain aliases. The pickup/throw Tool reserves exactly one inventory unit and uses server-selected launch velocity. Reaction IDs are replicated independently of grades, with no new polished animation/VFX.
 
 ## PLAYABLE MVP NEXT STEPS / intentional TODOs
 
@@ -117,7 +117,7 @@ Current setup, commands, API semantics, events, testing limits and remaining Stu
 - [ ] Playtest shared stock and one-unit stealing with two clients, capacity limits, protected slots, distance rejection and cooldowns. Tune market rotation, pickup feel and economic balance.
 - [ ] Add the actual slap-hand asset, grant/equip/respawn wiring, upgrade visuals and combat presentation. Server-only test grant: `require(services.CombatService).GrantHand(player)`. Test walls, facing, death, stuns and drop immunity in Studio.
 - [ ] Implement ant spawn/chase/damage/stun/defeat AI; call MarketService.SpawnDrop from a trusted defeat handler. No ant AI is implemented.
-- [ ] Replace straight-line customer pivot movement with rig locomotion/pathfinding if the scene needs obstacles; add reaction animation/VFX. Existing chirps, serve sound and sparkles are retained.
+- [ ] Replace straight-line customer pivot movement with rig locomotion/pathfinding if the scene needs obstacles; add reaction animation/VFX. Existing chirps and serve sound are retained.
 - [ ] Add physical plot upgrade application and upgrade purchase UI. Configured earned Hand/StackSize/BlendSpeed/Payout purchases already update their server values.
 - [ ] Implement production persistence at PlayerDataService's boundary: loading, saving, failures, session ownership, shutdown and migrations. No datastore implementation or offline earnings exist here.
 - [ ] Connect verified VIPStorage/DoubleCash entitlement checks; no purchase prompts or monetization fulfillment exists here.

@@ -9,7 +9,40 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
 local BlendService = {}
 local deps: any
+local ingredientAccepted = Instance.new("BindableEvent")
+local RunService = game:GetService("RunService")
+local observers: { RBXScriptConnection } = {}
+local nextNotificationToken = 0
+local function observerCount(): number
+    for index = #observers, 1, -1 do
+        if not observers[index].Connected then
+            table.remove(observers, index)
+        end
+    end
+    return #observers
+end
+local function diagnostic(message: string)
+    if RunService:IsStudio() then
+        print("[BlendService] " .. message)
+    end
+end
+
+-- One canonical color calculation for both the developing liquid and final cup.
+local function batchColor(ids: { string }): Color3?
+    if #ids == 0 then
+        return nil
+    end
+    local sum = Vector3.zero
+    for _, id in ids do
+        local color = deps.IngredientService.GetDefinition(id).BlendColor
+        sum += Vector3.new(color.R, color.G, color.B)
+    end
+    sum /= #ids
+    return Color3.new(sum.X, sum.Y, sum.Z)
+end
+
 type Batch = {
+    NotificationToken: number,
     State: Types.BlendState,
     Ingredients: { string },
     Progress: number,
@@ -19,8 +52,24 @@ type Batch = {
 local batches: { [Player]: Batch } = {}
 local cups: { [Player]: { Tool: Tool, Result: Types.Smoothie } } = {}
 
+function BlendService.ObserveIngredientAccepted(callback: (Player, string, CFrame, number) -> ()): RBXScriptConnection
+    local connection = ingredientAccepted.Event:Connect(function(player, id, at, index, token)
+        -- BindableEvents COPY tables. Compare a scalar token, never table identity.
+        local batch = batches[player]
+        if batch and batch.NotificationToken == token then
+            callback(player, id, at, index)
+        else
+            diagnostic("accepted notify skipped stale batch ingredient=" .. id)
+        end
+    end)
+    table.insert(observers, connection)
+    diagnostic("ingredient observer connected observers=" .. tostring(observerCount()))
+    return connection
+end
+
 local function publish(player: Player)
     local batch = batches[player]
+    player:SetAttribute("BlendColor", if batch.Result then batch.Result.Color else batchColor(batch.Ingredients))
     player:SetAttribute("BlendState", batch.State)
     player:SetAttribute("BlendProgress", batch.Progress)
     player:SetAttribute("BlendIngredientCount", #batch.Ingredients)
@@ -38,7 +87,15 @@ function BlendService.Init(services)
     deps = services
 end
 function BlendService.Reset(player: Player)
-    batches[player] = { State = "EMPTY", Ingredients = {}, Progress = 0, Result = nil, NextProgressPresentationAt = 0 }
+    nextNotificationToken += 1
+    batches[player] = {
+        NotificationToken = nextNotificationToken,
+        State = "EMPTY",
+        Ingredients = {},
+        Progress = 0,
+        Result = nil,
+        NextProgressPresentationAt = 0,
+    }
     publish(player)
     Film.Log("Blend", "reset")
 end
@@ -68,7 +125,8 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
         or (batch.State ~= "EMPTY" and batch.State ~= "LOADING" and batch.State ~= "READY")
         or #batch.Ingredients >= Economy.MaxIngredients
         or not record
-        or record.Owner ~= player
+        or (record.Owner ~= nil and record.Owner ~= player)
+        or (record.Owner == nil and not record.Claimable)
         or not part
         or deps.TycoonService.GetOwner(input) ~= player
         or deps.TycoonService.GetReference(player, "BlenderInput") ~= input
@@ -86,6 +144,7 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
     if not overlaps then
         return false
     end
+    local acceptedAt = part.CFrame
     local id = deps.IngredientService.Consume(object)
     if not id then
         return false
@@ -95,6 +154,8 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
     batch.State = if #batch.Ingredients == Economy.MaxIngredients then "READY" else "LOADING"
     publish(player)
     Film.Log("Blend", batch.State)
+    diagnostic("accepted notify ingredient=" .. id .. " observers=" .. tostring(observerCount()))
+    ingredientAccepted:Fire(player, id, acceptedAt, #batch.Ingredients, batch.NotificationToken)
     return true
 end
 function BlendService.Ready(player: Player): boolean
@@ -109,7 +170,6 @@ function BlendService.Ready(player: Player): boolean
 end
 local function makeResult(ids: { string }): Types.Smoothie
     local tags = {}
-    local sum = Vector3.zero
     for _, id in ids do
         local definition = deps.IngredientService.GetDefinition(id)
         for _, tag in definition.Tags do
@@ -117,8 +177,6 @@ local function makeResult(ids: { string }): Types.Smoothie
                 table.insert(tags, tag)
             end
         end
-        local color = definition.BlendColor
-        sum += Vector3.new(color.R, color.G, color.B)
     end
     local sorted = table.clone(ids)
     table.sort(sorted)
@@ -131,12 +189,11 @@ local function makeResult(ids: { string }): Types.Smoothie
             break
         end
     end
-    sum /= #ids
     return {
         BlendId = HttpService:GenerateGUID(false),
         Ingredients = table.clone(ids),
         Tags = tags,
-        Color = Color3.new(sum.X, sum.Y, sum.Z),
+        Color = batchColor(ids) :: Color3,
         Discovery = discovery,
     }
 end

@@ -23,6 +23,9 @@ end
 vector.__sub = function(a, b)
     return vec(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
 end
+function vector:Cross(b)
+    return vec(self.Y * b.Z - self.Z * b.Y, self.Z * b.X - self.X * b.Z, self.X * b.Y - self.Y * b.X)
+end
 function vector:Dot(b)
     return self.X * b.X + self.Y * b.Y + self.Z * b.Z
 end
@@ -67,24 +70,48 @@ local function signal()
     }
 end
 local function frame(x, y, z)
-    local cf = { Position = vec(x or 0, y or 0, z or 0), LookVector = vec(0, 0, -1) }
+    local cf = {
+        Position = vec(x or 0, y or 0, z or 0),
+        LookVector = vec(0, 0, -1),
+        RightVector = vec(1, 0, 0),
+        UpVector = vec(0, 1, 0),
+    }
+    function cf:ToObjectSpace(other)
+        return frame(
+            other.Position.X - self.Position.X,
+            other.Position.Y - self.Position.Y,
+            other.Position.Z - self.Position.Z
+        )
+    end
     function cf:Lerp(other, alpha)
         local v = self.Position + (other.Position - self.Position) * alpha
         return frame(v.X, v.Y, v.Z)
     end
     return setmetatable(cf, {
         __mul = function(a, b)
-            local v = a.Position + b.Position
-            return frame(v.X, v.Y, v.Z)
+            local v = a.Position
+                + a.RightVector * b.Position.X
+                + a.UpVector * b.Position.Y
+                - a.LookVector * b.Position.Z
+            local result = frame(v.X, v.Y, v.Z)
+            result.RightVector, result.UpVector, result.LookVector = a.RightVector, a.UpVector, a.LookVector
+            return result
         end,
     })
 end
 local function instance(class)
     local object = { ClassName = class, Children = {}, Attributes = {} }
     table.insert(allInstances, object)
+    object.Event = signal()
+    function object:Fire(...)
+        self.Event:Fire(...)
+    end
     object.Activated = signal()
+    object.Unequipped = signal()
+    object.CharacterRemoving = signal()
     object.Triggered = signal()
     object.Destroying = signal()
+    object.AncestryChanged = signal()
     object.CFrame = frame()
     object.Position = vec(0, 0, 0)
     function object:GetChildren()
@@ -119,6 +146,17 @@ local function instance(class)
     function object:PivotTo(at)
         self.CFrame = at
         self.Position = at.Position
+    end
+    function object:GetBoundingBox()
+        local part = self:FindFirstChildWhichIsA("BasePart", true)
+        return self.CFrame, part and part.Size or vec(1, 1, 1)
+    end
+    function object:ScaleTo(scale)
+        for _, part in self:GetDescendants() do
+            if part:IsA("BasePart") then
+                part.Size = part.Size * scale
+            end
+        end
     end
     function object:GetPivot()
         return self.CFrame
@@ -205,6 +243,7 @@ local function instance(class)
         end
         self.Parent = nil
         self.Destroyed = true
+        self.AncestryChanged:Fire()
     end
     return object
 end
@@ -249,6 +288,15 @@ local services = {
                 tags[tag][object] = nil
             end
         end,
+        GetTags = function(_, object)
+            local result = {}
+            for tag, objects in tags do
+                if objects[object] then
+                    table.insert(result, tag)
+                end
+            end
+            return result
+        end,
         HasTag = function(_, object, tag)
             return tags[tag] and tags[tag][object] == true
         end,
@@ -268,7 +316,7 @@ local env = setmetatable({
         end,
     },
     workspace = workspaceFake,
-    Vector3 = { zero = vec(0, 0, 0), new = vec },
+    Vector3 = { zero = vec(0, 0, 0), yAxis = vec(0, 1, 0), new = vec },
     Color3 = {
         new = color,
         fromRGB = function(r, g, b)
@@ -365,6 +413,21 @@ local function loadModule(name)
     return result
 end
 env.require = loadModule
+local vfxTests = assert(loadstring(sources.BlendVFXTests))()
+vfxTests({
+    Sources = sources,
+    Env = env,
+    Instance = instance,
+    Signal = signal,
+    Frame = frame,
+    Services = services,
+    Parent = parent,
+    Check = check,
+})
+if vfxOnly then
+    print(string.format("PASS: %d blender VFX assertions (mocked Roblox boundary).", count))
+    return
+end
 services.RunService.IsRunning = function()
     return true
 end
@@ -447,19 +510,11 @@ for _ = 1, 5 do
 end
 check(not inventory.AddUnit(p, "Strawberry"), "stack cap enforced")
 check(not inventory.AddUnit(p, "Fake"), "unknown ingredient rejected")
-check(inventory.Deposit(p, "Strawberry", 1), "deposit protected slot")
-check(not inventory.Steal(other, p, 1), "protected slot cannot be stolen")
-check(inventory.Deposit(p, "Strawberry", 3) and inventory.Deposit(p, "Strawberry", 3), "stack unprotected slot")
-check(inventory.Steal(other, p, 3), "steal one unit")
-check(inventory.GetSnapshot(p).Stash[3].Count == 1, "stealing never takes entire stack")
-check(not inventory.Steal(other, p, 3), "steal cooldown / victim protection enforced")
-other.Near = false
-check(not inventory.Withdraw(other, 3), "remote stash access rejected")
-other.Near = true
+check(not inventory.Deposit(p, "Strawberry", 1), "abstract inventory cannot deposit without held reservation")
+check(not inventory.Steal(other, p, 3), "V1 theft disabled")
 check(inventory.GetStashLayout(p).Slots == 5, "normal stash layout")
 data.SetEntitlement(p, "VIPStorage", true)
-check(inventory.GetStashLayout(p).Protected == 5 and inventory.GetStashLayout(p).Slots == 10, "VIP layout")
-check(not inventory.Steal(other, p, 3), "VIP protection applies to existing slots")
+check(inventory.GetStashLayout(p).Protected == 2 and inventory.GetStashLayout(p).Slots == 5, "V1 layout ignores VIP")
 check(data.PurchaseUpgrade(p, "StackSize") and inventory.GetStackCap(p) == 10, "earned stack upgrade")
 
 local blend = loadModule("BlendService")
@@ -611,7 +666,7 @@ local function character(position)
     function root:ApplyImpulse(impulse)
         self.LastImpulse = impulse
     end
-    local humanoid = { Health = 100 }
+    local humanoid = { Health = 100, Died = signal() }
     function humanoid:TakeDamage(damage)
         self.Health -= damage
     end
@@ -755,6 +810,9 @@ do
                 if name == "GameplayPresentationController" then
                     return controller
                 end
+                if name == "StashPromptController" then
+                    return { Init = function() end }
+                end
                 assert(name == "SprintController")
                 return {
                     Init = function()
@@ -786,7 +844,14 @@ do
     check(received == 1, "server broadcast reaches client listener")
     table.remove(presentation) -- Synthetic event is not a gameplay transaction.
 end
-env.CFrame = { new = frame }
+env.CFrame = {
+    new = frame,
+    fromMatrix = function(position, right, up, back)
+        local cf = frame(position.X, position.Y, position.Z)
+        cf.RightVector, cf.UpVector, cf.LookVector = right, up, back * -1
+        return cf
+    end,
+}
 p.Character.Children.HumanoidRootPart.CFrame = frame()
 function p.Character.Children.Humanoid:EquipTool(tool)
     tool.Parent = p.Character
@@ -849,6 +914,373 @@ check(
 check(not blend.Dispense(p, wheel), "LOADING cannot dispense")
 check(dev.ClearBlender(p) and blend.GetSnapshot(p).State == "EMPTY", "clear blender alias resets batch")
 check(dev.ResetPlot(p), "reset clears loose scene props")
+
+-- Loose pickup uses one server authorization path for prompts, carry, and direct claims.
+do
+    function other.Character.Children.Humanoid:EquipTool(tool)
+        tool.Parent = other.Character
+    end
+    local attachPickup
+    local pickupChunk = assert(loadstring(sources.IngredientPickupComponent))
+    setfenv(
+        pickupChunk,
+        setmetatable({
+            script = { Parent = { Parent = { Services = parent } } },
+            require = function(name)
+                assert(name == "WorldUtil")
+                return setmetatable({
+                    BindTag = function(tag, attach)
+                        assert(tag == "IngredientWorldItem")
+                        attachPickup = attach
+                    end,
+                }, { __index = cache.WorldUtil })
+            end,
+        }, { __index = env })
+    )
+    pickupChunk().Init(deps)
+    local function heldBy(player)
+        for _, object in allInstances do
+            if object:IsA("Tool") and object.Parent == player.Character then
+                return object
+            end
+        end
+        return nil
+    end
+    local stock = realIngredients.Spawn("Banana", frame(), nil, true)
+    local cleanup = attachPickup(stock)
+    local prompt = stock:FindFirstChild("CarryPrompt")
+    check(prompt and cleanup, "unowned claimable stock gets real pickup prompt")
+    p.Near = false
+    prompt.Triggered:Fire(p)
+    check(not heldBy(p) and realIngredients.GetRecord(stock), "prompt cannot bypass pickup distance")
+    check(not inventory.ClaimWorldItem(p, stock), "direct claim shares distance authorization")
+    p.Near = true
+    local humanoid = p.Character.Children.Humanoid
+    humanoid.Health = 0
+    check(
+        not inventory.CarryWorldItem(p, stock) and not inventory.ClaimWorldItem(p, stock),
+        "dead player cannot carry or claim"
+    )
+    humanoid.Health = 100
+    local initialCount = inventory.GetSnapshot(p).Carried.Banana or 0
+    while inventory.AddUnit(p, "Banana") do
+    end
+    check(not inventory.CarryWorldItem(p, stock), "full ingredient stack cannot bypass capacity via carry")
+    check(realIngredients.GetRecord(stock) and not heldBy(p), "failed carry preserves stock and held slot")
+    while (inventory.GetSnapshot(p).Carried.Banana or 0) > initialCount do
+        inventory.RemoveUnit(p, "Banana")
+    end
+    prompt.Triggered:Fire(p)
+    check(heldBy(p) and not realIngredients.GetRecord(stock), "prompt claims unowned stock into equipped reservation")
+    check((inventory.GetSnapshot(p).Carried.Banana or 0) == initialCount, "held unit is not also counted in inventory")
+    check(
+        not inventory.CarryWorldItem(other, stock) and not inventory.ClaimWorldItem(other, stock),
+        "second player loses same-item contention"
+    )
+    check(
+        not heldBy(other) and not inventory.CarryWorldItem(p, stock),
+        "loser and duplicate request receive no second reservation"
+    )
+    local extra = realIngredients.Spawn("Banana", frame(), nil, true)
+    check(
+        not inventory.CarryWorldItem(p, extra) and realIngredients.GetRecord(extra),
+        "unowned pickup preserves one-held limit"
+    )
+    extra:Destroy()
+    cleanup()
+    local thrownStationItem = inventory.ThrowHeld(p)
+    local thrownRecord = realIngredients.GetRecord(thrownStationItem)
+    check(
+        thrownRecord.Owner == nil and thrownRecord.Claimable and thrownRecord.Id == "Banana",
+        "station throw releases ownership of registered unit"
+    )
+    check(not inventory.ThrowHeld(p), "station reservation can only be thrown once")
+    blend.Reset(p)
+    input.Overlaps = { thrownStationItem }
+    local heartbeat, detachInput = signal(), nil
+    local inputChunk = assert(loadstring(sources.BlenderInputComponent))
+    setfenv(
+        inputChunk,
+        setmetatable({
+            script = { Parent = { Parent = { Services = parent } } },
+            game = {
+                GetService = function()
+                    return { Heartbeat = heartbeat }
+                end,
+            },
+            require = function()
+                return {
+                    BindTag = function(_, attach)
+                        detachInput = attach(input)
+                    end,
+                }
+            end,
+        }, { __index = env })
+    )
+    -- This existing fake detector needs the BasePart methods used at component binding.
+    function input:IsA(class)
+        return class == "BasePart"
+    end
+    inputChunk().Init(deps)
+    heartbeat:Fire(0.1)
+    heartbeat:Fire(0.1)
+    detachInput()
+    check(
+        not realIngredients.GetRecord(thrownStationItem) and #blend.GetSnapshot(p).Ingredients == 1,
+        "actual BlenderInput consumes station throw exactly once"
+    )
+    input.Overlaps = {}
+    blend.Reset(p)
+    local reverseStock = realIngredients.Spawn("Banana", frame(), nil, true)
+    check(inventory.CarryWorldItem(other, reverseStock), "other player can win first request")
+    check(not inventory.CarryWorldItem(p, reverseStock), "reversed contention still grants exactly one winner")
+    inventory.ClearHeld(other)
+    local owned = realIngredients.Spawn("Banana", frame(), p, true)
+    owned:SetAttribute("OwnerUserId", other.UserId)
+    owned:SetAttribute("SlotIndex", 3)
+    check(
+        not inventory.CarryWorldItem(other, owned) and not inventory.ClaimWorldItem(other, owned),
+        "foreign loose ownership cannot be bypassed with owner/slot metadata"
+    )
+    check(
+        realIngredients.GetRecord(owned) and inventory.CarryWorldItem(p, owned),
+        "existing owner retains dev-prop pickup rights"
+    )
+    inventory.ClearHeld(p)
+    local locked = realIngredients.Spawn("Banana", frame(), nil, false)
+    check(not attachPickup(locked), "nonclaimable market stock gets no carry prompt")
+    check(
+        not inventory.CarryWorldItem(p, locked) and not inventory.ClaimWorldItem(p, locked),
+        "nonclaimable stock cannot be carried or claimed"
+    )
+    locked:Destroy()
+    local forged = instance("Part")
+    forged.Parent = workspaceFake
+    forged:SetAttribute("IngredientId", "Banana")
+    check(
+        not attachPickup(forged) and not inventory.CarryWorldItem(p, forged),
+        "unregistered decoration grants no pickup rights"
+    )
+end
+
+-- Held release transactions use the real world registry and engine-style signals.
+do
+    local function worldItems()
+        local result = {}
+        for _, object in allInstances do
+            if realIngredients.GetRecord(object) then
+                table.insert(result, object)
+            end
+        end
+        return result
+    end
+    local function carry()
+        local stock = realIngredients.Spawn("Banana", frame(), nil, true)
+        check(inventory.CarryWorldItem(p, stock), "drop fixture claims station stock")
+        for _, object in allInstances do
+            if object:IsA("Tool") and object.Parent == p.Character then
+                return object
+            end
+        end
+        error("missing held Tool")
+    end
+    local before = #worldItems()
+    local tool = carry()
+    local visible = false
+    for _, part in tool:GetDescendants() do
+        if part:IsA("BasePart") and part.Name ~= "Handle" and part.Transparency ~= 1 then
+            visible = part.Color == definitions.Banana.BlendColor and not part.CanCollide
+        end
+    end
+    check(visible, "fallback ingredient is visibly welded into held Tool")
+    tool.Parent = p.Backpack
+    tool.Unequipped:Fire()
+    check(
+        tool.Destroyed and #worldItems() == before + 1,
+        "unequip restores exactly one world item before removing Tool"
+    )
+    check(not inventory.DropHeld(p), "unequip clears held reservation")
+    local dropped = worldItems()[#worldItems()]
+    local record = realIngredients.GetRecord(dropped)
+    check(
+        record.Id == "Banana" and record.Owner == nil and record.Claimable,
+        "drop releases ownership and enables pickup"
+    )
+    check(
+        dropped:GetAttribute("IngredientId") == "Banana"
+            and dropped:GetAttribute("OwnerUserId") == 0
+            and dropped:GetAttribute("WorldItemId") ~= nil
+            and tags.IngredientWorldItem[dropped],
+        "drop restores world identity and tag"
+    )
+    check(
+        dropped.Position.Z == -3 and not dropped.Anchored and dropped.NetworkOwner == nil,
+        "drop uses server physical spawn in front of character"
+    )
+    tool.Unequipped:Fire()
+    tool.Destroying:Fire()
+    p.Character.Children.Humanoid.Died:Fire()
+    check(#worldItems() == before + 1, "repeated unequip/destroy/death cannot duplicate")
+    check(inventory.CarryWorldItem(p, dropped), "dropped unit can be picked up again")
+    tool.Unequipped:Fire()
+    local reheld
+    for _, object in allInstances do
+        if object:IsA("Tool") and object.Parent == p.Character then
+            reheld = object
+        end
+    end
+    reheld.Activated:Fire()
+    local thrownAgain = worldItems()[#worldItems()]
+    check(
+        thrownAgain.AssemblyLinearVelocity.Z == -25 and thrownAgain.AssemblyLinearVelocity.Y == 18,
+        "click/tap activation still throws after drop and repickup; old signals do not clear new hold"
+    )
+    blend.Reset(p)
+    input.Overlaps = { thrownAgain }
+    check(
+        blend.TryInput(p, thrownAgain, input) and not realIngredients.GetRecord(thrownAgain),
+        "repicked dropped item is consumed by blender input"
+    )
+    input.Overlaps = {}
+    blend.Reset(p)
+
+    tool = carry()
+    local spawn = realIngredients.Spawn
+    realIngredients.Spawn = function()
+        check(not inventory.DropHeld(p), "reentrant release blocked")
+        return nil
+    end
+    tool.Parent = p.Backpack
+    tool.Unequipped:Fire()
+    check(
+        not tool.Destroyed and #worldItems() == before,
+        "failed spawn preserves Tool and does not create a world copy"
+    )
+    realIngredients.Spawn = function(...)
+        check(not tool.Destroyed, "Tool survives until successful world restoration")
+        check(not inventory.DropHeld(p), "reentrant successful release blocked")
+        return spawn(...)
+    end
+    dropped = inventory.DropHeld(p)
+    realIngredients.Spawn = spawn
+    check(
+        dropped and tool.Destroyed and not inventory.DropHeld(p),
+        "failed release retains reservation for one successful retry"
+    )
+    realIngredients.Consume(dropped)
+
+    tool = carry()
+    local humanoid = p.Character.Children.Humanoid
+    humanoid.Health = 0
+    humanoid.Died:Fire()
+    p.CharacterRemoving:Fire(p.Character)
+    tool.Unequipped:Fire()
+    check(
+        tool.Destroyed and #worldItems() == before + 1 and not inventory.DropHeld(p),
+        "death/removal signals restore one unit with no held copy"
+    )
+    realIngredients.Consume(worldItems()[#worldItems()])
+    humanoid.Health = 100
+
+    tool = carry()
+    local oldCharacter = p.Character
+    p.Character = nil
+    p.CharacterRemoving:Fire(oldCharacter)
+    check(
+        tool.Destroyed and #worldItems() == before + 1,
+        "character removal can drop using retained root when Character is nil"
+    )
+    realIngredients.Consume(worldItems()[#worldItems()])
+    p.Character = oldCharacter
+
+    tool = carry()
+    tool:Destroy()
+    check(
+        #worldItems() == before + 1 and not inventory.DropHeld(p),
+        "external Tool destruction restores one unit without recursive destruction"
+    )
+    realIngredients.Consume(worldItems()[#worldItems()])
+
+    tool = carry()
+    inventory.RemovePlayer(p)
+    check(#worldItems() == before + 1 and tool.Destroyed, "disconnect restores held unit before owned-world cleanup")
+    realIngredients.RemovePlayer(p) -- Matches bootstrap service cleanup ordering.
+    p.CharacterRemoving:Fire(p.Character)
+    tool.Unequipped:Fire()
+    inventory.RemovePlayer(p)
+    check(
+        #worldItems() == before + 1 and not inventory.DropHeld(p),
+        "disconnect cleanup preserves exactly one unowned drop"
+    )
+    local disconnectedDrop = worldItems()[#worldItems()]
+    check(
+        realIngredients.GetRecord(disconnectedDrop).Owner == nil and inventory.CarryWorldItem(other, disconnectedDrop),
+        "another player can claim disconnect drop"
+    )
+    inventory.ClearHeld(other)
+    inventory.AddPlayer(p)
+end
+
+-- Both release modes let either player win the next claim, exactly once.
+do
+    other.Character.Children.HumanoidRootPart.CFrame = frame()
+    for _, mode in { "DropHeld", "ThrowHeld" } do
+        for _, winner in { other, p } do
+            local loser = if winner == p then other else p
+            local stock = realIngredients.Spawn("Ice", frame(), p, true)
+            check(inventory.CarryWorldItem(p, stock), "owner reserves fixture for " .. mode)
+            check(
+                not inventory.DropHeld(other) and not inventory.ThrowHeld(other),
+                "other player cannot release holder's reservation"
+            )
+            local loose = inventory[mode](p)
+            local record = realIngredients.GetRecord(loose)
+            check(
+                record.Id == "Ice"
+                    and record.Owner == nil
+                    and record.Claimable
+                    and loose:GetAttribute("OwnerUserId") == 0,
+                mode .. " releases original ownership into claimable world unit"
+            )
+            check(not inventory[mode](p), mode .. " cannot replay release")
+            check(inventory.CarryWorldItem(winner, loose), mode .. " can be claimed by either nearby player")
+            check(
+                not inventory.CarryWorldItem(loser, loose) and not inventory.ClaimWorldItem(loser, loose),
+                mode .. " contention loser cannot obtain a second unit"
+            )
+            check(
+                not realIngredients.GetRecord(loose) and not inventory.CarryWorldItem(winner, loose),
+                mode .. " winning claim consumes the world identity once"
+            )
+            check(not inventory.DropHeld(loser), mode .. " losing player has no reservation")
+            local releasedAgain = inventory.DropHeld(winner)
+            check(releasedAgain and not inventory.DropHeld(winner), mode .. " winner holds exactly one releasable unit")
+            realIngredients.Consume(releasedAgain)
+        end
+    end
+    blend.Reset(p)
+    local loose = realIngredients.Spawn("Ice", frame(), nil, true)
+    input.Overlaps = {}
+    check(not blend.TryInput(p, loose, input), "unowned input still requires physical overlap")
+    input.Overlaps = { loose }
+    local owner = input.Owner
+    input.Owner = other
+    check(not blend.TryInput(p, loose, input), "unowned input still requires matching plot owner")
+    input.Owner = owner
+    check(
+        blend.TryInput(p, loose, input) and not blend.TryInput(p, loose, input),
+        "claimable unowned input is consumed exactly once"
+    )
+    local locked = realIngredients.Spawn("Ice", frame(), nil, false)
+    input.Overlaps = { locked }
+    check(
+        not blend.TryInput(p, locked, input) and realIngredients.GetRecord(locked),
+        "nonclaimable unowned stock cannot enter blender"
+    )
+    realIngredients.Consume(locked)
+    input.Overlaps = {}
+    blend.Reset(p)
+end
 
 local function actualBlend(ids)
     blend.Reset(p)
@@ -1309,6 +1741,381 @@ do
         not blend.AddProgress(p, wheel, 1) and #presentation == afterComplete,
         "completed turbine sends no repeated updates"
     )
+end
+
+-- Real station component + real BindTag + real ingredient registry, with controllable time/signals.
+do
+    local added, removed = signal(), signal()
+    local itemAdded, itemRemoved = signal(), signal()
+    local stations, spawned, timers = {}, {}, {}
+    local clock = 0
+    local collection = {
+        GetTagged = function(_, tag)
+            assert(tag == "IngredientSpawn" or tag == "IngredientWorldItem")
+            return table.clone(if tag == "IngredientSpawn" then stations else spawned)
+        end,
+        GetInstanceAddedSignal = function(_, tag)
+            return if tag == "IngredientSpawn" then added else itemAdded
+        end,
+        GetInstanceRemovedSignal = function(_, tag)
+            return if tag == "IngredientSpawn" then removed else itemRemoved
+        end,
+    }
+    local stationEnv = setmetatable({
+        game = {
+            GetService = function(_, name)
+                return if name == "CollectionService" then collection else services[name]
+            end,
+        },
+        task = {
+            delay = function(seconds, fn)
+                local timer = { At = clock + seconds, Run = fn, Cancelled = false }
+                table.insert(timers, timer)
+                return timer
+            end,
+            cancel = function(timer)
+                timer.Cancelled = true
+            end,
+        },
+    }, { __index = env })
+    local worldChunk = assert(loadstring(sources.WorldUtil))
+    setfenv(worldChunk, stationEnv)
+    local world = worldChunk()
+    local component = assert(loadstring(sources.IngredientSpawnComponent))
+    setfenv(
+        component,
+        setmetatable({
+            script = { Parent = { Parent = { Services = parent } } },
+            require = function(name)
+                assert(name == "WorldUtil")
+                return world
+            end,
+        }, { __index = stationEnv })
+    )
+    local function advance(seconds)
+        clock += seconds
+        for _, timer in table.clone(timers) do
+            if not timer.Cancelled and not timer.Ran and timer.At <= clock then
+                timer.Ran = true
+                timer.Run()
+            end
+        end
+    end
+    local function station(id, seconds, class)
+        local object = instance(class or "Part")
+        object.Name = "Station"
+        object.Size = vec(8, 2, 8)
+        object.CFrame = frame(10, 4, 0)
+        object.Parent = workspaceFake
+        object:SetAttribute("IngredientId", id)
+        object:SetAttribute("RespawnSeconds", seconds)
+        table.insert(stations, object)
+        return object
+    end
+    local strawberryStation = station("Strawberry", nil)
+    -- Initialize both historical adapters together, as server bootstrap does. Testing
+    -- IngredientPickup alone would miss a second prompt created by Dispenser.
+    for _, source in { sources.DispenserComponent, sources.IngredientPickupComponent } do
+        local adapter = assert(loadstring(source))
+        setfenv(adapter, getfenv(component))
+        adapter().Init(deps)
+    end
+    component().Init({
+        IngredientService = {
+            GetDefinition = realIngredients.GetDefinition,
+            Spawn = function(...)
+                local item = realIngredients.Spawn(...)
+                table.insert(spawned, item)
+                itemAdded:Fire(item)
+                return item
+            end,
+        },
+    })
+    check(#spawned == 1, "existing station spawns immediately")
+    local first = spawned[1]
+    local function checkSinglePickup(item)
+        local prompts = {}
+        for _, child in item:GetDescendants() do
+            if child:IsA("ProximityPrompt") then
+                table.insert(prompts, child)
+            end
+        end
+        check(#prompts == 1, "station item exposes exactly one player-facing interaction")
+        check(
+            prompts[1].Name == "CarryPrompt" and prompts[1].ActionText == "Pickup",
+            "sole station interaction is physical Pickup"
+        )
+        return prompts[1]
+    end
+    local firstPrompt = checkSinglePickup(first)
+    local record = realIngredients.GetRecord(first)
+    check(record.Id == "Strawberry" and not record.Owner and record.Claimable, "station item is registered and unowned")
+    check(first.Color == definitions.Strawberry.BlendColor, "station uses existing fallback BlendColor")
+    check(first.Position.Y == 8 and first.Position.X == 10, "station spawns three studs above top")
+    advance(20)
+    added:Fire(strawberryStation)
+    strawberryStation.AncestryChanged:Fire()
+    check(#spawned == 1, "time and duplicate tag/ancestry signals do not multiply stock")
+    local folder = instance("Folder")
+    folder.Parent = workspaceFake
+    first.Parent = folder
+    first.AncestryChanged:Fire()
+    advance(10)
+    check(#spawned == 1, "moving ingredient within Workspace does not refill station")
+    firstPrompt.Triggered:Fire(p)
+    check(not realIngredients.GetRecord(first), "sole station Pickup consumes original through carry transaction")
+    check(inventory.ThrowHeld(p) ~= nil, "sole station Pickup creates a throwable held reservation")
+    first.AncestryChanged:Fire()
+    advance(4.9)
+    check(#spawned == 1, "default respawn waits five seconds")
+    advance(0.1)
+    check(#spawned == 2 and realIngredients.GetRecord(spawned[2]), "consume refills exactly once")
+    local second = spawned[2]
+    checkSinglePickup(second)
+    second.Parent = nil
+    second.AncestryChanged:Fire()
+    check(
+        second.Destroyed and not realIngredients.GetRecord(second),
+        "removed stock is retired to prevent reparent duplication"
+    )
+    removed:Fire(strawberryStation)
+    check(timers[#timers].Cancelled, "untagging cancels pending refill")
+    advance(10)
+    check(#spawned == 2, "detached station cannot refill")
+    added:Fire(strawberryStation)
+    check(#spawned == 3, "retagging starts a fresh station")
+    strawberryStation.Parent = nil
+    strawberryStation.AncestryChanged:Fire()
+    check(spawned[3].Destroyed, "moving station out of Workspace cleans its active stock")
+    strawberryStation.Parent = workspaceFake
+    strawberryStation.AncestryChanged:Fire()
+    check(#spawned == 4, "station re-entry rebinds once")
+    strawberryStation:Destroy()
+    check(spawned[4].Destroyed, "destroying station cleans active stock")
+    advance(10)
+    check(#spawned == 4, "cleanup destruction does not schedule a refill")
+    local bananaStation = station("Banana", 2)
+    local tireStation = station("Tire", 7)
+    added:Fire(bananaStation)
+    added:Fire(tireStation)
+    spawned[5]:Destroy()
+    spawned[6]:Destroy()
+    advance(2)
+    check(#spawned == 7 and spawned[7].Name == "Banana", "stations keep independent custom timers")
+    bananaStation:Destroy()
+    tireStation:Destroy()
+    check(timers[#timers].Cancelled, "destroying station cancels pending timer")
+    advance(10)
+    check(#spawned == 7, "no late stock after station destruction")
+    for _, badSeconds in { 0, -1, math.huge, 0 / 0, "fast" } do
+        local bad = station("Tire", badSeconds)
+        added:Fire(bad)
+        spawned[#spawned]:Destroy()
+        check(timers[#timers].At == clock + 5, "invalid delay falls back to five seconds")
+        removed:Fire(bad)
+    end
+    local beforeInvalid = #spawned
+    added:Fire(station("Missing", 5))
+    added:Fire(station(nil, 5))
+    added:Fire(station(123, 5))
+    added:Fire(station("Strawberry", 5, "Model"))
+    check(#spawned == beforeInvalid, "bad IDs and non-BasePart stations never spawn")
+end
+
+do
+    inventory.ClearHeld(p)
+    inventory.ClearHeld(other)
+    inventory.AddPlayer(p)
+    p.Near = true
+    p.Character.Children.Humanoid.Health = 100
+    local fixture = instance("Model")
+    fixture.Parent = workspaceFake
+    local stashSlots = {}
+    for index = 1, 5 do
+        local slot = instance("Part")
+        slot.Size = vec(5, 1, 5)
+        slot.Parent = fixture
+        slot:SetAttribute("SlotIndex", index)
+        stashSlots[index] = slot
+    end
+    local savedTycoon = deps.TycoonService
+    deps.TycoonService = {
+        GetPlot = function(owner)
+            return if owner == p then fixture else nil
+        end,
+        GetFixtures = function()
+            return { fixture }
+        end,
+        GetOwner = function()
+            return p
+        end,
+    }
+    deps.IngredientService = realIngredients
+    local display = loadModule("StashPresentation")
+    do
+        local pad = instance("Part")
+        pad:SetAttribute("SlotIndex", 3)
+        pad.Position = vec(12, 7, -20)
+        pad.Size = vec(0.4, 10, 10)
+        pad.CFrame = frame(12, 7, -20)
+        for _, sign in { 1, -1 } do
+            pad.CFrame.RightVector = vec(0, sign, 0)
+            pad.CFrame.UpVector = vec(-sign, 0, 0)
+            for n = 1, 5 do
+                display.Refresh(pad, { IngredientId = "Strawberry", Count = n, Protected = false }, realIngredients)
+                local total = vec(0, 0, 0)
+                local copies = pad:FindFirstChild("StashDisplay"):GetChildren()
+                check(#copies == n, "rotated pad count")
+                for _, copy in copies do
+                    local part = copy:FindFirstChildWhichIsA("BasePart", true)
+                    check(math.abs(part.Size.X - 4.4) < 0.0001, "thin local X is thickness, display size is 4.4 studs")
+                    check(
+                        copy.CFrame.UpVector:Dot(vec(0, 1, 0)) > 0.999,
+                        "display normal points upward for either axis sign"
+                    )
+                    check(
+                        copy.Position.Y - part.Size.Y / 2 >= 7.2 + 0.12 - 0.0001,
+                        "proxy bottom clears actual top surface"
+                    )
+                    total += copy.Position - pad.Position
+                end
+                check(
+                    math.abs(total.X) < 0.0001 and math.abs(total.Z) < 0.0001,
+                    "all count layouts center over rotated pad"
+                )
+            end
+        end
+        pad:Destroy()
+    end
+    local function verifyDisplay(expected)
+        display.Refresh(stashSlots[3], inventory.GetSnapshot(p).Stash[3], realIngredients)
+        local folder = stashSlots[3]:FindFirstChild("StashDisplay")
+        check((if folder then #folder:GetChildren() else 0) == expected, "proxy count matches server count")
+        for _, child in (if folder then folder:GetDescendants() else {}) do
+            check(
+                not realIngredients.GetRecord(child) and not collection:HasTag(child, "IngredientWorldItem"),
+                "display has no world identity"
+            )
+            check(not child:IsA("ProximityPrompt"), "display has no pickup prompt")
+            if child:IsA("BasePart") then
+                check(
+                    child.Anchored and not child.CanCollide and not child.CanQuery and not child.CanTouch,
+                    "display parts are inert"
+                )
+                check(not inventory.CarryWorldItem(p, child), "proxy pickup rejected")
+            end
+        end
+    end
+    local function carry(id)
+        local world = realIngredients.Spawn(id, frame(), nil, true)
+        check(inventory.CarryWorldItem(p, world), "stash fixture pickup")
+    end
+    for n = 1, 5 do
+        carry("Strawberry")
+        check(inventory.Deposit(p, "Strawberry", 3), "empty/stack deposit")
+        check(not inventory.GetHeldIngredientId(p), "deposit clears held reservation")
+        check(not inventory.Deposit(p, "Strawberry", 3), "repeated deposit cannot duplicate")
+        check(inventory.GetSnapshot(p).Stash[3].Count == n, "exact deposit count")
+        verifyDisplay(n)
+    end
+    carry("Strawberry")
+    check(not inventory.Deposit(p, "Strawberry", 3), "sixth rejected")
+    check(not inventory.Withdraw(p, 3), "withdraw requires empty hands")
+    check(inventory.GetHeldIngredientId(p) == "Strawberry", "rejection preserves held unit")
+    inventory.ClearHeld(p)
+    check(not inventory.Withdraw(other, 3, p), "non-owner normal-slot withdrawal rejected")
+    check(not inventory.CanWithdraw(other, p, 1), "protected authorization rejects non-owner")
+    check(
+        inventory.GetSnapshot(p).Stash[1].Protected and not inventory.GetSnapshot(p).Stash[3].Protected,
+        "explicit protection even when empty"
+    )
+    local snapshot = inventory.GetSnapshot(p)
+    snapshot.Stash[3].Count = 100
+    check(inventory.GetSnapshot(p).Stash[3].Count == 5, "snapshot cannot mutate authoritative state")
+    local createVisual = realIngredients.CreateVisual
+    realIngredients.CreateVisual = function()
+        return nil
+    end
+    check(
+        not inventory.Withdraw(p, 3) and inventory.GetSnapshot(p).Stash[3].Count == 5,
+        "failed visual leaves stack intact"
+    )
+    realIngredients.CreateVisual = createVisual
+    local backpack = p:FindFirstChildOfClass("Backpack")
+    local backpackParent = backpack.Parent
+    backpack.Parent = nil
+    local savedBackpack = p.Backpack
+    p.Backpack = nil
+    check(
+        not inventory.Withdraw(p, 3) and inventory.GetSnapshot(p).Stash[3].Count == 5,
+        "failed equip rolls back count"
+    )
+    backpack.Parent = backpackParent
+    p.Backpack = savedBackpack
+    local duplicate = instance("Part")
+    duplicate:SetAttribute("SlotIndex", 3)
+    duplicate.Parent = fixture
+    check(not inventory.Withdraw(p, 3), "duplicate slot index rejected")
+    duplicate:Destroy()
+    p.Near = false
+    check(not inventory.Withdraw(p, 3), "distant withdrawal rejected")
+    p.Near = true
+    p.Character.Children.Humanoid.Health = 0
+    check(not inventory.Withdraw(p, 3), "dead withdrawal rejected")
+    p.Character.Children.Humanoid.Health = 100
+    check(inventory.Withdraw(p, 3), "withdraw one directly into hands")
+    check(inventory.GetHeldIngredientId(p) == "Strawberry", "withdraw equips correct ingredient")
+    verifyDisplay(4)
+    check(inventory.Deposit(p, "Strawberry", 3), "withdraw redeposit conserves unit")
+    check(inventory.Withdraw(p, 3), "repeat withdrawal")
+    inventory.ClearHeld(p)
+    carry("Banana")
+    check(not inventory.Deposit(p, "Banana", 3), "different ingredient rejected")
+    p.Near = false
+    check(not inventory.Deposit(p, "Banana", 4), "distant deposit rejected")
+    p.Near = true
+    p.Character.Children.Humanoid.Health = 0
+    check(not inventory.Deposit(p, "Banana", 4), "dead deposit rejected")
+    p.Character.Children.Humanoid.Health = 100
+    for _, index in { 0, 6, 1.5, 0 / 0 } do
+        check(not inventory.Deposit(p, "Banana", index), "invalid index rejected")
+    end
+    inventory.ClearHeld(p)
+    for n = 3, 0, -1 do
+        check(inventory.Withdraw(p, 3), "withdraw exactly one")
+        verifyDisplay(n)
+        inventory.ClearHeld(p)
+    end
+    check(
+        inventory.GetSnapshot(p).Stash[3].IngredientId == nil and not inventory.Withdraw(p, 3),
+        "final withdrawal clears type"
+    )
+    carry("Banana")
+    check(inventory.Deposit(p, "Banana", 3), "empty slot adopts new type")
+    local templates = instance("Folder")
+    templates.Name = "Ingredients"
+    templates.Parent = storage
+    local template = instance("Part")
+    template.Name = "Banana"
+    template.Size = vec(4, 3, 2)
+    template.Parent = templates
+    local pickup = instance("ProximityPrompt")
+    pickup.Parent = template
+    collection:AddTag(template, "IngredientWorldItem")
+    verifyDisplay(1)
+    check(not template.Destroyed and pickup.Parent == template, "display cloning preserves source template")
+    templates:Destroy()
+    p.CharacterRemoving:Fire(p.Character)
+    check(inventory.GetSnapshot(p).Stash[3].Count == 1, "character reset preserves stash")
+    inventory.RemovePlayer(p)
+    display.Refresh(stashSlots[3], nil, realIngredients)
+    check(
+        not stashSlots[3]:FindFirstChild("StashDisplay") and next(inventory.GetSnapshot(p).Stash) == nil,
+        "disconnect clears state and display"
+    )
+    inventory.AddPlayer(p)
+    deps.TycoonService = savedTycoon
+    fixture:Destroy()
 end
 
 local before = data.GetSnapshot(p).Cash

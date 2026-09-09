@@ -1,5 +1,6 @@
 --!strict
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
@@ -52,7 +53,7 @@ local function addPlayer(player: Player)
     services.TycoonService.AssignPlot(player)
     characterConnections[player] = player.CharacterAdded:Connect(function()
         services.BlendService.ClearCup(player)
-        services.InventoryService.ClearHeld(player)
+        services.InventoryService.DropHeld(player)
         player:SetAttribute("StunnedUntil", 0)
     end)
 end
@@ -71,8 +72,8 @@ Players.PlayerRemoving:Connect(function(player)
             "GameService",
             "BlendService",
             "CombatService",
-            "IngredientService",
             "InventoryService",
+            "IngredientService",
             "GameplayService",
             "TycoonService",
             "PlayerDataService",
@@ -84,12 +85,18 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 require(script.Services.SprintService).Init()
+if RunService:IsStudio() then
+    require(script.Services.StudioJumpTestService).Init()
+end
 services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
     require(script.Components.IngredientPickup),
+    require(script.Components.IngredientSpawn),
     require(script.Components.TurbineWheel),
+    require(script.Components.BlendProgressLights),
+    require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),
     require(script.Components.Stash),

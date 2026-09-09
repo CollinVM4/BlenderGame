@@ -14,7 +14,7 @@ local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean } 
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
 end
-function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
+function IngredientService.CreateVisual(id: string): Instance?
     local definition = IngredientService.GetDefinition(id)
     if not definition then
         return nil
@@ -29,6 +29,13 @@ function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimab
         part.Size = Vector3.new(1.5, 1.5, 1.5)
         part.Color = definition.BlendColor
         object = part
+    end
+    return object
+end
+function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
+    local object = IngredientService.CreateVisual(id)
+    if not object then
+        return nil
     end
     object.Name = id
     object:SetAttribute("IngredientId", id)

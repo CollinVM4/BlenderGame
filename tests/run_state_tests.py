@@ -12,16 +12,23 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
+parser.add_argument("--vfx-only", action="store_true", help="Run only blender presentation integration checks")
 args = parser.parse_args()
 sources = {}
 for directory in ("src/shared/Constants", "src/server/Services"):
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
+sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")
+sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encoding="utf-8")
 sources["Types"] = (ROOT / "src/shared/Types.luau").read_text(encoding="utf-8")
 sources["BlenderInputComponent"] = (ROOT / "src/server/Components/BlenderInput.luau").read_text(encoding="utf-8")
+sources["IngredientSpawnComponent"] = (ROOT / "src/server/Components/IngredientSpawn.luau").read_text(encoding="utf-8")
+sources["IngredientPickupComponent"] = (ROOT / "src/server/Components/IngredientPickup.luau").read_text(encoding="utf-8")
+sources["DispenserComponent"] = (ROOT / "src/server/Components/Dispenser.luau").read_text(encoding="utf-8")
 sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/GameplayPresentationController.luau").read_text(encoding="utf-8")
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
-bundle = "local sources = {\n" + "\n".join(
+bundle = "local vfxOnly = " + str(args.vfx_only).lower() + "\nlocal sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
 ) + "\n}\n"
 bundle += (ROOT / "tests/server_state.spec.luau").read_text(encoding="utf-8")
