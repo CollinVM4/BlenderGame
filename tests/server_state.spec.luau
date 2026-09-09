@@ -601,6 +601,25 @@ customer.Init(deps, function() end, function()
     return true
 end)
 local bad = blend.GetSnapshot(p).Result
+local requests = loadModule("CustomerRequests")
+local function requestResult(ids)
+    return { Ingredients = ids, Tags = { "Red", "Sweet", "Cold" } }
+end
+check(
+    customer.ValidateRequest(requestResult({ "Strawberry", "Tire" }), requests[1]),
+    "one Red ingredient suffices despite extras"
+)
+check(customer.ValidateRequest(requestResult({ "Banana" }), requests[2]), "Sweet uses metadata for Banana")
+check(customer.ValidateRequest(requestResult({ "Ice" }), requests[3]), "Cold uses metadata for Ice")
+check(not customer.ValidateRequest(requestResult({ "Tire" }), requests[1]), "forged result tags cannot satisfy Red")
+check(not customer.ValidateRequest(requestResult({}), requests[1]), "empty smoothie fails")
+check(not customer.ValidateRequest(requestResult({ "Unknown" }), requests[1]), "unknown ingredient fails closed")
+local combined = { Id = "RedCold", DisplayText = "Red and cold", RequiredTags = { "Red", "Cold" }, BasePayout = 40 }
+check(
+    customer.ValidateRequest(requestResult({ "Strawberry", "Ice" }), combined),
+    "combined request accepts tags across ingredients"
+)
+check(not customer.ValidateRequest(requestResult({ "Strawberry" }), combined), "combined request requires every tag")
 check(customer.CalculateGrade(bad, "Sweet") == "D", "bad match receives D")
 check(customer.CalculateGrade(bad, "Weird") == "A", "same smoothie matches Weird")
 check(customer.CalculateGrade(result.Result, "Surprise Me") == "A", "Surprise Me rewards variety")
@@ -858,7 +877,9 @@ function p.Character.Children.Humanoid:EquipTool(tool)
 end
 input.CFrame = frame()
 for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
-    refs[name] = { CFrame = frame() }
+    refs[name] = instance("Part")
+    refs[name].Name = name
+    refs[name].CFrame = frame(if name == "CustomerCounter" then 9 else 0, 0, 0)
 end
 for _, id in { "Strawberry", "Banana", "Watermelon", "Ice", "Blueberry", "Apple", "Noob", "Tire", "Mystery" } do
     check(
@@ -1328,14 +1349,38 @@ check(two.Color.R == repeated.Color.R and two.Color.G == repeated.Color.G, "Myst
 blend.ClearCup(p)
 check(dev.SpawnCustomer(p) ~= nil and days.IsServing(p), "dev customer starts serveable day")
 check(dev.SpawnCustomer(p) == customer.GetSnapshot(p).Model, "dev spawn reuses active customer")
+check(customer.GetSnapshot(p).RequestId == nil and not customer.Serve(p), "arrival required before request and serving")
 flush()
 for index, reaction in { "Love", "Disgust", "Freeze" } do
-    local smoothie = actualBlend({ "Strawberry", "Tire", "Noob" })
+    local smoothie = actualBlend(if index == 2 then { "Tire", "Noob" } else { "Strawberry", "Ice", "Tire" })
     local current = customer.GetSnapshot(p)
     check(current.Ready, "waypoint arrival enables serving")
-    local grade = customer.CalculateGrade(smoothie, current.Preference)
-    local payout = customer.CalculatePayout(p, grade)
-    check(dev.ForceReaction(p, reaction), "force configured reaction " .. reaction)
+    local request
+    for _, definition in requests do
+        if definition.Id == current.RequestId then
+            request = definition
+        end
+    end
+    check(request ~= nil, "arrival assigns configured request")
+    local bubble = current.Model.PrimaryPart:FindFirstChild("OrderBubble")
+    check(
+        bubble.AlwaysOnTop and bubble.Adornee == current.Model:FindFirstChild("Head"),
+        "order adorns head above world geometry"
+    )
+    check(bubble:FindFirstChildWhichIsA("TextLabel").BackgroundTransparency == 1, "order has no gray panel")
+    check(
+        current.Model:GetPivot().Position.X == refs.CustomerCounter.CFrame.Position.X,
+        "arrival uses actual CustomerCounter destination"
+    )
+    check(
+        bubble:FindFirstChildWhichIsA("TextLabel").Text == request.DisplayText,
+        "bubble displays configured request text"
+    )
+    check(not customer.CanSpawn(p), "active order prevents duplicate spawn")
+    local success = index ~= 2
+    local grade = if success then "A" else "D"
+    local payout = if success then request.BasePayout else 0
+    reaction = if success then "Smile" else "Disgust"
     check(not dev.ForceReaction(p, "Fake"), "unknown reaction rejected")
     local cup
     for _, object in allInstances do
@@ -1345,23 +1390,39 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
     end
     local authenticated = blend.GetCup(p)
     authenticated.Ingredients[1] = "Mystery"
-    check(blend.GetCup(p).Ingredients[1] == "Strawberry", "cup snapshot cannot mutate authoritative contents")
+    check(
+        blend.GetCup(p).Ingredients[1] == smoothie.Ingredients[1],
+        "cup snapshot cannot mutate authoritative contents"
+    )
     cup.Parent = other.Backpack
     check(not blend.GetCup(p) and not blend.GetCup(other, cup), "transferred tool does not authorize either player")
     cup.Parent = p.Backpack
     cup:SetAttribute("Payout", 999999)
     cup:SetAttribute("BlendId", "forged")
-    p:SetAttribute("playerCash", 999999)
+    if success then
+        p:SetAttribute("playerCash", 999999)
+    end
     local cash = data.GetCash(p)
+    p.Near = false
+    check(
+        not customer.Serve(p) and blend.GetCup(p) ~= nil and data.GetCash(p) == cash,
+        "distant serve preserves cup and cash"
+    )
+    p.Near = true
     check(not customer.Serve(other), "foreign player cannot serve owner's cup/customer")
     check(customer.Serve(p, 999999), "real serve transaction succeeds")
+    check(bubble.Destroyed, "order billboard destroyed on completion")
     check(
         data.GetCash(p) == cash + payout and p:GetAttribute("playerCash") == cash + payout,
         "cash payout ignores client reward and cash attributes"
     )
     check(
         p:GetAttribute("CustomerSatisfaction") == grade and p:GetAttribute("CustomerReaction") == reaction,
-        "grade independent of forced reaction"
+        "success selects positive reaction and failure selects negative reaction"
+    )
+    check(
+        current.Model:GetAttribute("RequestId") == nil and current.Model:GetAttribute("OrderSucceeded") == success,
+        "order completed on success or failure"
     )
     check(cup.Destroyed and not blend.GetCup(p) and not customer.Serve(p), "served cup cannot be replayed")
     check(#days.GetSnapshot(p).Grades == index, "GameService records authoritative completion")
@@ -1548,6 +1609,48 @@ collection:AddTag(invalidMarker, "CustomerExit")
 check(failsWith("Must resolve to a BasePart"), "marker without physical part diagnosed")
 collection:RemoveTag(invalidMarker, "CustomerExit")
 collection:AddTag(fixtureObjects.CustomerExit, "CustomerExit")
+-- Reproduce an old customer-area tag resolving to its Start Day PrimaryPart.
+local customerArea = instance("Model")
+customerArea.Name = "Customer Area"
+customerArea.Parent = plot
+fixtureObjects.StartDayButton.Parent = customerArea
+fixtureObjects.CustomerCounter.Parent = customerArea
+customerArea.PrimaryPart = fixtureObjects.StartDayButton
+collection:AddTag(customerArea, "CustomerCounter")
+check(dev.ValidatePlot(p), "Studio validator agrees with explicit customer marker precedence")
+check(
+    realTycoon.GetReference(p, "CustomerCounter") == fixtureObjects.CustomerCounter,
+    "explicit marker wins over old container tag"
+)
+collection:RemoveTag(fixtureObjects.CustomerCounter, "CustomerCounter")
+local unresolved, explanation = realTycoon.GetReference(p, "CustomerCounter")
+check(
+    not unresolved and string.find(explanation, "Customer Area", 1, true),
+    "ambiguous container reports path instead of selecting Start Day"
+)
+fixtureObjects.CustomerCounter.Name = "CustomerCounter"
+check(
+    realTycoon.GetReference(p, "CustomerCounter") == fixtureObjects.CustomerCounter,
+    "legacy container resolves explicit named marker instead of PrimaryPart"
+)
+collection:AddTag(fixtureObjects.CustomerCounter, "CustomerCounter")
+collection:AddTag(fixtureObjects.StartDayButton, "CustomerCounter")
+check(not realTycoon.GetReference(p, "CustomerCounter"), "two tagged parts remain a configuration error")
+collection:RemoveTag(fixtureObjects.CustomerCounter, "CustomerCounter")
+unresolved, explanation = realTycoon.GetReference(p, "CustomerCounter")
+check(not unresolved and string.find(explanation, "Start Day", 1, true), "Start Day cannot be a customer marker")
+collection:RemoveTag(fixtureObjects.StartDayButton, "CustomerCounter")
+collection:RemoveTag(customerArea, "CustomerCounter")
+collection:AddTag(fixtureObjects.CustomerCounter, "CustomerCounter")
+fixtureObjects.StartDayButton.Parent = plot
+fixtureObjects.CustomerCounter.Parent = plot
+customerArea:Destroy()
+if customerOnly then
+    print(
+        "PASS: customer request/serve loop, transparent prompt cleanup, movement target, and plot marker resolution regressions."
+    )
+    return
+end
 slots[2]:SetAttribute("SlotIndex", 1)
 check(failsWith("Duplicate SlotIndex") and failsWith("FAIL SlotIndex 2"), "duplicate and missing slots diagnosed")
 slots[2]:SetAttribute("SlotIndex", 2.5)

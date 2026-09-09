@@ -58,7 +58,16 @@ function DevContentService.ValidatePlot(player: Player): (boolean, { string })
             }
         do
             local fixtures = deps.TycoonService.GetFixtures(plot, role)
-            if #fixtures == 0 then
+            if role == "CustomerSpawn" or role == "CustomerCounter" or role == "CustomerExit" then
+                local marker, reason = deps.TycoonService.GetReference(player, role)
+                report(
+                    role,
+                    marker ~= nil,
+                    if marker
+                        then marker:GetFullName()
+                        else "Missing/invalid marker. Must resolve to a BasePart: " .. (reason or role)
+                )
+            elseif #fixtures == 0 then
                 report(role, false, "Missing tag inside assigned plot (tags outside this plot do not count)")
             elseif #fixtures > 1 then
                 local paths = {}

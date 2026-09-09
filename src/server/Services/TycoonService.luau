@@ -67,12 +67,74 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
     end
 end
 
-function TycoonService.GetReference(player: Player, name: string): BasePart?
+local customerRoles = { CustomerSpawn = true, CustomerCounter = true, CustomerExit = true }
+
+-- Customer destinations must be explicit markers, never an arbitrary part of a tagged area.
+-- Prefer tagged parts over legacy tagged containers so tagging the actual marker repairs
+-- an old area-level tag without making the reference ambiguous.
+local function customerReference(fixtures: { Instance }, name: string): (BasePart?, string?)
+    local markers: { BasePart } = {}
+    for _, fixture in fixtures do
+        if fixture:IsA("BasePart") then
+            table.insert(markers, fixture)
+        end
+    end
+    if #markers == 0 then
+        for _, fixture in fixtures do
+            local parts: { BasePart } = {}
+            local named: { BasePart } = {}
+            for _, child in fixture:GetDescendants() do
+                if child:IsA("BasePart") then
+                    table.insert(parts, child)
+                    if child.Name == name then
+                        table.insert(named, child)
+                    end
+                end
+            end
+            local marker = if #named == 1 then named[1] elseif #parts == 1 then parts[1] else nil
+            if not marker then
+                return nil,
+                    "Tag the " .. name .. " marker BasePart itself; ambiguous/empty container " .. fixture:GetFullName()
+            end
+            if not table.find(markers, marker) then
+                table.insert(markers, marker)
+            end
+        end
+    end
+    if #markers ~= 1 then
+        local paths = {}
+        for _, fixture in fixtures do
+            table.insert(paths, fixture:GetFullName())
+        end
+        return nil,
+            string.format(
+                "%s: expected one marker, found %d; tagged objects=[%s]",
+                name,
+                #markers,
+                table.concat(paths, ", ")
+            )
+    end
+    local marker = markers[1]
+    if
+        CollectionService:HasTag(marker, "StartDayButton")
+        or marker.Name == "StartDayButton"
+        or marker:FindFirstChild("StartDayPrompt")
+    then
+        return nil,
+            name .. " resolves to Start Day button " .. marker:GetFullName() .. "; tag a separate customer marker"
+    end
+    return marker
+end
+
+function TycoonService.GetReference(player: Player, name: string): (BasePart?, string?)
     local plot = TycoonService.GetPlot(player)
     if not plot then
-        return nil
+        return nil, "No assigned plot"
     end
     local fixtures = TycoonService.GetFixtures(plot, name)
+    if (customerRoles :: any)[name] then
+        return customerReference(fixtures, name)
+    end
     if #fixtures ~= 1 then
         return nil
     end

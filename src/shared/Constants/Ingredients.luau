@@ -32,7 +32,7 @@ local Ingredients: { [string]: { Id: string, DisplayName: string, Tags: { string
         Tire = {
             Id = "Tire",
             DisplayName = "Tire",
-            Tags = { "Gross", "Weird" },
+            Tags = { "Black", "Gross", "Weird" },
             BlendColor = Color3.fromRGB(45, 45, 50),
             Rarity = "Uncommon",
         },
