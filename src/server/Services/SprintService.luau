@@ -7,6 +7,7 @@ local SprintConfig = require(ReplicatedStorage.Shared.Constants.SprintConfig)
 local getSprintEvent = require(ReplicatedStorage.Shared.Events.SprintEvents)
 
 local SprintService = {}
+local movement: any
 
 local staminaCurrent: { [Player]: number } = {}
 local staminaMax: { [Player]: number } = {}
@@ -14,7 +15,7 @@ local isSprinting: { [Player]: boolean } = {}
 
 local function ensurePlayer(player: Player)
     if staminaMax[player] == nil then
-        staminaMax[player] = SprintConfig.BASE_STAMINA_MAX
+        staminaMax[player] = movement.GetMaxStamina(player)
     end
     if staminaCurrent[player] == nil then
         staminaCurrent[player] = staminaMax[player]
@@ -42,24 +43,53 @@ local function setSprinting(player: Player, wantsToSprint: boolean)
         wantsToSprint = false
     end
 
-    isSprinting[player] = wantsToSprint
+    local humanoid = getHumanoid(player)
+    isSprinting[player] = wantsToSprint and humanoid ~= nil and humanoid.Health > 0
 end
 
-function SprintService.Init()
-    local sprintEvent = getSprintEvent()
-
-    for _, player in Players:GetPlayers() do
-        ensurePlayer(player)
+function SprintService.ApplySpeed(player: Player)
+    local humanoid = getHumanoid(player)
+    if humanoid then
+        humanoid.WalkSpeed = if os.clock() < (tonumber(player:GetAttribute("StunnedUntil")) or 0)
+            then 0
+            elseif isSprinting[player] then movement.GetSprintWalkSpeed(player)
+            else movement.GetBaseWalkSpeed(player)
     end
+end
 
-    Players.PlayerAdded:Connect(function(player)
-        ensurePlayer(player)
-    end)
+function SprintService.ResetCharacter(player: Player)
+    ensurePlayer(player)
+    isSprinting[player] = false
+    staminaMax[player] = movement.GetMaxStamina(player)
+    staminaCurrent[player] = staminaMax[player]
+    player:SetAttribute("StaminaMax", staminaMax[player])
+    player:SetAttribute("StaminaCurrent", staminaCurrent[player])
+    player:SetAttribute("IsSprinting", false)
+    SprintService.ApplySpeed(player)
+end
 
-    Players.PlayerRemoving:Connect(function(player)
-        staminaCurrent[player] = nil
-        staminaMax[player] = nil
-        isSprinting[player] = nil
+-- Copy authoritative runtime values for server diagnostics; never read UI attributes.
+function SprintService.GetSnapshot(player: Player)
+    ensurePlayer(player)
+    return {
+        StaminaCurrent = staminaCurrent[player],
+        StaminaMax = staminaMax[player],
+        IsSprinting = isSprinting[player],
+    }
+end
+
+function SprintService.RemovePlayer(player: Player)
+    staminaCurrent[player] = nil
+    staminaMax[player] = nil
+    isSprinting[player] = nil
+end
+
+function SprintService.Init(dependencies)
+    movement = dependencies.MovementService
+    local sprintEvent = getSprintEvent()
+    movement.Changed:Connect(function(player: Player)
+        SprintService.SetStaminaMax(player, movement.GetMaxStamina(player))
+        SprintService.ApplySpeed(player)
     end)
 
     sprintEvent.OnServerEvent:Connect(function(player: Player, wantsToSprint: boolean)
@@ -73,6 +103,10 @@ function SprintService.Init()
         for _, player in Players:GetPlayers() do
             ensurePlayer(player)
 
+            local humanoid = getHumanoid(player)
+            if not humanoid or humanoid.Health <= 0 then
+                isSprinting[player] = false
+            end
             if isSprinting[player] then
                 staminaCurrent[player] =
                     math.max(0, staminaCurrent[player] - SprintConfig.STAMINA_DRAIN_RATE * deltaTime)
@@ -86,14 +120,8 @@ function SprintService.Init()
 
             player:SetAttribute("StaminaCurrent", staminaCurrent[player])
 
-            local humanoid = getHumanoid(player)
-            if humanoid then
-                humanoid.WalkSpeed = if os.clock() < (player:GetAttribute("StunnedUntil") or 0)
-                    then 0
-                    else isSprinting[player]
-                            and SprintConfig.WALK_SPEED_NORMAL * SprintConfig.SPRINT_SPEED_MULTIPLIER
-                        or SprintConfig.WALK_SPEED_NORMAL
-            end
+            player:SetAttribute("IsSprinting", isSprinting[player])
+            SprintService.ApplySpeed(player)
 
             sprintEvent:FireClient(player, isSprinting[player], staminaCurrent[player], staminaMax[player])
         end
@@ -102,11 +130,16 @@ end
 
 -- Extension point for future upgrades that increase a player's stamina capacity
 function SprintService.SetStaminaMax(player: Player, newMax: number)
+    assert(
+        type(newMax) == "number" and newMax == newMax and newMax > 0 and newMax < math.huge,
+        "Invalid stamina maximum"
+    )
     ensurePlayer(player)
+    local increase = math.max(0, newMax - staminaMax[player])
     staminaMax[player] = newMax
-    staminaCurrent[player] = math.min(staminaCurrent[player], newMax)
+    staminaCurrent[player] = math.clamp(staminaCurrent[player] + increase, 0, newMax)
     player:SetAttribute("StaminaMax", staminaMax[player])
     player:SetAttribute("StaminaCurrent", staminaCurrent[player])
 end
 
-return SprintService
+return require(script.Parent.StudioServices).Wrap("SprintService", SprintService)

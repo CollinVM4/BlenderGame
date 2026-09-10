@@ -9,7 +9,15 @@ export type Smoothie =
     { BlendId: string?, Ingredients: { string }, Tags: { string }, Color: Color3, Discovery: string? }
 export type PlayerData = {
     Cash: number,
-    Upgrades: { Hand: number, StackSize: number, BlendSpeed: number, Payout: number },
+    Upgrades: {
+        Hand: number,
+        StackSize: number,
+        BlendSpeed: number,
+        Payout: number,
+        MovementSpeed: number,
+        Jump: number,
+        SprintStamina: number,
+    },
     Discoveries: { [string]: boolean },
     Stats: { CustomersServed: number, SmoothiesMade: number, PlayersSlapped: number, IngredientsStolen: number },
 }

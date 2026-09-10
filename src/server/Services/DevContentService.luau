@@ -233,6 +233,101 @@ function DevContentService.ResetScene(player: Player): boolean
     deps.IngredientService.RemovePlayer(player)
     return true
 end
+local function movementAllowed(player: Player): boolean
+    -- Movement-only tools are safe temporary overrides; no content-spawning opt-in needed.
+    if not (RunService:IsStudio() and RunService:IsServer() and RunService:IsRunning()) then
+        warn("[Movement debug] Use the SERVER Command Bar during Studio Play")
+        return false
+    end
+    if typeof(player) ~= "Instance" or not player:IsA("Player") or player.Parent ~= game:GetService("Players") then
+        warn("[Movement debug] Expected a connected Player; select a player from Players")
+        return false
+    end
+    return true
+end
+local function requireMovementRuntime(method: string)
+    assert(
+        deps and deps.MovementService and type(deps.MovementService[method]) == "function",
+        "[Movement debug] Runtime MovementService." .. method .. " is not bound; sync scripts and restart Play"
+    )
+    assert(
+        deps.SprintService and type(deps.SprintService.ResetCharacter) == "function",
+        "[Movement debug] Runtime SprintService is not bound; sync scripts and restart Play"
+    )
+end
+local function setMovementLevel(player: Player, track: string, level: number): boolean
+    if not movementAllowed(player) then
+        return false
+    end
+    if type(level) ~= "number" or level ~= level or level < 0 or level > 3 or level ~= math.floor(level) then
+        warn("[Movement debug] " .. track .. " level must be an integer from 0 to 3; received " .. tostring(level))
+        return false
+    end
+    requireMovementRuntime("SetStudioLevel")
+    deps.MovementService.SetStudioLevel(player, track, level)
+    if track == "SprintStamina" then
+        -- Fresh full-bar timing test; real purchases still use capacity-delta behavior.
+        deps.SprintService.ResetCharacter(player)
+    end
+    return true
+end
+function DevContentService.SetMovementSpeedLevel(player: Player, level: number): boolean
+    return setMovementLevel(player, "MovementSpeed", level)
+end
+function DevContentService.SetSprintStaminaLevel(player: Player, level: number): boolean
+    return setMovementLevel(player, "SprintStamina", level)
+end
+function DevContentService.SetJumpLevel(player: Player, level: number): boolean
+    return setMovementLevel(player, "Jump", level)
+end
+function DevContentService.ResetMovement(player: Player): boolean
+    if not movementAllowed(player) then
+        return false
+    end
+    requireMovementRuntime("ResetStudioOverrides")
+    deps.MovementService.ResetStudioOverrides(player)
+    deps.SprintService.ResetCharacter(player)
+    return true
+end
+function DevContentService.PrintMovement(player: Player): string?
+    if not movementAllowed(player) then
+        return nil
+    end
+    requireMovementRuntime("GetStudioSnapshot")
+    local stats, overrides = deps.MovementService.GetStudioSnapshot(player)
+    local runtime = deps.SprintService.GetSnapshot(player)
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    local lines = { "[Movement] " .. player.Name }
+    for _, track in { "MovementSpeed", "SprintStamina", "Jump" } do
+        local purchased = deps.PlayerDataService.GetUpgrade(player, track) - 1
+        local override = overrides[track]
+        local effective = if override ~= nil then override else purchased
+        table.insert(
+            lines,
+            string.format(
+                "  %sLevel: %d (purchased: %d; Studio override: %s)",
+                track,
+                effective,
+                purchased,
+                tostring(override)
+            )
+        )
+    end
+    for _, key in { "BaseWalkSpeed", "SprintWalkSpeed", "JumpPower" } do
+        table.insert(lines, "  " .. key .. " (resolved): " .. tostring(stats[key]))
+    end
+    for _, key in { "StaminaCurrent", "StaminaMax", "IsSprinting" } do
+        table.insert(lines, "  " .. key .. ": " .. tostring(runtime[key]))
+    end
+    for _, key in { "WalkSpeed", "JumpPower", "JumpHeight", "UseJumpPower" } do
+        table.insert(lines, "  Humanoid." .. key .. ": " .. tostring(if humanoid then (humanoid :: any)[key] else nil))
+    end
+    table.insert(lines, "  StunnedUntil: " .. tostring(player:GetAttribute("StunnedUntil")))
+    local output = table.concat(lines, "\n")
+    print(output)
+    return output
+end
+
 -- Keep legacy names callable; all aliases retain the same Studio/opt-in gate.
 DevContentService.ClearBlender = DevContentService.ResetBlender
 DevContentService.ResetPlot = DevContentService.ResetScene

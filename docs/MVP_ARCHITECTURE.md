@@ -27,7 +27,9 @@ The bootstrap explicitly loads services, injects dependencies, initializes exist
 | CombatService | Optional placeholder slap Tool and server checks for equipped identity, facing, range, obstruction, cooldown, damage, knockback, stun and one-unit drop. `GrantHand`, `Slap`, `RemovePlayer`. |
 | DevContentService | Opt-in Studio filming operations: `SpawnIngredient`, `ClearBlender`/`ResetBlender`, `PrepareCombination`, `SpawnCustomer`, `ForceReaction`, `ResetPlot`/`ResetScene`, `IsEnabled`. No dev remote. |
 | GameplayService | Narrow, throttled client request adapter for a future inventory UI. Does not own gameplay state. |
-| SprintService | Existing sprint/stamina behavior. Rejects non-boolean requests and respects the server's short movement stun. |
+| MovementService | Resolves purchased movement stats and temporary Studio jump overrides. Publishes display attributes and applies jump. `RefreshPlayer`, `ApplyCharacter`, movement getters, `SetStudioJumpTier`, `RemovePlayer`. |
+| SprintService | Owns runtime stamina/sprint state and is the sole WalkSpeed writer. Consumes MovementService, preserves stun precedence, validates capacity changes, and resets through bootstrap on respawn. |
+| StudioJumpTestService | Studio-only pads request temporary MovementService overrides; reset restores the purchased jump tier. |
 | PhysicsService | `GetSpinStrength` measures `AssemblyAngularVelocity.Magnitude`. `GetBlendDelta(part, dt?)` multiplies it by `Economy.BlendProgressScale` and elapsed seconds (default 1/60). `GetRPM` is display/debugging only. |
 | AudioService | Existing sound assets and blend group behavior retained; return type clarified. |
 | FilmingUtil | Output-only GameplayPresentation events and Studio-only DebugFilmLoop logging. |
@@ -97,7 +99,7 @@ Existing SprintRequest remains server-created. New `ReplicatedStorage.Shared.Eve
 | ReleaseIngredient | ingredient ID | Removes one owned unit and throws it forward/up from the player's character; position and speed are server-selected. |
 | Deposit | ingredient ID, slot index | One carried unit to the player's nearby stash. |
 | Withdraw | nil, slot index | One unit from the player's nearby stash. |
-| PurchaseUpgrade | Hand/StackSize/BlendSpeed/Payout | Buys only the next level at the configured cash cost. |
+| PurchaseUpgrade | Hand/StackSize/BlendSpeed/Payout/MovementSpeed/Jump/SprintStamina | Buys only the next level at the configured cash cost; movement purchases refresh resolved stats. |
 
 Requests are throttled per player (0.15s); strings/slot bounds are checked before use. There is no remote for damage amounts, cash grants, blend completion, smoothie contents, reactions, or developer actions. World prompts independently enter validated service APIs. UI request responses and an inventory snapshot subscription remain TODO; `GetSnapshot` is server-only today.
 
@@ -143,3 +145,72 @@ git diff --check
 ```
 
 Studio acceptance: boot an empty Workspace (warnings but no blocked bootstrap); then a one-plot scene for the complete three-customer loop; then two plots/clients for foreign input/dispense/serve rejection, contested claims, protected stealing, cooldowns, respawn and leave/reset cleanup. Remove/re-add tags and reparent fixtures out of/into Workspace to verify component detachment and rebinding. Missing customer markers must leave the day unstarted or recoverable via ResumeDay.
+
+## Movement upgrade foundation
+
+PlayerDataService owns purchased levels and cash in private, in-memory records. Movement tracks retain definition indices 1?4; their replicated `MovementSpeedLevel`, `JumpLevel`, and `SprintStaminaLevel` attributes expose indices minus one (levels 0?3). Existing upgrade indexing is unchanged. Attributes are display output, never purchase authority. MovementService publishes effective displayed levels, including temporary Studio overrides; PlayerDataService records retain purchased levels.
+
+| Display level | WalkSpeed | Sprint speed | Max stamina | Jump power equivalent | Cost to reach tier |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 22 | 33 | 110 | 60 | 0 |
+| 1 | 27 | 40.5 | 140 | 72 | 100 |
+| 2 | 33 | 49.5 | 170 | 94 | 250 |
+| 3 | 40 | 60 | 230 | 116 | 500 |
+
+Tracks are independent. Tier values and temporary demo prices live only in `Constants/Upgrades.luau`. SprintConfig holds multiplier 1.5, drain 20/second, and regeneration 30/second with no delay. Full bars permit 5.5/7/8.5/11.5 seconds of continuous sprint.
+
+MovementService resolves `BaseWalkSpeed`, `SprintWalkSpeed`, `MaxStamina`, and jump power from PlayerDataService. It publishes `BaseWalkSpeed`, `SprintWalkSpeed`, and `StaminaMax` alongside displayed levels, and emits its server-only Changed signal. SprintService consumes that signal to update capacity and speed immediately. MovementService does not depend on SprintService; dependencies flow from SprintService to MovementService to PlayerDataService and are injected by bootstrap.
+
+SprintService alone writes Humanoid.WalkSpeed, on refresh/reset and Heartbeat: stunned = 0, sprinting = resolved sprint speed, otherwise resolved normal speed. It owns current stamina and sprint intent, publishing `StaminaCurrent` and `IsSprinting`. Increasing capacity adds only the capacity delta to current stamina, capped at the new max; decreases clamp current stamina. SetStaminaMax rejects nonpositive and nonfinite values. Exhaustion stops sprint at zero; the keyboard controller requires a fresh Shift press to restart. Dead/missing characters cannot keep sprint intent active.
+
+Bootstrap owns the single CharacterAdded callback. It preserves existing inventory/cup/stun cleanup, reapplies resolved movement and jump, stops sprint, and fills stamina to the current purchased maximum. It handles characters already present during initialization. Missing Humanoids are awaited asynchronously for up to five seconds for jump application; stale characters and departed players are ignored. SprintService applies base speed immediately when possible or on its next update. With UseJumpPower false, jump uses `power^2 / (2 * workspace.Gravity)` without changing jump mode.
+
+StudioJumpTestService retains its existing pad geometry and JUMP 1/2/3 powers 72/94/116, resolved from shared Jump definitions. Pads call MovementService.SetStudioJumpTier; the temporary override survives respawn but never changes purchased data. RESET clears the override and reapplies the actual purchased jump tier. Leaving clears both override and runtime state. This server-only API rejects calls outside Studio.
+
+The future Upgrades UI only sends `GameplayRequest:FireServer("PurchaseUpgrade", upgradeId)` and reads replicated server state/results. No UI is implemented. GameplayService reuses the same RemoteEvent in the server-to-client direction:
+
+```lua
+GameplayRequest.OnClientEvent:Connect(function(kind, result)
+    -- kind == "PurchaseUpgradeResult"
+    -- result = { success: boolean, reason: string, upgradeId: string?, level: number? }
+end)
+```
+
+Reasons are `Success`, `InsufficientCash`, `MaxLevel`, and `InvalidUpgrade`. `level` is the current internal index minus one, including on insufficient-cash/max-level failures; invalid IDs have no level, and malformed IDs are not echoed. This result uses a zero-based level for legacy tracks as well, without changing their stored indices. The existing shared 0.15-second request throttle silently drops excess requests. The server derives costs, next index, and stat values; extra client arguments cannot dictate them. Successful movement purchases call RefreshPlayer. Direct server callers of PlayerDataService.PurchaseUpgrade must also refresh movement after a successful movement purchase.
+
+Validation lives in `tests/server_state.spec.luau` and exercises the real services through a mocked Roblox boundary. Live Studio checks remain necessary for traversal feel, actual pad touches, delayed character spawn, both jump modes, two-client attribute/result replication, sprint/stun interaction, and respawn. No new manually placed objects, map changes, UI, persistence, input modalities, or movement anti-cheat are required or added.
+
+Movement foundation validation: 158 movement assertions pass, including real Studio pad handlers, purchase payloads, speed/stun behavior, stamina, jump modes, and respawn resets. The customer-only regression run (including VFX and movement coverage) passes. All source files compile, changed Luau files pass StyLua, Rojo 7.7.0 builds, and git diff --check passes. Full-suite execution stops at the pre-existing stash assertion `thin local X is thickness, display size is 4.4 studs`; this also reproduces from an isolated unchanged HEAD snapshot. Roblox-aware analysis reports no errors in movement changes but remains blocked by baseline errors in StashPromptController lines 36/39 and CustomerService line 337, also reproduced on unchanged HEAD. Live Studio validation has not been performed.
+
+### Studio movement commands
+
+In Play mode, select the **Server** Command Bar and run this complete snippet (change the selected player for multiplayer testing):
+
+```lua
+local dev = require(game:GetService("ServerScriptService").Server.Services.DevContentService)
+local player = game:GetService("Players"):GetPlayers()[1]
+assert(player, "Wait for a player to join")
+dev.SetMovementSpeedLevel(player, 3) -- accepts 0, 1, 2, 3
+dev.SetSprintStaminaLevel(player, 3) -- accepts 0, 1, 2, 3; full bar, stops sprint
+dev.SetJumpLevel(player, 3)          -- accepts 0, 1, 2, 3
+dev.PrintMovement(player)
+```
+
+To reset from a later Command Bar submission, bind locals again:
+
+```lua
+local dev = require(game:GetService("ServerScriptService").Server.Services.DevContentService)
+local player = game:GetService("Players"):GetPlayers()[1]
+dev.ResetMovement(player)
+dev.PrintMovement(player)
+```
+
+These methods extend DevContentService and its existing StudioServices bridge. They require Studio, the server, Play mode, and a player currently in Players. Movement commands do not require EnableDevContent; other dev content tools retain their existing opt-in gate. Setters warn and return false on invalid levels or unavailable dev access. Missing runtime MovementService bindings raise explicit errors. They never spend cash or change purchased ownership. MovementService's lower-level override APIs also enforce Studio Play server access.
+
+Each track has one temporary displayed-level override (0?3), which takes precedence over purchased state. Jump commands and pads share the same slot: the last setter wins. The pad RESET clears only jump; ResetMovement clears speed, stamina, and jump overrides, reapplies actual purchased tiers, stops sprint, and fills purchased stamina. Overrides survive character respawns, which stop sprint and refill the effective maximum; leaving removes them. EnableDevContent does not affect movement commands; use ResetMovement when finished.
+
+The stamina setter intentionally stops sprint and fills the selected maximum even when selecting the same tier again, so each timing test can start fresh. Speed/jump setters preserve ongoing sprint/stamina. Real purchases retain their existing capacity-delta behavior and remain underneath active debug overrides; reset reveals the latest purchased tier. The replicated level attributes and resolved speed/capacity attributes reflect effective overrides. Purchased levels remain private PlayerDataService state and are separately identified by PrintMovement. PrintMovement labels effective level, purchased level, and override separately, and prints authoritative stamina/sprint state plus actual Humanoid properties and StunnedUntil. It also returns the formatted string for inspection.
+
+Live Studio verification remains necessary for the actual Command Bar bridge, Output readability, multiplayer selection/replication, traversal feel, pad contact, and character lifecycle timing. Automated coverage includes all four debug tiers, cash/ownership isolation, runtime override enforcement, shared jump precedence, reset/respawn/cleanup, print fields, and production/client rejection.
+
+Movement Command Bar regression: a separate module cache loads the real DevContentService/StudioServices proxy before runtime publication. Tests then publish the runtime services and invoke speed, jump, stamina, reset, and print through that proxy with EnableDevContent absent/false. Assertions verify effective level attributes, resolved speeds, runtime Humanoid updates, ownership isolation, and explicit missing-bridge/missing-MovementService errors. Earlier movement tests initialized DevContentService directly and always enabled dev content, so they missed the silent opt-in gate and did not require effective level attributes. Live Studio command execution is still required; automated tests simulate the separate cache and bridge rather than attaching to a Studio session.

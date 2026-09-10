@@ -5,6 +5,8 @@ local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
+    MovementService = require(script.Services.MovementService),
+    SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
     IngredientService = require(script.Services.IngredientService),
     InventoryService = require(script.Services.InventoryService),
@@ -20,6 +22,8 @@ local services: { [string]: any } = {
 require(script.Services.FilmingUtil).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
+services.MovementService.Init(services)
+services.SprintService.Init(services)
 services.TycoonService.Init(services.PlayerDataService)
 for _, name in
     { "InventoryService", "BlendService", "GameService", "MarketService", "CombatService", "DevContentService" }
@@ -47,15 +51,22 @@ local function addPlayer(player: Player)
     end
     initialized[player] = true
     services.PlayerDataService.AddPlayer(player)
+    services.MovementService.RefreshPlayer(player)
     services.InventoryService.AddPlayer(player)
     services.BlendService.Reset(player)
     services.GameService.AddPlayer(player)
     services.TycoonService.AssignPlot(player)
-    characterConnections[player] = player.CharacterAdded:Connect(function()
+    local function onCharacterAdded(character: Model)
         services.BlendService.ClearCup(player)
         services.InventoryService.DropHeld(player)
         player:SetAttribute("StunnedUntil", 0)
-    end)
+        services.MovementService.ApplyCharacter(player, character)
+        services.SprintService.ResetCharacter(player)
+    end
+    characterConnections[player] = player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
 end
 Players.PlayerAdded:Connect(addPlayer)
 for _, player in Players:GetPlayers() do
@@ -76,6 +87,8 @@ Players.PlayerRemoving:Connect(function(player)
             "IngredientService",
             "GameplayService",
             "TycoonService",
+            "SprintService",
+            "MovementService",
             "PlayerDataService",
         }
     do
@@ -84,9 +97,8 @@ Players.PlayerRemoving:Connect(function(player)
     initialized[player] = nil
 end)
 
-require(script.Services.SprintService).Init()
 if RunService:IsStudio() then
-    require(script.Services.StudioJumpTestService).Init()
+    require(script.Services.StudioJumpTestService).Init(services)
 end
 services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
