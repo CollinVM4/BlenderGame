@@ -2,6 +2,7 @@
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
+local HttpService = game:GetService("HttpService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Definitions = require(Shared.Constants.Ingredients)
 local Economy = require(Shared.Constants.Economy)
@@ -13,7 +14,7 @@ local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean } 
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
 end
-function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
+function IngredientService.CreateVisual(id: string): Instance?
     local definition = IngredientService.GetDefinition(id)
     if not definition then
         return nil
@@ -29,21 +30,64 @@ function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimab
         part.Color = definition.BlendColor
         object = part
     end
+    -- Templates are geometry, not live components. Register only the new world
+    -- root after its private record exists; cloned tags must not bind early.
+    local descendants = object:GetDescendants()
+    table.insert(descendants, object)
+    for _, child in descendants do
+        for _, tag in CollectionService:GetTags(child) do
+            CollectionService:RemoveTag(child, tag)
+        end
+        if child:IsA("ProximityPrompt") or child:IsA("ClickDetector") or child:IsA("LuaSourceContainer") then
+            child:Destroy()
+        end
+    end
+    return object
+end
+function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
+    local object = IngredientService.CreateVisual(id)
+    if not object then
+        return nil
+    end
     object.Name = id
     object:SetAttribute("IngredientId", id)
+    object:SetAttribute("WorldItemId", HttpService:GenerateGUID(false))
     object:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
+    -- An explicit pivot root avoids choosing an arbitrary leaf/stem/mesh. It also
+    -- keeps a no-PrimaryPart model's authored pivot unchanged when made physical.
+    if object:IsA("Model") and not object.PrimaryPart then
+        local root = Instance.new("Part")
+        root.Name = "IngredientRoot"
+        root.Size = Vector3.new(0.1, 0.1, 0.1)
+        root.Transparency = 1
+        root.CanCollide = false
+        root.CanTouch = false
+        root.Massless = true
+        root.CFrame = object:GetPivot()
+        root.Parent = object
+        object.PrimaryPart = root
+    end
     local physical = object :: any
     physical:PivotTo(at)
-    object.Parent = workspace
+    local root = WorldUtil.Part(object)
     local parts = object:GetDescendants()
     table.insert(parts, object)
     for _, part in parts do
         if part:IsA("BasePart") then
             part.Anchored = false
-            if part:CanSetNetworkOwnership() then
-                part:SetNetworkOwner(nil)
+            part.CanQuery = true
+            if root and part ~= root then
+                local weld = Instance.new("WeldConstraint")
+                weld.Name = "IngredientAssembly"
+                weld.Part0 = root
+                weld.Part1 = part
+                weld.Parent = part
             end
         end
+    end
+    object.Parent = workspace
+    if root and root:CanSetNetworkOwnership() then
+        root:SetNetworkOwner(nil)
     end
     records[object] = { Id = id, Owner = owner, Claimable = claimable ~= false }
     object.Destroying:Connect(function()
@@ -90,4 +134,4 @@ function IngredientService.RemovePlayer(player: Player)
         IngredientService.Consume(object)
     end
 end
-return IngredientService
+return require(script.Parent.StudioServices).Wrap("IngredientService", IngredientService)

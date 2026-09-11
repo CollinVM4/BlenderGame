@@ -10,13 +10,7 @@ function MarketPedestal.Init(services: any)
             return nil
         end
         services.MarketService.Register(part)
-        local prompt = WorldUtil.Prompt(part, "ClaimPrompt", "Collect ingredient")
-        local connection = prompt.Triggered:Connect(function(player)
-            services.MarketService.Claim(player, part)
-        end)
         return function()
-            connection:Disconnect()
-            prompt:Destroy()
             services.MarketService.Unregister(part)
         end
     end)

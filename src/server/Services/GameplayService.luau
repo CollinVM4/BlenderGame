@@ -3,7 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameplayService = {}
 local nextRequest: { [Player]: number } = {}
-function GameplayService.Init(services)
+function GameplayService.Init(services: any)
     local remote = Instance.new("RemoteEvent")
     remote.Name = "GameplayRequest"
     remote.Parent = ReplicatedStorage.Shared.Events
@@ -30,12 +30,26 @@ function GameplayService.Init(services)
             services.InventoryService.Deposit(player, id, slot)
         elseif action == "Withdraw" and validSlot then
             services.InventoryService.Withdraw(player, slot)
-        elseif action == "PurchaseUpgrade" and validId then
-            services.PlayerDataService.PurchaseUpgrade(player, id)
+        elseif action == "PurchaseUpgrade" then
+            local success, reason = false, "InvalidUpgrade"
+            if validId then
+                success, reason = services.PlayerDataService.PurchaseUpgrade(player, id)
+            end
+            if success and (id == "MovementSpeed" or id == "Jump" or id == "SprintStamina") then
+                services.MovementService.RefreshPlayer(player)
+            end
+            remote:FireClient(player, "PurchaseUpgradeResult", {
+                success = success,
+                reason = if success then "Success" else reason,
+                upgradeId = if validId then id else nil,
+                level = if validId and reason ~= "InvalidUpgrade"
+                    then services.PlayerDataService.GetUpgrade(player, id) - 1
+                    else nil,
+            })
         end
     end)
 end
 function GameplayService.RemovePlayer(player: Player)
     nextRequest[player] = nil
 end
-return GameplayService
+return require(script.Parent.StudioServices).Wrap("GameplayService", GameplayService)

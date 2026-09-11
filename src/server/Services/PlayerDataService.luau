@@ -12,13 +12,24 @@ end
 function PlayerDataService.AddPlayer(player: Player)
     records[player] = {
         Cash = 0,
-        Upgrades = { Hand = 1, StackSize = 1, BlendSpeed = 1, Payout = 1 },
+        Upgrades = {
+            Hand = 1,
+            StackSize = 1,
+            BlendSpeed = 1,
+            Payout = 1,
+            MovementSpeed = 1,
+            Jump = 1,
+            SprintStamina = 1,
+        },
         Discoveries = {},
         Stats = { CustomersServed = 0, SmoothiesMade = 0, PlayersSlapped = 0, IngredientsStolen = 0 },
     }
     entitlements[player] = { VIPStorage = false, DoubleCash = false }
     player:SetAttribute("playerCash", 0)
     player:SetAttribute("HasSmoothie", false)
+    for _, id in { "MovementSpeed", "Jump", "SprintStamina" } do
+        player:SetAttribute(id .. "Level", 0)
+    end
 end
 function PlayerDataService.GetSnapshot(player: Player): Types.PlayerData
     local source = data(player)
@@ -48,16 +59,22 @@ end
 function PlayerDataService.PurchaseUpgrade(player: Player, id: string): (boolean, string?)
     local levels = (Upgrades :: any)[id]
     if not levels then
-        return false, "Unknown upgrade"
+        return false, "InvalidUpgrade"
     end
     local nextLevel = PlayerDataService.GetUpgrade(player, id) + 1
     local definition = levels[nextLevel]
-    if not definition or data(player).Cash < definition.Cost then
-        return false, "Max level or insufficient cash"
+    if not definition then
+        return false, "MaxLevel"
+    end
+    if data(player).Cash < definition.Cost then
+        return false, "InsufficientCash"
     end
     PlayerDataService.SetCash(player, data(player).Cash - definition.Cost)
     local ownedUpgrades = data(player).Upgrades :: any
     ownedUpgrades[id] = nextLevel
+    if id == "MovementSpeed" or id == "Jump" or id == "SprintStamina" then
+        player:SetAttribute(id .. "Level", nextLevel - 1)
+    end
     return true
 end
 function PlayerDataService.HasEntitlement(player: Player, id: string): boolean
@@ -81,4 +98,4 @@ function PlayerDataService.RemovePlayer(player: Player)
     records[player] = nil
     entitlements[player] = nil
 end
-return PlayerDataService
+return require(script.Parent.StudioServices).Wrap("PlayerDataService", PlayerDataService)

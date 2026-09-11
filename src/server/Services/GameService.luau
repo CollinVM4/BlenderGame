@@ -96,4 +96,4 @@ end
 function GameService.RemovePlayer(player: Player)
     sessions[player] = nil
 end
-return GameService
+return require(script.Parent.StudioServices).Wrap("GameService", GameService)

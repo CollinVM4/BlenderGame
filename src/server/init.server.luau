@@ -1,9 +1,12 @@
 --!strict
 local Players = game:GetService("Players")
-local CollectionService = game:GetService("CollectionService")
-local WorldUtil = require(script.Services.WorldUtil)
+local RunService = game:GetService("RunService")
+local StudioServices = require(script.Services.StudioServices)
+StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
+    MovementService = require(script.Services.MovementService),
+    SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
     IngredientService = require(script.Services.IngredientService),
     InventoryService = require(script.Services.InventoryService),
@@ -16,7 +19,11 @@ local services: { [string]: any } = {
     GameplayService = require(script.Services.GameplayService),
 }
 
+require(script.Services.FilmingUtil).Init()
+
 -- Inject dependencies once; service modules never require one another in cycles.
+services.MovementService.Init(services)
+services.SprintService.Init(services)
 services.TycoonService.Init(services.PlayerDataService)
 for _, name in
     { "InventoryService", "BlendService", "GameService", "MarketService", "CombatService", "DevContentService" }
@@ -33,32 +40,7 @@ if direct then
     table.insert(roots, direct)
 end
 for _, plot in roots do
-    CollectionService:AddTag(plot, "PlayerPlot")
-    for _, name in
-        {
-            "BlenderInput",
-            "DispenseButton",
-            "CustomerSpawn",
-            "CustomerCounter",
-            "CustomerExit",
-            "StartDayButton",
-            "PlayerStash",
-        }
-    do
-        local object = plot:FindFirstChild(name, true)
-        if object then
-            CollectionService:AddTag(object, name)
-        end
-    end
-    local turbine = plot:FindFirstChild("Turbine", true)
-    if turbine then
-        local part = turbine:FindFirstChild("blade", true)
-            or turbine:FindFirstChild("stem", true)
-            or WorldUtil.Part(turbine)
-        if part then
-            CollectionService:AddTag(part, "TurbineWheel")
-        end
-    end
+    services.TycoonService.AutoTagLegacyPlot(plot)
 end
 
 local characterConnections: { [Player]: RBXScriptConnection } = {}
@@ -69,14 +51,22 @@ local function addPlayer(player: Player)
     end
     initialized[player] = true
     services.PlayerDataService.AddPlayer(player)
+    services.MovementService.RefreshPlayer(player)
     services.InventoryService.AddPlayer(player)
     services.BlendService.Reset(player)
     services.GameService.AddPlayer(player)
     services.TycoonService.AssignPlot(player)
-    characterConnections[player] = player.CharacterAdded:Connect(function()
+    local function onCharacterAdded(character: Model)
         services.BlendService.ClearCup(player)
+        services.InventoryService.DropHeld(player)
         player:SetAttribute("StunnedUntil", 0)
-    end)
+        services.MovementService.ApplyCharacter(player, character)
+        services.SprintService.ResetCharacter(player)
+    end
+    characterConnections[player] = player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
 end
 Players.PlayerAdded:Connect(addPlayer)
 for _, player in Players:GetPlayers() do
@@ -93,10 +83,12 @@ Players.PlayerRemoving:Connect(function(player)
             "GameService",
             "BlendService",
             "CombatService",
-            "IngredientService",
             "InventoryService",
+            "IngredientService",
             "GameplayService",
             "TycoonService",
+            "SprintService",
+            "MovementService",
             "PlayerDataService",
         }
     do
@@ -105,12 +97,20 @@ Players.PlayerRemoving:Connect(function(player)
     initialized[player] = nil
 end)
 
-require(script.Services.SprintService).Init()
+if RunService:IsStudio() then
+    require(script.Services.StudioJumpTestService).Init(services)
+end
 services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
+    require(script.Components.IngredientPickup),
+    require(script.Components.IngredientSpawn),
+    require(script.Components.AnnouncedIngredientSpawn),
     require(script.Components.TurbineWheel),
+    require(script.Components.BlendProgressLights),
+    require(script.Components.BlenderStatusPresentation),
+    require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),
     require(script.Components.Stash),
@@ -119,4 +119,5 @@ local components: { { Init: (any) -> () } } = {
 for _, component in components do
     component.Init(services)
 end
+StudioServices.Publish(services)
 print("[Be a Blender!] MVP services initialized. Persistence is in-memory; see docs/MVP_ARCHITECTURE.md.")

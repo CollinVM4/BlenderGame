@@ -119,4 +119,4 @@ function CombatService.RemovePlayer(player: Player)
     dropAt[player] = nil
     stunAt[player] = nil
 end
-return CombatService
+return require(script.Parent.StudioServices).Wrap("CombatService", CombatService)
