@@ -64,6 +64,13 @@ local Ingredients: { [string]: { Id: string, DisplayName: string, Tags: { string
             BlendColor = Color3.fromRGB(210, 55, 45),
             Rarity = "Common",
         },
+        GoldenApple = {
+            Id = "GoldenApple",
+            DisplayName = "Golden Apple",
+            Tags = { "Fruit", "Sweet", "Healthy", "Yellow" },
+            BlendColor = Color3.fromRGB(255, 205, 55),
+            Rarity = "Rare",
+        },
         -- Mystery uses the same deterministic RGB mean as every other unit.
         Mystery = {
             Id = "Mystery",

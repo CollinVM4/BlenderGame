@@ -23,7 +23,7 @@ The bootstrap explicitly loads services, injects dependencies, initializes exist
 | BlendService | Batch state, progress, contents, color, discoveries, genuine cup identity. `TryInput`, `Ready`, `AddProgress`, `Dispense`, `GetCup`, `ConsumeCup`, `Reset`, `ClearCup`, `GetSnapshot`. |
 | CustomerService | Owned customers, waypoint movement, preferences, serving transaction, separate `CalculateGrade`, `SelectReaction`, `CalculatePayout`. `SpawnForPlayer`, `CanSpawn`, `Serve`, `GetSnapshot`; served callback notifies GameService. |
 | GameService | Per-player orchestration only. `StartDay`, `IsServing`, `CustomerServed`, `FinishDay`, `ResumeDay`, `Reset`, `GetSnapshot`. No inventory, grading, or payout implementation here. |
-| MarketService | One physical stock unit per registered pedestal; weighted rarity selection, atomic claims and respawn. `Register`, `Unregister`, `Step`, `Claim`, `SelectIngredient`, `SpawnDrop` for future ants. |
+| MarketService | One explicit physical stock unit per registered pedestal; per-pedestal timing and visible carry claims. `Register`, `Unregister`, `Step`, `Claim`, `SpawnDrop` (explicit ID). See INGREDIENT_WORLD_SPAWNS.md for migration. |
 | CombatService | Optional placeholder slap Tool and server checks for equipped identity, facing, range, obstruction, cooldown, damage, knockback, stun and one-unit drop. `GrantHand`, `Slap`, `RemovePlayer`. |
 | DevContentService | Opt-in Studio filming operations: `SpawnIngredient`, `ClearBlender`/`ResetBlender`, `PrepareCombination`, `SpawnCustomer`, `ForceReaction`, `ResetPlot`/`ResetScene`, `IsEnabled`. No dev remote. |
 | GameplayService | Narrow, throttled client request adapter for a future inventory UI. Does not own gameplay state. |

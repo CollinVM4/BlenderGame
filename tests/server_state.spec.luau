@@ -1253,6 +1253,11 @@ local pedestal = instance("Part")
 pedestal.Parent = workspaceFake
 pedestal.CFrame = cf
 pedestal.Size = vec(3, 2, 3)
+pedestal:SetAttribute("IngredientId", "Strawberry")
+local carryWorldItem = inventory.CarryWorldItem
+inventory.CarryWorldItem = function(_player, object)
+    return ingredients.Consume(object) ~= nil
+end
 local market = loadModule("MarketService")
 market.Init(deps)
 market.Register(pedestal)
@@ -1267,6 +1272,7 @@ market.Step()
 check(pedestal:GetAttribute("StockIngredientId") ~= nil, "market restocks after cooldown")
 market.Unregister(pedestal)
 check(not market.Claim(p, pedestal), "unregistered pedestal rejects claims")
+inventory.CarryWorldItem = carryWorldItem
 
 -- Film slice: real ingredient identity, carry/throw, customer serving and day callback.
 local realIngredients = loadModule("IngredientService")
@@ -1333,7 +1339,7 @@ do
                 if name == "GameplayPresentationController" then
                     return controller
                 end
-                if name == "StashPromptController" then
+                if name == "StashPromptController" or name == "RareIngredientPresentationController" then
                     return { Init = function() end }
                 end
                 assert(name == "SprintController")

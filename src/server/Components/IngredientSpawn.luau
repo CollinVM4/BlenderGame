@@ -1,9 +1,15 @@
 --!strict
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local IngredientSpawn = {}
+local bound: { [Instance]: boolean } = {}
 
-function IngredientSpawn.Init(services: any)
-    WorldUtil.BindTag("IngredientSpawn", function(station)
+-- Both marker types share the same one-item lifecycle. The callback is output only.
+function IngredientSpawn.Bind(services: any, tag: string, onSpawn: ((Instance, string) -> ())?)
+    WorldUtil.BindTag(tag, function(station)
+        if bound[station] then
+            warn("[IngredientSpawn] Use only one spawn tag: " .. station:GetFullName())
+            return nil
+        end
         if not station:IsA("BasePart") then
             warn("[IngredientSpawn] Tag a BasePart: " .. station:GetFullName())
             return nil
@@ -23,7 +29,24 @@ function IngredientSpawn.Init(services: any)
         then
             seconds = configuredSeconds
         end
+        local minSeconds = seconds
+        local maxSeconds = seconds
+        if onSpawn then
+            local low = station:GetAttribute("MinRespawnSeconds")
+            local high = station:GetAttribute("MaxRespawnSeconds")
+            if
+                typeof(low) == "number"
+                and typeof(high) == "number"
+                and low > 0
+                and high >= low
+                and high < math.huge
+            then
+                minSeconds = low
+                maxSeconds = high
+            end
+        end
 
+        bound[station] = true
         local stopped = false
         local active: Instance? = nil
         local pending: thread? = nil
@@ -59,7 +82,7 @@ function IngredientSpawn.Init(services: any)
                 if not destroying then
                     item:Destroy()
                 end
-                pending = task.delay(seconds, spawnItem)
+                pending = task.delay(minSeconds + math.random() * (maxSeconds - minSeconds), spawnItem)
             end
             table.insert(
                 itemConnections,
@@ -67,6 +90,9 @@ function IngredientSpawn.Init(services: any)
                     removed(true)
                 end)
             )
+            if onSpawn then
+                onSpawn(station, id)
+            end
             table.insert(
                 itemConnections,
                 item.AncestryChanged:Connect(function()
@@ -82,6 +108,7 @@ function IngredientSpawn.Init(services: any)
                 return
             end
             stopped = true
+            bound[station] = nil
             if pending then
                 task.cancel(pending)
                 pending = nil
@@ -100,6 +127,10 @@ function IngredientSpawn.Init(services: any)
         spawnItem()
         return cleanup
     end)
+end
+
+function IngredientSpawn.Init(services: any)
+    IngredientSpawn.Bind(services, "IngredientSpawn", nil)
 end
 
 return IngredientSpawn

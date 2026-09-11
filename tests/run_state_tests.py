@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 parser.add_argument("--vfx-only", action="store_true", help="Run only blender presentation integration checks")
+parser.add_argument("--world-only", action="store_true", help="Run ingredient world/spawn regression checks")
 parser.add_argument("--customer-only", action="store_true", help="Run through customer request/serve integration checks")
 args = parser.parse_args()
 sources = {}
@@ -25,6 +26,7 @@ sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encodi
 sources["Types"] = (ROOT / "src/shared/Types.luau").read_text(encoding="utf-8")
 sources["BlenderInputComponent"] = (ROOT / "src/server/Components/BlenderInput.luau").read_text(encoding="utf-8")
 sources["IngredientSpawnComponent"] = (ROOT / "src/server/Components/IngredientSpawn.luau").read_text(encoding="utf-8")
+sources["AnnouncedIngredientSpawn"] = (ROOT / "src/server/Components/AnnouncedIngredientSpawn.luau").read_text(encoding="utf-8")
 sources["IngredientPickupComponent"] = (ROOT / "src/server/Components/IngredientPickup.luau").read_text(encoding="utf-8")
 sources["DispenserComponent"] = (ROOT / "src/server/Components/Dispenser.luau").read_text(encoding="utf-8")
 sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/GameplayPresentationController.luau").read_text(encoding="utf-8")
@@ -32,7 +34,13 @@ sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(en
 bundle = "local customerOnly = " + str(args.customer_only).lower() + "\nlocal vfxOnly = " + str(args.vfx_only).lower() + "\nlocal sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
 ) + "\n}\n"
-bundle += (ROOT / "tests/server_state.spec.luau").read_text(encoding="utf-8")
+state_tests = (ROOT / "tests/server_state.spec.luau").read_text(encoding="utf-8")
+if args.world_only:
+    # Reuse the fake engine boundary; skip unrelated gameplay assertions.
+    bundle += state_tests.split("env.require = loadModule", 1)[0] + "env.require = loadModule\n"
+    bundle += (ROOT / "tests/ingredient_world.spec.luau").read_text(encoding="utf-8")
+else:
+    bundle += state_tests
 with tempfile.TemporaryDirectory(prefix="blender-state-tests-") as directory:
     output = Path(directory) / "state-tests.luau"
     output.write_text(bundle, encoding="utf-8")
