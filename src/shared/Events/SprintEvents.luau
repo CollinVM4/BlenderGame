@@ -1,5 +1,5 @@
 --!strict
--- Shared RemoteEvent used to request sprint start/stop and sync stamina back to the client
+-- Client -> server sprint intent (boolean). Server-owned Player attributes replicate state.
 local remoteEvent: RemoteEvent? = nil
 local RunService = game:GetService("RunService")
 

@@ -8,6 +8,7 @@ local getSprintEvent = require(ReplicatedStorage.Shared.Events.SprintEvents)
 
 local SprintService = {}
 local movement: any
+local started = false
 
 local staminaCurrent: { [Player]: number } = {}
 local staminaMax: { [Player]: number } = {}
@@ -85,6 +86,10 @@ function SprintService.RemovePlayer(player: Player)
 end
 
 function SprintService.Init(dependencies)
+    if started then
+        return
+    end
+    started = true
     movement = dependencies.MovementService
     local sprintEvent = getSprintEvent()
     movement.Changed:Connect(function(player: Player)
@@ -118,12 +123,11 @@ function SprintService.Init(dependencies)
                     math.min(staminaMax[player], staminaCurrent[player] + SprintConfig.STAMINA_REGEN_RATE * deltaTime)
             end
 
+            -- Player attributes replicate authoritative state; SprintRequest is input only.
             player:SetAttribute("StaminaCurrent", staminaCurrent[player])
 
             player:SetAttribute("IsSprinting", isSprinting[player])
             SprintService.ApplySpeed(player)
-
-            sprintEvent:FireClient(player, isSprinting[player], staminaCurrent[player], staminaMax[player])
         end
     end)
 end
