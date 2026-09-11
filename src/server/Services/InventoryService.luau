@@ -4,6 +4,7 @@ local Economy = require(Shared.Constants.Economy)
 local Upgrades = require(Shared.Constants.Upgrades)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
+local CarryPresentation = require(script.Parent.IngredientCarryPresentation)
 local InventoryService = {}
 local deps: any
 local carried: { [Player]: { [string]: number? } } = {}
@@ -15,6 +16,8 @@ type HeldItem = {
     Tool: Tool,
     Id: string,
     Root: BasePart,
+    ThrowOffset: CFrame,
+    ClearPose: () -> (),
     Releasing: boolean,
     Destroying: boolean,
     Connections: { RBXScriptConnection },
@@ -46,6 +49,7 @@ function InventoryService.ClearHeld(player: Player)
     held[player] = nil
     player:SetAttribute("HeldIngredientId", nil)
     if record then
+        record.ClearPose()
         for _, connection in record.Connections do
             connection:Disconnect()
         end
@@ -67,7 +71,8 @@ local function releaseHeld(player: Player, throwing: boolean): Instance?
     local at = record.Root.CFrame
     -- The held[player] reservation is exclusive only while carried. Both drop
     -- and throw release ownership so anyone can claim the loose world unit.
-    local object = deps.IngredientService.Spawn(record.Id, at * CFrame.new(0, 2, -3), nil, true)
+    local offset = if throwing then record.ThrowOffset else CFrame.new(0, 2, -3)
+    local object = deps.IngredientService.Spawn(record.Id, at * offset, nil, true)
     if not object then
         record.Releasing = false
         return nil
@@ -114,37 +119,14 @@ local function equipVisual(player: Player, id: string, visual: Instance): boolea
     local tool = Instance.new("Tool")
     tool.Name = id .. " (click to throw)"
     tool.CanBeDropped = false
-    local handle = Instance.new("Part")
-    handle.Name = "Handle"
-    handle.Size = Vector3.new(1, 1, 1)
-    handle.Transparency = 1
-    handle.CanCollide = false
-    handle.Massless = true
-    handle.Parent = tool
-    local physical = visual :: any
-    physical:PivotTo(handle.CFrame)
-    local parts = visual:GetDescendants()
-    table.insert(parts, visual)
-    for _, part in parts do
-        game:GetService("CollectionService"):RemoveTag(part, "IngredientWorldItem")
-        if part:IsA("ProximityPrompt") then
-            part:Destroy()
-        elseif part:IsA("BasePart") then
-            part.Anchored = false
-            part.CanCollide = false
-            part.CanTouch = false
-            part.Massless = true
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = handle
-            weld.Part1 = part
-            weld.Parent = handle
-        end
-    end
-    visual.Parent = tool
+    tool.RequiresHandle = false
+    local throwOffset, clearPose = CarryPresentation.Attach(visual, tool, root)
     local reservation: HeldItem = {
         Tool = tool,
         Id = id,
         Root = root,
+        ThrowOffset = throwOffset,
+        ClearPose = clearPose,
         Releasing = false,
         Destroying = false,
         Connections = {},

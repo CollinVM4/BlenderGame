@@ -113,6 +113,7 @@ local function instance(class)
     object.Destroying = signal()
     object.AncestryChanged = signal()
     object.CFrame = frame()
+    object.Size = vec(4, 1.2, 2) -- Roblox Part default, also used by character-root doubles.
     object.Position = vec(0, 0, 0)
     function object:GetChildren()
         local found = {}
@@ -324,7 +325,12 @@ local env = setmetatable({
         end,
     },
     Instance = { new = instance },
-    CFrame = { new = frame },
+    CFrame = {
+        new = frame,
+        Angles = function()
+            return frame()
+        end,
+    },
     UDim2 = {
         fromOffset = function()
             return {}
@@ -1044,8 +1050,37 @@ local distant = item("Ice", p)
 input.Overlaps = {}
 check(not blend.TryInput(p, distant, input), "nonoverlapping ingredient rejected")
 check(loadIngredient("Strawberry") and blend.GetSnapshot(p).State == "LOADING", "first item enters LOADING")
+do
+    local originalDelay = env.task.delay
+    local timers = {}
+    env.task.delay = function(seconds, callback)
+        check(seconds == 1.75, "rejection feedback lasts 1.75 seconds")
+        table.insert(timers, callback)
+    end
+    for loaded = 1, 2 do
+        now += 3
+        local beforeEvents = #presentation
+        check(not blend.Ready(p), "underfilled batch cannot become READY")
+        for _ = 1, 10 do
+            check(not blend.AddProgress(p, wheel, 100), "underfilled spin rejected")
+        end
+        local snapshot = blend.GetSnapshot(p)
+        check(snapshot.State == "LOADING" and snapshot.Progress == 0 and snapshot.Result == nil, "rejection preserves pre-blend state")
+        check(#snapshot.Ingredients == loaded and p:GetAttribute("BlendIngredientCount") == loaded, "rejection preserves loaded ingredients")
+        check(snapshot.Ingredients[1] == "Strawberry", "rejection retains ingredient identity")
+        check(not blend.Dispense(p, wheel) and not blend.GetCup(p), "rejection cannot dispense or create cup")
+        check(#presentation == beforeEvents, "rejection emits no blend-start or progress events")
+        check(#timers == loaded and p:GetAttribute("BlendNeedsItems") == true, "heartbeat does not extend feedback")
+        timers[loaded]()
+        check(p:GetAttribute("BlendNeedsItems") == false, "feedback expires")
+        if loaded == 1 then
+            check(loadIngredient("Banana"), "can keep loading after rejection")
+        end
+    end
+    env.task.delay = originalDelay
+end
 check(
-    loadIngredient("Banana") and loadIngredient("Ice") and blend.GetSnapshot(p).State == "READY",
+    loadIngredient("Ice") and blend.GetSnapshot(p).State == "READY",
     "three items enter READY"
 )
 check(not loadIngredient("Tire"), "fourth item rejected without consumption")
@@ -1093,8 +1128,9 @@ check(blend.GetSnapshot(p).State == "EMPTY", "dispensed batch resets")
 check(not blend.GetCup(p, instance("Tool")), "forged tool rejected")
 check(blend.ConsumeCup(p) ~= nil and blend.ConsumeCup(p) == nil, "cup consumable once")
 check(loadIngredient("Tire"), "one ingredient accepted")
+check(loadIngredient("Tire") and loadIngredient("Tire"), "nonrecipe batch filled")
 blend.AddProgress(p, wheel, 10)
-check(blend.GetSnapshot(p).State == "BLENDING", "one ingredient seals when turning")
+check(blend.GetSnapshot(p).State == "BLENDING", "full nonrecipe batch seals when turning")
 for _ = 1, 9 do
     blend.AddProgress(p, wheel, 10)
 end
@@ -1375,6 +1411,9 @@ do
 end
 env.CFrame = {
     new = frame,
+    Angles = function()
+        return frame()
+    end,
     fromMatrix = function(position, right, up, back)
         local cf = frame(position.X, position.Y, position.Z)
         cf.RightVector, cf.UpVector, cf.LookVector = right, up, back * -1
@@ -1850,11 +1889,11 @@ local function actualBlend(ids)
     flush()
     return smoothie
 end
-local one = actualBlend({ "Mystery" })
+local one = actualBlend({ "Mystery", "Mystery", "Mystery" })
 blend.ClearCup(p)
-local two = actualBlend({ "Mystery", "Strawberry" })
+local two = actualBlend({ "Mystery", "Strawberry", "Ice" })
 blend.ClearCup(p)
-local repeated = actualBlend({ "Strawberry", "Mystery" })
+local repeated = actualBlend({ "Ice", "Strawberry", "Mystery" })
 check(two.Color.R == repeated.Color.R and two.Color.G == repeated.Color.G, "Mystery blend color independent of order")
 blend.ClearCup(p)
 check(dev.SpawnCustomer(p) ~= nil and days.IsServing(p), "dev customer starts serveable day")
@@ -1862,7 +1901,7 @@ check(dev.SpawnCustomer(p) == customer.GetSnapshot(p).Model, "dev spawn reuses a
 check(customer.GetSnapshot(p).RequestId == nil and not customer.Serve(p), "arrival required before request and serving")
 flush()
 for index, reaction in { "Love", "Disgust", "Freeze" } do
-    local smoothie = actualBlend(if index == 2 then { "Tire", "Noob" } else { "Strawberry", "Ice", "Tire" })
+    local smoothie = actualBlend(if index == 2 then { "Tire", "Noob", "Tire" } else { "Strawberry", "Ice", "Tire" })
     local current = customer.GetSnapshot(p)
     check(current.Ready, "waypoint arrival enables serving")
     local request
@@ -2322,6 +2361,11 @@ do
     local ingredient = realIngredients.Spawn("Strawberry", frame(), p)
     input.Overlaps = { ingredient }
     check(blend.TryInput(p, ingredient, input), "throttle test ingests a real ingredient")
+    for _ = 1, 2 do
+        local extra = realIngredients.Spawn("Strawberry", frame(), p)
+        input.Overlaps = { extra }
+        check(blend.TryInput(p, extra, input), "throttle test fills batch")
+    end
     local firstEvent = #presentation + 1
     local accepted = true
     for _ = 1, 60 do

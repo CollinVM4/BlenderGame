@@ -176,6 +176,24 @@ cleanRare()
 check(timers[3].Cancelled, "marker cleanup cancels pending rare refill")
 check(not attachments.IngredientSpawn(marker("Invalid", 10)), "invalid marker cannot spawn")
 
+-- Compare the working marker with Grapes using the real definition and model lookup.
+local grapeTemplate = instance("Model")
+grapeTemplate.Name, grapeTemplate.Parent = "Grapes", templates
+local fruit = instance("Part")
+fruit.Name, fruit.Parent = "GrapeFruit", grapeTemplate
+local beforeGrapes = #spawned
+local cleanGrapes = attachments.IngredientSpawn(marker("Grapes", 5))
+check(cleanGrapes and #spawned == beforeGrapes + 1, "Grapes marker passes definition validation")
+local grapes = spawned[#spawned]
+check(grapes:IsA("Model") and grapes:FindFirstChild("GrapeFruit"), "Grapes station clones authored template")
+check(ingredients.GetRecord(grapes).Id == "Grapes", "Grapes stock is registered")
+grapes:Destroy()
+check(timers[#timers].Seconds == 5, "Grapes uses its configured five-second cooldown")
+timers[#timers].Run()
+check(#spawned == beforeGrapes + 2 and spawned[#spawned].Name == "Grapes", "Grapes refills once")
+cleanGrapes()
+check(spawned[#spawned].Destroyed, "Grapes cleanup removes stock")
+
 local announceChunk = assert(loadstring(sources.AnnouncedIngredientSpawn))
 local emittedCallback
 setfenv(

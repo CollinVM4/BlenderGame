@@ -48,6 +48,7 @@ type Batch = {
     Progress: number,
     Result: Types.Smoothie?,
     NextProgressPresentationAt: number,
+    NextRejectionAt: number,
 }
 local batches: { [Player]: Batch } = {}
 local cups: { [Player]: { Tool: Tool, Result: Types.Smoothie } } = {}
@@ -73,6 +74,9 @@ local function publish(player: Player)
     player:SetAttribute("BlendState", batch.State)
     player:SetAttribute("BlendProgress", batch.Progress)
     player:SetAttribute("BlendIngredientCount", #batch.Ingredients)
+    if batch.State == "EMPTY" or #batch.Ingredients >= Economy.MaxIngredients then
+        player:SetAttribute("BlendNeedsItems", false)
+    end
 end
 local function copyResult(result: Types.Smoothie): Types.Smoothie
     return {
@@ -95,6 +99,7 @@ function BlendService.Reset(player: Player)
         Progress = 0,
         Result = nil,
         NextProgressPresentationAt = 0,
+        NextRejectionAt = 0,
     }
     publish(player)
     Film.Log("Blend", "reset")
@@ -160,7 +165,7 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
 end
 function BlendService.Ready(player: Player): boolean
     local batch = batches[player]
-    if not batch or #batch.Ingredients == 0 or (batch.State ~= "LOADING" and batch.State ~= "READY") then
+    if not batch or #batch.Ingredients < Economy.MaxIngredients or (batch.State ~= "LOADING" and batch.State ~= "READY") then
         return false
     end
     batch.State = "READY"
@@ -207,6 +212,23 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
         or delta <= 0
         or delta == math.huge
     then
+        return false
+    end
+    -- This private count is the source of BlendIngredientCount. Never authorize
+    -- a start from replicated attributes or mutate an underfilled batch.
+    if #batch.Ingredients < Economy.MaxIngredients then
+        if (batch.State == "EMPTY" or batch.State == "LOADING" or batch.State == "READY")
+            and os.clock() >= batch.NextRejectionAt then
+            -- Heartbeat must not continually extend the transient feedback.
+            batch.NextRejectionAt = os.clock() + 2.5
+            local rejectionAt = batch.NextRejectionAt
+            player:SetAttribute("BlendNeedsItems", true)
+            task.delay(1.75, function()
+                if batches[player] == batch and batch.NextRejectionAt == rejectionAt then
+                    player:SetAttribute("BlendNeedsItems", false)
+                end
+            end)
+        end
         return false
     end
     if batch.State == "LOADING" then

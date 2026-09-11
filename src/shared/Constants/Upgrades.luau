@@ -2,10 +2,10 @@
 return {
     -- Demo prices; index 1 is displayed level 0 for movement tracks.
     MovementSpeed = {
-        { Cost = 0, Value = 22 },
-        { Cost = 100, Value = 25 },
-        { Cost = 250, Value = 28 },
-        { Cost = 500, Value = 31 },
+        { Cost = 0, Value = 25 },
+        { Cost = 100, Value = 27 },
+        { Cost = 250, Value = 30 },
+        { Cost = 500, Value = 33 },
     },
     Jump = {
         { Cost = 0, Value = 60 },
