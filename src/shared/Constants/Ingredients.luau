@@ -321,6 +321,23 @@ local Ingredients: {
 		Rarity = "Common",
 	},
 
+	Squid = {
+		Id = "Squid",
+		DisplayName = "Squid",
+		Tags = { "Seafood", "White", "Weird", "Protein" },
+		BlendColor = Color3.fromRGB(200, 200, 200),
+		Rarity = "Uncommon",
+
+	},
+
+	Fish = {
+		Id = "Fish",
+		DisplayName = "Fish",
+		Tags = { "Seafood", "Blue", "Weird", "Protein" },
+		BlendColor = Color3.fromRGB(25, 164, 223),
+		Rarity = "Uncommon",
+	},
+
 	Pomegranate = {
 		Id = "Pomegranate",
 		DisplayName = "Pomegranate",
@@ -427,6 +444,14 @@ local Ingredients: {
 		Rarity = "Common",
 	},
 
+	Milk = {
+		Id = "Milk",
+		DisplayName = "Milk",
+		Tags = { "Milk", "White" },
+		BlendColor = Color3.fromRGB(245, 245, 245),
+		Rarity = "Uncommon",
+	},
+
 	Spinach = {
 		Id = "Spinach",
 		DisplayName = "Spinach",
@@ -440,6 +465,14 @@ local Ingredients: {
 		DisplayName = "Tire",
 		Tags = { "Black", "Gross", "Weird" },
 		BlendColor = Color3.fromRGB(45, 45, 50),
+		Rarity = "Uncommon",
+	},
+
+	Sushi = {
+		Id = "Sushi",
+		DisplayName = "Sushi",
+		Tags = { "Seafood", "Weird", "Protein" },
+		BlendColor = Color3.fromRGB(200, 200, 200),
 		Rarity = "Uncommon",
 	},
 

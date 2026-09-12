@@ -17,12 +17,52 @@ type HeldItem = {
     Id: string,
     Root: BasePart,
     ThrowOffset: CFrame,
-    ClearPose: () -> (),
+    ClearVisual: () -> (),
+    Height: number,
     Releasing: boolean,
     Destroying: boolean,
     Connections: { RBXScriptConnection },
 }
-local held: { [Player]: HeldItem } = {}
+local held: { [Player]: { HeldItem } } = {}
+local function topItem(player: Player): HeldItem?
+    local stack = held[player]
+    return if stack then stack[#stack] else nil
+end
+function InventoryService.GetCarryCount(player: Player): number
+    return #(held[player] or {})
+end
+function InventoryService.GetCarryCapacity(player: Player): number
+    return Upgrades.CarryCapacity[deps.PlayerDataService.GetUpgrade(player, "CarryCapacity")].Value
+end
+local function syncHeld(player: Player)
+    local top = topItem(player)
+    if top then
+        top.Tool.Name = top.Id .. " (click to throw)"
+    end
+    player:SetAttribute("HeldIngredientId", if top then top.Id else nil)
+    player:SetAttribute("CarryCount", InventoryService.GetCarryCount(player))
+end
+local function removeTop(player: Player)
+    local stack = held[player]
+    if not stack then
+        return
+    end
+    local record = table.remove(stack)
+    if not record then
+        return
+    end
+    record.ClearVisual()
+    if #stack == 0 then
+        held[player] = nil
+        for _, connection in record.Connections do
+            connection:Disconnect()
+        end
+        if not record.Destroying then
+            record.Tool:Destroy()
+        end
+    end
+    syncHeld(player)
+end
 
 -- Authorization for the loose-world pickup context only. Never use this owner rule
 -- as a global inventory-transfer policy: stash acquisition must separately validate
@@ -45,24 +85,16 @@ local function getLoosePickupRecord(player: Player, object: Instance)
 end
 
 function InventoryService.ClearHeld(player: Player)
-    local record = held[player]
-    held[player] = nil
-    player:SetAttribute("HeldIngredientId", nil)
-    if record then
-        record.ClearPose()
-        for _, connection in record.Connections do
-            connection:Disconnect()
-        end
-        if not record.Destroying then
-            record.Tool:Destroy()
-        end
+    while topItem(player) do
+        removeTop(player)
     end
+    syncHeld(player)
 end
 
 -- Spawn is synchronous. Keep the reservation until registration succeeds, and
 -- block reentrant signals while restoring it. Clear before destroying the visual.
-local function releaseHeld(player: Player, throwing: boolean): Instance?
-    local record = held[player]
+local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?): Instance?
+    local record = topItem(player)
     if not record or record.Releasing then
         return nil
     end
@@ -71,13 +103,13 @@ local function releaseHeld(player: Player, throwing: boolean): Instance?
     local at = record.Root.CFrame
     -- The held[player] reservation is exclusive only while carried. Both drop
     -- and throw release ownership so anyone can claim the loose world unit.
-    local offset = if throwing then record.ThrowOffset else CFrame.new(0, 2, -3)
+    local offset = if throwing then record.ThrowOffset else CFrame.new(((dropIndex or 1) - 1) * 2, 2, -3)
     local object = deps.IngredientService.Spawn(record.Id, at * offset, nil, true)
     if not object then
         record.Releasing = false
         return nil
     end
-    InventoryService.ClearHeld(player)
+    removeTop(player)
     local part = WorldUtil.Part(object)
     if part and throwing then
         part.AssemblyLinearVelocity = at.LookVector * 25 + Vector3.new(0, 18, 0)
@@ -86,12 +118,21 @@ local function releaseHeld(player: Player, throwing: boolean): Instance?
 end
 
 function InventoryService.DropHeld(player: Player): Instance?
-    return releaseHeld(player, false)
+    local first: Instance? = nil
+    local count = InventoryService.GetCarryCount(player)
+    for index = 1, count do
+        local object = releaseHeld(player, false, index)
+        if not object then
+            break
+        end
+        first = first or object
+    end
+    return first
 end
 
--- The equipped Tool is a reserved inventory unit. Its attributes are never read for contents.
+-- One equipped Tool activates the top reservation only; attributes never authorize contents.
 function InventoryService.ThrowHeld(player: Player): Instance?
-    local record = held[player]
+    local record = topItem(player)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
@@ -112,30 +153,48 @@ local function equipVisual(player: Player, id: string, visual: Instance): boolea
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if held[player] or not backpack or not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+    if
+        InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
+        or not backpack
+        or not humanoid
+        or humanoid.Health <= 0
+        or not root
+        or not root:IsA("BasePart")
+    then
         visual:Destroy()
         return false
     end
-    local tool = Instance.new("Tool")
+    local stack: { HeldItem } = held[player] or {}
+    local existing = stack[1]
+    local tool = if existing then existing.Tool else Instance.new("Tool")
     tool.Name = id .. " (click to throw)"
     tool.CanBeDropped = false
     tool.RequiresHandle = false
-    local throwOffset, clearPose = CarryPresentation.Attach(visual, tool, root)
+    local height = 0
+    for _, item in stack do
+        height += item.Height
+    end
+    local throwOffset, clearVisual, itemHeight = CarryPresentation.Attach(visual, tool, root, height)
     local reservation: HeldItem = {
         Tool = tool,
         Id = id,
         Root = root,
         ThrowOffset = throwOffset,
-        ClearPose = clearPose,
+        ClearVisual = clearVisual,
+        Height = itemHeight,
         Releasing = false,
         Destroying = false,
         Connections = {},
     }
-    held[player] = reservation
-    player:SetAttribute("HeldIngredientId", id)
+    table.insert(stack, reservation)
+    held[player] = stack
+    syncHeld(player)
+    if existing then
+        return true
+    end
     local function dropThisTool()
         -- A queued signal from an old Tool must never drop a newer reservation.
-        if held[player] == reservation then
+        if held[player] == stack then
             InventoryService.DropHeld(player)
         end
     end
@@ -145,14 +204,16 @@ local function equipVisual(player: Player, id: string, visual: Instance): boolea
     table.insert(
         reservation.Connections,
         tool.Destroying:Connect(function()
-            reservation.Destroying = true
+            for _, item in stack do
+                item.Destroying = true
+            end
             dropThisTool()
         end)
     )
     table.insert(
         reservation.Connections,
         tool.Activated:Connect(function()
-            if held[player] == reservation then
+            if held[player] == stack then
                 InventoryService.ThrowHeld(player)
             end
         end)
@@ -168,7 +229,7 @@ function InventoryService.CarryWorldItem(player: Player, object: Instance): bool
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if
-        held[player]
+        InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
         or not record
         or not backpack
         or not humanoid
@@ -194,6 +255,7 @@ function InventoryService.Init(services)
 end
 function InventoryService.AddPlayer(player: Player)
     carried[player] = {}
+    syncHeld(player)
     stashes[player] = {}
     for index = 1, 5 do
         stashes[player][index] =
@@ -208,7 +270,7 @@ function InventoryService.GetStashLayout(_player: Player)
     return { Slots = 5, Protected = 2 }
 end
 function InventoryService.GetHeldIngredientId(player: Player): string?
-    local record = held[player]
+    local record = topItem(player)
     return if record and not record.Releasing then record.Id else nil
 end
 function InventoryService.GetSnapshot(player: Player)
@@ -285,6 +347,9 @@ function InventoryService.ReleaseUnit(player: Player, id: string): Instance?
     return object
 end
 function InventoryService.DropOne(player: Player): Instance?
+    if topItem(player) then
+        return InventoryService.DropHeld(player)
+    end
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") then
         return nil
@@ -346,7 +411,7 @@ function InventoryService.CanWithdraw(player: Player, owner: Player, index: numb
 end
 -- Preserve the legacy signature; id is only a match assertion, never a grant of contents.
 function InventoryService.Deposit(player: Player, id: string, index: number): boolean
-    local record = held[player]
+    local record = topItem(player)
     if
         not record
         or record.Releasing
@@ -363,14 +428,14 @@ function InventoryService.Deposit(player: Player, id: string, index: number): bo
     end
     slot.IngredientId = record.Id
     slot.Count += 1
-    InventoryService.ClearHeld(player)
+    removeTop(player)
     stashChanged:Fire(player)
     return true
 end
 function InventoryService.Withdraw(player: Player, index: number, stashOwner: Player?): boolean
     local owner = stashOwner or player
     if
-        held[player]
+        InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
         or not InventoryService.CanWithdraw(player, owner, index)
         or not accessible(player, owner, index)
     then

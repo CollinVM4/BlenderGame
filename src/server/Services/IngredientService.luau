@@ -42,17 +42,6 @@ function IngredientService.CreateVisual(id: string): Instance?
             child:Destroy()
         end
     end
-    return object
-end
-function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
-    local object = IngredientService.CreateVisual(id)
-    if not object then
-        return nil
-    end
-    object.Name = id
-    object:SetAttribute("IngredientId", id)
-    object:SetAttribute("WorldItemId", HttpService:GenerateGUID(false))
-    object:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
     -- An explicit pivot root avoids choosing an arbitrary leaf/stem/mesh. It also
     -- keeps a no-PrimaryPart model's authored pivot unchanged when made physical.
     if object:IsA("Model") and not object.PrimaryPart then
@@ -67,6 +56,17 @@ function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimab
         root.Parent = object
         object.PrimaryPart = root
     end
+    return object
+end
+function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
+    local object = IngredientService.CreateVisual(id)
+    if not object then
+        return nil
+    end
+    object.Name = id
+    object:SetAttribute("IngredientId", id)
+    object:SetAttribute("WorldItemId", HttpService:GenerateGUID(false))
+    object:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
     local physical = object :: any
     physical:PivotTo(at)
     local root = WorldUtil.Part(object)

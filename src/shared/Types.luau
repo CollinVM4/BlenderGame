@@ -11,6 +11,7 @@ export type PlayerData = {
     Cash: number,
     Upgrades: {
         Hand: number,
+        CarryCapacity: number,
         StackSize: number,
         BlendSpeed: number,
         Payout: number,

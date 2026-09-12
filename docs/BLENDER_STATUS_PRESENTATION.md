@@ -78,32 +78,27 @@ At the top of `src/server/Components/BlenderStatusPresentation.luau`:
 - `COUNT_OFFSET` / `PROMPT_OFFSET` default to `(0, 0, 0)` world-space studs.
 - `WHITE` / `FULL_COLOR` control normal and full-count colors.
 
-Client camera-distance presentation is handled separately by
+Client visibility ranges are configured by
 `src/client/Controllers/BlenderStatusDistanceController.luau`, initialized by the
-client bootstrap. Its `PROFILES` constants are:
+client bootstrap. It retains its existing name/API but only configures range and
+the count label's centered layout; it does not poll the camera or render frames.
 
-| Display | BandDistances | Scales | FadeDistance | HideDistance |
-| --- | --- | --- | --- | --- |
-| IngredientCountDisplay | 15, 35 | 1.0, 0.72, 0.55 | 50 | 60 |
-| TurbineStatusDisplay | 12, 25 | 1.0, 0.70, 0.55 | 30 | 40 |
+| Display | Fixed pixel size | Text size | MaxDistance |
+| --- | --- | --- | --- |
+| IngredientCountDisplay | 240 x 72 | 24 px | 60 studs |
+| TurbineStatusDisplay | 380 x 80 | 24 px | 40 studs |
 
-Distances are studs from the current camera to the Attachment.WorldPosition or
-BasePart.Position. Scale stays fixed within three bands and is written only when
-the band changes. `BAND_HYSTERESIS = 1` requires moving more than one stud beyond
-a boundary to shrink, or more than one stud below it to grow. Initial registration
-selects a band directly; large camera jumps can cross multiple bands in one update.
-The final scale persists through the fade range. Smoothstep interpolation fades
-both text and outline between FadeDistance and HideDistance each frame, without
-interpolating size. One client-created `CameraDistanceScale` UIScale
-under each centered Status label scales the existing 24px text; TextScaled remains
-false. The client sets BillboardGui.MaxDistance to HideDistance (60/40 studs),
-overriding the server's 80-stud default locally, and hides text at that boundary.
-No instances are rebuilt per frame. Existing and late-replicating displays bind,
-stream-out removes the scale, and camera replacements are read each render frame.
-All plots are adjusted for each observer's own camera; ownership and text remain
-entirely server-controlled. No Studio hierarchy changes or new remotes are needed.
+Both displays use their existing Offset-only canvases with TextScaled false.
+There are no distance bands, UIScales, font resizing, hysteresis, or opacity fades.
+Roblox handles visible/not-visible camera range through BillboardGui.MaxDistance,
+overriding the server's 80-stud default locally. Existing and streamed-in displays
+receive the same settings without creating any additional instances.
 
-Distance validation: 47 client assertions plus 28 server presentation assertions
+IngredientCountOrigin, world offsets, label positioning, messages, and server
+state updates are preserved. No Studio hierarchy changes or new remotes are needed.
+See [custom interaction presentation](INTERACTION_PROMPTS.md) for reusable prompt UI.
+
+Fixed-size validation: 126 client assertions plus 32 server presentation assertions
 pass. Focused controller Roblox-aware typecheck, StyLua, and Rojo build pass.
 Client-bootstrap-inclusive analysis encounters existing StashPromptController
 type errors at lines 36/39. Studio rendering/distance verification remains required.

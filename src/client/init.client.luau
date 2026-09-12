@@ -1,3 +1,5 @@
+require(script.Controllers.InteractionPromptController).Init()
+require(script.Controllers.WorldTextController).Init()
 local GameplayPresentationController = require(script.Controllers.GameplayPresentationController)
 GameplayPresentationController.Init()
 require(script.Controllers.BlenderStatusDistanceController).Init()

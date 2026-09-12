@@ -5,11 +5,13 @@ local SprintConfig = require(Shared.Constants.SprintConfig)
 
 local Display = {}
 Display.Tracks = {
+    { Id = "CarryCapacity", Name = "CARRY CAPACITY", Attribute = "CarryCapacity" },
     { Id = "MovementSpeed", Name = "MOVEMENT SPEED", Attribute = "BaseWalkSpeed" },
     { Id = "SprintStamina", Name = "SPRINT STAMINA", Attribute = "StaminaMax" },
     { Id = "Jump", Name = "JUMP", Attribute = "JumpLevel" },
 }
 local tiers: { [string]: { { Cost: number, Value: number } } } = {
+    CarryCapacity = Upgrades.CarryCapacity,
     MovementSpeed = Upgrades.MovementSpeed,
     SprintStamina = Upgrades.SprintStamina,
     Jump = Upgrades.Jump,
@@ -40,7 +42,9 @@ function Display.Row(
     local nextTier = track[level + 2]
     return {
         Level = level,
-        Stat = Display.Stat(id, current) .. (if nextTier then " → " .. Display.Stat(id, nextTier.Value) else ""),
+        Stat = Display.Stat(id, current) .. (if nextTier
+            then " → " .. Display.Stat(id, nextTier.Value)
+            else (if id == "CarryCapacity" then " / 3" else "")),
         Price = if nextTier then nextTier.Cost else nil,
         Max = nextTier == nil,
     }

@@ -5,12 +5,13 @@ local Presentation = {}
 
 -- Measure every oriented part in character-local space, including off-center
 -- PrimaryParts. The lowest corner, rather than the root center, clears the head.
-function Presentation.Offset(visual: Instance, characterRoot: BasePart): CFrame
+function Presentation.Offset(visual: Instance, characterRoot: BasePart, stackHeight: number?): (CFrame, number)
     local ingredientRoot = WorldUtil.Part(visual)
     assert(ingredientRoot, "Carried ingredient needs a BasePart")
     local degrees = Config.RotationDegrees
     local rotation = CFrame.Angles(math.rad(degrees.X), math.rad(degrees.Y), math.rad(degrees.Z))
     local lowest = math.huge
+    local highest = -math.huge
     local parts = visual:GetDescendants()
     table.insert(parts, visual)
     for _, part in parts do
@@ -21,6 +22,7 @@ function Presentation.Offset(visual: Instance, characterRoot: BasePart): CFrame
                 + math.abs(at.UpVector.Y) * half.Y
                 + math.abs(at.LookVector.Y) * half.Z
             lowest = math.min(lowest, at.Position.Y - radiusY)
+            highest = math.max(highest, at.Position.Y + radiusY)
         end
     end
     local head = characterRoot.Parent and characterRoot.Parent:FindFirstChild("Head")
@@ -35,15 +37,22 @@ function Presentation.Offset(visual: Instance, characterRoot: BasePart): CFrame
                 )
                 * 0.5
     end
-    return CFrame.new(0, top + math.max(0, Config.HeightAboveHead) - lowest, -Config.ForwardOffset) * rotation
+    return CFrame.new(0, top + math.max(0, Config.HeightAboveHead) - lowest + (stackHeight or 0), -Config.ForwardOffset)
+        * rotation,
+        highest - lowest + Config.StackGap
 end
 
 -- Keep the Tool for activation/lifecycle, but omit a named Handle so Roblox
 -- cannot create a competing RightGrip. All placement is server-owned.
-function Presentation.Attach(visual: Instance, tool: Tool, root: BasePart): (CFrame, () -> ())
+function Presentation.Attach(
+    visual: Instance,
+    tool: Tool,
+    root: BasePart,
+    stackHeight: number?
+): (CFrame, () -> (), number)
     local ingredientRoot = WorldUtil.Part(visual)
     assert(ingredientRoot, "Carried ingredient needs a BasePart")
-    local offset = Presentation.Offset(visual, root)
+    local offset, height = Presentation.Offset(visual, root, stackHeight)
     local physical = visual :: any
     local rootToPivot = ingredientRoot.CFrame:ToObjectSpace(physical:GetPivot())
     physical:PivotTo(root.CFrame * offset * rootToPivot)
@@ -82,48 +91,10 @@ function Presentation.Attach(visual: Instance, tool: Tool, root: BasePart): (CFr
     carryWeld.C0 = offset
     carryWeld.Parent = anchor
 
-    -- Static R6/R15 arm pose: welds override Animate without animation assets or
-    -- per-frame updates. Save Enabled so cleanup restores the original rig state.
-    local posed: { { Motor: Motor6D, Enabled: boolean, Weld: Weld } } = {}
-    local character = root.Parent
-    if character then
-        for _, joint in character:GetDescendants() do
-            if not joint:IsA("Motor6D") or not joint.Part0 or not joint.Part1 then
-                continue
-            end
-            local shoulder = joint.Name == "Right Shoulder"
-                or joint.Name == "Left Shoulder"
-                or joint.Name == "RightShoulder"
-                or joint.Name == "LeftShoulder"
-            local lowerArm = joint.Name == "RightElbow"
-                or joint.Name == "LeftElbow"
-                or joint.Name == "RightWrist"
-                or joint.Name == "LeftWrist"
-            if not shoulder and not lowerArm then
-                continue
-            end
-            local weld = Instance.new("Weld")
-            weld.Name = "OverheadArmPose"
-            weld.Part0 = joint.Part0
-            weld.Part1 = joint.Part1
-            weld.C0 = if shoulder
-                then CFrame.new(joint.C0.Position) * CFrame.Angles(math.pi, 0, 0) * joint.C0.Rotation
-                else joint.C0
-            weld.C1 = joint.C1
-            table.insert(posed, { Motor = joint, Enabled = joint.Enabled, Weld = weld })
-            joint.Enabled = false
-            weld.Parent = tool
-        end
-    end
-    return offset * rootToPivot,
-        function()
-            for _, pose in posed do
-                pose.Weld:Destroy()
-                if pose.Motor.Parent then
-                    pose.Motor.Enabled = pose.Enabled
-                end
-            end
-        end
+    return offset * rootToPivot, function()
+        anchor:Destroy()
+        visual:Destroy()
+    end, height
 end
 
 return Presentation

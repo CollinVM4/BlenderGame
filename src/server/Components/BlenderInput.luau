@@ -19,9 +19,11 @@ function BlenderInput.Init(services: any)
             if not owner then
                 return
             end
+            local seen: { [Instance]: boolean } = {}
             for _, part in workspace:GetPartsInPart(object) do
                 local item = services.IngredientService.Resolve(part)
-                if item then
+                if item and not seen[item] then
+                    seen[item] = true
                     services.BlendService.TryInput(owner, item, object)
                 end
             end
