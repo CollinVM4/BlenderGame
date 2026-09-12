@@ -129,9 +129,9 @@ local Ingredients: {
 		Rarity = "Common",
 	},
 
-	Enoki_Mushrooms = {
-		Id = "Enoki_Mushrooms",
-		DisplayName = "Enoki Mushrooms",
+	Mushrooms = {
+		Id = "Mushrooms",
+		DisplayName = "Mushrooms",
 		Tags = { "Mushroom", "Healthy", "White" },
 		BlendColor = Color3.fromRGB(225, 215, 180),
 		Rarity = "Uncommon",
@@ -252,9 +252,17 @@ local Ingredients: {
 	Onion = {
 		Id = "Onion",
 		DisplayName = "Onion",
-		Tags = { "Vegetable", "White" },
+		Tags = { "Vegetable", "White", "Weird","Healthy" },
 		BlendColor = Color3.fromRGB(220, 205, 170),
 		Rarity = "Common",
+	},
+
+	Gummy_Bear = {
+		Id = "Gummy_Bear",
+		DisplayName = "Gummy Bear",
+		Tags = { "Candy", "Sweet", "Red" },
+		BlendColor = Color3.fromRGB(255, 100, 100),
+		Rarity = "Rare",
 	},
 
 	Orange = {
@@ -459,9 +467,9 @@ local Ingredients: {
 		Rarity = "Rare",
 	},
 
-	GoldenApple = {
-		Id = "GoldenApple",
-		DisplayName = "Golden Apple",
+	GoldenTomato = {
+		Id = "GoldenTomato",
+		DisplayName = "Golden Tomato",
 		Tags = { "Fruit", "Sweet", "Healthy", "Yellow" },
 		BlendColor = Color3.fromRGB(255, 205, 55),
 		Rarity = "Rare",
