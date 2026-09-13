@@ -42,7 +42,7 @@ function Controller.Init()
                     else "Loading…"
                 row.Stat.Text = if state then state.Stat else "—"
                 row.Purchase.Text = if pending == track.Id
-                    then "BUYING…"
+                    then "UPGRADING…"
                     elseif isMax then "MAX"
                     elseif feedback[track.Id] then feedback[track.Id]
                     elseif state and state.Price then "$" .. tostring(state.Price) .. " UPGRADE"

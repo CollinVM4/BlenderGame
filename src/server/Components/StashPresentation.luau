@@ -4,9 +4,13 @@ local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local Presentation = {}
 
--- DisplayScale is the item's longest bounding-box dimension relative to the
--- derived display plane's smaller dimension. HeightOffset is clearance in studs.
-local DisplayScale = 0.16
+-- Footprint and height are relative to the display plane's smaller dimension.
+-- Size limits are in studs: clamp the target footprint, not the source scale,
+-- so both tiny and huge templates can reach the same visible size.
+local DisplayFootprintScale = 0.30
+local DisplayMaxHeightScale = 0.90 -- Safety cap for unusually tall/thin meshes.
+local DisplayMinSize = 0.25
+local DisplayMaxSize = 4.0 -- Also caps height; height safety takes precedence.
 local DisplayHeightOffset = 0.12
 local DisplaySpacing = 1.08 -- Center-to-center spacing in item-size units.
 local DisplayFifthLift = 0.65 -- Fifth item's extra height in item-size units.
@@ -78,28 +82,13 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     folder.Name = "StashDisplay"
     folder.Parent = slot
     local surface, width, depth, thickness, normalAxis = displaySurface(slot)
-    local itemSize = math.min(width, depth) * DisplayScale
-    if
-        DisplayDiagnostics
+    local slotSize = math.min(width, depth)
+    local itemSize = math.clamp(slotSize * DisplayFootprintScale, DisplayMinSize, DisplayMaxSize)
+    local maxHeight = math.min(slotSize * DisplayMaxHeightScale, DisplayMaxSize)
+    local shouldPrintDiagnostic = DisplayDiagnostics
         and not diagnosticPrinted
         and RunService:IsStudio()
         and slot:GetAttribute("SlotIndex") == DiagnosticSlotIndex
-    then
-        diagnosticPrinted = true
-        print(
-            string.format(
-                "[StashPresentation] %s Size=%s normalAxis=%s thickness=%.3f usableWidth=%.3f usableDepth=%.3f targetItemSize=%.3f topSurfaceCenter=%s",
-                slot:GetFullName(),
-                tostring(slot.Size),
-                normalAxis,
-                thickness,
-                width,
-                depth,
-                itemSize,
-                tostring(surface.Position)
-            )
-        )
-    end
     local spacing = itemSize * DisplaySpacing
     local layout = Layouts[state.Count]
     for i = 1, state.Count do
@@ -139,8 +128,32 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
         -- Center the wrapper pivot on actual geometry, independent of authored
         -- pivots. Uniform scaling can enlarge small templates as well as shrink.
         model.WorldPivot = bounds
-        model:ScaleTo(itemSize / math.max(size.X, size.Y, size.Z, 0.01))
+        -- The identity-oriented wrapper's X/Z axes become the display plane's
+        -- X/Z axes at placement, so these bounds already reflect display orientation.
+        local footprint = math.max(size.X, size.Z)
+        local scaleFactor = math.min(itemSize / math.max(footprint, 0.000001), maxHeight / math.max(size.Y, 0.000001))
+        model:ScaleTo(scaleFactor)
         local _, scaled = model:GetBoundingBox()
+        if shouldPrintDiagnostic and not diagnosticPrinted then
+            diagnosticPrinted = true
+            print(
+                string.format(
+                    "[StashPresentation] %s Size=%s normalAxis=%s thickness=%.3f usableWidth=%.3f usableDepth=%.3f originalBounds=%s horizontalFootprint=%.6f targetFootprint=%.3f scaleFactor=%.6g scaledBounds=%s topSurfaceCenter=%s",
+                    slot:GetFullName(),
+                    tostring(slot.Size),
+                    normalAxis,
+                    thickness,
+                    width,
+                    depth,
+                    tostring(size),
+                    footprint,
+                    itemSize,
+                    scaleFactor,
+                    tostring(scaled),
+                    tostring(surface.Position)
+                )
+            )
+        end
         local offset = layout[i] * spacing
         local lift = if i == 5 then itemSize * DisplayFifthLift else 0
         local target = surface * CFrame.new(offset.X, DisplayHeightOffset + scaled.Y / 2 + lift, offset.Z)

@@ -3,7 +3,6 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local HttpService = game:GetService("HttpService")
 local ServerStorage = game:GetService("ServerStorage")
 local Economy = require(Shared.Constants.Economy)
-local Recipes = require(Shared.Constants.Recipes)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
@@ -183,23 +182,13 @@ local function makeResult(ids: { string }): Types.Smoothie
             end
         end
     end
-    local sorted = table.clone(ids)
-    table.sort(sorted)
-    local discovery: string? = nil
-    for name, recipe in Recipes do
-        local combination = table.clone(recipe.Ingredients)
-        table.sort(combination)
-        if table.concat(sorted, "|") == table.concat(combination, "|") then
-            discovery = name
-            break
-        end
-    end
     return {
         BlendId = HttpService:GenerateGUID(false),
         Ingredients = table.clone(ids),
         Tags = tags,
         Color = batchColor(ids) :: Color3,
-        Discovery = discovery,
+        -- Retained for compatibility with existing smoothie consumers.
+        Discovery = nil,
     }
 end
 -- Server Heartbeat reports measured physical spin. No progress remote exists.
@@ -271,9 +260,6 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
             string.format("COMPLETE color=(%.3f,%.3f,%.3f)", result.Color.R, result.Color.G, result.Color.B)
         )
         deps.PlayerDataService.IncrementStat(player, "SmoothiesMade")
-        if result.Discovery then
-            deps.PlayerDataService.RecordDiscovery(player, result.Discovery)
-        end
     end
     publish(player)
     return true

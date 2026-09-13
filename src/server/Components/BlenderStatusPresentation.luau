@@ -6,7 +6,7 @@ local BlenderStatusPresentation = {}
 
 -- Cosmetic tuning only. Capacity comes from the same config as BlendService.
 local TEXT_SIZE = 24
-local MAX_DISTANCE = 80
+local MAX_DISTANCE = 5
 -- Offset-only canvases keep both displays at a fixed screen-space pixel size.
 local COUNT_SIZE = UDim2.fromOffset(240, 72)
 local PROMPT_SIZE = UDim2.fromOffset(380, 80)

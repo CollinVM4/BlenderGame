@@ -8,7 +8,7 @@
 
 Prepare at the shared market and stash ingredients → Start Day → serve three customers → receive a Day grade → upgrade/prepare and repeat.
 
-Each smoothie uses 1–3 owned physical units thrown into the blender opening. Turn the turbine, dispense the finished cup, and serve any combination. Customer preferences use ingredient tags; special recipes unlock discoveries. Customer grade affects payout, while reaction selection is independent.
+Each smoothie uses 1–3 owned physical units thrown into the blender opening. Turn the turbine, dispense the finished cup, and serve any combination. Customer preferences use ingredient tags. Customer grade affects payout, while reaction selection is independent.
 
 ---
 
@@ -29,10 +29,10 @@ This project uses a modular, scalable architecture synced via **Rojo**. Code is 
   * **`UI/`**: Modules dedicated to rendering and managing screen elements (e.g., `ScreenGuis.luau`), keeping presentation separate from logic.
 
 * **`src/shared/` (ReplicatedStorage)**
-  * **`Constants/`**: Static data tables shared between the server and client (e.g., `Recipes.luau`). Changing a recipe here updates it everywhere.
+  * **`Constants/`**: Static data tables shared between the server and client (e.g., `Ingredients.luau`). Changing an ingredient definition here updates it everywhere.
   * **`Events/`**: RemoteEvents and RemoteFunctions (e.g., `Hello.luau`) used for secure client-server communication.
 
 ### Development Guidelines
 1. **Never build in VSCode:** Use Roblox Studio to build physical models (blenders, workstations) and place UI elements.
 2. **Never script in Studio:** Write all logic inside VSCode. Rojo will sync it into the DataModel automatically.
-3. **Trust the Server:** The client only sends requests (e.g., "I clicked Serve"). The server verifies the recipe and awards the cash.
+3. **Trust the Server:** The client only sends requests (e.g., "I clicked Serve"). The server verifies the smoothie and awards the cash.

@@ -1065,8 +1065,14 @@ do
             check(not blend.AddProgress(p, wheel, 100), "underfilled spin rejected")
         end
         local snapshot = blend.GetSnapshot(p)
-        check(snapshot.State == "LOADING" and snapshot.Progress == 0 and snapshot.Result == nil, "rejection preserves pre-blend state")
-        check(#snapshot.Ingredients == loaded and p:GetAttribute("BlendIngredientCount") == loaded, "rejection preserves loaded ingredients")
+        check(
+            snapshot.State == "LOADING" and snapshot.Progress == 0 and snapshot.Result == nil,
+            "rejection preserves pre-blend state"
+        )
+        check(
+            #snapshot.Ingredients == loaded and p:GetAttribute("BlendIngredientCount") == loaded,
+            "rejection preserves loaded ingredients"
+        )
         check(snapshot.Ingredients[1] == "Strawberry", "rejection retains ingredient identity")
         check(not blend.Dispense(p, wheel) and not blend.GetCup(p), "rejection cannot dispense or create cup")
         check(#presentation == beforeEvents, "rejection emits no blend-start or progress events")
@@ -1079,10 +1085,7 @@ do
     end
     env.task.delay = originalDelay
 end
-check(
-    loadIngredient("Ice") and blend.GetSnapshot(p).State == "READY",
-    "three items enter READY"
-)
+check(loadIngredient("Ice") and blend.GetSnapshot(p).State == "READY", "three items enter READY")
 check(not loadIngredient("Tire"), "fourth item rejected without consumption")
 check(not blend.AddProgress(p, wheel, 0 / 0), "invalid progress rejected")
 check(not blend.AddProgress(other, wheel, 10), "foreign wheel rejected")
@@ -1116,7 +1119,7 @@ for _ = 1, 9 do
 end
 local result = blend.GetSnapshot(p)
 check(result.State == "COMPLETE" and result.Progress == 100, "blend completes at 100")
-check(result.Result.Discovery == "Fruit Smoothie", "special multiset discovery")
+check(result.Result.Discovery == nil, "former recipe combination blends without recipe discoveries")
 check(data.GetSnapshot(p).Stats.SmoothiesMade == 1, "completion increments once")
 blend.AddProgress(p, wheel, 10)
 check(data.GetSnapshot(p).Stats.SmoothiesMade == 1, "repeated completion does not increment")
@@ -1142,6 +1145,18 @@ customer.Init(deps, function() end, function()
 end)
 local bad = blend.GetSnapshot(p).Result
 local requests = loadModule("CustomerRequests")
+local requestsById = {}
+for _, request in requests do
+    check(requestsById[request.Id] == nil, "request IDs are unique: " .. request.Id)
+    check(
+        type(request.MinJumpTier) == "number"
+            and request.MinJumpTier >= 0
+            and request.MinJumpTier <= 3
+            and request.MinJumpTier == math.floor(request.MinJumpTier),
+        "request declares a valid minimum jump tier: " .. request.Id
+    )
+    requestsById[request.Id] = request
+end
 local function requestResult(ids)
     return { Ingredients = ids, Tags = { "Red", "Sweet", "Cold" } }
 end
@@ -1150,11 +1165,12 @@ check(
     "one Red ingredient suffices despite extras"
 )
 check(customer.ValidateRequest(requestResult({ "Banana" }), requests[2]), "Sweet uses metadata for Banana")
-check(customer.ValidateRequest(requestResult({ "Ice" }), requests[3]), "Cold uses metadata for Ice")
+check(customer.ValidateRequest(requestResult({ "Ice" }), requestsById.Cold), "Cold uses metadata for Ice")
 check(not customer.ValidateRequest(requestResult({ "Tire" }), requests[1]), "forged result tags cannot satisfy Red")
 check(not customer.ValidateRequest(requestResult({}), requests[1]), "empty smoothie fails")
 check(not customer.ValidateRequest(requestResult({ "Unknown" }), requests[1]), "unknown ingredient fails closed")
-local combined = { Id = "RedCold", DisplayText = "Red and cold", RequiredTags = { "Red", "Cold" }, BasePayout = 40 }
+local combined =
+    { Id = "RedCold", DisplayText = "Red and cold", RequiredTags = { "Red", "Cold" }, BasePayout = 40, MinJumpTier = 3 }
 check(
     customer.ValidateRequest(requestResult({ "Strawberry", "Ice" }), combined),
     "combined request accepts tags across ingredients"

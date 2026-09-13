@@ -17,6 +17,7 @@ parser.add_argument("--world-only", action="store_true", help="Run ingredient wo
 parser.add_argument("--carry-only", action="store_true", help="Run overhead geometry and carry lifecycle checks")
 parser.add_argument("--sprint-only", action="store_true", help="Run sprint network and stamina regression checks")
 parser.add_argument("--customer-only", action="store_true", help="Run through customer request/serve integration checks")
+parser.add_argument("--requests-only", action="store_true", help="Run jump-gated customer selection regression checks")
 args = parser.parse_args()
 sources = {}
 for directory in ("src/shared/Constants", "src/server/Services"):
@@ -38,10 +39,10 @@ bundle = "local customerOnly = " + str(args.customer_only).lower() + "\nlocal vf
     f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
 ) + "\n}\n"
 state_tests = (ROOT / "tests/server_state.spec.luau").read_text(encoding="utf-8")
-if args.world_only or args.sprint_only or args.carry_only:
+if args.world_only or args.sprint_only or args.carry_only or args.requests_only:
     # Reuse the fake engine boundary; skip unrelated gameplay assertions.
     bundle += state_tests.split("env.require = loadModule", 1)[0] + "env.require = loadModule\n"
-    spec = "ingredient_carry.spec.luau" if args.carry_only else "sprint.spec.luau" if args.sprint_only else "ingredient_world.spec.luau"
+    spec = "customer_requests.spec.luau" if args.requests_only else "ingredient_carry.spec.luau" if args.carry_only else "sprint.spec.luau" if args.sprint_only else "ingredient_world.spec.luau"
     bundle += (ROOT / "tests" / spec).read_text(encoding="utf-8")
 else:
     bundle += state_tests

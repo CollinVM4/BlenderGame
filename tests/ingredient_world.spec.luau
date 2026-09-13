@@ -146,7 +146,7 @@ end
 local announcements = 0
 component.Init(spawnDeps)
 component.Bind(spawnDeps, "AnnouncedIngredientSpawn", function(_, id)
-    check(id == "GoldenApple", "rare announcement uses explicitly configured identity")
+    check(id == "GoldenTomato", "rare announcement uses explicitly configured identity")
     announcements += 1
 end)
 local normal = marker("Strawberry", 10)
@@ -159,7 +159,7 @@ timers[1].Run()
 check(#spawned == 2 and announcements == 0, "normal respawn stays silent")
 cleanup()
 check(spawned[2].Destroyed and #timers == 1, "cleanup destroys stock without scheduling a refill")
-local rare = marker("GoldenApple", 300)
+local rare = marker("GoldenTomato", 300)
 rare:SetAttribute("MinRespawnSeconds", 240)
 rare:SetAttribute("MaxRespawnSeconds", 360)
 local cleanRare = attachments.AnnouncedIngredientSpawn(rare)
@@ -215,7 +215,7 @@ local announced = announceChunk()
 announced.Init(deps)
 announced.Init(deps)
 rare:SetAttribute("LocationName", "Rainbow Cloud")
-emittedCallback(rare, "GoldenApple")
+emittedCallback(rare, "GoldenTomato")
 local remote = shared.Events:FindFirstChild("RareIngredientSpawned")
 local payload = presentation[#presentation].Moment
 check(
@@ -223,8 +223,8 @@ check(
     "rare adapter broadcasts presentation remote"
 )
 check(
-    payload.IngredientId == "GoldenApple"
-        and payload.DisplayName == "Golden Apple"
+    payload.IngredientId == "GoldenTomato"
+        and payload.DisplayName == "Golden Tomato"
         and payload.LocationName == "Rainbow Cloud",
     "rare payload uses server definition and authored location"
 )
@@ -266,10 +266,81 @@ check(
     inventory.GetHeldIngredientId(player) == nil and inventory.GetSnapshot(player).Stash[3].Count == 1,
     "stash stores one ID/count and clears hands"
 )
+-- Exercise reconstruction from a template with no authored PrimaryPart.
+template.Clone = clone
 check(inventory.Withdraw(player, 3), "stash withdrawal equips authored model visual")
+local heldTool = character:FindFirstChildOfClass("Tool")
+local heldModel = heldTool:FindFirstChildOfClass("Model")
+check(heldModel.PrimaryPart and heldModel.PrimaryPart.Name == "IngredientRoot", "stash carry resolves a physical root")
+for _, name in { "Leaf", "Fruit" } do
+    local child = heldModel:FindFirstChild(name)
+    local weld = child:FindFirstChild("IngredientAssembly")
+    check(weld and weld.Part0 == heldModel.PrimaryPart and weld.Part1 == child, "stash child welded to shared root")
+    check(
+        not child.Anchored and not child.CanTouch and not child.CanCollide,
+        "all carried children are passive visuals"
+    )
+    check(not ingredients.Resolve(child), "carried child is not a registered world ingredient")
+end
+check(inventory.GetCarryCount(player) == 1, "multipart stash reconstruction reserves one ingredient")
 local restored = inventory.ThrowHeld(player)
 check(
     restored:IsA("Model") and restored:FindFirstChild("Fruit").Size.Y == 3,
     "stash withdrawal and throw restore authored model size"
 )
+-- The real scanner must attempt each registered object once even on rejection.
+local heartbeat = signal()
+local scanInput = instance("Part")
+local scanModel = spawn()
+local scanPart = ingredients.Spawn("Banana", frame())
+scanInput.Overlaps =
+    { scanModel:FindFirstChild("Leaf"), scanModel:FindFirstChild("Fruit"), scanModel.PrimaryPart, scanPart }
+local attempts = {}
+local inputChunk = assert(loadstring(sources.BlenderInputComponent))
+setfenv(
+    inputChunk,
+    setmetatable({
+        script = { Parent = { Parent = { Services = parent } } },
+        game = {
+            GetService = function()
+                return { Heartbeat = heartbeat }
+            end,
+        },
+        require = function()
+            return {
+                BindTag = function(_, attach)
+                    attach(scanInput)
+                end,
+            }
+        end,
+    }, { __index = env })
+)
+inputChunk().Init({
+    IngredientService = ingredients,
+    TycoonService = {
+        GetOwner = function()
+            return player
+        end,
+    },
+    BlendService = {
+        TryInput = function(_, object)
+            attempts[object] = (attempts[object] or 0) + 1
+            return false
+        end,
+    },
+})
+heartbeat:Fire(0.1)
+check(attempts[scanModel] == 1, "rejected multipart ingredient attempted once per scan")
+check(attempts[scanPart] == 1, "single part attempted independently once")
+heartbeat:Fire(0.1)
+check(attempts[scanModel] == 2 and attempts[scanPart] == 2, "rejected ingredients retry on next scan")
+check(ingredients.GetRecord(scanModel) ~= nil, "rejected scan preserves whole model")
+local children = scanModel:GetDescendants()
+check(not ingredients.Consume(scanModel:FindFirstChild("Leaf")), "child cannot independently be consumed")
+check(ingredients.Consume(scanModel) == "Strawberry", "registered model consumes as one ingredient")
+for _, child in children do
+    check(child.Destroyed, "whole ingredient consumption leaves no child behind")
+end
+local singleVisual = ingredients.CreateVisual("Banana")
+check(singleVisual:IsA("BasePart") and #singleVisual:GetDescendants() == 0, "single visual has no added root or weld")
 print("PASS: " .. count .. " ingredient world assertions.")

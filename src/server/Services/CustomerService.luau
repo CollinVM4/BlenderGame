@@ -50,8 +50,34 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
     return true, "Required tags matched"
 end
 
-local function assignRequest(record: any)
-    local request = CustomerRequests[math.random(1, #CustomerRequests)]
+local function eligibleRequests(player: Player): { CustomerRequests.Request }
+    -- Server-owned effective tier, published by PlayerDataService/MovementService (0-3).
+    local playerJumpTier = player:GetAttribute("JumpLevel") or 0
+    local eligible: { CustomerRequests.Request } = {}
+    for _, request in CustomerRequests do
+        if playerJumpTier >= request.MinJumpTier then
+            table.insert(eligible, request)
+        end
+    end
+    if #eligible == 0 then
+        warn(
+            string.format(
+                "[CustomerService] No eligible requests for %s at jump tier %s",
+                player.Name,
+                tostring(playerJumpTier)
+            )
+        )
+    end
+    return eligible
+end
+
+local function assignRequest(player: Player, record: any): boolean
+    local eligible = eligibleRequests(player)
+    if #eligible == 0 then
+        record.Model:Destroy()
+        return false
+    end
+    local request = eligible[math.random(1, #eligible)]
     record.Request = request
     record.Preference = request.RequiredTags[1]
     record.Model:SetAttribute("Preference", record.Preference)
@@ -59,6 +85,7 @@ local function assignRequest(record: any)
     diagnostic(
         string.format("assigned owner=%s request=%s", tostring(record.Model:GetAttribute("OwnerUserId")), request.Id)
     )
+    return true
 end
 
 local function ensureCustomerCounterGlow(customerModel: Model): ParticleEmitter?
@@ -187,6 +214,9 @@ end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
     if active[player] then
         return false, "Customer already active"
+    end
+    if #eligibleRequests(player) == 0 then
+        return false, "No eligible customer requests"
     end
     for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
         local marker, reason = deps.TycoonService.GetReference(player, name)
@@ -333,7 +363,9 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     end)
     move(record, counter.CFrame, function()
         if active[player] == record then
-            assignRequest(record)
+            if not assignRequest(player, record) then
+                return
+            end
             typewriterText(text, record.Request.DisplayText, audio.dialogueSound)
             record.Ready = true
             prompt.Enabled = true
@@ -484,9 +516,11 @@ function CustomerService:GetSatisfaction(player: Player, item: Instance?, prefer
     )
 end
 function CustomerService:RefreshOrder(model: Model)
-    for _, record in active do
+    for player, record in active do
         if record.Model == model and record.Ready then
-            assignRequest(record)
+            if not assignRequest(player, record) then
+                return
+            end
             typewriterText(record.Text, record.Request.DisplayText, record.Audio.dialogueSound)
         end
     end

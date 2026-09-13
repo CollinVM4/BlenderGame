@@ -1,6 +1,10 @@
 # Simple customer request slice
 
-Requests live in `src/shared/Constants/CustomerRequests.luau`: stable `Id`, `DisplayText`, `RequiredTags`, and `BasePayout`. Red, Sweet, and Cold each pay $25. Add an entry with `RequiredTags = { "Red", "Sweet" }` to require both tags; different ingredients may supply them. Ingredient semantic tags live in `src/shared/Constants/Ingredients.luau`, not CollectionService tags on physical props.
+Requests live in `src/shared/Constants/CustomerRequests.luau`: stable `Id`, `DisplayText`, `RequiredTags`, `BasePayout`, and `MinJumpTier`. Red, Sweet, and Cold each pay $25. Add an entry with `RequiredTags = { "Red", "Sweet" }` to require both tags; different ingredients may supply them. Ingredient semantic tags live in `src/shared/Constants/Ingredients.luau`, not CollectionService tags on physical props.
+
+CustomerService reads the server-owned `JumpLevel` attribute (0–3), initialized by PlayerDataService and updated by MovementService, including Studio overrides. Both arrival and order refresh build a pool where `JumpLevel >= MinJumpTier` before choosing uniformly at random. Missing JumpLevel defaults to 0. Empty pools warn and prevent spawning or remove the affected arriving/refreshing customer. No progression API extension is needed; tag validation and payouts are unchanged. Request IDs are unique; the duplicate Cold entry was removed.
+
+Set `MinJumpTier` to the earliest area tier providing every required tag. **Seafood and Cold currently use tier 3 placeholders for the designer to configure**; Red, Sweet, Weird, and Yellow use tier 0. No new Studio objects or attributes need to be authored. Run focused regression coverage with `python tests/run_state_tests.py --requests-only --luau <luau-executable>`.
 
 Start Day still uses `DayButton` or `GameplayRequest("StartDay")` → `GameService.StartDay` → `CustomerService.SpawnForPlayer`. The existing fast three-customer day is retained, with one active order per owner. Served customers can leave while their successor approaches. No timer was added.
 

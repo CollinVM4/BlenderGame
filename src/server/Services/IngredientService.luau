@@ -11,6 +11,34 @@ local IngredientService = {}
 -- Tags/attributes are presentation metadata, never proof of ownership or validity.
 local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean } } = {}
 
+-- Shared by world spawns and stash/carry visuals; registration stays in Spawn.
+local function prepareAssembly(object: Instance)
+    -- An explicit pivot root avoids choosing an arbitrary leaf/stem/mesh. It also
+    -- keeps a no-PrimaryPart model's authored pivot unchanged when made physical.
+    if object:IsA("Model") and not object.PrimaryPart then
+        local root = Instance.new("Part")
+        root.Name = "IngredientRoot"
+        root.Size = Vector3.new(0.1, 0.1, 0.1)
+        root.Transparency = 1
+        root.CanCollide = false
+        root.CanTouch = false
+        root.Massless = true
+        root.CFrame = object:GetPivot()
+        root.Parent = object
+        object.PrimaryPart = root
+    end
+    local root = WorldUtil.Part(object)
+    for _, part in object:GetDescendants() do
+        if root and part:IsA("BasePart") and part ~= root then
+            local weld = Instance.new("WeldConstraint")
+            weld.Name = "IngredientAssembly"
+            weld.Part0 = root
+            weld.Part1 = part
+            weld.Parent = part
+        end
+    end
+end
+
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
 end
@@ -42,20 +70,7 @@ function IngredientService.CreateVisual(id: string): Instance?
             child:Destroy()
         end
     end
-    -- An explicit pivot root avoids choosing an arbitrary leaf/stem/mesh. It also
-    -- keeps a no-PrimaryPart model's authored pivot unchanged when made physical.
-    if object:IsA("Model") and not object.PrimaryPart then
-        local root = Instance.new("Part")
-        root.Name = "IngredientRoot"
-        root.Size = Vector3.new(0.1, 0.1, 0.1)
-        root.Transparency = 1
-        root.CanCollide = false
-        root.CanTouch = false
-        root.Massless = true
-        root.CFrame = object:GetPivot()
-        root.Parent = object
-        object.PrimaryPart = root
-    end
+    prepareAssembly(object)
     return object
 end
 function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimable: boolean?): Instance?
@@ -76,13 +91,6 @@ function IngredientService.Spawn(id: string, at: CFrame, owner: Player?, claimab
         if part:IsA("BasePart") then
             part.Anchored = false
             part.CanQuery = true
-            if root and part ~= root then
-                local weld = Instance.new("WeldConstraint")
-                weld.Name = "IngredientAssembly"
-                weld.Part0 = root
-                weld.Part1 = part
-                weld.Parent = part
-            end
         end
     end
     object.Parent = workspace

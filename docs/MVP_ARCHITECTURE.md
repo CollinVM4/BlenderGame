@@ -6,7 +6,7 @@ The architecture now supports a filmable vertical slice, not a finished playable
 
 PREP: collect shared market stock, optionally fight, and deposit carried ingredients in the plot stash. Start Day at your plot. A customer moves from the spawn marker to the counter and requests a loose preference. Release 1–3 owned units into the blender detector, turn the turbine, dispense a cup, and serve it. After three customers, the day receives a grade and finishes. Prepare/upgrades and another Start Day repeat the loop.
 
-Any valid combination can be served. Ingredients supply tags and blend colors. Recipes are optional exact-multiset discoveries, including repeated ingredients; they are never customer requirements. Result color is the mean of the unit colors.
+Any valid combination can be served. Ingredients supply tags and blend colors. Recipe matching has been removed; the optional smoothie Discovery field remains nil for compatibility. Result color is the mean of the unit colors.
 
 Grade measures preference fit and determines money. Reaction is an independent weighted roll. A D can roll `Launch`; this currently produces a reaction attribute/text label, **not a launch animation**. Sweet/Cold/Weird/Healthy/Red grade by matching-unit fraction (A ≥ 2/3, B ≥ 1/3, otherwise D for V1's 1–3 units). Surprise Me grades ingredient variety (three distinct = A, two = B, one = C).
 

@@ -6,6 +6,7 @@ StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
     MovementService = require(script.Services.MovementService),
+    CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
     IngredientService = require(script.Services.IngredientService),
@@ -57,6 +58,7 @@ local function addPlayer(player: Player)
     services.GameService.AddPlayer(player)
     services.TycoonService.AssignPlot(player)
     local function onCharacterAdded(character: Model)
+        services.CharacterPhysicsService.ApplyCharacter(player, character)
         services.BlendService.ClearCup(player)
         services.InventoryService.DropHeld(player)
         player:SetAttribute("StunnedUntil", 0)
@@ -89,6 +91,7 @@ Players.PlayerRemoving:Connect(function(player)
             "TycoonService",
             "SprintService",
             "MovementService",
+            "CharacterPhysicsService",
             "PlayerDataService",
         }
     do

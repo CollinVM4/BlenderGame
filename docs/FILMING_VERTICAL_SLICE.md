@@ -225,7 +225,7 @@ Instance fields can arrive as nil if the instance has not replicated to an obser
 
 Progress throttling affects only notifications. Every accepted RPM delta still updates the server batch and its replicated attributes; turbine ingestion, state transitions, and completion calculations are unchanged.
 
-Payout in the event is a display value after the transaction. It grants no authority. Result colors use the RGB mean of every unit, including repeated units and Mystery; there is no random color override. Recipes remain optional multiset discoveries.
+Payout in the event is a display value after the transaction. It grants no authority. Result colors use the RGB mean of every unit, including repeated units and Mystery; there is no random color override. Recipe matching has been removed, so the optional RecipeId field is absent.
 
 
 No new VFX controller is installed. Love/Disgust/Freeze/Launch/NoobTransform are replicated reaction IDs, not physical effects. Existing basic text/audio remain. Final blender/ingredient/customer art, grip tuning, reaction animation/VFX, and filming camera work remain Studio tasks. Ants, stealing, PvP, HUD, monetization and persistence were not extended.
