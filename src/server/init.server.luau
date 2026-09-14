@@ -107,6 +107,7 @@ services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
+    require(script.Components.BlenderVacuum),
     require(script.Components.IngredientPickup),
     require(script.Components.IngredientSpawn),
     require(script.Components.AnnouncedIngredientSpawn),
@@ -116,6 +117,7 @@ local components: { { Init: (any) -> () } } = {
     require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),
+    require(script.Components.BlenderKillScript), 
     require(script.Components.Stash),
     require(script.Components.DayButton),
 }

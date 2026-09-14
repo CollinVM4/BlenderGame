@@ -69,7 +69,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Crab",
 		Tags = { "Seafood", "Red", "Weird" },
 		BlendColor = Color3.fromRGB(200, 50, 50),
-		Rarity = "Uncommon",
+		Rarity = "Rare",
 	},
 
 	Cauliflower = {
@@ -125,7 +125,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Dragon Fruit",
 		Tags = { "Fruit", "Sweet", "Pink" },
 		BlendColor = Color3.fromRGB(235, 90, 155),
-		Rarity = "Rare",
+		Rarity = "Mystery",
 	},
 
 	Eggplant = {
@@ -333,7 +333,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Squid",
 		Tags = { "Seafood", "White", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
-		Rarity = "Uncommon",
+		Rarity = "Rare",
 	},
 
 	Fish = {
@@ -341,7 +341,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Fish",
 		Tags = { "Seafood", "Blue", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(25, 164, 223),
-		Rarity = "Uncommon",
+		Rarity = "Rare",
 	},
 
 	Pomegranate = {
@@ -413,7 +413,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Tomato",
 		Tags = { "Fruit", "Red" },
 		BlendColor = Color3.fromRGB(220, 60, 45),
-		Rarity = "Common",
+		Rarity = "Mystery",
 	},
 
 	Turnip = {
@@ -479,7 +479,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Sushi",
 		Tags = { "Seafood", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
-		Rarity = "Uncommon",
+		Rarity = "Rare",
 	},
 
 	Steak = {
@@ -487,7 +487,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Steak",
 		Tags = { "Protein", "Weird", "Steak" },
 		BlendColor = Color3.fromRGB(150, 50, 50),
-		Rarity = "Uncommon",
+		Rarity = "Rare",
 	},
 
 	Hamburger = {

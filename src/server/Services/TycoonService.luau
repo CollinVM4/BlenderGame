@@ -39,6 +39,7 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
     for _, role in
         {
             "BlenderInput",
+            "BlenderVacuum",
             "IngredientSpawn",
             "DispenseButton",
             "CustomerSpawn",
@@ -139,7 +140,7 @@ function TycoonService.GetReference(player: Player, name: string): (BasePart?, s
         return nil
     end
     local fixture = fixtures[1]
-    if name == "BlenderInput" and not fixture:IsA("BasePart") then
+    if (name == "BlenderInput" or name == "BlenderVacuum") and not fixture:IsA("BasePart") then
         return nil
     end
     local part = WorldUtil.Part(fixture)
