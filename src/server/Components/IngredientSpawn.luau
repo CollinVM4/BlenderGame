@@ -3,6 +3,11 @@ local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local IngredientSpawn = {}
 local bound: { [Instance]: boolean } = {}
 
+-- Also used by the Edit-mode authoring utility. Keep authored local orientation.
+function IngredientSpawn.GetSpawnCFrame(marker: BasePart): CFrame
+    return marker.CFrame * CFrame.new(0, marker.Size.Y / 2 + 3, 0)
+end
+
 -- Both marker types share the same one-item lifecycle. The callback is output only.
 function IngredientSpawn.Bind(services: any, tag: string, onSpawn: ((Instance, string) -> ())?)
     WorldUtil.BindTag(tag, function(station)
@@ -64,9 +69,10 @@ function IngredientSpawn.Bind(services: any, tag: string, onSpawn: ((Instance, s
             end
             local item = services.IngredientService.Spawn(
                 id,
-                station.CFrame * CFrame.new(0, station.Size.Y / 2 + 3, 0),
+                IngredientSpawn.GetSpawnCFrame(station),
                 nil,
-                true
+                true,
+                { FreezeUntilPickup = station:GetAttribute("FreezeSpawnedItem") == true }
             )
             if not item then
                 return

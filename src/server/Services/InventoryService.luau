@@ -12,6 +12,15 @@ local stashes: { [Player]: { [number]: Types.StashSlot } } = {}
 local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
+local STASH_BURST_TIMEOUT = 0.9
+type StashIntent = {
+    Owner: Player,
+    Slot: BasePart,
+    IngredientId: string,
+    Direction: "STORE" | "TAKE",
+    LastInteraction: number,
+}
+local stashIntents: { [Player]: StashIntent } = {}
 type HeldItem = {
     Tool: Tool,
     Id: string,
@@ -254,6 +263,7 @@ function InventoryService.Init(services)
     deps = services
 end
 function InventoryService.AddPlayer(player: Player)
+    stashIntents[player] = nil
     carried[player] = {}
     syncHeld(player)
     stashes[player] = {}
@@ -314,7 +324,7 @@ function InventoryService.ClaimWorldItem(player: Player, object: Instance): bool
     if not InventoryService.AddUnit(player, record.Id) then
         return false
     end
-    if not deps.IngredientService.Consume(object) then
+    if not deps.IngredientService.Consume(object, true) then
         InventoryService.RemoveUnit(player, record.Id)
         return false
     end
@@ -466,7 +476,59 @@ end
 function InventoryService.Steal(_player: Player, _owner: Player, _index: number): boolean
     return false
 end
+-- Prompt direction is server-owned and survives changes caused by each transfer.
+-- Keep the final successful intent until a failed attempt consumes it, so exhausting
+-- a stack/capacity cannot reverse direction on the next press of the same burst.
+function InventoryService.InteractStash(player: Player, index: number, owner: Player?): boolean
+    local now = os.clock()
+    local part = if owner then getSlotPart(owner, index) else nil
+    local intent = stashIntents[player]
+    if
+        intent and (intent.Owner ~= owner or intent.Slot ~= part or now - intent.LastInteraction >= STASH_BURST_TIMEOUT)
+    then
+        intent = nil
+    end
+    stashIntents[player] = nil
+    if not owner or not part then
+        return false
+    end
+    local slot = stashes[owner] and stashes[owner][index]
+    if not slot then
+        return false
+    end
+    if not intent then
+        local heldId = InventoryService.GetHeldIngredientId(player)
+        local id = heldId or slot.IngredientId
+        if not id then
+            return false
+        end
+        intent = {
+            Owner = owner,
+            Slot = part,
+            IngredientId = id,
+            Direction = if heldId then "STORE" else "TAKE",
+            LastInteraction = now,
+        }
+    end
+    local success = false
+    if intent.Direction == "STORE" then
+        success = owner == player and InventoryService.Deposit(player, intent.IngredientId, index)
+    elseif slot.IngredientId == intent.IngredientId then
+        success = InventoryService.Withdraw(player, index, owner)
+    end
+    if success then
+        intent.LastInteraction = now
+        stashIntents[player] = intent
+    end
+    return success
+end
 function InventoryService.RemovePlayer(player: Player)
+    stashIntents[player] = nil
+    for other, intent in stashIntents do
+        if intent.Owner == player then
+            stashIntents[other] = nil
+        end
+    end
     InventoryService.DropHeld(player)
     InventoryService.ClearHeld(player)
     carried[player] = nil

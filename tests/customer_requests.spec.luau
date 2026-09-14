@@ -209,6 +209,52 @@ do
         flush()
         return model, customer.GetSnapshot(owner)
     end
+    -- Each mapped avatar must bypass the random order pool at arrival and refresh.
+    for _, id in { "steak", "caseoh", "pirate", "walter", "prankster" } do
+        local config = requestConfig.NPCs[id]
+        local fixed = requestConfig.GetForNPC(id)
+        steak:SetAttribute("CustomerId", id)
+        owner:SetAttribute("JumpLevel", fixed.MinJumpTier - 1)
+        local locked, lockedSnapshot = spawn()
+        check(lockedSnapshot.CustomerId == nil, "mapped special is excluded below its own tier: " .. id)
+        check(locked:FindFirstChild("CustomerName", true) == nil, "generic fallback has no name row")
+        customer.RemovePlayer(owner)
+        owner:SetAttribute("JumpLevel", fixed.MinJumpTier)
+        env.math.random = function(low, high)
+            check(low ~= 1, "fixed special must never draw from random request pool")
+            return low or 0
+        end
+        local selected, selectedSnapshot = spawn()
+        check(selectedSnapshot.RequestId == config.RequestId, "arrival uses configured fixed request: " .. id)
+        local bubble = selected:FindFirstChild("OrderBubble", true)
+        local nameText = bubble:FindFirstChild("CustomerName")
+        check(nameText.Text == config.DisplayName, "name comes from config: " .. id)
+        check(bubble.StudsOffset.Y == 2.5 + 2, "billboard rises exactly two studs")
+        check(bubble.StudsOffset.X == 0 and bubble.StudsOffset.Z == 0, "billboard preserves original X/Z")
+        check(bubble.AlwaysOnTop and nameText.BackgroundTransparency == 1, "name keeps transparent topmost style")
+        check(nameText.TextStrokeTransparency == 0.25, "name keeps outlined text")
+        check(
+            selected:FindFirstChildOfClass("Humanoid").NameDisplayDistance == 0,
+            "custom row replaces clone nameplate"
+        )
+        check(steak:FindFirstChildOfClass("Humanoid").NameDisplayDistance ~= 0, "template nameplate remains untouched")
+        selected:SetAttribute("CustomerId", "untrusted")
+        customer:RefreshOrder(selected)
+        flush()
+        check(customer.GetSnapshot(owner).RequestId == config.RequestId, "refresh preserves private fixed request")
+        check(nameText.Text == config.DisplayName, "typewriter refresh leaves name intact")
+        customer.RemovePlayer(owner)
+        local savedName = config.DisplayName
+        config.DisplayName = nil
+        selected = spawn()
+        check(selected:FindFirstChild("CustomerName", true).Text == id, "absent display name falls back to ID")
+        customer.RemovePlayer(owner)
+        config.DisplayName = savedName
+        env.math.random = function(low)
+            return low or 0
+        end
+    end
+    steak:SetAttribute("CustomerId", "  steak  ")
     owner:SetAttribute("JumpLevel", 0)
     local model, snapshot = spawn()
     check(
@@ -257,6 +303,7 @@ do
         model, snapshot = spawn()
         check(snapshot.RequestId ~= "Steak", "unmapped/empty/invalid IDs use normal requests")
         check(not requestConfig.GetForNPC(snapshot.CustomerId), "no override for fallback customer")
+        check(model:FindFirstChild("CustomerName", true) == nil, "regular customer retains order-only presentation")
         customer.RemovePlayer(owner)
     end
     steak:SetAttribute("CustomerId", nil)

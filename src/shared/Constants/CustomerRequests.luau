@@ -49,13 +49,6 @@ local requests: { Request } = {
         MinJumpTier = 0,
     },
     {
-        Id = "Weird",
-        DisplayText = "giving this to my homie as a prank.. make it WEIRD!",
-        RequiredTags = { "Weird" },
-        BasePayout = 25,
-        MinJumpTier = 1,
-    },
-    {
         Id = "Yellow",
         DisplayText = "my favorite color is YELLOW!",
         RequiredTags = { "Yellow" },
@@ -128,8 +121,48 @@ local requests: { Request } = {
 }
 table.insert(requests, {
     Id = "Steak",
-    DisplayText = "I want STEAK in my smoothie!",
+    DisplayText = "Did you know blueberries can clap?! Get me a STEAK smoothie!",
     RequiredTags = { "Steak" },
+    BasePayout = 105,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Blueman",
+    DisplayText = "obviosuly I NEED a BLUE smoothie!",
+    RequiredTags = { "Blue" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Caseoh",
+    DisplayText = "whats good cuh. you know i'm bout that PROTEIN action",
+    RequiredTags = { "Caseoh" },
+    BasePayout = 105,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Prankster",
+    DisplayText = "giving this to my homie as a prank.. make it WEIRD!!",
+    RequiredTags = { "Prankster" },
+    BasePayout = 105,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Pirate",
+    DisplayText = "ARRR! I be wantin' a FISH smoothie!",
+    RequiredTags = { "Seafood" },
+    BasePayout = 105,
+    MinJumpTier = 2,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Walter",
+    DisplayText = "You know the business, and I know the chemistry.. get me a BLUE smoothie!",
+    RequiredTags = { "Blue" },
     BasePayout = 105,
     MinJumpTier = 1,
     NPCOnly = true,
@@ -137,10 +170,58 @@ table.insert(requests, {
 
 local CustomerRequests = {
     Definitions = requests,
+
     SpecialCustomerChance = 0.12,
     MaxSpecialCustomersPerDay = 1,
-    NPCs = { steak = { Type = "Special", RequestId = "Steak", Weight = 1 } } :: {
-        [string]: { Type: string?, RequestId: string?, Weight: number? },
+
+    NPCs = {
+        steak = {
+            Type = "Special",
+            DisplayName = "Steak",
+            RequestId = "Steak",
+            Weight = 1,
+        },
+        blueman = {
+            Type = "Special",
+            DisplayName = "Blueman",
+            RequestId = "Blueman",
+            Weight = 1,
+        },
+
+        prankster = {
+            Type = "Special",
+            DisplayName = "Prankster",
+            RequestId = "Prankster",
+            Weight = 1,
+        },
+
+        pirate = {
+            Type = "Special",
+            DisplayName = "Pirate",
+            RequestId = "Pirate",
+            Weight = 1,
+        },
+
+        caseoh = {
+            Type = "Special",
+            DisplayName = "Caseoh",
+            RequestId = "Caseoh",
+            Weight = 1,
+        },
+
+        walter = {
+            Type = "Special",
+            DisplayName = "Walter",
+            RequestId = "Walter",
+            Weight = 1,
+        },
+    } :: {
+        [string]: {
+            Type: string?,
+            DisplayName: string?,
+            RequestId: string?,
+            Weight: number?,
+        },
     },
 }
 

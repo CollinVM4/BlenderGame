@@ -23,6 +23,8 @@ local specialCounts: { [Player]: number } = {}
 local lastTemplates: { [Player]: Model } = {}
 local warnedTemplates = setmetatable({} :: { [Instance]: boolean }, { __mode = "k" })
 local activeTypingTasks = setmetatable({}, { __mode = "k" })
+local CustomerBillboardExtraHeight = 2
+local CustomerNameHeight = 28
 
 local function diagnostic(message: string)
     if RunService:IsStudio() then
@@ -99,10 +101,11 @@ local function assignRequest(player: Player, record: any): boolean
     record.Model:SetAttribute("RequestId", request.Id)
     diagnostic(
         string.format(
-            "selected type=%s template=%s customerId=%s request=%s jumpTier=%s forced=%s",
+            "selected type=%s template=%s customerId=%s displayName=%s request=%s jumpTier=%s forced=%s",
             record.CustomerType,
             record.TemplateName,
             record.CustomerId or "<absent>",
+            record.DisplayName or "<absent>",
             request.Id,
             tostring(player:GetAttribute("JumpLevel") or 0),
             tostring(forced)
@@ -146,6 +149,7 @@ end
 type Candidate = {
     Template: Model,
     CustomerId: string?,
+    DisplayName: string?,
     CustomerType: string,
     Request: CustomerRequests.Request?,
     Weight: number,
@@ -184,7 +188,14 @@ local function candidateFor(player: Player, template: Model): Candidate?
         rejectTemplate(template, "Weight must be positive and finite")
         return nil
     end
-    return { Template = template, CustomerId = id, CustomerType = kind, Request = request, Weight = weight }
+    return {
+        Template = template,
+        CustomerId = id,
+        DisplayName = if config and config.DisplayName then config.DisplayName else id,
+        CustomerType = kind,
+        Request = request,
+        Weight = weight,
+    }
 end
 
 local function cloneNPC(player: Player): (Model?, Candidate?)
@@ -535,7 +546,7 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     bubble.MaxDistance = 80
     local head = model:FindFirstChild("Head", true)
     bubble.Adornee = if head and head:IsA("BasePart") then head else root
-    bubble.StudsOffset = Vector3.new(0, 2.5, 0)
+    bubble.StudsOffset = Vector3.new(0, 2.5, 0) + Vector3.new(0, CustomerBillboardExtraHeight, 0)
     bubble.Parent = root
     local text = Instance.new("TextLabel")
     text.Size = UDim2.fromScale(1, 1)
@@ -549,6 +560,24 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     text.TextWrapped = true
     text.Text = ""
     text.Parent = bubble
+    local displayName = if candidate and candidate.CustomerType == "Special" then candidate.DisplayName else nil
+    if displayName then
+        -- Keep the full order area and a stable name above the typewritten dialogue.
+        bubble.Size = UDim2.fromOffset(300, 80 + CustomerNameHeight)
+        text.Size = UDim2.fromOffset(300, 80)
+        text.Position = UDim2.fromOffset(0, CustomerNameHeight)
+        local nameText = text:Clone()
+        nameText.Name = "CustomerName"
+        nameText.Size = UDim2.fromOffset(300, CustomerNameHeight)
+        nameText.Position = UDim2.fromOffset(0, 0)
+        nameText.Text = displayName
+        nameText.Parent = bubble
+        local humanoid = model:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            -- Suppress the imported name only where our own name row replaces it.
+            humanoid.NameDisplayDistance = 0
+        end
+    end
     local audio = AudioService.CreateBlendGroup(root)
     local prompt = WorldUtil.Prompt(root, "ServePrompt", "Serve smoothie")
     prompt.Enabled = false
@@ -556,6 +585,7 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         Owner = player,
         CustomerType = if candidate then candidate.CustomerType else "Regular",
         FixedRequest = if candidate then candidate.Request else nil,
+        DisplayName = displayName,
         CustomerId = CustomerRequests.NormalizeCustomerId(model:GetAttribute("CustomerId")),
         TemplateName = templateName or "<generic>",
         RequestId = nil :: string?,

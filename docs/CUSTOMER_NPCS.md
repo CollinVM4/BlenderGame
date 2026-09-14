@@ -8,7 +8,7 @@
 4. Add a **string** Model Attribute `CustomerId = "steak"`.
 5. Move the finished Model into `ServerStorage.CustomerNPCs` as a direct child. Rojo creates this Folder and preserves manually authored children; save the Studio place to retain your imported assets. They are not stored in the source repository or reproduced by a fresh CLI build.
 6. Optionally add an NPC mapping in `src/shared/Constants/CustomerRequests.luau` (the steak mapping already exists).
-7. Start Play, then start a day. Verify Output shows `[CustomerService] selected type=Special template=SteakNPC customerId=steak request=Steak jumpTier=1 forced=true` when that avatar reaches the counter. The player must have JumpLevel >= 1; specials are uncommon and capped at one per day.
+7. Start Play, then start a day. Verify Output shows `[CustomerService] selected type=Special template=SteakNPC customerId=steak displayName=Steak request=Steak jumpTier=1 forced=true` when that avatar reaches the counter. The player must have JumpLevel >= 1; specials are uncommon and capped at one per day.
 8. Verify appearance, counter facing, order placement, proximity serving, and departure. Repeat with two players to check each plot independently.
 
 ```text
@@ -31,7 +31,7 @@ CustomerRequests exposes `Definitions` (the request array), `NPCs` (the mapping)
 
 ```luau
 NPCs = {
-    steak = { Type = "Special", RequestId = "Steak", Weight = 1 },
+    steak = { Type = "Special", DisplayName = "Steak", RequestId = "Steak", Weight = 1 },
     bacon = { Type = "Regular" },
     builderman = { Type = "Special", RequestId = "Sweet", Weight = 1 }, -- optional
 }
@@ -69,6 +69,20 @@ R6 and R15 support the existing straight-line, anchored PivotTo movement. Humano
 CustomerService retains private owner, CustomerId, RequestId/request definition, model, readiness, and served state. CustomerId, RequestId, and OwnerUserId attributes are presentation/debug outputs. Request assignment still occurs at arrival. Serving uses the same server-owned cup consumption, ingredient-ID metadata validation, once-only payout, and GameService callback. Success and failure both consume the order; only success pays. Economy.CustomersPerDay remains 3.
 
 ## Validation
+
+### Display name and billboard revision
+
+`NPCs[id].DisplayName` is optional and presentation-only. Steak, Caseoh, Pirate, Walter, and Prankster have configured names. Special customers show that name (or their normalized CustomerId when omitted) above the typewritten request in the existing OrderBubble. Regular/generic customers retain their order-only presentation. Neither the name nor imported username/Model.Name affects request identity.
+
+The existing fixed-request path is retained: `candidateFor` resolves the configured RequestId and filters by MinJumpTier; `SpawnForPlayer` captures it as `record.FixedRequest`; `assignRequest` uses it at arrival and refresh without drawing a random request. Selection chance, daily cap, transactions, and payouts are unchanged.
+
+`CustomerBillboardExtraHeight = 2` in CustomerService adds `(0, 2, 0)` to the existing `(0, 2.5, 0)` StudsOffset, yielding `(0, 4.5, 0)` for every customer. The special name row adds 28 pixels above the preserved 300-by-80 order area. Both labels retain transparent backgrounds, outlined GothamBold text, and AlwaysOnTop. Only clones receiving this name row have Humanoid.NameDisplayDistance set to zero; source templates and regular customers are untouched.
+
+Current validation: 307 focused customer assertions pass, including each configured special's fixed request/no random assignment, tier gating, name/fallback, refresh, generic behavior, offset axes, and existing serving success/failure/duplicate-payment/day-flow checks. World text (49 + 23) and interaction presentation (79) pass. All 70 source files compile; changed Luau files pass StyLua; Rojo build passes. Roblox-aware analysis has no errors in changed modules, but reports four existing StashPromptController type errors (lines 16, 36, and 39) and a CharacterPhysicsService deprecation warning. The broader `--customer-only` suite still stops at the previously documented BlendVFX assertion `start clears copies and cancels arrival`.
+
+No new Studio setup is required for templates with valid CustomerId attributes. Live visual verification of the added row and nameplate suppression remains to be performed in Studio.
+
+### Earlier NPC implementation validation
 
 - Focused customer regression: `python tests/run_state_tests.py --requests-only --luau <luau.exe>`: 196 assertions pass, using real CustomerService, request config, PlayerDataService, and GameService with a mocked Roblox boundary/cup provider.
 - Coverage includes forced/unknown/missing/invalid IDs, renaming, private ID capture, invalid mapping, template cloning and cleanup, malformed/non-archivable clones, root fallbacks, target-facing geometry, bounding-box ground alignment, offsets, special tier filtering/chance/day cap, no immediate repeats, success/failure payouts, duplicate serve rejection, three-customer days, generic fallback, and legacy templates.

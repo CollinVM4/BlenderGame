@@ -28,17 +28,7 @@ function Stash.Init(services: any)
                 connections,
                 prompt.Triggered:Connect(function(player)
                     local owner = services.TycoonService.GetOwner(object)
-                    if not owner then
-                        return
-                    end
-                    local id = services.InventoryService.GetHeldIngredientId(player)
-                    if id then
-                        if owner == player then
-                            services.InventoryService.Deposit(player, id, index)
-                        end
-                    else
-                        services.InventoryService.Withdraw(player, index, owner)
-                    end
+                    services.InventoryService.InteractStash(player, index, owner)
                 end)
             )
         end

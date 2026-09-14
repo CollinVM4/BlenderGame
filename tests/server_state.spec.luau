@@ -183,6 +183,27 @@ local function instance(class)
         clone.Size = self.Size
         clone.Color = self.Color
         clone.CFrame = self.CFrame
+        clone.Anchored = self.Anchored
+        clone.CanCollide, clone.CanTouch, clone.CanQuery = self.CanCollide, self.CanTouch, self.CanQuery
+        clone.Massless, clone.CustomPhysicalProperties = self.Massless, self.CustomPhysicalProperties
+        if self:IsA("TextLabel") then
+            for _, property in
+                {
+                    "Position",
+                    "BackgroundTransparency",
+                    "BorderSizePixel",
+                    "TextStrokeColor3",
+                    "TextStrokeTransparency",
+                    "TextColor3",
+                    "Font",
+                    "TextSize",
+                    "TextWrapped",
+                    "Text",
+                }
+            do
+                clone[property] = self[property]
+            end
+        end
         for _, child in self:GetChildren() do
             local c = child:Clone()
             if c then
@@ -203,7 +224,8 @@ local function instance(class)
         return self.Children[name]
     end
     function object:IsA(name)
-        return name == self.ClassName or (name == "BasePart" and self.ClassName == "Part")
+        return name == self.ClassName
+            or (name == "BasePart" and (self.ClassName == "Part" or self.ClassName == "MeshPart"))
     end
     function object:FindFirstChild(name, recursive)
         for _, child in self:GetChildren() do
@@ -639,68 +661,17 @@ do
         "respawn converts purchased jump using current gravity"
     )
     studio = true
-    movement.SetStudioJumpTier(runner, 1)
+    movement.SetStudioLevel(runner, "Jump", 1)
     check(
         movement.GetJumpPower(runner) == 72 and data.GetUpgrade(runner, "Jump") == 4,
         "Studio override does not change owned jump"
     )
     humanoid = spawnCharacter(true)
     check(humanoid.JumpPower == 72, "Studio override survives respawn")
-    movement.SetStudioJumpTier(runner, nil)
-    check(
-        humanoid.JumpPower == 116 and runner:GetAttribute("StudioJumpTier") == nil,
-        "Studio reset restores purchased jump"
-    )
-    -- Drive the real pad touch/reset handlers without changing pad geometry.
-    local padWorld = instance("Folder")
-    local savedWorkspace = services.Workspace
-    services.Workspace = padWorld
-    local savedPlayerRemoving = services.Players.PlayerRemoving
-    local savedFromCharacter = services.Players.GetPlayerFromCharacter
-    services.Players.PlayerRemoving = signal()
-    services.Players.GetPlayerFromCharacter = function(_, character)
-        return if character == runner.Character then runner else nil
-    end
-    env.Enum.NormalId = { Top = "Top" }
-    env.Enum.SurfaceGuiSizingMode = { PixelsPerStud = "PixelsPerStud" }
-    env.Enum.Material = { Neon = "Neon" }
-    env.Enum.SurfaceType = { Smooth = "Smooth" }
-    local oldPadNew = env.Instance.new
-    env.Instance.new = function(class)
-        local object = oldPadNew(class)
-        object.Touched = signal()
-        return object
-    end
-    local pads = loadModule("StudioJumpTestService")
-    pads.Init(movementDeps)
-    local padFolder = padWorld:FindFirstChild("StudioJumpPads")
-    local foot = instance("Part")
-    foot.Parent = runner.Character
-    for tier, power in { 72, 94, 116 } do
-        now += 0.1
-        local pad = padFolder:FindFirstChild("JUMP " .. tier)
-        check(pad.Size.X == 10 and pad.Size.Y == 1 and pad.Size.Z == 10, "jump pad geometry retained")
-        pad.Touched:Fire(foot)
-        check(
-            humanoid.JumpPower == power and runner:GetAttribute("StudioJumpTier") == tier,
-            "pad touch routes temporary tier through resolver"
-        )
-    end
-    now += 0.1
-    padFolder:FindFirstChild("JUMP 1").Touched:Fire(foot)
-    now += 0.1
-    padFolder:FindFirstChild("RESET JUMP").Touched:Fire(foot)
-    check(
-        humanoid.JumpPower == 116 and runner:GetAttribute("StudioJumpTier") == nil,
-        "actual reset pad restores purchased jump"
-    )
-    env.Instance.new = oldPadNew
-    services.Workspace = savedWorkspace
-    services.Players.PlayerRemoving = savedPlayerRemoving
-    services.Players.GetPlayerFromCharacter = savedFromCharacter
-    padWorld:Destroy()
+    movement.SetStudioLevel(runner, "Jump", nil)
+    check(humanoid.JumpPower == 116 and runner:GetAttribute("JumpLevel") == 3, "Studio reset restores purchased jump")
     studio = false
-    check(not pcall(movement.SetStudioJumpTier, runner, 1), "live servers reject Studio override")
+    check(not pcall(movement.SetStudioLevel, runner, "Jump", 1), "live servers reject Studio override")
     for _, invalid in { 0, -1, math.huge, 0 / 0 } do
         check(not pcall(sprint.SetStaminaMax, runner, invalid), "invalid stamina capacity rejected")
     end
@@ -873,14 +844,14 @@ do
         "respawn preserves overrides, fills capacity, and stops intent"
     )
     dev.SetJumpLevel(runner, 0)
-    movement.SetStudioJumpTier(runner, 2)
-    check(humanoid.JumpPower == 94, "pad overwrites command jump override")
+    movement.SetStudioLevel(runner, "Jump", 2)
+    check(humanoid.JumpPower == 94, "movement setter replaces command jump override")
     dev.SetJumpLevel(runner, 1)
-    check(humanoid.JumpPower == 72, "command overwrites pad jump override")
-    movement.SetStudioJumpTier(runner, nil)
+    check(humanoid.JumpPower == 72, "command replaces movement jump override")
+    movement.SetStudioLevel(runner, "Jump", nil)
     check(
         humanoid.JumpPower == 72 and movement.GetBaseWalkSpeed(runner) == 22 and movement.GetMaxStamina(runner) == 230,
-        "pad reset clears only shared jump override"
+        "clearing jump override preserves other movement overrides"
     )
     runner:SetAttribute("IsSprinting", true)
     runner:SetAttribute("StaminaCurrent", 9999)

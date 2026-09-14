@@ -206,6 +206,7 @@ setfenv(
                 Bind = function(_, tag, callback)
                     check(tag == "AnnouncedIngredientSpawn", "rare adapter binds only rare tag")
                     emittedCallback = callback
+                    component.Bind(spawnDeps, tag, callback)
                 end,
             }
         end,
@@ -343,4 +344,162 @@ for _, child in children do
 end
 local singleVisual = ingredients.CreateVisual("Banana")
 check(singleVisual:IsA("BasePart") and #singleVisual:GetDescendants() == 0, "single visual has no added root or weld")
+-- Frozen stock uses the real spawn, authorization, carry and refill transaction.
+local pickupChunk = assert(loadstring(sources.IngredientPickupComponent))
+setfenv(
+    pickupChunk,
+    setmetatable({
+        script = { Parent = { Parent = { Services = parent } } },
+        require = function()
+            return world
+        end,
+    }, { __index = env })
+)
+pickupChunk().Init(deps)
+local appleTemplate = instance("MeshPart")
+appleTemplate.Name, appleTemplate.Parent = "Apple", templates
+appleTemplate.Anchored, appleTemplate.CanCollide, appleTemplate.CanTouch = false, true, false
+appleTemplate.Massless, appleTemplate.CustomPhysicalProperties = false, { Density = 2 }
+local function checkParts(object, anchored, message)
+    local parts = object:GetDescendants()
+    table.insert(parts, object)
+    for _, part in parts do
+        if part:IsA("BasePart") then
+            check(part.Anchored == anchored, message)
+        end
+    end
+end
+for _, setting in { "missing", false, true } do
+    local station = marker("Apple", 5)
+    if setting ~= "missing" then
+        station:SetAttribute("FreezeSpawnedItem", setting)
+    end
+    local clean = attachments.IngredientSpawn(station)
+    local apple = spawned[#spawned]
+    check(apple:IsA("MeshPart"), "single MeshPart template supported")
+    checkParts(apple, setting == true, "spawner boolean controls anchoring")
+    check(apple:GetAttribute("FrozenUntilPickup") == (if setting == true then true else nil), "outer freeze metadata")
+    check(apple.CanCollide and not apple.CanTouch and apple.CanQuery, "freeze preserves normal collision/touch/query")
+    check(
+        not apple.Massless and apple.CustomPhysicalProperties == appleTemplate.CustomPhysicalProperties,
+        "mass unchanged"
+    )
+    check(
+        ingredients.GetRecord(apple).Claimable and services.CollectionService:HasTag(apple, "IngredientWorldItem"),
+        "pickup eligibility retained"
+    )
+    clean()
+end
+check(
+    not appleTemplate.Anchored and appleTemplate:GetAttribute("FrozenUntilPickup") == nil,
+    "source MeshPart untouched"
+)
+
+for _, id in { "Apple", "Strawberry" } do
+    local station = marker(id, 5)
+    station:SetAttribute("FreezeSpawnedItem", true)
+    local clean = attachments.IngredientSpawn(station)
+    local frozen = spawned[#spawned]
+    local cleanPrompt = attachments.IngredientWorldItem(frozen)
+    local pickupPrompt = cache.WorldUtil.Part(frozen):FindFirstChild("CarryPrompt")
+    check(
+        pickupPrompt and pickupPrompt:GetAttribute("IngredientPickupPrompt") == true,
+        "frozen stock retains custom pickup prompt"
+    )
+    checkParts(frozen, true, "all runtime parts frozen including generated pivot root")
+    for _, child in frozen:GetDescendants() do
+        if child:IsA("BasePart") then
+            check(ingredients.Resolve(child) == frozen, "frozen child resolves registered outer object")
+        end
+    end
+    player.Near = false
+    pickupPrompt.Triggered:Fire(player)
+    check(
+        frozen:GetAttribute("FrozenUntilPickup") == true and inventory.GetCarryCount(player) == 0,
+        "failed prompt pickup stays frozen"
+    )
+    check(not inventory.CarryWorldItem(player, frozen), "distant frozen pickup rejected")
+    player.Near = true
+    humanoid.Health = 0
+    check(not inventory.CarryWorldItem(player, frozen), "dead frozen pickup rejected")
+    humanoid.Health = 100
+    backpack.Parent = nil
+    check(not inventory.CarryWorldItem(player, frozen), "missing backpack rejected")
+    backpack.Parent = player
+    check(inventory.CarryWorldItem(player, ingredients.Spawn("Banana", frame())), "fill carry capacity")
+    check(not inventory.CarryWorldItem(player, frozen), "full carry rejects frozen pickup")
+    inventory.ClearHeld(player)
+    local addUnit = inventory.AddUnit
+    inventory.AddUnit = function()
+        return false
+    end
+    check(not inventory.CarryWorldItem(player, frozen), "failed unit reservation leaves stock")
+    inventory.AddUnit = addUnit
+    checkParts(frozen, true, "all failed validations preserve anchors")
+    check(
+        frozen:GetAttribute("FrozenUntilPickup") == true and ingredients.GetRecord(frozen) ~= nil,
+        "failed claim preserves frozen identity"
+    )
+    blend.Reset(player)
+    input.Overlaps = { cache.WorldUtil.Part(frozen) }
+    check(not blend.TryInput(player, frozen, input), "incidental blender overlap rejects frozen stock")
+    checkParts(frozen, true, "blender overlap leaves stock anchored")
+    local released = false
+    frozen.Destroying:Connect(function()
+        released = frozen:GetAttribute("FrozenUntilPickup") == nil
+        checkParts(frozen, false, "authoritative object releases on successful claim before destruction")
+    end)
+    pickupPrompt.Triggered:Fire(player)
+    check(
+        inventory.GetHeldIngredientId(player) == id and released,
+        "successful prompt pickup clears authoritative frozen state"
+    )
+    cleanPrompt()
+    local tool = character:FindFirstChildOfClass("Tool")
+    local visual = tool:FindFirstChild(id)
+    check(visual and visual:GetAttribute("FrozenUntilPickup") == nil, "carry clone clears frozen metadata")
+    checkParts(visual, false, "carry visual fully unanchored")
+    check(tool:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry") ~= nil, "existing carry weld takes over")
+    timers[#timers].Run()
+    local replacement = spawned[#spawned]
+    check(
+        replacement ~= frozen and replacement:GetAttribute("FrozenUntilPickup") == true,
+        "same station refills frozen"
+    )
+    checkParts(replacement, true, "replacement parts anchored")
+    station:SetAttribute("FreezeSpawnedItem", false)
+    replacement:Destroy()
+    timers[#timers].Run()
+    checkParts(spawned[#spawned], false, "refill re-reads current spawner preference")
+    clean()
+    local thrownFrozen = inventory.ThrowHeld(player)
+    checkParts(thrownFrozen, false, "throw after frozen pickup restores physics")
+    check(
+        thrownFrozen:GetAttribute("FrozenUntilPickup") == nil
+            and cache.WorldUtil.Part(thrownFrozen).AssemblyLinearVelocity.Y == 18,
+        "normal throw velocity and metadata"
+    )
+    check(inventory.CarryWorldItem(player, thrownFrozen), "thrown ingredient remains pickable")
+    local droppedFrozen = inventory.DropHeld(player)
+    checkParts(droppedFrozen, false, "drop after frozen pickup restores physics")
+    input.Overlaps = { cache.WorldUtil.Part(droppedFrozen) }
+    check(blend.TryInput(player, droppedFrozen, input), "released frozen ingredient ingests normally")
+    local stashItem = ingredients.Spawn(id, frame(), nil, true, { FreezeUntilPickup = true })
+    check(
+        inventory.CarryWorldItem(player, stashItem) and inventory.Deposit(player, id, 3),
+        "frozen pickup deposits normally"
+    )
+    check(inventory.Withdraw(player, 3), "frozen pickup withdraws normally")
+    inventory.ClearHeld(player)
+end
+check(not appleTemplate.Anchored and not template.PrimaryPart, "templates never acquire runtime anchors or root")
+for _, part in template:GetDescendants() do
+    check(not part.Anchored, "multipart template never anchored")
+end
+local frozenRare = marker("GoldenTomato", 5)
+frozenRare:SetAttribute("FreezeSpawnedItem", true)
+local cleanFrozenRare = attachments.AnnouncedIngredientSpawn(frozenRare)
+check(spawned[#spawned]:GetAttribute("FrozenUntilPickup") == true, "real announced adapter uses freeze option")
+checkParts(spawned[#spawned], true, "announced stock anchored")
+cleanFrozenRare()
 print("PASS: " .. count .. " ingredient world assertions.")

@@ -18,12 +18,14 @@ parser.add_argument("--carry-only", action="store_true", help="Run overhead geom
 parser.add_argument("--sprint-only", action="store_true", help="Run sprint network and stamina regression checks")
 parser.add_argument("--customer-only", action="store_true", help="Run through customer request/serve integration checks")
 parser.add_argument("--requests-only", action="store_true", help="Run jump-gated customer selection regression checks")
+parser.add_argument("--stash-only", action="store_true", help="Run stash interaction burst regression checks")
 args = parser.parse_args()
 sources = {}
 for directory in ("src/shared/Constants", "src/server/Services"):
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")
 sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")
 sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encoding="utf-8")
 sources["Types"] = (ROOT / "src/shared/Types.luau").read_text(encoding="utf-8")
@@ -39,13 +41,14 @@ bundle = "local customerOnly = " + str(args.customer_only).lower() + "\nlocal vf
     f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
 ) + "\n}\n"
 state_tests = (ROOT / "tests/server_state.spec.luau").read_text(encoding="utf-8")
-if args.world_only or args.sprint_only or args.carry_only or args.requests_only:
+if args.world_only or args.sprint_only or args.carry_only or args.requests_only or args.stash_only:
     # Reuse the fake engine boundary; skip unrelated gameplay assertions.
     bundle += state_tests.split("env.require = loadModule", 1)[0] + "env.require = loadModule\n"
-    spec = "customer_requests.spec.luau" if args.requests_only else "ingredient_carry.spec.luau" if args.carry_only else "sprint.spec.luau" if args.sprint_only else "ingredient_world.spec.luau"
+    spec = "stash_interaction.spec.luau" if args.stash_only else "customer_requests.spec.luau" if args.requests_only else "ingredient_carry.spec.luau" if args.carry_only else "sprint.spec.luau" if args.sprint_only else "ingredient_world.spec.luau"
     bundle += (ROOT / "tests" / spec).read_text(encoding="utf-8")
 else:
     bundle += state_tests
+    bundle += "\n" + (ROOT / "tests/stash_interaction.spec.luau").read_text(encoding="utf-8")
 with tempfile.TemporaryDirectory(prefix="blender-state-tests-") as directory:
     output = Path(directory) / "state-tests.luau"
     output.write_text(bundle, encoding="utf-8")

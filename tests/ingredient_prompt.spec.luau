@@ -203,11 +203,16 @@ chunk().Init({
         end,
     },
 })
+model:SetAttribute("FrozenUntilPickup", true)
 local cleanup = attach(model)
 check(created.Style == "Custom" and created:GetAttribute("IngredientPickupPrompt"), "server opts into custom view")
 check(created.MaxActivationDistance == 10, "activation range preserved")
 created.Triggered:Fire(actor)
 check(calls == 1, "pickup still uses sole inventory entry point")
+check(
+    model:GetAttribute("FrozenUntilPickup") == true,
+    "prompt leaves frozen release to successful inventory authorization"
+)
 cleanup()
 check(created.Destroyed, "server component owns prompt cleanup")
 record.Claimable = false

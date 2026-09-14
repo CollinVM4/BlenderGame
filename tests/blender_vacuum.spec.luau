@@ -118,6 +118,20 @@ local expected = physics.Steer(startVelocity, modelRoot.Position, target, 2.5, 1
 heartbeat:Fire(1 / 60)
 check(same(modelRoot.AssemblyLinearVelocity, expected), "multipart overlap applies exactly one steering step")
 
+for _, id in { "Banana", "Strawberry" } do
+    local frozen = ingredients.Spawn(id, frame(2, 4, 0), nil, true, { FreezeUntilPickup = true })
+    local frozenRoot = cache.WorldUtil.Part(frozen)
+    frozenRoot.Position, frozenRoot.AssemblyLinearVelocity = vec(2, 4, 0), startVelocity
+    zone.Overlaps = { frozenRoot }
+    heartbeat:Fire(1 / 60)
+    check(same(frozenRoot.AssemblyLinearVelocity, startVelocity), "vacuum leaves frozen stock velocity unchanged")
+    check(
+        frozenRoot.Anchored and frozen:GetAttribute("FrozenUntilPickup") == true,
+        "vacuum cannot release frozen stock"
+    )
+    check(ingredients.GetRecord(frozen) ~= nil, "vacuum preserves frozen registration")
+end
+
 local wrong, wrongRoot = spawn(other)
 zone.Overlaps, otherZone.Overlaps = { wrong }, {}
 heartbeat:Fire(1 / 60)

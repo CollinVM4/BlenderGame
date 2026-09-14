@@ -68,12 +68,19 @@ function Presentation.Attach(
     anchor.Parent = tool
     local parts = visual:GetDescendants()
     table.insert(parts, visual)
+    -- The successful pickup consumed the authoritative world object. Its cloned
+    -- visual releases every part before creating any carry welds.
+    for _, part in parts do
+        if part:IsA("BasePart") then
+            part.Anchored = false
+        end
+    end
+    visual:SetAttribute("FrozenUntilPickup", nil)
     for _, part in parts do
         game:GetService("CollectionService"):RemoveTag(part, "IngredientWorldItem")
         if part:IsA("ProximityPrompt") then
             part:Destroy()
         elseif part:IsA("BasePart") then
-            part.Anchored = false
             part.CanCollide = false
             part.CanTouch = false
             part.Massless = true

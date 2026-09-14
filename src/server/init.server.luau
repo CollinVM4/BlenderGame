@@ -1,6 +1,5 @@
 --!strict
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
@@ -100,9 +99,6 @@ Players.PlayerRemoving:Connect(function(player)
     initialized[player] = nil
 end)
 
-if RunService:IsStudio() then
-    require(script.Services.StudioJumpTestService).Init(services)
-end
 services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),

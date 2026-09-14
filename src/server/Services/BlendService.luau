@@ -129,6 +129,7 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
         or (batch.State ~= "EMPTY" and batch.State ~= "LOADING" and batch.State ~= "READY")
         or #batch.Ingredients >= Economy.MaxIngredients
         or not record
+        or object:GetAttribute("FrozenUntilPickup") == true
         or (record.Owner ~= nil and record.Owner ~= player)
         or (record.Owner == nil and not record.Claimable)
         or not part
@@ -164,7 +165,11 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
 end
 function BlendService.Ready(player: Player): boolean
     local batch = batches[player]
-    if not batch or #batch.Ingredients < Economy.MaxIngredients or (batch.State ~= "LOADING" and batch.State ~= "READY") then
+    if
+        not batch
+        or #batch.Ingredients < Economy.MaxIngredients
+        or (batch.State ~= "LOADING" and batch.State ~= "READY")
+    then
         return false
     end
     batch.State = "READY"
@@ -206,8 +211,10 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     -- This private count is the source of BlendIngredientCount. Never authorize
     -- a start from replicated attributes or mutate an underfilled batch.
     if #batch.Ingredients < Economy.MaxIngredients then
-        if (batch.State == "EMPTY" or batch.State == "LOADING" or batch.State == "READY")
-            and os.clock() >= batch.NextRejectionAt then
+        if
+            (batch.State == "EMPTY" or batch.State == "LOADING" or batch.State == "READY")
+            and os.clock() >= batch.NextRejectionAt
+        then
             -- Heartbeat must not continually extend the transient feedback.
             batch.NextRejectionAt = os.clock() + 2.5
             local rejectionAt = batch.NextRejectionAt
