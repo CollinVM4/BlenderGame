@@ -79,12 +79,12 @@ do
     local function carry(p, id)
         local object = instance("Part")
         records[object] = { Id = id or "Strawberry", Claimable = true }
-        check(inventory.CarryWorldItem(p, object), "fixture pickup")
+        setup(inventory.CarryWorldItem(p, object), "fixture pickup")
     end
     local function seed(p, index, amount, id)
         for _ = 1, amount do
             carry(p, id)
-            check(inventory.Deposit(p, id or "Strawberry", index), "fixture deposit")
+            setup(inventory.Deposit(p, id or "Strawberry", index), "fixture deposit")
         end
     end
     local function press(p, index, owner)

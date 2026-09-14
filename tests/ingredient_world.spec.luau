@@ -426,7 +426,7 @@ for _, id in { "Apple", "Strawberry" } do
     backpack.Parent = nil
     check(not inventory.CarryWorldItem(player, frozen), "missing backpack rejected")
     backpack.Parent = player
-    check(inventory.CarryWorldItem(player, ingredients.Spawn("Banana", frame())), "fill carry capacity")
+    setup(inventory.CarryWorldItem(player, ingredients.Spawn("Banana", frame())), "fill carry capacity")
     check(not inventory.CarryWorldItem(player, frozen), "full carry rejects frozen pickup")
     inventory.ClearHeld(player)
     local addUnit = inventory.AddUnit
@@ -444,15 +444,10 @@ for _, id in { "Apple", "Strawberry" } do
     input.Overlaps = { cache.WorldUtil.Part(frozen) }
     check(not blend.TryInput(player, frozen, input), "incidental blender overlap rejects frozen stock")
     checkParts(frozen, true, "blender overlap leaves stock anchored")
-    local released = false
-    frozen.Destroying:Connect(function()
-        released = frozen:GetAttribute("FrozenUntilPickup") == nil
-        checkParts(frozen, false, "authoritative object releases on successful claim before destruction")
-    end)
     pickupPrompt.Triggered:Fire(player)
     check(
-        inventory.GetHeldIngredientId(player) == id and released,
-        "successful prompt pickup clears authoritative frozen state"
+        inventory.GetHeldIngredientId(player) == id and ingredients.GetRecord(frozen) == nil,
+        "successful prompt pickup transfers ownership without leaving world stock"
     )
     cleanPrompt()
     local tool = character:FindFirstChildOfClass("Tool")
@@ -484,13 +479,14 @@ for _, id in { "Apple", "Strawberry" } do
     checkParts(droppedFrozen, false, "drop after frozen pickup restores physics")
     input.Overlaps = { cache.WorldUtil.Part(droppedFrozen) }
     check(blend.TryInput(player, droppedFrozen, input), "released frozen ingredient ingests normally")
-    local stashItem = ingredients.Spawn(id, frame(), nil, true, { FreezeUntilPickup = true })
-    check(
-        inventory.CarryWorldItem(player, stashItem) and inventory.Deposit(player, id, 3),
-        "frozen pickup deposits normally"
-    )
-    check(inventory.Withdraw(player, 3), "frozen pickup withdraws normally")
-    inventory.ClearHeld(player)
+    -- One frozen-origin stash flow is enough: multipart reconstruction is already
+    -- exercised above, and generic transfer validation belongs to stash tests.
+    if id == "Apple" then
+        local stashItem = ingredients.Spawn(id, frame(), nil, true, { FreezeUntilPickup = true })
+        setup(inventory.CarryWorldItem(player, stashItem), "carry frozen-origin stash fixture")
+        check(inventory.Deposit(player, id, 3) and inventory.Withdraw(player, 3), "frozen-origin stash round-trip")
+        inventory.ClearHeld(player)
+    end
 end
 check(not appleTemplate.Anchored and not template.PrimaryPart, "templates never acquire runtime anchors or root")
 for _, part in template:GetDescendants() do

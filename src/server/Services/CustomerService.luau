@@ -664,14 +664,17 @@ function CustomerService.Serve(player: Player): (boolean, string?)
         diagnostic("serve rejected owner=" .. player.Name .. " reason=No customer ready nearby")
         return false, "No customer ready nearby"
     end
+    -- Lock this customer before consuming the selected reservation: destroying
+    -- its visual can synchronously emit signals under Immediate signal behavior.
+    record.Ready = false
     local result = deps.BlendService.ConsumeCup(player)
     if not result then
+        record.Ready = true
         diagnostic("serve rejected owner=" .. player.Name .. " reason=No valid cup")
         record.Audio.notReadySound:Play()
         return false, "No valid cup"
     end
     -- No yield between consumption, payout, and removal from active state.
-    record.Ready = false
     record.Served = true
     record.Prompt.Enabled = false
     active[player] = nil

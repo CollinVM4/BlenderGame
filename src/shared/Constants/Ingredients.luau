@@ -41,13 +41,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Common",
 	},
 
-	Broccoli = {
-		Id = "Broccoli",
-		DisplayName = "Broccoli",
-		Tags = { "Vegetable", "Healthy", "Green" },
-		BlendColor = Color3.fromRGB(65, 135, 55),
-		Rarity = "Common",
-	},
+
 
 	Cabbage = {
 		Id = "Cabbage",
@@ -64,20 +58,13 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		BlendColor = Color3.fromRGB(240, 125, 45),
 		Rarity = "Common",
 	},
+
 	Crab = {
 		Id = "Crab",
 		DisplayName = "Crab",
 		Tags = { "Seafood", "Red", "Weird" },
 		BlendColor = Color3.fromRGB(200, 50, 50),
 		Rarity = "Rare",
-	},
-
-	Cauliflower = {
-		Id = "Cauliflower",
-		DisplayName = "Cauliflower",
-		Tags = { "Veggie", "Healthy", "White" },
-		BlendColor = Color3.fromRGB(225, 220, 190),
-		Rarity = "Common",
 	},
 
 	Cherries = {
@@ -99,9 +86,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Coconut = {
 		Id = "Coconut",
 		DisplayName = "Coconut",
-		Tags = { "Fruit", "Sweet", "White" },
+		Tags = { "Fruit", "Sweet", "Tropical" },
 		BlendColor = Color3.fromRGB(225, 220, 195),
-		Rarity = "Common",
+		Rarity = "Rare",
 	},
 
 	Corn = {
@@ -112,13 +99,6 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Common",
 	},
 
-	Cucumber = {
-		Id = "Cucumber",
-		DisplayName = "Cucumber",
-		Tags = { "Veggie", "Healthy", "Green" },
-		BlendColor = Color3.fromRGB(80, 160, 75),
-		Rarity = "Common",
-	},
 
 	Dragon_Fruit = {
 		Id = "Dragon_Fruit",
@@ -128,13 +108,6 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Mystery",
 	},
 
-	Eggplant = {
-		Id = "Eggplant",
-		DisplayName = "Eggplant",
-		Tags = { "Veggie", "Purple" },
-		BlendColor = Color3.fromRGB(100, 55, 135),
-		Rarity = "Common",
-	},
 
 	Mushrooms = {
 		Id = "Mushrooms",
@@ -144,29 +117,6 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Uncommon",
 	},
 
-	Fig = {
-		Id = "Fig",
-		DisplayName = "Fig",
-		Tags = { "Fruit", "Sweet", "Purple" },
-		BlendColor = Color3.fromRGB(125, 65, 115),
-		Rarity = "Uncommon",
-	},
-
-	Garlic = {
-		Id = "Garlic",
-		DisplayName = "Garlic",
-		Tags = { "Veggie", "White" },
-		BlendColor = Color3.fromRGB(225, 215, 185),
-		Rarity = "Common",
-	},
-
-	Grapefruit = {
-		Id = "Grapefruit",
-		DisplayName = "Grapefruit",
-		Tags = { "Fruit", "Citrus", "Pink" },
-		BlendColor = Color3.fromRGB(235, 120, 115),
-		Rarity = "Common",
-	},
 
 	Grapes = {
 		Id = "Grapes",
@@ -184,21 +134,6 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Common",
 	},
 
-	Green_Pepper = {
-		Id = "Green_Pepper",
-		DisplayName = "Green Pepper",
-		Tags = { "Veggie", "Healthy", "Green" },
-		BlendColor = Color3.fromRGB(75, 150, 65),
-		Rarity = "Common",
-	},
-
-	King_Oyster_Mushroom = {
-		Id = "King_Oyster_Mushroom",
-		DisplayName = "King Oyster Mushroom",
-		Tags = { "Mushroom", "Healthy", "White" },
-		BlendColor = Color3.fromRGB(195, 180, 145),
-		Rarity = "Uncommon",
-	},
 
 	Kiwi = {
 		Id = "Kiwi",
@@ -211,7 +146,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Lemon = {
 		Id = "Lemon",
 		DisplayName = "Lemon",
-		Tags = { "Fruit", "Citrus", "Yellow" },
+		Tags = { "Fruit", "Sour", "Yellow" },
 		BlendColor = Color3.fromRGB(245, 225, 65),
 		Rarity = "Common",
 	},
@@ -237,24 +172,11 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Melon",
 		Tags = { "Fruit", "Sweet", "Green" },
 		BlendColor = Color3.fromRGB(160, 205, 105),
-		Rarity = "Common",
+		Rarity = "Rare",
 	},
 
-	Muscat_Grapes = {
-		Id = "Muscat_Grapes",
-		DisplayName = "Muscat Grapes",
-		Tags = { "Fruit", "Sweet", "Green" },
-		BlendColor = Color3.fromRGB(165, 205, 90),
-		Rarity = "Uncommon",
-	},
+	
 
-	Napa_Cabbage = {
-		Id = "Napa_Cabbage",
-		DisplayName = "Napa Cabbage",
-		Tags = { "Veggie", "Healthy", "Green" },
-		BlendColor = Color3.fromRGB(160, 195, 105),
-		Rarity = "Common",
-	},
 
 	Onion = {
 		Id = "Onion",
@@ -355,9 +277,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Potato = {
 		Id = "Potato",
 		DisplayName = "Potato",
-		Tags = { "Vegetable", "Brown" },
-		BlendColor = Color3.fromRGB(170, 135, 90),
-		Rarity = "Common",
+		Tags = { "Vegetable", "Golden", "Cloud Garden" },
+		BlendColor = Color3.fromRGB(247, 250, 61),
+		Rarity = "Mystery",
 	},
 
 	Raspberry = {
@@ -411,8 +333,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Tomato = {
 		Id = "Tomato",
 		DisplayName = "Tomato",
-		Tags = { "Fruit", "Red" },
-		BlendColor = Color3.fromRGB(220, 60, 45),
+		Tags = { "Fruit", "Golden", "Cloud Garden" },
+		BlendColor = Color3.fromRGB(236, 227, 59),
 		Rarity = "Mystery",
 	},
 
@@ -427,7 +349,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Watermelon = {
 		Id = "Watermelon",
 		DisplayName = "Watermelon",
-		Tags = { "Fruit", "Sweet", "Red" },
+		Tags = { "Fruit", "Sweet", "Red", "Watermelon" },
 		BlendColor = Color3.fromRGB(240, 95, 110),
 		Rarity = "Common",
 	},
@@ -445,7 +367,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Ice = {
 		Id = "Ice",
 		DisplayName = "Ice",
-		Tags = { "Cold" },
+		Tags = { "Cold", "White", "Blue" },
 		BlendColor = Color3.fromRGB(190, 235, 255),
 		Rarity = "Common",
 	},
@@ -461,7 +383,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Spinach = {
 		Id = "Spinach",
 		DisplayName = "Spinach",
-		Tags = { "Healthy", "Green" },
+		Tags = { "Healthy", "Green", "Veggie" },
 		BlendColor = Color3.fromRGB(70, 150, 65),
 		Rarity = "Common",
 	},
@@ -477,7 +399,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Sushi = {
 		Id = "Sushi",
 		DisplayName = "Sushi",
-		Tags = { "Seafood", "Weird", "Protein" },
+		Tags = { "Seafood", "Weird", "Protein", "Black" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
 		Rarity = "Rare",
 	},

@@ -1,7 +1,8 @@
-"""Run real service modules in Luau CLI with a small fake Roblox boundary.
+"""Run state, integration and presentation suites in independent Luau processes.
 
 Usage: python tests/run_state_tests.py --luau /path/to/luau
-These are domain tests, not a replacement for Studio physics/network playtests.
+Use --group to select a boundary, or --list to inspect the manifest.
+These tests do not replace Studio physics/network playtests.
 """
 import argparse
 import json
@@ -10,16 +11,59 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--luau", default="luau")
-parser.add_argument("--vfx-only", action="store_true", help="Run only blender presentation integration checks")
-parser.add_argument("--world-only", action="store_true", help="Run ingredient world/spawn regression checks")
-parser.add_argument("--carry-only", action="store_true", help="Run overhead geometry and carry lifecycle checks")
-parser.add_argument("--sprint-only", action="store_true", help="Run sprint network and stamina regression checks")
-parser.add_argument("--customer-only", action="store_true", help="Run through customer request/serve integration checks")
-parser.add_argument("--requests-only", action="store_true", help="Run jump-gated customer selection regression checks")
-parser.add_argument("--stash-only", action="store_true", help="Run stash interaction burst regression checks")
+selection = parser.add_mutually_exclusive_group()
+selection.add_argument("--group", choices=("state", "integration", "presentation"))
+selection.add_argument("--vfx-only", action="store_true", help="Run blender VFX presentation checks")
+selection.add_argument("--world-only", action="store_true", help="Run ingredient world integration checks")
+selection.add_argument("--carry-only", action="store_true", help="Run carry state and presentation separately")
+selection.add_argument("--sprint-only", action="store_true")
+selection.add_argument("--customer-only", action="store_true", help="Compatibility: run legacy customer/state prefix")
+selection.add_argument("--requests-only", action="store_true", help="Run request integration and placement separately")
+selection.add_argument("--stash-only", action="store_true")
+selection.add_argument("--smoothie-only", action="store_true", help="Run smoothie state, round-trip and geometry separately")
+parser.add_argument("--list", action="store_true", help="List selected suites without executing")
 args = parser.parse_args()
+# Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
+# because it still contains presentation and Studio-adapter checks (see README.md).
+SUITES = {
+    "carry": ("state", ("fixtures/carry.luau", "ingredient_carry.spec.luau")),
+    "stash": ("state", ("stash_interaction.spec.luau",)),
+    "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
+    "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
+    "sprint": ("state", ("sprint.spec.luau",)),
+    "legacy-state": ("integration", ("server_state.spec.luau",)),
+    "legacy-movement": ("integration", ("legacy_movement.spec.luau",)),
+    "requests": ("integration", ("customer_requests.spec.luau",)),
+    "world": ("integration", ("ingredient_world.spec.luau",)),
+    "smoothie-roundtrip": ("integration", ("fixtures/smoothie.luau", "smoothie_roundtrip.spec.luau")),
+    "smoothie-survivors": ("integration", ("fixtures/smoothie.luau", "smoothie_survivors.spec.luau")),
+    "vfx": ("presentation", ("vfx_runner.spec.luau",)),
+    "carry-presentation": ("presentation", ("fixtures/carry.luau", "carry_presentation.spec.luau")),
+    "smoothie-geometry": ("presentation", ("fixtures/smoothie.luau", "smoothie_geometry.spec.luau")),
+    "customer-placement": ("presentation", ("customer_placement.spec.luau",)),
+    "client-presentation": ("presentation", ("client_presentation.spec.luau",)),
+    "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
+    "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
+}
+focused = {
+    "vfx_only": ("vfx",),
+    "world_only": ("world",),
+    "carry_only": ("carry", "carry-presentation"),
+    "sprint_only": ("sprint",),
+    "customer_only": ("legacy-state",),
+    "requests_only": ("requests", "customer-placement"),
+    "stash_only": ("stash", "stash-presentation"),
+    "smoothie_only": ("smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
+}
+selected = next((names for flag, names in focused.items() if getattr(args, flag)), None)
+if selected is None:
+    selected = tuple(name for name, (group, _) in SUITES.items() if not args.group or group == args.group)
+if args.list:
+    for name in selected:
+        print(f"{SUITES[name][0]}: {name}")
+    raise SystemExit(0)
 sources = {}
 for directory in ("src/shared/Constants", "src/server/Services"):
     for path in (ROOT / directory).glob("*.luau"):
@@ -37,20 +81,39 @@ sources["DispenserComponent"] = (ROOT / "src/server/Components/Dispenser.luau").
 sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/GameplayPresentationController.luau").read_text(encoding="utf-8")
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
-bundle = "local customerOnly = " + str(args.customer_only).lower() + "\nlocal vfxOnly = " + str(args.vfx_only).lower() + "\nlocal sources = {\n" + "\n".join(
-    f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
-) + "\n}\n"
-state_tests = (ROOT / "tests/server_state.spec.luau").read_text(encoding="utf-8")
-if args.world_only or args.sprint_only or args.carry_only or args.requests_only or args.stash_only:
-    # Reuse the fake engine boundary; skip unrelated gameplay assertions.
-    bundle += state_tests.split("env.require = loadModule", 1)[0] + "env.require = loadModule\n"
-    spec = "stash_interaction.spec.luau" if args.stash_only else "customer_requests.spec.luau" if args.requests_only else "ingredient_carry.spec.luau" if args.carry_only else "sprint.spec.luau" if args.sprint_only else "ingredient_world.spec.luau"
-    bundle += (ROOT / "tests" / spec).read_text(encoding="utf-8")
-else:
-    bundle += state_tests
-    bundle += "\n" + (ROOT / "tests/stash_interaction.spec.luau").read_text(encoding="utf-8")
+source_bundle = (
+    "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"
+    + "\n".join(f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items())
+    + "\n}\n"
+)
+fixture = (ROOT / "tests/fixtures/roblox.luau").read_text(encoding="utf-8")
+results = []
 with tempfile.TemporaryDirectory(prefix="blender-state-tests-") as directory:
-    output = Path(directory) / "state-tests.luau"
-    output.write_text(bundle, encoding="utf-8")
-    result = subprocess.run([args.luau, str(output)], cwd=ROOT, check=False)
-    raise SystemExit(result.returncode)
+    for name in selected:
+        group, files = SUITES[name]
+        print(f"\n[{group}] {name}", flush=True)
+        # Specs keep their locals together, while a legacy early return cannot skip reporting.
+        output = Path(directory) / f"{name}.luau"
+        spec = "\n".join(
+            (ROOT / "tests" / file).read_text(encoding="utf-8") for file in files
+        )
+        report = '\nprint(string.format("COUNTS: %d behavioral assertions; %d setup validations", count, setupCount))\n'
+        output.write_text(
+            source_bundle + fixture + "\nlocal function runSuite()\n" + spec + "\nend\nrunSuite()" + report,
+            encoding="utf-8",
+        )
+        try:
+            result = subprocess.run([args.luau, str(output)], cwd=ROOT, check=False)
+            passed = result.returncode == 0
+        except OSError as error:
+            print(f"Cannot execute {args.luau}: {error}", flush=True)
+            passed = False
+        results.append((group, name, passed))
+print("\nRESULTS", flush=True)
+for group in ("state", "integration", "presentation"):
+    entries = [(name, passed) for category, name, passed in results if category == group]
+    if entries:
+        print(f"[{group}] {sum(passed for _, passed in entries)}/{len(entries)} suites passed")
+        for name, passed in entries:
+            print(f"  {'PASS' if passed else 'FAIL'} {name}")
+raise SystemExit(0 if all(passed for _, _, passed in results) else 1)

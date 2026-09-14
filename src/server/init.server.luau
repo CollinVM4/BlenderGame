@@ -58,8 +58,7 @@ local function addPlayer(player: Player)
     services.TycoonService.AssignPlot(player)
     local function onCharacterAdded(character: Model)
         services.CharacterPhysicsService.ApplyCharacter(player, character)
-        services.BlendService.ClearCup(player)
-        services.InventoryService.DropHeld(player)
+        services.InventoryService.CleanupCharacter(player)
         player:SetAttribute("StunnedUntil", 0)
         services.MovementService.ApplyCharacter(player, character)
         services.SprintService.ResetCharacter(player)
@@ -113,7 +112,7 @@ local components: { { Init: (any) -> () } } = {
     require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),
-    require(script.Components.BlenderKillScript), 
+    require(script.Components.BlenderKillScript),
     require(script.Components.Stash),
     require(script.Components.DayButton),
 }

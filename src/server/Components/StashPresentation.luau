@@ -2,6 +2,7 @@
 -- Cosmetic Instances only: never register, spawn, or consume world inventory here.
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
+local SmoothieGeometry = require(script.Parent.Parent.Services.SmoothieGeometry)
 local Presentation = {}
 
 -- Footprint and height are relative to the display plane's smaller dimension.
@@ -73,9 +74,11 @@ end
 function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     Presentation.Clear(slot)
     slot:SetAttribute("StashIngredientId", state and state.IngredientId)
+    slot:SetAttribute("StashItemType", state and state.ItemType)
+    slot:SetAttribute("StashCapacity", state and state.Capacity or 5)
     slot:SetAttribute("StashCount", state and state.Count or 0)
     slot:SetAttribute("StashProtected", state and state.Protected or slot:GetAttribute("SlotIndex") <= 2)
-    if not state or not state.IngredientId or state.Count == 0 then
+    if not state or state.Count == 0 or (not state.IngredientId and not state.Smoothie) then
         return
     end
     local folder = Instance.new("Folder")
@@ -92,7 +95,9 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     local spacing = itemSize * DisplaySpacing
     local layout = Layouts[state.Count]
     for i = 1, state.Count do
-        local proxy = ingredients.CreateVisual(state.IngredientId)
+        local proxy = if state.ItemType == "Smoothie"
+            then SmoothieGeometry.CreateVisual(state.Smoothie)
+            else ingredients.CreateVisual(state.IngredientId)
         if not proxy then
             continue
         end

@@ -49,7 +49,7 @@ function Presentation.Attach(
     tool: Tool,
     root: BasePart,
     stackHeight: number?
-): (CFrame, () -> (), number)
+): (CFrame, () -> (), number, (number) -> ())
     local ingredientRoot = WorldUtil.Part(visual)
     assert(ingredientRoot, "Carried ingredient needs a BasePart")
     local offset, height = Presentation.Offset(visual, root, stackHeight)
@@ -98,10 +98,15 @@ function Presentation.Attach(
     carryWeld.C0 = offset
     carryWeld.Parent = anchor
 
-    return offset * rootToPivot, function()
-        anchor:Destroy()
-        visual:Destroy()
-    end, height
+    return offset * rootToPivot,
+        function()
+            anchor:Destroy()
+            visual:Destroy()
+        end,
+        height,
+        function(amount: number)
+            carryWeld.C0 = CFrame.new(0, -amount, 0) * carryWeld.C0
+        end
 end
 
 return Presentation

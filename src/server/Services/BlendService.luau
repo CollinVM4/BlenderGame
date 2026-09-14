@@ -1,11 +1,11 @@
 --!strict
 local Shared = game:GetService("ReplicatedStorage").Shared
 local HttpService = game:GetService("HttpService")
-local ServerStorage = game:GetService("ServerStorage")
 local Economy = require(Shared.Constants.Economy)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
+local SmoothieItem = require(script.Parent.SmoothieItem)
 local BlendService = {}
 local deps: any
 local ingredientAccepted = Instance.new("BindableEvent")
@@ -48,9 +48,9 @@ type Batch = {
     Result: Types.Smoothie?,
     NextProgressPresentationAt: number,
     NextRejectionAt: number,
+    Dispensing: boolean,
 }
 local batches: { [Player]: Batch } = {}
-local cups: { [Player]: { Tool: Tool, Result: Types.Smoothie } } = {}
 
 function BlendService.ObserveIngredientAccepted(callback: (Player, string, CFrame, number) -> ()): RBXScriptConnection
     local connection = ingredientAccepted.Event:Connect(function(player, id, at, index, token)
@@ -99,6 +99,7 @@ function BlendService.Reset(player: Player)
         Result = nil,
         NextProgressPresentationAt = 0,
         NextRejectionAt = 0,
+        Dispensing = false,
     }
     publish(player)
     Film.Log("Blend", "reset")
@@ -272,39 +273,16 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     return true
 end
 function BlendService.GetCup(player: Player, requested: Instance?): Types.Smoothie?
-    local cup = cups[player]
-    if not cup then
-        return nil
-    end
-    local backpack = player:FindFirstChildOfClass("Backpack")
-    if
-        (requested and requested ~= cup.Tool)
-        or not cup.Tool.Parent
-        or (cup.Tool.Parent ~= backpack and cup.Tool.Parent ~= player.Character)
-    then
-        return nil
-    end
-    return copyResult(cup.Result)
-end
-function BlendService.ClearCup(player: Player)
-    local cup = cups[player]
-    cups[player] = nil
-    if cup then
-        cup.Tool:Destroy()
-    end
-    player:SetAttribute("HasSmoothie", false)
-    player:SetAttribute("CurrentRecipeName", "")
+    local data = deps.InventoryService.GetHeldSmoothie(player, requested)
+    return if data then SmoothieItem.Result(data) else nil
 end
 function BlendService.ConsumeCup(player: Player): Types.Smoothie?
-    local result = BlendService.GetCup(player)
-    if result then
-        BlendService.ClearCup(player)
-    end
-    return result
+    local data = deps.InventoryService.ConsumeHeldSmoothie(player)
+    return if data then SmoothieItem.Result(data) else nil
 end
 function BlendService.Dispense(player: Player, button: BasePart): (boolean, string?)
     local batch = batches[player]
-    if not batch or batch.State ~= "COMPLETE" or not batch.Result then
+    if not batch or batch.State ~= "COMPLETE" or not batch.Result or batch.Dispensing then
         return false, "Not ready"
     end
     if
@@ -313,45 +291,21 @@ function BlendService.Dispense(player: Player, button: BasePart): (boolean, stri
     then
         return false, "Not your blender or too far"
     end
-    if BlendService.GetCup(player) then
-        return false, "Serve your existing cup first"
+    if deps.InventoryService.GetCarryCount(player) >= deps.InventoryService.GetCarryCapacity(player) then
+        return false, "Inventory full"
     end
-    local backpack = player:FindFirstChildOfClass("Backpack")
-    if not backpack then
-        return false, "No backpack"
+    local data: Types.SmoothieData = {
+        BlendId = batch.Result.BlendId :: string,
+        Ingredients = table.clone(batch.Result.Ingredients),
+    }
+    -- Grant is synchronous. Guard signals from equip/presentation against a
+    -- reentrant dispense of this same batch, including while it is still COMPLETE.
+    batch.Dispensing = true
+    local granted = deps.InventoryService.GrantSmoothie(player, data)
+    batch.Dispensing = false
+    if not granted then
+        return false, "Cannot carry smoothie"
     end
-    BlendService.ClearCup(player)
-    local template = ServerStorage:FindFirstChild("Smoothie")
-    local tool: Tool
-    if template and template:IsA("Tool") then
-        tool = template:Clone()
-    else
-        tool = Instance.new("Tool")
-    end
-    tool.Name = "Smoothie"
-    tool.CanBeDropped = false
-    local handle = tool:FindFirstChild("Handle")
-    if not handle or not handle:IsA("BasePart") then
-        local part = Instance.new("Part")
-        part.Name = "Handle"
-        part.Size = Vector3.new(1, 1.5, 1)
-        part.Parent = tool
-        handle = part
-    end
-    local cupHandle = handle :: BasePart
-    cupHandle.Color = batch.Result.Color
-    cupHandle.CanCollide = false
-    cupHandle.Anchored = false
-    tool:SetAttribute("CupId", HttpService:GenerateGUID(false))
-    tool:SetAttribute("BlendId", batch.Result.BlendId)
-    tool:SetAttribute("RecipeName", batch.Result.Discovery or "Custom Smoothie")
-    tool:SetAttribute("IsFinished", true)
-    cups[player] = { Tool = tool, Result = copyResult(batch.Result) }
-    tool.Parent = backpack
-    player:SetAttribute("HasSmoothie", true)
-    player:SetAttribute("CurrentRecipeName", batch.Result.Discovery or "Custom Smoothie")
-    Film.Emit(player, "SmoothieDispensed", { BlendId = batch.Result.BlendId, Color = batch.Result.Color, Cup = tool })
-    Film.Log("Blend", "DISPENSED blend=" .. tostring(batch.Result.BlendId))
     batch.State = "DISPENSED"
     publish(player)
     task.defer(function()
@@ -359,10 +313,11 @@ function BlendService.Dispense(player: Player, button: BasePart): (boolean, stri
             BlendService.Reset(player)
         end
     end)
+    Film.Emit(player, "SmoothieDispensed", { BlendId = data.BlendId, Color = batch.Result.Color })
+    Film.Log("Blend", "DISPENSED blend=" .. data.BlendId)
     return true
 end
 function BlendService.RemovePlayer(player: Player)
-    BlendService.ClearCup(player)
     batches[player] = nil
 end
 return require(script.Parent.StudioServices).Wrap("BlendService", BlendService)

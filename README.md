@@ -1,38 +1,164 @@
 # Be a Blender! (Project: BlenderGame)
 
-**Pitch:** Run a giant blender, collect and steal ingredients, serve customers with loose preferences, earn cash, and upgrade your plot.
+**Pitch:** Run a giant blender shop, collect and steal ingredients, make smoothies, serve customers, earn cash, and upgrade your plot.
 
-**Current status:** Executable architecture skeleton. See [MVP architecture and Studio setup](docs/MVP_ARCHITECTURE.md) for service APIs, tags, filming commands, validation, and intentionally unfinished features. Data is in memory; a complete playable release still requires Studio assets and client interaction work.
+## Current Status
 
-## Core Gameplay Loop
+Playable MVP systems are implemented and actively being expanded.
 
-Prepare at the shared market and stash ingredients → Start Day → serve three customers → receive a Day grade → upgrade/prepare and repeat.
+Core systems currently include:
+- Physical ingredient pickup, carry, throw, stash, and stealing
+- Shared market ingredient spawns
+- Blender ingestion and turbine-driven blending
+- Three-ingredient smoothies
+- Smoothie carry/stash ownership
+- Customer requests and server-authoritative serving
+- Cash rewards
+- Day progression
+- Upgrade/progression systems
+- Presentation/VFX hooks
+- Studio/dev utilities and automated regression coverage
 
-Each smoothie uses 1–3 owned physical units thrown into the blender opening. Turn the turbine, dispense the finished cup, and serve any combination. Customer preferences use ingredient tags. Customer grade affects payout, while reaction selection is independent.
+Persistence is currently in-memory.
+
+See [`docs/MVP_ARCHITECTURE.md`](docs/MVP_ARCHITECTURE.md) for architecture, service APIs, tags, Studio setup, filming utilities, and implementation notes.
 
 ---
 
-## Technical Architecture & Workflow
+## Core Gameplay Loop
 
-This project uses a modular, scalable architecture synced via **Rojo**. Code is strictly separated into Client, Server, and Shared boundaries to prevent exploitation and keep features decoupled. 
+1. Collect ingredients from the shared market.
+2. Carry, stash, or steal ingredients.
+3. Start the day.
+4. Serve three customers.
+5. Make each smoothie from exactly three ingredients.
+6. Throw ingredients into the blender.
+7. Spin the turbine to blend.
+8. Dispense the smoothie.
+9. Serve it to a customer.
+10. Earn cash and continue upgrading/preparing.
 
-### File Structure Guide
+Customer requests are based on ingredient tags such as color, sweetness, or temperature traits.
 
-* **`src/server/` (ServerScriptService)**
-  * **`init.server.luau`**: The server bootstrapper. This script explicitly loads services, injects dependencies, initializes player state, and then binds Workspace components.
-  * **`Services/`**: Singleton modules that handle core backend game logic (e.g., `TycoonService.luau`, `CustomerService.luau`). Services manage state, validate transactions, and communicate with the client.
-  * **`Components/`**: Object-oriented modules bound to physical Workspace parts (e.g., `TurbineWheel.luau`, `Dispenser.luau`). These handle localized logic for interactables.
+Serving and rewards are validated by the server.
 
-* **`src/client/` (StarterPlayerScripts)**
-  * **`init.client.luau`**: The client bootstrapper. Initializes all Controllers and UI logic as soon as the player joins.
-  * **`Controllers/`**: Singleton modules that handle client-side input, remote event listening, and visual effects (e.g., `UIController.luau`).
-  * **`UI/`**: Modules dedicated to rendering and managing screen elements (e.g., `ScreenGuis.luau`), keeping presentation separate from logic.
+---
 
-* **`src/shared/` (ReplicatedStorage)**
-  * **`Constants/`**: Static data tables shared between the server and client (e.g., `Ingredients.luau`). Changing an ingredient definition here updates it everywhere.
-  * **`Events/`**: RemoteEvents and RemoteFunctions (e.g., `Hello.luau`) used for secure client-server communication.
+## Architecture
 
-### Development Guidelines
-1. **Never build in VSCode:** Use Roblox Studio to build physical models (blenders, workstations) and place UI elements.
-2. **Never script in Studio:** Write all logic inside VSCode. Rojo will sync it into the DataModel automatically.
-3. **Trust the Server:** The client only sends requests (e.g., "I clicked Serve"). The server verifies the smoothie and awards the cash.
+The project is written in Luau and synced with Roblox Studio using **Rojo**.
+
+### `src/server/`
+
+Authoritative gameplay code.
+
+- `init.server.luau`
+  - Loads services
+  - Injects dependencies
+  - Initializes player/runtime state
+  - Binds Workspace components
+
+- `Services/`
+  - Core backend systems
+  - Own authoritative state and transactions
+  - Examples: `InventoryService`, `BlendService`, `CustomerService`, `TycoonService`
+
+- `Components/`
+  - Workspace-facing interactables
+  - Examples: turbine, stash, dispenser, market spawners, buttons
+
+### `src/client/`
+
+Client-side presentation and input.
+
+- `init.client.luau`
+  - Initializes controllers and UI
+
+- `Controllers/`
+  - Input handling
+  - Remote/event listeners
+  - Presentation coordination
+
+- `UI/`
+  - Prompt and interface presentation
+
+### `src/shared/`
+
+Shared definitions used by both server and client.
+
+- `Constants/`
+  - Ingredient definitions
+  - Customer request definitions
+  - Shared tuning/configuration
+
+- Shared types and event definitions
+
+---
+
+## Authority Rules
+
+The server is authoritative for:
+
+- Inventory and carried items
+- Stash state
+- Blender/batch state
+- Smoothie ownership
+- Customer validation
+- Cash and rewards
+- Combat
+- Stealing
+- Progression
+
+The client sends requests and renders presentation. It must not be trusted for gameplay state.
+
+---
+
+## Development Workflow
+
+### Build in Roblox Studio
+
+Use Studio for:
+- Physical models
+- Map layout
+- Blender/station geometry
+- Attachments
+- Particle emitters
+- Authored UI instances where appropriate
+- Tags and attributes
+
+### Script in the repository
+
+Write gameplay logic in the Luau source tree and sync through Rojo.
+
+Avoid placing standalone gameplay scripts directly in Studio when the logic belongs in the repository.
+
+### Before large changes
+
+1. Inspect the existing implementation.
+2. Make the smallest compatible change.
+3. Preserve working APIs where practical.
+4. Run focused validation.
+5. Report changed files and any required Studio setup.
+
+---
+
+## Testing
+
+Tests are organized around:
+
+1. Authoritative gameplay/state
+2. Cross-system integration
+3. Presentation/VFX
+4. Studio-only smoke testing
+
+Prefer durable behavioral contracts over implementation-detail assertions.
+
+Run focused suites for the systems being changed, then broader regression only when appropriate.
+
+---
+
+## Project Notes
+
+Important gameplay systems are still evolving. Some Studio-authored assets and presentation details may require manual verification even when automated tests pass.
+
+For detailed implementation notes, use the files under `docs/`.
