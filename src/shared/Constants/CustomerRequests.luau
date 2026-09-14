@@ -5,6 +5,7 @@ export type Request = {
     RequiredTags: { string },
     BasePayout: number,
     MinJumpTier: number,
+    NPCOnly: boolean?,
 }
 
 -- Every required tag must occur in at least one ingredient; extra ingredients are allowed.
@@ -13,7 +14,7 @@ export type Request = {
 -- TODO: Set Seafood/Cold to their authored area tiers; 3 is a conservative placeholder.
 local requests: { Request } = {
     {
-        Id = "Red", 
+        Id = "Red",
         DisplayText = "I want a RED smoothie!",
         RequiredTags = { "Red" },
         BasePayout = 25,
@@ -123,6 +124,48 @@ local requests: { Request } = {
         RequiredTags = { "Milk" },
         BasePayout = 50,
         MinJumpTier = 2,
-    }
+    },
 }
-return requests
+table.insert(requests, {
+    Id = "Steak",
+    DisplayText = "I want STEAK in my smoothie!",
+    RequiredTags = { "Steak" },
+    BasePayout = 105,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+
+local CustomerRequests = {
+    Definitions = requests,
+    SpecialCustomerChance = 0.12,
+    MaxSpecialCustomersPerDay = 1,
+    NPCs = { steak = { Type = "Special", RequestId = "Steak", Weight = 1 } } :: {
+        [string]: { Type: string?, RequestId: string?, Weight: number? },
+    },
+}
+
+-- IDs are case-sensitive. Model names and usernames never act as gameplay IDs.
+function CustomerRequests.NormalizeCustomerId(value: any): string?
+    if type(value) ~= "string" then
+        return nil
+    end
+    local trimmed = string.match(value, "^%s*(.-)%s*$")
+    return if trimmed == "" then nil else trimmed
+end
+
+-- Selection must check the returned definition's MinJumpTier before spawning.
+function CustomerRequests.GetForNPC(customerId: string?): (Request?, string?)
+    local id = CustomerRequests.NormalizeCustomerId(customerId)
+    local mapping = if id then CustomerRequests.NPCs[id] else nil
+    if not mapping or not mapping.RequestId then
+        return nil, nil
+    end
+    for _, request in CustomerRequests.Definitions do
+        if request.Id == mapping.RequestId then
+            return request, nil
+        end
+    end
+    return nil, "Unknown NPC RequestId: " .. tostring(mapping.RequestId)
+end
+
+return CustomerRequests

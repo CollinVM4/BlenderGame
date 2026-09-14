@@ -70,6 +70,9 @@ local function signal()
     }
 end
 local function frame(x, y, z)
+    if type(x) == "table" then
+        x, y, z = x.X, x.Y, x.Z
+    end
     local cf = {
         Position = vec(x or 0, y or 0, z or 0),
         LookVector = vec(0, 0, -1),
@@ -85,7 +88,9 @@ local function frame(x, y, z)
     end
     function cf:Lerp(other, alpha)
         local v = self.Position + (other.Position - self.Position) * alpha
-        return frame(v.X, v.Y, v.Z)
+        local result = frame(v.X, v.Y, v.Z)
+        result.LookVector, result.RightVector, result.UpVector = other.LookVector, other.RightVector, other.UpVector
+        return result
     end
     return setmetatable(cf, {
         __mul = function(a, b)
@@ -100,7 +105,7 @@ local function frame(x, y, z)
     })
 end
 local function instance(class)
-    local object = { ClassName = class, Children = {}, Attributes = {} }
+    local object = { ClassName = class, Children = {}, Attributes = {}, Archivable = true }
     table.insert(allInstances, object)
     object.Event = signal()
     function object:Fire(...)
@@ -169,14 +174,23 @@ local function instance(class)
         self.NetworkOwner = owner
     end
     function object:Clone()
+        if not self.Archivable then
+            return nil
+        end
         local clone = instance(self.ClassName)
         clone.Name = self.Name
+        clone.Attributes = table.clone(self.Attributes)
         clone.Size = self.Size
         clone.Color = self.Color
         clone.CFrame = self.CFrame
         for _, child in self:GetChildren() do
             local c = child:Clone()
-            c.Parent = clone
+            if c then
+                c.Parent = clone
+                if child == self.PrimaryPart then
+                    clone.PrimaryPart = c
+                end
+            end
         end
         return clone
     end
@@ -327,6 +341,13 @@ local env = setmetatable({
     Instance = { new = instance },
     CFrame = {
         new = frame,
+        lookAt = function(position, target)
+            local result = frame(position)
+            result.LookVector = (target - position).Unit
+            result.RightVector = result.LookVector:Cross(vec(0, 1, 0))
+            result.UpVector = vec(0, 1, 0)
+            return result
+        end,
         Angles = function()
             return frame()
         end,
@@ -359,7 +380,11 @@ local env = setmetatable({
             return {}
         end,
     },
-    Enum = { RaycastFilterType = { Exclude = "Exclude" }, Font = { GothamBold = "GothamBold" } },
+    Enum = {
+        RaycastFilterType = { Exclude = "Exclude" },
+        Font = { GothamBold = "GothamBold" },
+        ProximityPromptStyle = { Custom = "Custom", Default = "Default" },
+    },
     task = {
         spawn = function(fn)
             table.insert(deferred, fn)
@@ -1144,7 +1169,8 @@ customer.Init(deps, function() end, function()
     return true
 end)
 local bad = blend.GetSnapshot(p).Result
-local requests = loadModule("CustomerRequests")
+local requestConfig = loadModule("CustomerRequests")
+local requests = requestConfig.Definitions
 local requestsById = {}
 for _, request in requests do
     check(requestsById[request.Id] == nil, "request IDs are unique: " .. request.Id)

@@ -10,12 +10,13 @@ export type Settings = {
     Width: number?,
     Height: number?,
     TextSize: number?,
+    InputOnly: boolean?,
 }
 
 -- One visible view; the caller owns PromptShown/PromptHidden and calls cleanup.
 function Presentation.Create(
     prompt: ProximityPrompt,
-    origin: Attachment,
+    origin: Attachment | BasePart | Model,
     parent: Instance,
     inputType: Enum.ProximityPromptInputType,
     settings: Settings?
@@ -57,6 +58,9 @@ function Presentation.Create(
             if holding then "HOLD " else "",
             config.ActionText or prompt.ActionText
         )
+        if config.InputOnly then
+            text.Text = string.format("%s[%s]", if holding then "HOLD " else "", key or "")
+        end
     end
     for _, property in { "ActionText", "KeyboardKeyCode", "GamepadKeyCode" } do
         table.insert(connections, prompt:GetPropertyChangedSignal(property):Connect(refresh))

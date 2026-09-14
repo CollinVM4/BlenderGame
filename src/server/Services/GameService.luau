@@ -44,6 +44,9 @@ function GameService.StartDay(player: Player): (boolean, string?)
     end
     local previous = sessions[player]
     sessions[player] = { State = "SERVING", Day = session.Day + 1, Grades = {}, Grade = nil }
+    if deps.CustomerService.BeginDay then
+        deps.CustomerService.BeginDay(player)
+    end
     local customer = deps.CustomerService.SpawnForPlayer(player)
     if not customer then
         sessions[player] = previous

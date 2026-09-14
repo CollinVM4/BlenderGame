@@ -1,14 +1,14 @@
 --!strict
 
-local Ingredients: {
-	[string]: {
-		Id: string,
-		DisplayName: string,
-		Tags: { string },
-		BlendColor: Color3,
-		Rarity: string,
-	},
-} = {
+export type IngredientDefinition = {
+	Id: string,
+	DisplayName: string?,
+	Tags: { string },
+	BlendColor: Color3,
+	Rarity: ("Common" | "Uncommon" | "Rare" | "Mystery")?,
+}
+
+local Ingredients: { [string]: IngredientDefinition } = {
 	Apple = {
 		Id = "Apple",
 		DisplayName = "Apple",
@@ -63,6 +63,13 @@ local Ingredients: {
 		Tags = { "Veggie", "Healthy", "Orange" },
 		BlendColor = Color3.fromRGB(240, 125, 45),
 		Rarity = "Common",
+	},
+	Crab = {
+		Id = "Crab",
+		DisplayName = "Crab",
+		Tags = { "Seafood", "Red", "Weird" },
+		BlendColor = Color3.fromRGB(200, 50, 50),
+		Rarity = "Uncommon",
 	},
 
 	Cauliflower = {
@@ -252,7 +259,7 @@ local Ingredients: {
 	Onion = {
 		Id = "Onion",
 		DisplayName = "Onion",
-		Tags = { "Veggie", "White", "Weird","Healthy" },
+		Tags = { "Veggie", "White", "Weird", "Healthy" },
 		BlendColor = Color3.fromRGB(220, 205, 170),
 		Rarity = "Common",
 	},
@@ -327,7 +334,6 @@ local Ingredients: {
 		Tags = { "Seafood", "White", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
 		Rarity = "Uncommon",
-
 	},
 
 	Fish = {
@@ -476,21 +482,21 @@ local Ingredients: {
 		Rarity = "Uncommon",
 	},
 
-    Steak = {
-        Id = "Steak",
-        DisplayName = "Steak",
-        Tags = { "Protein", "Weird" },
-        BlendColor = Color3.fromRGB(150, 50, 50),
-        Rarity = "Uncommon",
-    },
+	Steak = {
+		Id = "Steak",
+		DisplayName = "Steak",
+		Tags = { "Protein", "Weird", "Steak" },
+		BlendColor = Color3.fromRGB(150, 50, 50),
+		Rarity = "Uncommon",
+	},
 
-    Hamburger = {
-        Id = "Hamburger",
-        DisplayName = "Hamburger",
-        Tags = { "Protein", "Weird", "Fast Food" },
-        BlendColor = Color3.fromRGB(180, 100, 60),
-        Rarity = "Uncommon",
-    },
+	Hamburger = {
+		Id = "Hamburger",
+		DisplayName = "Hamburger",
+		Tags = { "Protein", "Weird", "Fast Food" },
+		BlendColor = Color3.fromRGB(180, 100, 60),
+		Rarity = "Uncommon",
+	},
 
 	Noob = {
 		Id = "Noob",
@@ -514,7 +520,7 @@ local Ingredients: {
 		DisplayName = "Mystery",
 		Tags = { "Weird", "Mystery" },
 		BlendColor = Color3.fromRGB(170, 65, 230),
-		Rarity = "Rare",
+		Rarity = "Mystery",
 	},
 }
 

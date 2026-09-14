@@ -14,7 +14,8 @@ local function player(name)
     return owner
 end
 local data = loadModule("PlayerDataService")
-local requests = loadModule("CustomerRequests")
+local requestConfig = loadModule("CustomerRequests")
+local requests = requestConfig.Definitions
 local customer = loadModule("CustomerService")
 local refs = {}
 for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
@@ -124,5 +125,256 @@ do
     end
     env.math.random, env.warn = savedRandom, savedWarn
     data.RemovePlayer(owner)
+end
+-- Geometry is independent of rig proportions and authored template rotation.
+do
+    local placement = loadModule("CustomerPlacement")
+    for _, height in { 5, 7.5 } do
+        local model = instance("Model")
+        model.CFrame = frame(10, 20, 30)
+        function model:GetBoundingBox()
+            return frame(10, 19, 30), vec(3, height, 2)
+        end
+        local offset = placement.BottomOffset(model)
+        check(offset == 1 + height / 2, "bounding box offset includes pivot displacement for R6/R15 proportions")
+        local marker = instance("Part")
+        marker.CFrame, marker.Size = frame(4, 2, 8), vec(4, 2, 4)
+        local at = placement.AtMarker(marker, offset)
+        check(
+            at.Position.X == 4 and at.Position.Z == 8 and at.Position.Y - offset == 3,
+            "bounds bottom rests on marker top preserving XZ"
+        )
+        model:SetAttribute("CustomerVerticalOffset", 0.75)
+        check(placement.BottomOffset(model) == offset + 0.75, "optional numeric vertical offset")
+        model:SetAttribute("CustomerVerticalOffset", "bad")
+        check(placement.BottomOffset(model) == offset, "invalid offset defaults to zero")
+    end
+    for _, target in { vec(10, 5, 0), vec(-10, 0, 0), vec(0, 2, 10), vec(0, 0, -10) } do
+        local facing = placement.Face(vec(0, 0, 0), target, frame())
+        local direction = vec(target.X, 0, target.Z).Unit
+        check(facing.LookVector:Dot(direction) > 0.999, "standard rig -Z forward faces travel target")
+        check(facing.UpVector.Y == 1, "avatar stays upright on sloped route")
+    end
+    check(
+        placement.Face(vec(0, 0, 0), vec(0, 9, 0), frame()).LookVector.Z == -1,
+        "zero horizontal movement has stable facing"
+    )
+end
+
+-- Custom templates use the same request and serving transaction.
+do
+    local owner = player("ImportedAvatars")
+    data.AddPlayer(owner)
+    owner:SetAttribute("JumpLevel", 3)
+    local savedChance = requestConfig.SpecialCustomerChance
+    local savedRandom = env.math.random
+    requestConfig.SpecialCustomerChance = 1
+    env.math.random = function(low)
+        return low or 0
+    end
+    local folder = instance("Folder")
+    folder.Name, folder.Parent = "CustomerNPCs", storage
+    local function child(class, name, parent)
+        local item = instance(class)
+        item.Name, item.Parent = name, parent
+        return item
+    end
+    local function rig(name, id)
+        local model = child("Model", name, folder)
+        model:SetAttribute("CustomerId", id)
+        child("Humanoid", "Humanoid", model)
+        child("Part", "Head", model)
+        child("Part", "HumanoidRootPart", model)
+        return model
+    end
+    refs.CustomerSpawn.CFrame = frame(0, 0, 0)
+    refs.CustomerCounter.CFrame = frame(10, 0, 0)
+    refs.CustomerExit.CFrame = frame(20, 0, 0)
+    local steak = rig("UsernameCanChange", "  steak  ")
+    local importedScript = child("Script", "ImportedCode", steak)
+    child("LocalScript", "Animate", steak)
+    child("ModuleScript", "Module", steak)
+    child("Tool", "ImportedTool", steak)
+    child("ProximityPrompt", "OtherPrompt", steak)
+    local accessory = child("Accessory", "Hat", steak)
+    child("Part", "Handle", accessory)
+    child("Attachment", "HatAttachment", accessory)
+    child("Motor6D", "Neck", steak)
+    child("Shirt", "Shirt", steak)
+    child("Decal", "face", steak)
+    local function spawn()
+        local model = customer.SpawnForPlayer(owner)
+        check(model ~= nil, "customer spawns")
+        flush()
+        flush()
+        return model, customer.GetSnapshot(owner)
+    end
+    owner:SetAttribute("JumpLevel", 0)
+    local model, snapshot = spawn()
+    check(
+        snapshot.CustomerId == nil and snapshot.RequestId ~= "Steak",
+        "locked special excluded; no-special chance falls back to regular"
+    )
+    customer.RemovePlayer(owner)
+    owner:SetAttribute("JumpLevel", 1)
+    model, snapshot = spawn()
+    check(
+        snapshot.CustomerId == "steak" and snapshot.RequestId == "Steak",
+        "special becomes eligible at fixed request tier"
+    )
+    check(model ~= steak and steak.Parent == folder and not steak.Destroyed, "template is cloned and retained")
+    check(
+        steak:GetAttribute("CustomerId") == "  steak  " and importedScript.Parent == steak,
+        "template attributes and scripts untouched"
+    )
+    check(snapshot.CustomerId == "steak" and snapshot.RequestId == "Steak", "trimmed stable ID forces Steak")
+    check(model.PrimaryPart.Name == "HumanoidRootPart", "HRP takes priority over first body part")
+    check(model:GetPivot().LookVector.X > 0.999, "spawned avatar actually faces counter travel direction")
+    check(model:GetPivot().Position.X == 10, "movement reaches counter XZ")
+    check(model:GetPivot().Position.Y == 1.2, "spawned avatar uses marker top plus measured bottom offset")
+    for _, name in { "ImportedCode", "Animate", "Module", "ImportedTool", "OtherPrompt" } do
+        check(model:FindFirstChild(name, true) == nil, "clone removes " .. name)
+    end
+    for _, name in { "Hat", "Handle", "HatAttachment", "Neck", "Shirt", "face" } do
+        check(model:FindFirstChild(name, true) ~= nil, "clone preserves " .. name)
+    end
+    check(model.PrimaryPart.Anchored and not model.PrimaryPart.CanCollide, "existing anchored movement retained")
+    model:SetAttribute("CustomerId", "unknown")
+    customer:RefreshOrder(model)
+    check(customer.GetSnapshot(owner).RequestId == "Steak", "replicated ID cannot change private assignment")
+    customer.RemovePlayer(owner)
+    requestConfig.SpecialCustomerChance = 0
+    model, snapshot = spawn()
+    check(snapshot.CustomerId == nil, "zero chance uses regular fallback even with eligible special")
+    customer.RemovePlayer(owner)
+    requestConfig.SpecialCustomerChance = 1
+    steak.Name = "RenamedNPC"
+    model, snapshot = spawn()
+    check(snapshot.RequestId == "Steak", "model rename does not change request")
+    customer.RemovePlayer(owner)
+    for _, id in { "random_avatar", "", "   ", "STEAK", 42 } do
+        steak:SetAttribute("CustomerId", id)
+        model, snapshot = spawn()
+        check(snapshot.RequestId ~= "Steak", "unmapped/empty/invalid IDs use normal requests")
+        check(not requestConfig.GetForNPC(snapshot.CustomerId), "no override for fallback customer")
+        customer.RemovePlayer(owner)
+    end
+    steak:SetAttribute("CustomerId", nil)
+    model, snapshot = spawn()
+    check(snapshot.CustomerId == nil and snapshot.RequestId ~= "Steak", "missing ID works without name fallback")
+    customer.RemovePlayer(owner)
+    steak:SetAttribute("CustomerId", "steak")
+    requestConfig.NPCs.steak.RequestId = "NotARequest"
+    check(select(2, requestConfig.GetForNPC("steak")) ~= nil, "invalid mapping returns diagnostic")
+    model, snapshot = spawn()
+    check(snapshot.RequestId ~= "Steak", "invalid mapping safely falls back")
+    customer.RemovePlayer(owner)
+    requestConfig.NPCs.steak.RequestId = "Steak"
+
+    local second = rig("Second", "random_avatar")
+    local third = rig("Third", "another_regular")
+    requestConfig.NPCs.steak.RequestId = "Sweet"
+    local days = loadModule("GameService")
+    local cup = nil
+    local dependency = {
+        PlayerDataService = data,
+        CustomerService = customer,
+        TycoonService = {
+            AssignPlot = function() end,
+            GetReference = function(_, name)
+                return refs[name]
+            end,
+        },
+        BlendService = {
+            ConsumeCup = function()
+                local result = cup
+                cup = nil
+                return result
+            end,
+        },
+    }
+    days.Init(dependency)
+    days.AddPlayer(owner)
+    customer.Init(dependency, days.CustomerServed, days.IsServing)
+    check(days.StartDay(owner), "custom customer starts day")
+    local previous = nil
+    local specials = 0
+    for turn = 1, 3 do
+        flush()
+        flush()
+        snapshot = customer.GetSnapshot(owner)
+        check(previous == nil or snapshot.CustomerId ~= previous, "multiple templates do not immediately repeat")
+        previous = snapshot.CustomerId
+        if snapshot.CustomerId == "steak" then
+            specials += 1
+        end
+        local cash = data.GetCash(owner)
+        cup = {
+            Ingredients = if turn == 2 then { "Tire" } else { "Banana", "Strawberry" },
+            Tags = { "Sweet" },
+            BlendId = "npc-" .. turn,
+        }
+        check(customer.Serve(owner), "existing serving transaction consumes custom order")
+        check(
+            data.GetCash(owner) == cash + (if turn == 2 then 0 else 25),
+            "success pays and failure rejects forged tags"
+        )
+        check(not customer.Serve(owner), "completed order cannot pay twice")
+        check(#days.GetSnapshot(owner).Grades == turn, "completion advances day once")
+    end
+    check(days.GetSnapshot(owner).State == "FINISHED", "custom day ends after exactly three customers")
+    check(specials == 1, "at most one special even with 100 percent chance")
+    check(days.StartDay(owner), "next day starts")
+    flush()
+    check(customer.GetSnapshot(owner).CustomerId == "steak", "new day resets special budget")
+    customer.RemovePlayer(owner)
+    requestConfig.NPCs.steak.RequestId = "Steak"
+    requestConfig.NPCs.random_avatar = nil
+    second:Destroy()
+    third:Destroy()
+    steak:Destroy()
+    local r6 = rig("R6PrimaryFallback", "steak")
+    r6:FindFirstChild("HumanoidRootPart"):Destroy()
+    r6.PrimaryPart = child("Part", "Torso", r6)
+    model, snapshot = spawn()
+    check(model.PrimaryPart.Name == "Torso" and snapshot.RequestId == "Steak", "R6 PrimaryPart fallback works")
+    customer.RemovePlayer(owner)
+    r6.PrimaryPart = nil
+    model = spawn()
+    check(model.PrimaryPart ~= nil, "legacy BasePart root resolution works without PrimaryPart")
+    customer.RemovePlayer(owner)
+    r6:Destroy()
+    -- Malformed/non-archivable templates cannot break the generic fallback.
+    child("Part", "NotAModel", folder)
+    child("Model", "NoHumanoid", folder)
+    local broken = rig("NotArchivable", "steak")
+    broken.Archivable = false
+    local toolRig = child("Model", "OnlyToolRoot", folder)
+    child("Humanoid", "Humanoid", toolRig)
+    child("Part", "Handle", child("Tool", "Tool", toolRig))
+    local noRoot = child("Model", "NoRoot", folder)
+    child("Humanoid", "Humanoid", noRoot)
+    local noClonedRoot = rig("NonArchivableParts", "steak")
+    noClonedRoot:FindFirstChild("Head").Archivable = false
+    noClonedRoot:FindFirstChild("HumanoidRootPart").Archivable = false
+    model, snapshot = spawn()
+    check(snapshot.CustomerId == nil and model:FindFirstChild("Torso"), "all malformed templates fall back")
+    customer.RemovePlayer(owner)
+    for _, item in folder:GetChildren() do
+        item:Destroy()
+    end
+    model, snapshot = spawn()
+    check(model:FindFirstChild("Torso") and snapshot.RequestId ~= "Steak", "empty folder keeps generic customer")
+    customer.RemovePlayer(owner)
+    local legacy = child("Model", "Customer", storage)
+    child("Part", "Torso", legacy)
+    model = spawn()
+    check(model ~= legacy and legacy.Parent == storage, "empty custom folder retains legacy template cloning")
+    customer.RemovePlayer(owner)
+    legacy:Destroy()
+    folder:Destroy()
+    data.RemovePlayer(owner)
+    requestConfig.SpecialCustomerChance = savedChance
+    env.math.random = savedRandom
 end
 print(string.format("PASS: %d customer request assertions (mocked Roblox boundary).", count))

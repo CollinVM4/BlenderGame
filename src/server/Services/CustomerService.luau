@@ -10,6 +10,7 @@ local Economy = require(Shared.Constants.Economy)
 local Upgrades = require(Shared.Constants.Upgrades)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
+local Placement = require(script.Parent.CustomerPlacement)
 local AudioService = require(script.Parent.AudioService)
 local Film = require(script.Parent.FilmingUtil)
 local CustomerService = {}
@@ -18,6 +19,9 @@ local onServed: (Player, Types.Grade) -> ()
 local canServe: (Player) -> boolean
 local active: { [Player]: any } = {}
 local ownedModels: { [Player]: { [Model]: boolean } } = {}
+local specialCounts: { [Player]: number } = {}
+local lastTemplates: { [Player]: Model } = {}
+local warnedTemplates = setmetatable({} :: { [Instance]: boolean }, { __mode = "k" })
 local activeTypingTasks = setmetatable({}, { __mode = "k" })
 
 local function diagnostic(message: string)
@@ -54,8 +58,8 @@ local function eligibleRequests(player: Player): { CustomerRequests.Request }
     -- Server-owned effective tier, published by PlayerDataService/MovementService (0-3).
     local playerJumpTier = player:GetAttribute("JumpLevel") or 0
     local eligible: { CustomerRequests.Request } = {}
-    for _, request in CustomerRequests do
-        if playerJumpTier >= request.MinJumpTier then
+    for _, request in CustomerRequests.Definitions do
+        if not request.NPCOnly and playerJumpTier >= request.MinJumpTier then
             table.insert(eligible, request)
         end
     end
@@ -72,20 +76,209 @@ local function eligibleRequests(player: Player): { CustomerRequests.Request }
 end
 
 local function assignRequest(player: Player, record: any): boolean
-    local eligible = eligibleRequests(player)
-    if #eligible == 0 then
+    local selectedRequest = record.FixedRequest
+    local forced = selectedRequest ~= nil
+    if selectedRequest and (player:GetAttribute("JumpLevel") or 0) < selectedRequest.MinJumpTier then
+        diagnostic("special became ineligible before assignment; removing customer owner=" .. player.Name)
         record.Model:Destroy()
         return false
     end
-    local request = eligible[math.random(1, #eligible)]
+    if not selectedRequest then
+        local eligible = eligibleRequests(player)
+        if #eligible == 0 then
+            record.Model:Destroy()
+            return false
+        end
+        selectedRequest = eligible[math.random(1, #eligible)]
+    end
+    local request = selectedRequest :: CustomerRequests.Request
     record.Request = request
+    record.RequestId = request.Id
     record.Preference = request.RequiredTags[1]
     record.Model:SetAttribute("Preference", record.Preference)
     record.Model:SetAttribute("RequestId", request.Id)
     diagnostic(
-        string.format("assigned owner=%s request=%s", tostring(record.Model:GetAttribute("OwnerUserId")), request.Id)
+        string.format(
+            "selected type=%s template=%s customerId=%s request=%s jumpTier=%s forced=%s",
+            record.CustomerType,
+            record.TemplateName,
+            record.CustomerId or "<absent>",
+            request.Id,
+            tostring(player:GetAttribute("JumpLevel") or 0),
+            tostring(forced)
+        )
     )
     return true
+end
+
+local function npcRoot(model: Model): BasePart?
+    local root = model:FindFirstChild("HumanoidRootPart")
+    if root and root:IsA("BasePart") then
+        return root
+    end
+    return WorldUtil.Part(model)
+end
+
+local function rejectTemplate(template: Instance, reason: string)
+    if RunService:IsStudio() and not warnedTemplates[template] then
+        warnedTemplates[template] = true
+        warn("[CustomerService] Skipping " .. template:GetFullName() .. ": " .. reason)
+    end
+end
+
+local function cleanClone(model: Model)
+    -- This flow owns customer world-space presentation, including on cloned templates.
+    for _, object in model:GetDescendants() do
+        if
+            object:IsA("Script")
+            or object:IsA("LocalScript")
+            or object:IsA("ModuleScript")
+            or object:IsA("Tool")
+            or object:IsA("ProximityPrompt")
+            or object:IsA("BillboardGui")
+            or object:IsA("SurfaceGui")
+        then
+            object:Destroy()
+        end
+    end
+end
+
+type Candidate = {
+    Template: Model,
+    CustomerId: string?,
+    CustomerType: string,
+    Request: CustomerRequests.Request?,
+    Weight: number,
+}
+
+local function candidateFor(player: Player, template: Model): Candidate?
+    local id = CustomerRequests.NormalizeCustomerId(template:GetAttribute("CustomerId"))
+    local config = if id then CustomerRequests.NPCs[id] else nil
+    -- Existing RequestId-only mappings remain special; an explicit Regular ignores overrides.
+    local kind = if config and (config.Type == "Special" or (not config.Type and config.RequestId))
+        then "Special"
+        else "Regular"
+    local request, reason = CustomerRequests.GetForNPC(id)
+    if kind == "Special" then
+        if reason then
+            rejectTemplate(template, reason)
+            return nil
+        end
+        if request and (player:GetAttribute("JumpLevel") or 0) < request.MinJumpTier then
+            diagnostic(
+                string.format(
+                    "special ineligible customerId=%s request=%s requiredJumpTier=%d playerJumpTier=%s",
+                    id or "<absent>",
+                    request.Id,
+                    request.MinJumpTier,
+                    tostring(player:GetAttribute("JumpLevel") or 0)
+                )
+            )
+            return nil
+        end
+    else
+        request = nil
+    end
+    local weight = if config and config.Weight then config.Weight else 1
+    if weight ~= weight or weight <= 0 or weight == math.huge then
+        rejectTemplate(template, "Weight must be positive and finite")
+        return nil
+    end
+    return { Template = template, CustomerId = id, CustomerType = kind, Request = request, Weight = weight }
+end
+
+local function cloneNPC(player: Player): (Model?, Candidate?)
+    local folder = ServerStorage:FindFirstChild("CustomerNPCs")
+    local regular: { Candidate } = {}
+    local special: { Candidate } = {}
+    if folder and folder:IsA("Folder") then
+        for _, template in folder:GetChildren() do
+            if not template:IsA("Model") then
+                rejectTemplate(template, "expected a Model")
+            elseif not template:FindFirstChildOfClass("Humanoid") or not npcRoot(template) then
+                rejectTemplate(template, "requires Humanoid and a BasePart root")
+            elseif not template.Archivable then
+                rejectTemplate(template, "enable Archivable to allow cloning")
+            else
+                local candidate = candidateFor(player, template)
+                if candidate then
+                    table.insert(if candidate.CustomerType == "Special" then special else regular, candidate)
+                end
+            end
+        end
+    elseif folder then
+        rejectTemplate(folder, "CustomerNPCs must be a Folder")
+    end
+    if #regular > 0 then
+        for index = #special, 1, -1 do
+            if special[index].Template == lastTemplates[player] then
+                table.remove(special, index)
+            end
+        end
+    end
+    local useSpecial = #special > 0
+        and (specialCounts[player] or 0) < CustomerRequests.MaxSpecialCustomersPerDay
+        and math.random() < CustomerRequests.SpecialCustomerChance
+    local candidates = if useSpecial then special else regular
+    -- Prefer alternatives within the chosen category; never increase special frequency to avoid a repeat.
+    local function take(pool: { Candidate }): Candidate
+        local alternatives: { number } = {}
+        for index, candidate in pool do
+            if candidate.Template ~= lastTemplates[player] then
+                table.insert(alternatives, index)
+            end
+        end
+        if #alternatives == 0 then
+            for index in pool do
+                table.insert(alternatives, index)
+            end
+        end
+        local total = 0
+        for _, index in alternatives do
+            total += pool[index].Weight
+        end
+        local roll = math.random() * total
+        local chosen = alternatives[#alternatives]
+        for _, index in alternatives do
+            roll -= pool[index].Weight
+            if roll < 0 then
+                chosen = index
+                break
+            end
+        end
+        return table.remove(pool, chosen) :: Candidate
+    end
+    while #candidates > 0 do
+        local candidate = take(candidates)
+        local template = candidate.Template
+        local ok, clone = pcall(function()
+            return template:Clone()
+        end)
+        if ok and clone then
+            cleanClone(clone)
+        end
+        if ok and clone and clone:FindFirstChildOfClass("Humanoid") and npcRoot(clone) then
+            lastTemplates[player] = template
+            if candidate.CustomerType == "Special" then
+                specialCounts[player] = (specialCounts[player] or 0) + 1
+            end
+            return clone, candidate
+        end
+        if ok and clone then
+            clone:Destroy()
+        end
+        rejectTemplate(template, "clone failed or required descendants are not Archivable")
+        if #candidates == 0 and useSpecial then
+            candidates = regular
+            useSpecial = false
+        end
+    end
+    return nil, nil
+end
+
+-- Called only on a new authoritative day, never when resuming an interrupted day.
+function CustomerService.BeginDay(player: Player)
+    specialCounts[player] = 0
 end
 
 local function ensureCustomerCounterGlow(customerModel: Model): ParticleEmitter?
@@ -237,7 +430,10 @@ function CustomerService.CanSpawn(player: Player): (boolean, string?)
 end
 -- Simple deterministic waypoint movement for the filming skeleton, not pathfinding.
 local function move(record: any, destination: CFrame, finished: () -> ())
-    local start: CFrame = record.Model:GetPivot()
+    local current: CFrame = record.Model:GetPivot()
+    local start = Placement.Face(current.Position, destination.Position, current)
+    destination = Placement.Face(destination.Position, destination.Position + start.LookVector, start)
+    record.Model:PivotTo(start)
     local duration = math.max(0.1, (start.Position - destination.Position).Magnitude / 8)
     task.spawn(function()
         local elapsed = 0
@@ -269,42 +465,67 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
             exit:GetFullName()
         )
     )
+    local customModel, candidate = cloneNPC(player)
+    local templateName = if candidate then candidate.Template.Name else nil
     local template = ServerStorage:FindFirstChild("Customer")
-    local model: Model
-    if template and template:IsA("Model") and WorldUtil.Part(template) then
-        model = template:Clone()
-    else
-        model = Instance.new("Model")
+    local selectedModel = customModel
+    local legacyCandidate = if template and template:IsA("Model") then candidateFor(player, template) else nil
+    if
+        not selectedModel
+        and template
+        and template:IsA("Model")
+        and template.Archivable
+        and legacyCandidate
+        and legacyCandidate.CustomerType == "Regular"
+    then
+        local ok, clone = pcall(function()
+            return template:Clone()
+        end)
+        if ok and clone then
+            cleanClone(clone)
+            if npcRoot(clone) then
+                selectedModel = clone
+                templateName = template.Name
+            else
+                clone:Destroy()
+                rejectTemplate(template, "clone has no usable root after cleanup")
+            end
+        end
+    end
+    if not selectedModel then
+        local generic = Instance.new("Model")
         local torso = Instance.new("Part")
         torso.Name = "Torso"
         torso.Size = Vector3.new(2, 2.5, 1)
         torso.Color = Color3.fromRGB(220, 170, 110)
-        torso.Parent = model
+        torso.Parent = generic
         local head = Instance.new("Part")
         head.Name = "Head"
         head.Size = Vector3.new(2, 1, 1)
         head.Position = Vector3.new(0, 2, 0)
         head.Color = Color3.fromRGB(245, 205, 170)
-        head.Parent = model
-        model.PrimaryPart = torso
+        head.Parent = generic
+        generic.PrimaryPart = torso
+        selectedModel = generic
     end
+    local model = selectedModel :: Model
     model.Name = "CustomerNPC"
-    -- This flow owns customer world-space presentation, including on cloned templates.
-    for _, object in model:GetDescendants() do
-        if object:IsA("BillboardGui") or object:IsA("SurfaceGui") then
-            object:Destroy()
-        end
-    end
     for _, part in model:GetDescendants() do
         if part:IsA("BasePart") then
             part.Anchored = true
             part.CanCollide = false
         end
     end
-    model:PivotTo(spawn.CFrame)
-    model.Parent = workspace
-    local root = WorldUtil.Part(model) :: BasePart
+    local root = npcRoot(model) :: BasePart
     model.PrimaryPart = root
+    -- Normalize the clone upright before measuring; standard rigs face root -Z.
+    model:PivotTo(CFrame.new(model:GetPivot().Position))
+    local bottomOffset = Placement.BottomOffset(model)
+    local spawnAt = Placement.AtMarker(spawn, bottomOffset)
+    local counterAt = Placement.AtMarker(counter, bottomOffset)
+    local exitAt = Placement.AtMarker(exit, bottomOffset)
+    model:PivotTo(Placement.Face(spawnAt.Position, counterAt.Position, spawn.CFrame))
+    model.Parent = workspace
     ownedModels[player] = ownedModels[player] or {}
     ownedModels[player][model] = true
     local bubble = Instance.new("BillboardGui")
@@ -331,7 +552,14 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     local audio = AudioService.CreateBlendGroup(root)
     local prompt = WorldUtil.Prompt(root, "ServePrompt", "Serve smoothie")
     prompt.Enabled = false
-    local record = {
+    local record: any = {
+        Owner = player,
+        CustomerType = if candidate then candidate.CustomerType else "Regular",
+        FixedRequest = if candidate then candidate.Request else nil,
+        CustomerId = CustomerRequests.NormalizeCustomerId(model:GetAttribute("CustomerId")),
+        TemplateName = templateName or "<generic>",
+        RequestId = nil :: string?,
+        Served = false,
         Model = model,
         Root = root,
         Preference = "",
@@ -341,10 +569,12 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         Bubble = bubble,
         Audio = audio,
         Prompt = prompt,
-        Exit = exit.CFrame,
+        Exit = exitAt,
         ForcedReaction = nil,
     }
     active[player] = record
+    model:SetAttribute("CustomerId", record.CustomerId)
+    model:SetAttribute("RequestId", nil)
     model:SetAttribute("OwnerUserId", player.UserId)
     diagnostic("spawned owner=" .. player.Name)
     prompt.Triggered:Connect(function(actor)
@@ -361,27 +591,32 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
             active[player] = nil
         end
     end)
-    move(record, counter.CFrame, function()
+    move(record, counterAt, function()
         if active[player] == record then
             if not assignRequest(player, record) then
                 return
             end
-            typewriterText(text, record.Request.DisplayText, audio.dialogueSound)
+            typewriterText(text, (record.Request :: CustomerRequests.Request).DisplayText, audio.dialogueSound)
             record.Ready = true
             prompt.Enabled = true
         end
     end)
     return model
 end
-function CustomerService.GetSnapshot(
-    player: Player
-): { Preference: string, RequestId: string?, Ready: boolean, Model: Model }?
+function CustomerService.GetSnapshot(player: Player): {
+    Preference: string,
+    CustomerId: string?,
+    RequestId: string?,
+    Ready: boolean,
+    Model: Model,
+}?
     local record = active[player]
     if not record then
         return nil
     end
     return {
         Preference = record.Preference,
+        CustomerId = record.CustomerId,
         RequestId = if record.Request then record.Request.Id else nil,
         Ready = record.Ready,
         Model = record.Model,
@@ -407,6 +642,7 @@ function CustomerService.Serve(player: Player): (boolean, string?)
     end
     -- No yield between consumption, payout, and removal from active state.
     record.Ready = false
+    record.Served = true
     record.Prompt.Enabled = false
     active[player] = nil
     local success, reason = CustomerService.ValidateRequest(result, record.Request)
@@ -437,6 +673,7 @@ function CustomerService.Serve(player: Player): (boolean, string?)
     record.Model:SetAttribute("OrderSucceeded", success)
     record.Model:SetAttribute("RequestId", nil)
     record.Request = nil
+    record.RequestId = nil
     Film.Emit(
         player,
         "CustomerReaction",
@@ -526,6 +763,8 @@ function CustomerService:RefreshOrder(model: Model)
     end
 end
 function CustomerService.RemovePlayer(player: Player)
+    specialCounts[player] = nil
+    lastTemplates[player] = nil
     local record = active[player]
     active[player] = nil
     if record then
