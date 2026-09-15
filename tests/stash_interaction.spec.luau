@@ -18,12 +18,12 @@ do
     inventory.Init({
         PlayerDataService = {
             GetUpgrade = function(_, name)
-                return if name == "CarryCapacity" then 3 else 1
+                return if name == "CarryCapacity" then 2 else 1
             end,
         },
         IngredientService = {
             GetDefinition = function(id)
-                return id == "Strawberry" or id == "Banana"
+                return id == "Strawberry" or id == "Banana" or id == "Cabbage" or id == "Milk"
             end,
             GetRecord = function(object)
                 return records[object]
@@ -104,6 +104,8 @@ do
         check(stored(p) == n and inventory.GetCarryCount(p) == 3 - n, "A: one unit stored each press")
     end
     check(not press(p) and stored(p) == 3 and inventory.GetCarryCount(p) == 0, "C: exhausted store never reverses")
+    check(not press(p) and stored(p) == 3, "C: repeated failed STORE preserves direction")
+    now += 0.91
     check(press(p) and stored(p) == 2, "C: later press can establish TAKE")
     for _ = 1, 2 do
         check(press(p), "take continuation")
@@ -130,22 +132,31 @@ do
     check(press(p) and stored(p) == 0, "E: refreshed burst still takes after total duration exceeds timeout")
 
     p = player()
-    seed(p, 3, 2)
+    seed(p, 3, 1, "Cabbage")
+    seed(p, 4, 1, "Banana")
+    seed(p, 5, 2, "Milk")
     check(press(p), "F: establish TAKE on slot three")
-    check(press(p, 4) and stored(p, 4) == 1, "F: switching slots establishes STORE")
-    check(press(p, 3) and stored(p) == 0, "F: returning to old slot establishes fresh TAKE")
+    check(not press(p, 2) and not press(p, 2) and stored(p, 2) == 0, "F: empty slot never reverses TAKE")
+    check(press(p, 4) and inventory.GetHeldIngredientId(p) == "Banana", "F: next slot takes Banana immediately")
+    check(press(p, 5) and inventory.GetHeldIngredientId(p) == "Milk", "F: next slot takes Milk immediately")
+    check(stored(p, 3) == 0 and stored(p, 4) == 0 and stored(p, 5) == 1, "F: TAKE uses each slot's item")
+    check(not press(p, 5) and not press(p, 5) and stored(p, 5) == 1, "F: full inventory never reverses TAKE")
 
     local a, b = player(), player()
+    for index = 3, 5 do
+        seed(a, index, 1)
+        seed(b, index, 2)
+    end
     for _ = 1, 3 do
         carry(a)
     end
-    seed(b, 3, 5)
-    for _ = 1, 3 do
-        check(press(a), "G: player A keeps STORE")
-        check(press(b), "G: player B keeps TAKE")
+    for index = 3, 5 do
+        check(press(a, index) and stored(a, index) == 2, "G: player A keeps STORE across occupied slots")
+        check(press(b, index) and stored(b, index) == 1, "G: player B keeps TAKE across slots")
     end
-    check(stored(a) == 3 and stored(b) == 2, "G: independent player results")
-    check(not press(a, 3, b), "G: changing stash owner resets old direction and rejects theft")
+    check(inventory.GetCarryCount(a) == 0 and inventory.GetCarryCount(b) == 3, "G: independent player directions")
+    check(not press(a, 3, b), "G: foreign stash rejects theft")
+    check(not press(a, 4) and not press(a, 5), "G: exhausted STORE survives foreign and own slot switches")
 
     p = player()
     seed(p, 3, 4)
@@ -181,7 +192,12 @@ do
     check(press(p) and press(p), "selected ingredient stores repeatedly")
     check(
         not press(p) and inventory.GetHeldIngredientId(p) == "Banana" and stored(p) == 2,
-        "ingredient change ends STORE without selecting another ingredient"
+        "STORE rejects incompatible carried ingredient without taking"
+    )
+    check(not press(p) and stored(p) == 2, "incompatible STORE failure retains direction")
+    check(
+        press(p, 4) and inventory.GetSnapshot(p).Stash[4].IngredientId == "Banana",
+        "STORE follows current item into compatible slot"
     )
     inventory.ClearHeld(p)
     now += 1
@@ -191,8 +207,8 @@ do
     inventory.ClearHeld(p)
     seed(p, 3, 1, "Banana")
     check(
-        not press(p) and inventory.GetCarryCount(p) == 0 and stored(p) == 1,
-        "TAKE does not switch ingredients when slot contents change"
+        press(p) and inventory.GetHeldIngredientId(p) == "Banana" and stored(p) == 0,
+        "TAKE uses current contents when slot ingredient changes"
     )
     -- Exercise the actual prompt callback, not just the service entry point.
     p = player()

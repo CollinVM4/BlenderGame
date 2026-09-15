@@ -6,7 +6,7 @@ local Types = require(game:GetService("ReplicatedStorage").Shared.Types)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local Geometry = {}
 
-function Geometry.CreateVisual(data: Types.SmoothieData): Model?
+function Geometry.CreateTool(data: Types.SmoothieData): Tool?
     local template = ServerStorage:FindFirstChild("Smoothie")
     if not template or not template:IsA("Tool") or not template.Archivable then
         return nil
@@ -40,16 +40,13 @@ function Geometry.CreateVisual(data: Types.SmoothieData): Model?
             child.Massless = true
         end
     end
-    local model = Instance.new("Model")
-    model.Name = "SmoothieVisual"
-    for _, child in clone:GetChildren() do
-        child.Parent = model
+    for _, tag in CollectionService:GetTags(clone) do
+        CollectionService:RemoveTag(clone, tag)
     end
-    clone:Destroy()
-    handle.Name = "SmoothieRoot" -- avoid a competing Tool RightGrip
+    clone.Enabled, clone.ManualActivationOnly = true, false
+    clone.RequiresHandle, clone.CanBeDropped = true, false
     handle.Color = SmoothieItem.Result(data).Color
-    model.PrimaryPart = handle
-    for _, part in model:GetDescendants() do
+    for _, part in clone:GetDescendants() do
         if part:IsA("BasePart") and part ~= handle then
             local weld = Instance.new("WeldConstraint")
             weld.Name = "SmoothieAssembly"
@@ -57,6 +54,23 @@ function Geometry.CreateVisual(data: Types.SmoothieData): Model?
             weld.Parent = handle
         end
     end
+    return clone
+end
+
+function Geometry.CreateVisual(data: Types.SmoothieData): Model?
+    local tool = Geometry.CreateTool(data)
+    if not tool then
+        return nil
+    end
+    local handle = tool:FindFirstChild("Handle") :: BasePart
+    local model = Instance.new("Model")
+    model.Name = "SmoothieVisual"
+    for _, child in tool:GetChildren() do
+        child.Parent = model
+    end
+    tool:Destroy()
+    handle.Name = "SmoothieRoot"
+    model.PrimaryPart = handle
     return model
 end
 

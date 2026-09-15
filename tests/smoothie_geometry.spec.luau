@@ -25,20 +25,16 @@ do
     visual:Destroy()
 end
 
--- Reflow is a presentation contract; survivor usability lives in smoothie_survivors.
 do
-    local p = player()
-    carry(p)
-    grant(p, "lower")
-    grant(p, "upper")
-    local before = anchors(tool(p))
-    local topY = before[3].C0.Position.Y
-    local bottomHeight = loadModule("IngredientCarry").StackGap + 1.5
-    inventory.DropHeld(p)
-    local after = anchors(tool(p))
+    template.Grip = frame(1, 2, 3)
+    template.Enabled, template.ManualActivationOnly = false, true
+    local handTool = geometry.CreateTool(smoothie("hand-grip"))
+    check(handTool:IsA("Tool") and handTool:FindFirstChild("Handle") ~= nil, "authored Tool keeps normal Handle")
+    check(handTool.Grip == template.Grip and handTool.RequiresHandle, "authored grip preserved")
+    check(handTool.Enabled and not handTool.ManualActivationOnly, "ordinary player click activation enabled")
     check(
-        math.abs(after[2].C0.Position.Y - (topY - bottomHeight)) < 1e-6,
-        "upper visual shifts down after bottom removal"
+        not handTool:FindFirstChild("CarryAnchor") and not handTool:FindFirstChild("SmoothieRoot"),
+        "no overhead smoothie presentation"
     )
-    inventory.ClearHeld(p)
+    handTool:Destroy()
 end

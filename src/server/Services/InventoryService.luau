@@ -16,16 +16,13 @@ InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
 local STASH_BURST_TIMEOUT = 0.9
 type StashIntent = {
-    Owner: Player,
-    Slot: BasePart,
-    ItemType: "Ingredient" | "Smoothie",
-    ItemKey: string,
     Direction: "STORE" | "TAKE",
     LastInteraction: number,
 }
 local stashIntents: { [Player]: StashIntent } = {}
 type HeldItem = {
     Tool: Tool,
+    VisualHost: Model?,
     ItemType: "Ingredient" | "Smoothie",
     Id: string?,
     Smoothie: Types.SmoothieData?,
@@ -43,6 +40,21 @@ local function topItem(player: Player): HeldItem?
     local stack = held[player]
     return if stack then stack[#stack] else nil
 end
+local switching: { [Player]: boolean } = {}
+local function selectedItem(player: Player): HeldItem?
+    local stack = held[player] or {}
+    for index = #stack, 1, -1 do
+        if stack[index].Tool.Parent == player.Character then
+            return stack[index]
+        end
+    end
+    return nil
+end
+local function equipTool(player: Player, humanoid: Humanoid, tool: Tool)
+    switching[player] = true
+    humanoid:EquipTool(tool)
+    switching[player] = nil
+end
 function InventoryService.GetCarryCount(player: Player): number
     return #(held[player] or {})
 end
@@ -50,7 +62,7 @@ function InventoryService.GetCarryCapacity(player: Player): number
     return Upgrades.CarryCapacity[deps.PlayerDataService.GetUpgrade(player, "CarryCapacity")].Value
 end
 local function syncHeld(player: Player)
-    local top = topItem(player)
+    local top = selectedItem(player)
     if top then
         top.Tool.Name = if top.ItemType == "Smoothie" then "Smoothie" else (top.Id :: string) .. " (click to throw)"
     end
@@ -76,30 +88,47 @@ local function removeAt(player: Player, index: number?)
     if not record then
         return
     end
-    -- Transfer/disconnect shared handlers before presentation destruction can
-    -- emit signals. Never reconnect them when the bottom reservation changes.
-    if #stack > 0 and #record.Connections > 0 then
-        stack[1].Connections = record.Connections
-        record.Connections = {}
-    elseif #stack == 0 then
-        held[player] = nil
+    local successor: HeldItem? = nil
+    for _, item in stack do
+        if item.Tool == record.Tool then
+            successor = item
+            break
+        end
+    end
+    if successor then
+        if #record.Connections > 0 then
+            successor.Connections = record.Connections
+        end
+    else
         for _, connection in record.Connections do
             connection:Disconnect()
         end
-        record.Connections = {}
+    end
+    if #stack == 0 then
+        held[player] = nil
     end
     for i = removedIndex, #stack do
         local item = stack[i]
-        if item.ShiftDown then
-            item.ShiftDown(record.Height)
+        if item.Tool == record.Tool then
+            if item.ShiftDown then
+                item.ShiftDown(record.Height)
+            end
+            item.ThrowOffset = CFrame.new(0, -record.Height, 0) * item.ThrowOffset
         end
-        item.ThrowOffset = CFrame.new(0, -record.Height, 0) * item.ThrowOffset
     end
+    local wasEquipped = record.Tool.Parent == player.Character
     record.ClearVisual()
-    if #stack == 0 then
+    if not successor then
+        if record.VisualHost then
+            record.VisualHost:Destroy()
+        end
         if not record.Destroying then
             record.Tool:Destroy()
         end
+    end
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if wasEquipped and not successor and #stack > 0 and humanoid and humanoid.Health > 0 and not switching[player] then
+        equipTool(player, humanoid, stack[#stack].Tool)
     end
     syncHeld(player)
 end
@@ -138,7 +167,7 @@ end
 -- block reentrant signals while restoring it. Clear before destroying the visual.
 local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?, itemIndex: number?): Instance?
     local record = if itemIndex then (held[player] or {})[itemIndex] else topItem(player)
-    if not record or record.Releasing or record.ItemType ~= "Ingredient" then
+    if not record or record.Releasing then
         return nil
     end
     record.Releasing = true
@@ -147,7 +176,9 @@ local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?
     -- The held[player] reservation is exclusive only while carried. Both drop
     -- and throw release ownership so anyone can claim the loose world unit.
     local offset = if throwing then record.ThrowOffset else CFrame.new(((dropIndex or 1) - 1) * 2, 2, -3)
-    local object = deps.IngredientService.Spawn(record.Id :: string, at * offset, nil, true)
+    local object = if record.Smoothie
+        then deps.SmoothieWorldItemService.Spawn(record.Smoothie, at * offset)
+        else deps.IngredientService.Spawn(record.Id :: string, at * offset, nil, true)
     if not object then
         record.Releasing = false
         return nil
@@ -164,13 +195,9 @@ function InventoryService.DropHeld(player: Player): Instance?
     local first: Instance? = nil
     local count = InventoryService.GetCarryCount(player)
     for index = count, 1, -1 do
-        -- Smoothie world dropping is deferred; keep its reservation intact.
         local record = (held[player] or {})[index]
         if not record then
             break
-        end
-        if record.ItemType == "Smoothie" then
-            continue
         end
         local object = releaseHeld(player, false, count - index + 1, index)
         if not object then
@@ -181,16 +208,15 @@ function InventoryService.DropHeld(player: Player): Instance?
     return first
 end
 
--- End-of-character cleanup matches the old ephemeral cup lifecycle. Unequip and
--- voluntary drop do NOT call this: they retain smoothies until world support exists.
+-- Release all carried items before clearing any remaining character reservations.
 function InventoryService.CleanupCharacter(player: Player)
     InventoryService.DropHeld(player)
     InventoryService.ClearHeld(player)
 end
 
--- One equipped Tool activates the top reservation only; attributes never authorize contents.
+-- The equipped Tool selects its own reservation (or top ingredient); contents stay server-owned.
 function InventoryService.ThrowHeld(player: Player): Instance?
-    local record = topItem(player)
+    local record = selectedItem(player)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
@@ -203,7 +229,7 @@ function InventoryService.ThrowHeld(player: Player): Instance?
     then
         return nil
     end
-    return releaseHeld(player, true)
+    return releaseHeld(player, true, nil, table.find(held[player], record))
 end
 
 -- Private synchronous equip path shared by loose pickup and stash withdrawal.
@@ -223,17 +249,38 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
         return false
     end
     local stack: { HeldItem } = held[player] or {}
-    local existing = stack[1]
-    local tool = if existing then existing.Tool else Instance.new("Tool")
+    local existing: HeldItem? = nil
+    if not smoothie then
+        for _, item in stack do
+            if item.ItemType == "Ingredient" then
+                existing = item
+                break
+            end
+        end
+    end
+    local tool = if smoothie then visual :: Tool elseif existing then existing.Tool else Instance.new("Tool")
     tool.Name = if smoothie then "Smoothie" else (id :: string) .. " (click to throw)"
     tool.CanBeDropped = false
-    tool.RequiresHandle = false
+    tool.RequiresHandle = smoothie ~= nil
     local height = 0
     for _, item in stack do
-        height += item.Height
+        if item.ItemType == "Ingredient" then
+            height += item.Height
+        end
     end
-    local throwOffset, clearVisual, itemHeight, shiftDown = CarryPresentation.Attach(visual, tool, root, height)
+    local throwOffset = CFrame.new(0, 1, -3)
+    local clearVisual: () -> () = function() end
+    local itemHeight = 0
+    local shiftDown: ((number) -> ())? = nil
+    if not smoothie then
+        throwOffset, clearVisual, itemHeight, shiftDown = CarryPresentation.Attach(visual, tool, root, height)
+    end
+    local visualHost = if smoothie then nil elseif existing then existing.VisualHost else Instance.new("Model")
+    if visualHost then
+        visualHost.Name = "IngredientCarryVisuals"
+    end
     local reservation: HeldItem = {
+        VisualHost = visualHost,
         Tool = tool,
         Id = id,
         ItemType = if smoothie then "Smoothie" else "Ingredient",
@@ -252,43 +299,89 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
     syncHeld(player)
     if existing then
         if tool.Parent ~= player.Character then
-            humanoid:EquipTool(tool)
+            equipTool(player, humanoid, tool)
         end
         return true
     end
-    local function dropThisTool()
-        -- A queued signal from an old Tool must never drop a newer reservation.
-        if held[player] == stack then
-            InventoryService.DropHeld(player)
+    local function ownsTool(): boolean
+        local current: { HeldItem } = held[player] or {}
+        for _, item in current do
+            if item.Tool == tool then
+                return true
+            end
         end
+        return false
     end
     local function cleanupThisTool()
-        if held[player] == stack then
+        if ownsTool() then
             InventoryService.CleanupCharacter(player)
         end
     end
-    table.insert(reservation.Connections, tool.Unequipped:Connect(dropThisTool))
+    table.insert(
+        reservation.Connections,
+        tool.Equipped:Connect(function()
+            if visualHost then
+                for _, child in visualHost:GetChildren() do
+                    child.Parent = tool
+                end
+                visualHost.Parent = nil
+            end
+            syncHeld(player)
+        end)
+    )
+    table.insert(
+        reservation.Connections,
+        tool.Unequipped:Connect(function()
+            if not ownsTool() then
+                return
+            end
+            if visualHost then
+                for _, child in tool:GetChildren() do
+                    child.Parent = visualHost
+                end
+                visualHost.Parent = root.Parent
+            end
+            if switching[player] then
+                return
+            end
+            -- Backpack smoothies remain selectable. Mixed inventory keeps the overhead
+            -- ingredient assembly while the player switches to a smoothie Tool.
+            local current: { HeldItem } = held[player] or {}
+            for _, item in current do
+                if item.Smoothie then
+                    syncHeld(player)
+                    return
+                end
+            end
+            InventoryService.DropHeld(player)
+        end)
+    )
     table.insert(reservation.Connections, humanoid.Died:Connect(cleanupThisTool))
     table.insert(reservation.Connections, player.CharacterRemoving:Connect(cleanupThisTool))
     table.insert(
         reservation.Connections,
         tool.Destroying:Connect(function()
-            for _, item in stack do
-                item.Destroying = true
+            local current = held[player] or {}
+            for index = #current, 1, -1 do
+                local item = current[index]
+                if item.Tool == tool then
+                    item.Destroying = true
+                    releaseHeld(player, false, nil, index)
+                end
             end
-            cleanupThisTool()
         end)
     )
     table.insert(
         reservation.Connections,
         tool.Activated:Connect(function()
-            if held[player] == stack then
+            local selected = selectedItem(player)
+            if ownsTool() and selected and selected.Tool == tool then
                 InventoryService.ThrowHeld(player)
             end
         end)
     )
     tool.Parent = backpack
-    humanoid:EquipTool(tool)
+    equipTool(player, humanoid, tool)
     return true
 end
 
@@ -300,14 +393,23 @@ function InventoryService.GrantSmoothie(player: Player, data: Types.SmoothieData
     then
         return false
     end
-    local visual = SmoothieGeometry.CreateVisual(data)
+    local visual = SmoothieGeometry.CreateTool(data)
     return visual ~= nil and equipVisual(player, nil, visual, data)
 end
 
--- A shared Tool is only a presentation match assertion; the top reservation
--- selects the specific smoothie. Neither names nor attributes authorize a serve.
+-- Separate loose smoothie path; replicated contents never enter this transaction.
+function InventoryService.CarryWorldSmoothie(player: Player, object: Instance): boolean
+    if not WorldUtil.Near(player, object, Economy.InteractionDistance) then
+        return false
+    end
+    return deps.SmoothieWorldItemService.Claim(object, function(data)
+        return InventoryService.GrantSmoothie(player, data)
+    end)
+end
+
+-- The equipped Tool selects its server-owned reservation; attributes never authorize contents.
 function InventoryService.GetHeldSmoothie(player: Player, requested: Instance?): Types.SmoothieData?
-    local record = topItem(player)
+    local record = selectedItem(player)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
         not record
@@ -326,9 +428,10 @@ function InventoryService.GetHeldSmoothie(player: Player, requested: Instance?):
 end
 
 function InventoryService.ConsumeHeldSmoothie(player: Player): Types.SmoothieData?
+    local record = selectedItem(player)
     local data = InventoryService.GetHeldSmoothie(player)
-    if data then
-        removeTop(player)
+    if data and record then
+        removeAt(player, table.find(held[player], record))
     end
     return data
 end
@@ -381,7 +484,7 @@ function InventoryService.GetStashLayout(_player: Player)
     return { Slots = 5, Protected = 2 }
 end
 function InventoryService.GetHeldIngredientId(player: Player): string?
-    local record = topItem(player)
+    local record = selectedItem(player)
     return if record and record.ItemType == "Ingredient" and not record.Releasing then record.Id else nil
 end
 function InventoryService.GetSnapshot(player: Player)
@@ -534,7 +637,7 @@ local function clearSlot(slot: Types.StashSlot)
     slot.Count, slot.Capacity = 0, 5
 end
 local function depositSelected(player: Player, itemType: string, key: string, index: number): boolean
-    local record = topItem(player)
+    local record = selectedItem(player)
     if
         not record
         or record.Releasing
@@ -569,7 +672,7 @@ local function depositSelected(player: Player, itemType: string, key: string, in
         slot.Capacity = 5
     end
     slot.ItemType = record.ItemType
-    removeTop(player)
+    removeAt(player, table.find(held[player], record))
     stashChanged:Fire(player)
     return true
 end
@@ -592,7 +695,7 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
     if slot.Count < 1 or (not id and not smoothie) then
         return false
     end
-    local visual = if smoothie then SmoothieGeometry.CreateVisual(smoothie) else deps.IngredientService.CreateVisual(id)
+    local visual = if smoothie then SmoothieGeometry.CreateTool(smoothie) else deps.IngredientService.CreateVisual(id)
     if not visual then
         return false
     end
@@ -616,18 +719,16 @@ function InventoryService.Steal(_player: Player, _owner: Player, _index: number)
     return false
 end
 -- Prompt direction is server-owned and survives changes caused by each transfer.
--- Keep the final successful intent until a failed attempt consumes it, so exhausting
--- a stack/capacity cannot reverse direction on the next press of the same burst.
+-- Direction follows the player across slots/items; failed transfers preserve it
+-- until the idle timeout after the last successful transfer.
 function InventoryService.InteractStash(player: Player, index: number, owner: Player?): boolean
     local now = os.clock()
     local part = if owner then getSlotPart(owner, index) else nil
     local intent: StashIntent? = stashIntents[player]
-    if
-        intent and (intent.Owner ~= owner or intent.Slot ~= part or now - intent.LastInteraction >= STASH_BURST_TIMEOUT)
-    then
+    if intent and now - intent.LastInteraction >= STASH_BURST_TIMEOUT then
         intent = nil
+        stashIntents[player] = nil
     end
-    stashIntents[player] = nil
     if not owner or not part then
         return false
     end
@@ -636,17 +737,13 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
         return false
     end
     if not intent then
-        local selected = topItem(player)
+        local selected = selectedItem(player)
         local key = if selected then heldKey(selected) else slotKey(slot)
         local itemType: ("Ingredient" | "Smoothie")? = if selected then selected.ItemType else slot.ItemType
         if not key or not itemType then
             return false
         end
         intent = {
-            Owner = owner,
-            Slot = part,
-            ItemType = itemType,
-            ItemKey = key,
             Direction = if selected then "STORE" else "TAKE",
             LastInteraction = now,
         }
@@ -654,8 +751,12 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
     assert(intent)
     local success = false
     if intent.Direction == "STORE" then
-        success = owner == player and depositSelected(player, intent.ItemType, intent.ItemKey, index)
-    elseif slot.ItemType == intent.ItemType and slotKey(slot) == intent.ItemKey then
+        local selected = selectedItem(player)
+        local key = if selected then heldKey(selected) else nil
+        if selected and key then
+            success = owner == player and depositSelected(player, selected.ItemType, key, index)
+        end
+    else
         success = InventoryService.Withdraw(player, index, owner)
     end
     if success then
@@ -666,11 +767,6 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
 end
 function InventoryService.RemovePlayer(player: Player)
     stashIntents[player] = nil
-    for other, intent in stashIntents do
-        if intent.Owner == player then
-            stashIntents[other] = nil
-        end
-    end
     InventoryService.DropHeld(player)
     InventoryService.ClearHeld(player)
     carried[player] = nil

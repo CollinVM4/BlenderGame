@@ -11,6 +11,8 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Placement = require(script.Parent.CustomerPlacement)
+local Walk = require(script.Parent.CustomerWalk)
+local Presentation = require(script.Parent.CustomerPresentation)
 local AudioService = require(script.Parent.AudioService)
 local Film = require(script.Parent.FilmingUtil)
 local CustomerService = {}
@@ -191,7 +193,12 @@ local function candidateFor(player: Player, template: Model): Candidate?
     return {
         Template = template,
         CustomerId = id,
-        DisplayName = if config and config.DisplayName then config.DisplayName else id,
+        DisplayName = Presentation.DisplayName(
+            template,
+            kind == "Special",
+            if config then config.DisplayName else nil,
+            id
+        ),
         CustomerType = kind,
         Request = request,
         Weight = weight,
@@ -203,18 +210,27 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
     local regular: { Candidate } = {}
     local special: { Candidate } = {}
     if folder and folder:IsA("Folder") then
-        for _, template in folder:GetChildren() do
-            if not template:IsA("Model") then
-                rejectTemplate(template, "expected a Model")
-            elseif not template:FindFirstChildOfClass("Humanoid") or not npcRoot(template) then
-                rejectTemplate(template, "requires Humanoid and a BasePart root")
-            elseif not template.Archivable then
-                rejectTemplate(template, "enable Archivable to allow cloning")
-            else
-                local candidate = candidateFor(player, template)
-                if candidate then
-                    table.insert(if candidate.CustomerType == "Special" then special else regular, candidate)
+        for _, kind in { "Regular", "Special" } do
+            local source = folder:FindFirstChild(kind)
+            if source and source:IsA("Folder") then
+                for _, template in source:GetChildren() do
+                    if not template:IsA("Model") then
+                        rejectTemplate(template, "expected a Model")
+                    elseif not template:FindFirstChildOfClass("Humanoid") or not npcRoot(template) then
+                        rejectTemplate(template, "requires Humanoid and a BasePart root")
+                    elseif not template.Archivable then
+                        rejectTemplate(template, "enable Archivable to allow cloning")
+                    else
+                        local candidate = candidateFor(player, template)
+                        if candidate and candidate.CustomerType == kind then
+                            table.insert(if kind == "Special" then special else regular, candidate)
+                        elseif candidate then
+                            rejectTemplate(template, "CustomerId mapping does not match source folder " .. kind)
+                        end
+                    end
                 end
+            elseif source then
+                rejectTemplate(source, kind .. " must be a Folder")
             end
         end
     elseif folder then
@@ -445,13 +461,20 @@ local function move(record: any, destination: CFrame, finished: () -> ())
     local start = Placement.Face(current.Position, destination.Position, current)
     destination = Placement.Face(destination.Position, destination.Position + start.LookVector, start)
     record.Model:PivotTo(start)
-    local duration = math.max(0.1, (start.Position - destination.Position).Magnitude / 8)
+    local distance = (start.Position - destination.Position).Magnitude
+    local duration = math.max(0.1, distance / 8)
+    record.Walk.SetMoving(distance > 0.0001)
     task.spawn(function()
         local elapsed = 0
         while record.Model.Parent and elapsed < duration do
             elapsed += task.wait()
-            record.Model:PivotTo(start:Lerp(destination, math.min(1, elapsed / duration)))
+            if not record.Model.Parent then
+                break
+            end
+            local nextFrame = start:Lerp(destination, math.min(1, elapsed / duration))
+            record.Model:PivotTo(nextFrame)
         end
+        record.Walk.SetMoving(false)
         if record.Model.Parent then
             finished()
         end
@@ -536,7 +559,12 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     local counterAt = Placement.AtMarker(counter, bottomOffset)
     local exitAt = Placement.AtMarker(exit, bottomOffset)
     model:PivotTo(Placement.Face(spawnAt.Position, counterAt.Position, spawn.CFrame))
+    if model:FindFirstChildOfClass("Humanoid") then
+        Walk.PrepareRig(model, root)
+    end
+    -- The anchored PivotTo rig needs no network ownership assignment.
     model.Parent = workspace
+    local walk = Walk.Create(model, templateName)
     ownedModels[player] = ownedModels[player] or {}
     ownedModels[player][model] = true
     local bubble = Instance.new("BillboardGui")
@@ -560,7 +588,7 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     text.TextWrapped = true
     text.Text = ""
     text.Parent = bubble
-    local displayName = if candidate and candidate.CustomerType == "Special" then candidate.DisplayName else nil
+    local displayName = if candidate then candidate.DisplayName else "CustomerNPC"
     if displayName then
         -- Keep the full order area and a stable name above the typewritten dialogue.
         bubble.Size = UDim2.fromOffset(300, 80 + CustomerNameHeight)
@@ -574,8 +602,9 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         nameText.Parent = bubble
         local humanoid = model:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            -- Suppress the imported name only where our own name row replaces it.
-            humanoid.NameDisplayDistance = 0
+            -- A single name row works even on imported rigs with hidden nameplates.
+            humanoid.DisplayName = displayName
+            Presentation.HideDefaultDisplay(humanoid)
         end
     end
     local audio = AudioService.CreateBlendGroup(root)
@@ -591,6 +620,7 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         RequestId = nil :: string?,
         Served = false,
         Model = model,
+        Walk = walk,
         Root = root,
         Preference = "",
         Request = nil,
@@ -613,6 +643,7 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         end
     end)
     model.Destroying:Connect(function()
+        walk.Destroy()
         activeTypingTasks[text] = nil
         if ownedModels[player] then
             ownedModels[player][model] = nil
@@ -680,6 +711,7 @@ function CustomerService.Serve(player: Player): (boolean, string?)
     active[player] = nil
     local success, reason = CustomerService.ValidateRequest(result, record.Request)
     local grade: Types.Grade = if success then "A" else "D"
+    local response = Presentation.Response(record.Request, grade)
     local reaction = record.ForcedReaction or (if success then "Smile" else "Disgust")
     local payout = if success then record.Request.BasePayout else 0
     if success then
@@ -722,9 +754,13 @@ function CustomerService.Serve(player: Player): (boolean, string?)
             payout
         )
     )
-    -- The order presentation ends with the transaction; reactions remain in audio/VFX/attributes.
+    -- Feedback uses the assigned order; reaction audio/VFX/attributes stay independent.
     activeTypingTasks[record.Text] = nil
-    record.Bubble:Destroy()
+    if response then
+        typewriterText(record.Text, response, record.Audio.dialogueSound)
+    else
+        record.Bubble:Destroy()
+    end
     local glow = ensureCustomerCounterGlow(record.Model)
     if glow and success then
         glow:Emit(20)

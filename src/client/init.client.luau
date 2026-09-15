@@ -1,3 +1,4 @@
+require(script.Controllers.SmoothiePickupPromptController).Init()
 require(script.Controllers.InteractionPromptController).Init()
 require(script.Controllers.IngredientPickupPromptController).Init()
 require(script.Controllers.WorldTextController).Init()

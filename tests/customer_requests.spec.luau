@@ -5,6 +5,8 @@ cache.StudioServices = {
     end,
 }
 env.math = table.clone(math)
+env.Enum.HumanoidDisplayDistanceType = { None = "None" }
+env.Enum.HumanoidHealthDisplayType = { AlwaysOff = "AlwaysOff" }
 local function player(name)
     local owner = instance("Player")
     owner.Name = name
@@ -144,8 +146,14 @@ do
         item.Name, item.Parent = name, parent
         return item
     end
+    local regularFolder = child("Folder", "Regular", folder)
+    local specialFolder = child("Folder", "Special", folder)
     local function rig(name, id)
-        local model = child("Model", name, folder)
+        local model = child(
+            "Model",
+            name,
+            if requestConfig.NPCs[requestConfig.NormalizeCustomerId(id)] then specialFolder else regularFolder
+        )
         model:SetAttribute("CustomerId", id)
         child("Humanoid", "Humanoid", model)
         child("Part", "Head", model)
@@ -167,9 +175,29 @@ do
     child("Motor6D", "Neck", steak)
     child("Shirt", "Shirt", steak)
     child("Decal", "face", steak)
+    -- Observe presentation commands independently of the mock engine's missing Animator.
+    local walkModule = loadModule("CustomerWalk")
+    local savedCreate = walkModule.Create
+    local presentations = {}
+    walkModule.Create = function()
+        local state = { Moving = false, Started = false, Destroyed = false }
+        table.insert(presentations, state)
+        return {
+            SetMoving = function(value)
+                if not state.Destroyed then
+                    state.Moving = value
+                    state.Started = state.Started or value
+                end
+            end,
+            Destroy = function()
+                state.Moving, state.Destroyed = false, true
+            end,
+        }
+    end
     local function spawn()
         local model = customer.SpawnForPlayer(owner)
         setup(model ~= nil, "customer spawns")
+        check(presentations[#presentations].Moving, "route start plays walk before the first movement step")
         flush()
         flush()
         return model, customer.GetSnapshot(owner)
@@ -182,7 +210,7 @@ do
         owner:SetAttribute("JumpLevel", fixed.MinJumpTier - 1)
         local locked, lockedSnapshot = spawn()
         check(lockedSnapshot.CustomerId == nil, "mapped special is excluded below its own tier: " .. id)
-        check(locked:FindFirstChild("CustomerName", true) == nil, "generic fallback has no name row")
+        check(locked:FindFirstChild("CustomerName", true).Text == "CustomerNPC", "generic fallback shows regular name")
         customer.RemovePlayer(owner)
         owner:SetAttribute("JumpLevel", fixed.MinJumpTier)
         env.math.random = function(low, high)
@@ -201,11 +229,11 @@ do
             check(bubble.AlwaysOnTop and nameText.BackgroundTransparency == 1, "name keeps transparent topmost style")
             check(nameText.TextStrokeTransparency == 0.25, "name keeps outlined text")
             check(
-                selected:FindFirstChildOfClass("Humanoid").NameDisplayDistance == 0,
+                selected:FindFirstChildOfClass("Humanoid").DisplayDistanceType == "None",
                 "custom row replaces clone nameplate"
             )
             check(
-                steak:FindFirstChildOfClass("Humanoid").NameDisplayDistance ~= 0,
+                steak:FindFirstChildOfClass("Humanoid").DisplayDistanceType ~= "None",
                 "template nameplate remains untouched"
             )
         end
@@ -225,6 +253,17 @@ do
             return low or 0
         end
     end
+    local authoredHumanoid = steak:FindFirstChildOfClass("Humanoid")
+    authoredHumanoid.DisplayName = "Authored Customer"
+    local authoredModel = spawn()
+    check(
+        authoredModel.Name == "CustomerNPC"
+            and authoredModel:FindFirstChild("CustomerName", true).Text == "Authored Customer",
+        "authored name survives runtime model rename"
+    )
+    check(authoredHumanoid.DisplayName == "Authored Customer", "authored template name is unchanged")
+    customer.RemovePlayer(owner)
+    authoredHumanoid.DisplayName = nil
     steak:SetAttribute("CustomerId", "  steak  ")
     owner:SetAttribute("JumpLevel", 0)
     local model, snapshot = spawn()
@@ -239,7 +278,7 @@ do
         snapshot.CustomerId == "steak" and snapshot.RequestId == "Steak",
         "special becomes eligible at fixed request tier"
     )
-    check(model ~= steak and steak.Parent == folder and not steak.Destroyed, "template is cloned and retained")
+    check(model ~= steak and steak.Parent == specialFolder and not steak.Destroyed, "template is cloned and retained")
     check(
         steak:GetAttribute("CustomerId") == "  steak  " and importedScript.Parent == steak,
         "template attributes and scripts untouched"
@@ -255,7 +294,10 @@ do
     for _, name in { "Hat", "Handle", "HatAttachment", "Neck", "Shirt", "face" } do
         check(model:FindFirstChild(name, true) ~= nil, "clone preserves " .. name)
     end
-    check(model.PrimaryPart.Anchored and not model.PrimaryPart.CanCollide, "existing anchored movement retained")
+    check(
+        model.PrimaryPart.Anchored and not model.PrimaryPart.CanCollide,
+        "route root stays anchored without changing collision policy"
+    )
     model:SetAttribute("CustomerId", "unknown")
     customer:RefreshOrder(model)
     check(customer.GetSnapshot(owner).RequestId == "Steak", "replicated ID cannot change private assignment")
@@ -274,7 +316,7 @@ do
         model, snapshot = spawn()
         check(snapshot.RequestId ~= "Steak", "unmapped/empty/invalid IDs use normal requests")
         check(not requestConfig.GetForNPC(snapshot.CustomerId), "no override for fallback customer")
-        check(model:FindFirstChild("CustomerName", true) == nil, "regular customer retains order-only presentation")
+        check(model:FindFirstChild("CustomerName", true).Text == "CustomerNPC", "regular customer shows CustomerNPC")
         customer.RemovePlayer(owner)
     end
     steak:SetAttribute("CustomerId", nil)
@@ -288,6 +330,45 @@ do
     check(snapshot.RequestId ~= "Steak", "invalid mapping safely falls back")
     customer.RemovePlayer(owner)
     requestConfig.NPCs.steak.RequestId = "Steak"
+
+    -- A mapped avatar in Regular cannot impersonate a missing Special avatar.
+    steak.Parent = regularFolder
+    local ordinary = rig("Ordinary", nil)
+    ordinary:SetAttribute("SourceProbe", "Regular")
+    local misplaced = rig("UnmappedSpecial", nil)
+    misplaced.Parent = specialFolder
+    local flat = rig("OldFlatAvatar", nil)
+    flat.Parent = folder
+    model, snapshot = spawn()
+    check(
+        snapshot.CustomerId == nil and snapshot.RequestId ~= "Steak",
+        "missing special falls back without special identity"
+    )
+    check(model:GetAttribute("SourceProbe") == "Regular", "regular avatar is selected exclusively from Regular")
+    check(model:FindFirstChild("CustomerName", true).Text == "CustomerNPC", "fallback has regular name")
+    check(
+        presentations[#presentations].Started and not presentations[#presentations].Moving,
+        "travel starts walk and counter arrival stops it"
+    )
+    customer.RemovePlayer(owner)
+    check(presentations[#presentations].Destroyed, "removal cleans walking presentation")
+    ordinary:Destroy()
+    model, snapshot = spawn()
+    check(
+        model:FindFirstChild("Torso") ~= nil and snapshot.CustomerId == nil,
+        "regular excludes Special and old flat folder models"
+    )
+    customer.RemovePlayer(owner)
+    model = customer.SpawnForPlayer(owner)
+    model:Destroy()
+    flush()
+    check(
+        presentations[#presentations].Destroyed and customer.GetSnapshot(owner) == nil,
+        "external destruction cleans pending travel"
+    )
+    misplaced:Destroy()
+    flat:Destroy()
+    steak.Parent = specialFolder
 
     local second = rig("Second", "random_avatar")
     local third = rig("Third", "another_regular")
@@ -332,7 +413,37 @@ do
             Tags = { "Sweet" },
             BlendId = "npc-" .. turn,
         }
+        local assigned
+        for _, request in requests do
+            if request.Id == snapshot.RequestId then
+                assigned = request
+            end
+        end
+        local savedGood = assigned.GoodResponse
+        if turn == 1 then
+            check(customer.SetForcedReaction(owner, "Disgust"), "force independent reaction")
+        elseif turn == 3 then
+            assigned.GoodResponse = nil
+        end
         check(customer.Serve(owner), "existing serving transaction consumes custom order")
+        assigned.GoodResponse = savedGood
+        flush()
+        local feedback = snapshot.Model:FindFirstChild("OrderBubble", true)
+        if turn == 3 then
+            check(feedback == nil, "missing response retains no-dialogue fallback")
+        else
+            check(
+                feedback:FindFirstChildOfClass("TextLabel").Text
+                    == (if turn == 1 then assigned.GoodResponse else assigned.BadResponse),
+                "serve dialogue comes from assigned request and authoritative grade"
+            )
+        end
+        if turn == 1 then
+            check(
+                snapshot.Model:GetAttribute("Reaction") == "Disgust",
+                "good dialogue does not change independent reaction"
+            )
+        end
         check(
             data.GetCash(owner) == cash + (if turn == 2 then 0 else 25),
             "success pays and failure rejects forged tags"
@@ -346,6 +457,11 @@ do
     flush()
     check(customer.GetSnapshot(owner).CustomerId == "steak", "new day resets special budget")
     customer.RemovePlayer(owner)
+    local allCleaned = true
+    for _, presentation in presentations do
+        allCleaned = allCleaned and presentation.Destroyed and not presentation.Moving
+    end
+    check(allCleaned, "reset removes active and departing presentation")
     requestConfig.NPCs.steak.RequestId = "Steak"
     requestConfig.NPCs.random_avatar = nil
     second:Destroy()
@@ -391,6 +507,7 @@ do
     customer.RemovePlayer(owner)
     legacy:Destroy()
     folder:Destroy()
+    walkModule.Create = savedCreate
     data.RemovePlayer(owner)
     requestConfig.SpecialCustomerChance = savedChance
     env.math.random = savedRandom

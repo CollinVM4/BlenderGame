@@ -88,7 +88,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Coconut",
 		Tags = { "Fruit", "Sweet", "Tropical" },
 		BlendColor = Color3.fromRGB(225, 220, 195),
-		Rarity = "Rare",
+		Rarity = "Uncommon",
 	},
 
 	Corn = {
@@ -159,6 +159,14 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Common",
 	},
 
+	Cinnamon = {
+		Id = "Cinnamon",
+		DisplayName = "Cinnamon",
+		Tags = { "Cinnamon", "Brown", "Spice" },
+		BlendColor = Color3.fromRGB(150, 100, 50),
+		Rarity = "Rare",
+	},
+
 	Mango = {
 		Id = "Mango",
 		DisplayName = "Mango",
@@ -170,12 +178,12 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Melon = {
 		Id = "Melon",
 		DisplayName = "Melon",
-		Tags = { "Fruit", "Sweet", "Green" },
+		Tags = { "Fruit", "Sweet", "Green", "Cloud Garden" },
 		BlendColor = Color3.fromRGB(160, 205, 105),
 		Rarity = "Rare",
 	},
 
-	
+
 
 
 	Onion = {
@@ -213,9 +221,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Peach = {
 		Id = "Peach",
 		DisplayName = "Peach",
-		Tags = { "Fruit", "Sweet", "Pink" },
+		Tags = { "Fruit", "Sweet", "Pink", "Cloud Garden" },
 		BlendColor = Color3.fromRGB(245, 150, 125),
-		Rarity = "Common",
+		Rarity = "Rare",
 	},
 
 	Pear = {
@@ -255,7 +263,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Squid",
 		Tags = { "Seafood", "White", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
-		Rarity = "Rare",
+		Rarity = "Uncommon",
 	},
 
 	Fish = {
@@ -407,7 +415,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 	Steak = {
 		Id = "Steak",
 		DisplayName = "Steak",
-		Tags = { "Protein", "Weird", "Steak" },
+		Tags = { "Protein", "Steak" },
 		BlendColor = Color3.fromRGB(150, 50, 50),
 		Rarity = "Rare",
 	},

@@ -46,11 +46,7 @@ for _, lifecycle in { "unequip", "death", "character", "destroy" } do
     if lifecycle == "unequip" then
         t.Parent = p:FindFirstChildOfClass("Backpack")
         t.Unequipped:Fire()
-        check(inventory.GetCarryCount(p) == 2, "unequip preserves both smoothies")
-        h:EquipTool(t)
-        carry(p)
-        t.Activated:Fire()
-        check(inventory.GetCarryCount(p) == 2, "reequip activation still removes one")
+        check(inventory.GetCarryCount(p) == 3, "unequip retains selectable smoothies and overhead ingredients")
         inventory.CleanupCharacter(p)
     elseif lifecycle == "death" then
         h.Died:Fire()
@@ -58,6 +54,8 @@ for _, lifecycle in { "unequip", "death", "character", "destroy" } do
         p.CharacterRemoving:Fire(p.Character)
     else
         t:Destroy()
+        check(inventory.GetCarryCount(p) == 2, "destroying one Tool preserves other reservations")
+        inventory.CleanupCharacter(p)
     end
     check(inventory.GetCarryCount(p) == 0, lifecycle .. " cleanup clears all, including lower smoothie")
 end

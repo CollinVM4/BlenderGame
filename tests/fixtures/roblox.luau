@@ -118,6 +118,7 @@ local function instance(class)
     end
     object.Activated = signal()
     object.Unequipped = signal()
+    object.Equipped = signal()
     object.CharacterRemoving = signal()
     object.Triggered = signal()
     object.Destroying = signal()
@@ -188,6 +189,8 @@ local function instance(class)
         clone.Size = self.Size
         clone.Color = self.Color
         clone.CFrame = self.CFrame
+        clone.Grip = self.Grip
+        clone.Enabled, clone.ManualActivationOnly = self.Enabled, self.ManualActivationOnly
         clone.Anchored = self.Anchored
         clone.CanCollide, clone.CanTouch, clone.CanQuery = self.CanCollide, self.CanTouch, self.CanQuery
         clone.Massless, clone.CustomPhysicalProperties = self.Massless, self.CustomPhysicalProperties

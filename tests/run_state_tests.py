@@ -20,6 +20,8 @@ selection.add_argument("--world-only", action="store_true", help="Run ingredient
 selection.add_argument("--carry-only", action="store_true", help="Run carry state and presentation separately")
 selection.add_argument("--sprint-only", action="store_true")
 selection.add_argument("--customer-only", action="store_true", help="Compatibility: run legacy customer/state prefix")
+selection.add_argument("--customer-walk-only", action="store_true", help="Run customer walk and rig validation")
+selection.add_argument("--customer-presentation-only", action="store_true", help="Run customer placement, names and walk presentation")
 selection.add_argument("--requests-only", action="store_true", help="Run request integration and placement separately")
 selection.add_argument("--stash-only", action="store_true")
 selection.add_argument("--smoothie-only", action="store_true", help="Run smoothie state, round-trip and geometry separately")
@@ -30,6 +32,7 @@ args = parser.parse_args()
 SUITES = {
     "carry": ("state", ("fixtures/carry.luau", "ingredient_carry.spec.luau")),
     "stash": ("state", ("stash_interaction.spec.luau",)),
+    "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
     "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
     "sprint": ("state", ("sprint.spec.luau",)),
@@ -43,6 +46,7 @@ SUITES = {
     "carry-presentation": ("presentation", ("fixtures/carry.luau", "carry_presentation.spec.luau")),
     "smoothie-geometry": ("presentation", ("fixtures/smoothie.luau", "smoothie_geometry.spec.luau")),
     "customer-placement": ("presentation", ("customer_placement.spec.luau",)),
+    "customer-walk": ("presentation", ("customer_walk.spec.luau",)),
     "client-presentation": ("presentation", ("client_presentation.spec.luau",)),
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
@@ -53,9 +57,11 @@ focused = {
     "carry_only": ("carry", "carry-presentation"),
     "sprint_only": ("sprint",),
     "customer_only": ("legacy-state",),
-    "requests_only": ("requests", "customer-placement"),
+    "requests_only": ("requests", "customer-placement", "customer-walk"),
+    "customer_presentation_only": ("customer-placement", "customer-walk"),
+    "customer_walk_only": ("customer-walk",),
     "stash_only": ("stash", "stash-presentation"),
-    "smoothie_only": ("smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
+    "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
 }
 selected = next((names for flag, names in focused.items() if getattr(args, flag)), None)
 if selected is None:

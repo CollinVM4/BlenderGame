@@ -2,8 +2,8 @@
 export type Request = {
     Id: string,
     DisplayText: string,
-    GoodResponse: string,
-    BadResponse: string,
+    GoodResponse: string?,
+    BadResponse: string?,
     RequiredTags: { string },
     BasePayout: number,
     MinJumpTier: number,

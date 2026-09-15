@@ -39,6 +39,7 @@ local dataService = loadModule("PlayerDataService")
 local customer = loadModule("CustomerService")
 local fixtures, references, capacities = {}, {}, {}
 local dependency = {
+    SmoothieWorldItemService = loadModule("SmoothieWorldItemService"),
     InventoryService = inventory,
     BlendService = blend,
     IngredientService = ingredients,
@@ -84,7 +85,14 @@ local function player(capacity)
     local humanoid = instance("Humanoid")
     humanoid.Parent, humanoid.Health, humanoid.Died = p.Character, 100, signal()
     function humanoid:EquipTool(tool)
+        for _, current in p.Character:GetChildren() do
+            if current:IsA("Tool") and current ~= tool then
+                current.Parent = p:FindFirstChildOfClass("Backpack")
+                current.Unequipped:Fire()
+            end
+        end
         tool.Parent = p.Character
+        tool.Equipped:Fire()
     end
     local backpack = instance("Backpack")
     backpack.Parent = p
