@@ -1,30 +1,23 @@
--- Minimal standard locomotion chains at the Roblox boundary.
+-- Body-only fixtures deliberately contain no Motor6Ds or AnimationConstraints.
+-- The Roblox Animator boundary, not CustomerWalk, decides if an animation can load.
 local function addLocomotionRig(model, rigType)
-    local chains = if rigType == "R15"
+    model.Name = "ImportedAvatar"
+    local names = if rigType == "R15"
         then {
-            { "Root", "HumanoidRootPart", "LowerTorso" },
-            { "Waist", "LowerTorso", "UpperTorso" },
-            { "LeftHip", "LowerTorso", "LeftUpperLeg" },
-            { "RightHip", "LowerTorso", "RightUpperLeg" },
-            { "LeftKnee", "LeftUpperLeg", "LeftLowerLeg" },
-            { "RightKnee", "RightUpperLeg", "RightLowerLeg" },
+            "HumanoidRootPart",
+            "LowerTorso",
+            "UpperTorso",
+            "LeftUpperLeg",
+            "RightUpperLeg",
+            "LeftLowerLeg",
+            "RightLowerLeg",
+            "LeftFoot",
+            "RightFoot",
         }
-        else {
-            { "RootJoint", "HumanoidRootPart", "Torso" },
-            { "Left Hip", "Torso", "Left Leg" },
-            { "Right Hip", "Torso", "Right Leg" },
-        }
-    for _, chain in chains do
-        for index = 2, 3 do
-            if not model:FindFirstChild(chain[index]) then
-                local part = instance("Part")
-                part.Name, part.Parent = chain[index], model
-                part.Anchored = chain[index] == "HumanoidRootPart"
-            end
-        end
-        local motor = instance("Motor6D")
-        motor.Name, motor.Parent, motor.Enabled = chain[1], model, true
-        motor.Part0, motor.Part1 = model:FindFirstChild(chain[2]), model:FindFirstChild(chain[3])
+        else { "HumanoidRootPart", "Torso", "Left Leg", "Right Leg" }
+    for _, name in names do
+        local part = instance("Part")
+        part.Name, part.Parent, part.Anchored = name, model, name == "HumanoidRootPart"
     end
 end
 
@@ -109,7 +102,7 @@ do
     end
 end
 
--- Malformed imports still support route commands, without loading an animation.
+-- Missing body structure remains a safe, non-spawn-blocking rejection.
 do
     local walk = loadModule("CustomerWalk")
     local savedStudio, savedWarn = services.RunService.IsStudio, env.warn
@@ -120,49 +113,74 @@ do
     env.warn = function(message)
         table.insert(messages, message)
     end
-    for _, damage in { "root_only", "missing", "disconnected", "anchored", "disabled" } do
+    for _, damage in { "static", "missing_part", "wrong_class", "roblox_rejected" } do
         local model = instance("Model")
         local humanoid = instance("Humanoid")
         humanoid.Parent, humanoid.RigType = model, { Name = "R15" }
         addLocomotionRig(model, "R15")
-        local knee = model:FindFirstChild("LeftKnee")
-        if damage == "root_only" then
-            for _, object in model:GetDescendants() do
-                if object:IsA("Motor6D") and object.Name ~= "Root" then
-                    object:Destroy()
-                end
+        if damage == "static" then
+            for _, name in { "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" } do
+                model:FindFirstChild(name):Destroy()
             end
-            model:FindFirstChild("UpperTorso").Anchored = true
-        elseif damage == "missing" then
-            knee:Destroy()
-        elseif damage == "disconnected" then
-            knee.Part1 = model:FindFirstChild("UpperTorso")
-        elseif damage == "anchored" then
-            knee.Part1.Anchored = true
-        else
-            knee.Enabled = false
+        elseif damage ~= "roblox_rejected" then
+            model:FindFirstChild("LeftFoot"):Destroy()
+            if damage == "wrong_class" then
+                local folder = instance("Folder")
+                folder.Name, folder.Parent = "LeftFoot", model
+            end
         end
         local animator = instance("Animator")
         animator.Parent = humanoid
+        local attemptedLoad = false
         function animator:LoadAnimation()
-            error("malformed rig must not load a track")
+            attemptedLoad = true
+            error("Roblox rejected this animation/rig")
         end
         local before = #messages
-        local controller = walk.Create(model, "BrokenAvatar")
+        local controller = walk.Create(model, "ImportedAvatar")
         controller.SetMoving(true)
         controller.SetMoving(false)
         controller.SetMoving(true)
+        check(attemptedLoad == (damage == "roblox_rejected"), "only basic body validation gates Roblox loading")
         check(
-            #messages == before + 1
-                and string.find(messages[#messages], "BrokenAvatar", 1, true)
-                and string.find(messages[#messages], "LeftKnee", 1, true),
-            "one warning identifies template and unusable joint: " .. damage
+            #messages == before + 1 and string.find(messages[#messages], "ImportedAvatar", 1, true),
+            "one warning identifies template"
         )
-        check(not model.Destroyed, "malformed animation does not destroy customer")
-        if damage == "anchored" then
-            check(knee.Part1.Anchored, "validation does not unanchor malformed body")
-        end
+        check(
+            string.find(
+                messages[#messages],
+                if damage == "roblox_rejected" then "LoadAnimation failed" else "LeftFoot",
+                1,
+                true
+            ),
+            "warning identifies missing body part or Roblox rejection"
+        )
+        check(not model.Destroyed, "animation rejection does not destroy customer")
         controller.Destroy()
     end
     services.RunService.IsStudio, env.warn = savedStudio, savedWarn
+end
+
+-- Standard R15 limbs must not remain anchored just because joint types have changed.
+do
+    local model = instance("Model")
+    local humanoid = instance("Humanoid")
+    humanoid.Parent, humanoid.RigType = model, { Name = "R15" }
+    addLocomotionRig(model, "R15")
+    for _, object in model:GetChildren() do
+        if object:IsA("BasePart") then
+            object.Anchored = true
+        end
+    end
+    local decoration = instance("Part")
+    decoration.Name, decoration.Parent, decoration.Anchored = "Decoration", model, true
+    local root = model:FindFirstChild("HumanoidRootPart")
+    loadModule("CustomerWalk").PrepareRig(model, root)
+    check(
+        root.Anchored
+            and not model:FindFirstChild("UpperTorso").Anchored
+            and not model:FindFirstChild("LeftFoot").Anchored,
+        "standard body is free to animate while route root stays anchored"
+    )
+    check(decoration.Anchored, "unrelated decoration retains anchoring")
 end

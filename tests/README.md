@@ -11,6 +11,8 @@ without executing. No presentation suite is a prerequisite for gameplay tests.
 | `--group integration` | legacy-state, legacy-movement, requests, world, smoothie-roundtrip, smoothie-survivors | Service/component wiring, request selection, physical-ingredient registry and station lifecycle, cross-system flows. |
 | `--group presentation` | vfx, carry-presentation, smoothie-geometry, customer-placement, client-presentation, blend-presentation, stash-presentation | Cosmetic lifecycle, geometry, placement, client startup and progress notification throttling. |
 
+`--throw-only` runs ingredient throw contracts and multipart blender acceptance during collision grace.
+
 Focused flags remain: `--carry-only` includes carry presentation; `--stash-only`
 includes stash geometry; `--requests-only` includes customer placement;
 `--smoothie-only` includes foundation state, round-trip, mixed survivors and

@@ -22,7 +22,7 @@ function IngredientService.Spawn(
     at: CFrame,
     owner: Player?,
     claimable: boolean?,
-    options: { FreezeUntilPickup: boolean? }?
+    options: { FreezeUntilPickup: boolean?, BeforePublish: ((Instance) -> ())? }?
 ): Instance?
     local object = IngredientService.CreateVisual(id)
     if not object then
@@ -34,6 +34,10 @@ function IngredientService.Spawn(
     object:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
     local frozen = options ~= nil and options.FreezeUntilPickup == true
     object:SetAttribute("FrozenUntilPickup", if frozen then true else nil)
+    -- Preparation has succeeded, but no world physics or pickup listeners can see it yet.
+    if options and options.BeforePublish then
+        options.BeforePublish(object)
+    end
     local physical = object :: any
     physical:PivotTo(at)
     local root = WorldUtil.Part(object)

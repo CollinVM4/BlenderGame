@@ -12,55 +12,54 @@ local WALK_SPEED = 0.8
 local LOAD_TIMEOUT = 5
 local LOAD_POLL_INTERVAL = 0.1
 
--- Standard locomotion chains: names alone are insufficient if endpoints are broken.
-local REQUIRED_JOINTS = {
+-- Validate body structure only. Roblox owns the underlying animated joint representation.
+local REQUIRED_PARTS = {
     R15 = {
-        { "Root", "HumanoidRootPart", "LowerTorso" },
-        { "Waist", "LowerTorso", "UpperTorso" },
-        { "LeftHip", "LowerTorso", "LeftUpperLeg" },
-        { "RightHip", "LowerTorso", "RightUpperLeg" },
-        { "LeftKnee", "LeftUpperLeg", "LeftLowerLeg" },
-        { "RightKnee", "RightUpperLeg", "RightLowerLeg" },
+        "HumanoidRootPart",
+        "LowerTorso",
+        "UpperTorso",
+        "LeftUpperLeg",
+        "RightUpperLeg",
+        "LeftLowerLeg",
+        "RightLowerLeg",
+        "LeftFoot",
+        "RightFoot",
     },
-    R6 = {
-        { "RootJoint", "HumanoidRootPart", "Torso" },
-        { "Left Hip", "Torso", "Left Leg" },
-        { "Right Hip", "Torso", "Right Leg" },
-    },
+    R6 = { "HumanoidRootPart", "Torso", "Left Leg", "Right Leg" },
+}
+local OTHER_BODY_PARTS = {
+    R15 = { "Head", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftHand", "RightHand" },
+    R6 = { "Head", "Left Arm", "Right Arm" },
 }
 
-local function missingJoints(model: Model, rig: string): { string }
+local function missingParts(model: Model, rig: string): { string }
     local missing = {}
-    local motors: { [string]: { Motor6D } } = {}
-    for _, object in model:GetDescendants() do
-        if object:IsA("Motor6D") then
-            motors[object.Name] = motors[object.Name] or {}
-            table.insert(motors[object.Name], object)
-        end
-    end
-    for _, expected in REQUIRED_JOINTS[rig] do
-        local a, b = model:FindFirstChild(expected[2]), model:FindFirstChild(expected[3])
-        local usable = false
-        if a and a:IsA("BasePart") and b and b:IsA("BasePart") and not b.Anchored then
-            local candidates: { Motor6D } = motors[expected[1]] or {}
-            for _, motor in candidates do
-                if motor.Enabled and motor.Part0 == a and motor.Part1 == b then
-                    usable = true
-                    break
-                end
-            end
-        end
-        if not usable then
-            table.insert(missing, expected[1])
+    for _, name in REQUIRED_PARTS[rig] do
+        local part = model:FindFirstChild(name)
+        if not part or not part:IsA("BasePart") then
+            table.insert(missing, name)
         end
     end
     return missing
 end
 
 function CustomerWalk.PrepareRig(model: Model, root: BasePart)
-    -- PivotTo controls the anchored root. Free connected limbs for Motor6D posing.
+    -- PivotTo controls the anchored root. Standard body parts can animate regardless of joint type.
     -- Disconnected decorative parts retain the old anchored behavior.
     local connected: { [BasePart]: boolean } = { [root] = true }
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local rig = if humanoid then humanoid.RigType.Name else ""
+    if REQUIRED_PARTS[rig] and #missingParts(model, rig) == 0 then
+        for _, names in { REQUIRED_PARTS[rig], OTHER_BODY_PARTS[rig] } do
+            for _, name in names do
+                local part = model:FindFirstChild(name)
+                if part and part:IsA("BasePart") then
+                    connected[part] = true
+                end
+            end
+        end
+    end
+    -- Preserve existing welded accessories without treating welds as rig validation.
     local descendants = model:GetDescendants()
     local changed = true
     while changed do
@@ -91,6 +90,7 @@ function CustomerWalk.Create(model: Model, templateName: string?)
     local segment = 0
     local usableRig = false
     local controller = {}
+    local warned = false
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     local rig = if humanoid then humanoid.RigType.Name else "<no Humanoid>"
     local id = DEFAULT_WALK[rig]
@@ -106,6 +106,12 @@ function CustomerWalk.Create(model: Model, templateName: string?)
                     message
                 )
             )
+        end
+    end
+    local function warnOnce(message: string)
+        if RunService:IsStudio() and not warned then
+            warned = true
+            warn(string.format("[CustomerWalk] template=%s rig=%s %s", templateName or model.Name, rig, message))
         end
     end
     local function snapshot(phase: string)
@@ -150,7 +156,10 @@ function CustomerWalk.Create(model: Model, templateName: string?)
         local ok, reason = pcall(function()
             current:Play(FADE_TIME, WALK_WEIGHT, WALK_SPEED)
         end)
-        diagnostic("Play success=" .. tostring(ok) .. (if ok then "" else " error=" .. tostring(reason)))
+        if not ok then
+            warnOnce("Play failed: " .. tostring(reason))
+        end
+        diagnostic("Play success=" .. tostring(ok))
         snapshot("after Play")
         if RunService:IsStudio() then
             local token = segment
@@ -195,21 +204,11 @@ function CustomerWalk.Create(model: Model, templateName: string?)
         diagnostic("walk disabled: missing Humanoid or unsupported rig")
         return controller
     end
-    local missing = missingJoints(model, rig)
+    local missing = missingParts(model, rig)
     if #missing > 0 then
-        if RunService:IsStudio() then
-            warn(
-                string.format(
-                    "[CustomerWalk] template=%s rig=%s walk skipped; missing/unusable joints: %s",
-                    templateName or model.Name,
-                    rig,
-                    table.concat(missing, ", ")
-                )
-            )
-        end
+        warnOnce("walk skipped; missing R15/R6 body parts: " .. table.concat(missing, ", "))
         return controller
     end
-    usableRig = true
     animator = humanoid:FindFirstChildOfClass("Animator")
     local foundAnimator = animator ~= nil
     if not animator then
@@ -218,34 +217,6 @@ function CustomerWalk.Create(model: Model, templateName: string?)
         animator = created
     end
     diagnostic("Animator=" .. (if foundAnimator then "found" else "created") .. " health=" .. tostring(humanoid.Health))
-    if RunService:IsStudio() then
-        local motors = 0
-        local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-        diagnostic(
-            "root="
-                .. (if root then root.Name else "<missing>")
-                .. " anchored="
-                .. tostring(if root and root:IsA("BasePart") then root.Anchored else nil)
-        )
-        for _, object in model:GetDescendants() do
-            if object:IsA("Motor6D") then
-                motors += 1
-                local a, b = object.Part0, object.Part1
-                diagnostic(
-                    string.format(
-                        "motor=%s enabled=%s Part0=%s anchored=%s Part1=%s anchored=%s",
-                        object.Name,
-                        tostring(object.Enabled),
-                        if a then a.Name else "<missing>",
-                        tostring(if a then a.Anchored else nil),
-                        if b then b.Name else "<missing>",
-                        tostring(if b then b.Anchored else nil)
-                    )
-                )
-            end
-        end
-        diagnostic("Motor6Ds=" .. tostring(motors))
-    end
     -- Use a rig-specific standard walk, not unverified assets copied from Animate.
     -- Keep the Animation alive with its track, including while the asset loads.
     local source = Instance.new("Animation")
@@ -257,12 +228,13 @@ function CustomerWalk.Create(model: Model, templateName: string?)
         return (animator :: Animator):LoadAnimation(source)
     end)
     if not ok or not loaded or not loaded:IsA("AnimationTrack") then
-        diagnostic("LoadAnimation failed: " .. tostring(loaded))
+        warnOnce("Animator present=true LoadAnimation failed: " .. tostring(loaded))
         source:Destroy()
         animation = nil
         return controller
     end
-    diagnostic("LoadAnimation success=true Length=" .. tostring(loaded.Length))
+    diagnostic("Animator present=true LoadAnimation success=true Length=" .. tostring(loaded.Length))
+    usableRig = true
     track = loaded
     loaded.Looped = true
     loaded.Priority = Enum.AnimationPriority.Movement
@@ -283,7 +255,8 @@ function CustomerWalk.Create(model: Model, templateName: string?)
                 diagnostic("clip ready Length=" .. tostring(loaded.Length))
                 play()
             else
-                diagnostic("clip unavailable after timeout; check asset permissions/Output errors")
+                warnOnce("clip unavailable after timeout; check asset permissions/Output errors")
+                usableRig = false
                 loaded:Destroy()
                 track = nil
                 source:Destroy()

@@ -37,12 +37,7 @@ for _, motor in motors do
     check(motor.Enabled == (motor.Name ~= "LeftWrist"), "carry leaves arm motors unchanged")
 end
 check(not tool:FindFirstChild("OverheadArmPose"), "no custom arm pose")
-local launch = root.CFrame * tool:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0
-root.CFrame = root.CFrame * translate(3, 0, 0)
-local thrown = inventory.ThrowHeld(player)
-check(math.abs(thrown:GetPivot().Position.Y - launch.Position.Y) < 1e-6, "throw starts at overhead height")
-check(thrown:GetPivot().Position.X == launch.Position.X + 3, "throw follows current character location")
-check(thrown.AssemblyLinearVelocity.Y == 18 and thrown.AssemblyLinearVelocity.Z == -25, "throw velocity unchanged")
+inventory.ThrowHeld(player)
 restored()
 equip()
 local dropped = inventory.DropHeld(player)

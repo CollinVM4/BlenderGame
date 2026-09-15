@@ -17,6 +17,7 @@ selection = parser.add_mutually_exclusive_group()
 selection.add_argument("--group", choices=("state", "integration", "presentation"))
 selection.add_argument("--vfx-only", action="store_true", help="Run blender VFX presentation checks")
 selection.add_argument("--world-only", action="store_true", help="Run ingredient world integration checks")
+selection.add_argument("--throw-only", action="store_true", help="Run ingredient throw contracts")
 selection.add_argument("--carry-only", action="store_true", help="Run carry state and presentation separately")
 selection.add_argument("--sprint-only", action="store_true")
 selection.add_argument("--customer-only", action="store_true", help="Compatibility: run legacy customer/state prefix")
@@ -30,6 +31,8 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "throw": ("state", ("fixtures/carry.luau", "ingredient_throw.spec.luau")),
+    "throw-blender": ("integration", ("fixtures/carry.luau", "ingredient_throw_blender.spec.luau")),
     "carry": ("state", ("fixtures/carry.luau", "ingredient_carry.spec.luau")),
     "stash": ("state", ("stash_interaction.spec.luau",)),
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
@@ -54,7 +57,8 @@ SUITES = {
 focused = {
     "vfx_only": ("vfx",),
     "world_only": ("world",),
-    "carry_only": ("carry", "carry-presentation"),
+    "throw_only": ("throw", "throw-blender"),
+    "carry_only": ("carry", "throw", "carry-presentation"),
     "sprint_only": ("sprint",),
     "customer_only": ("legacy-state",),
     "requests_only": ("requests", "customer-placement", "customer-walk"),

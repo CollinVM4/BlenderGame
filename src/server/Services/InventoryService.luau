@@ -5,6 +5,7 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local CarryPresentation = require(script.Parent.IngredientCarryPresentation)
+local IngredientThrow = require(script.Parent.IngredientThrow)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local SmoothieGeometry = require(script.Parent.SmoothieGeometry)
 local InventoryService = {}
@@ -14,7 +15,7 @@ local stashes: { [Player]: { [number]: Types.StashSlot } } = {}
 local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
-local STASH_BURST_TIMEOUT = 0.9
+local STASH_BURST_TIMEOUT = 1.2
 type StashIntent = {
     Direction: "STORE" | "TAKE",
     LastInteraction: number,
@@ -27,7 +28,6 @@ type HeldItem = {
     Id: string?,
     Smoothie: Types.SmoothieData?,
     Root: BasePart,
-    ThrowOffset: CFrame,
     ClearVisual: () -> (),
     Height: number,
     ShiftDown: ((number) -> ())?,
@@ -113,7 +113,6 @@ local function removeAt(player: Player, index: number?)
             if item.ShiftDown then
                 item.ShiftDown(record.Height)
             end
-            item.ThrowOffset = CFrame.new(0, -record.Height, 0) * item.ThrowOffset
         end
     end
     local wasEquipped = record.Tool.Parent == player.Character
@@ -163,19 +162,43 @@ function InventoryService.ClearHeld(player: Player)
     syncHeld(player)
 end
 
--- Spawn is synchronous. Keep the reservation until registration succeeds, and
--- block reentrant signals while restoring it. Clear before destroying the visual.
+-- Spawn is synchronous. Keep reservations through fallible geometry preparation;
+-- ingredient throws clear/reflow carry before publishing the new physical object.
 local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?, itemIndex: number?): Instance?
     local record = if itemIndex then (held[player] or {})[itemIndex] else topItem(player)
     if not record or record.Releasing then
         return nil
     end
     record.Releasing = true
+    if throwing and not record.Smoothie then
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not character or not root or not root:IsA("BasePart") then
+            record.Releasing = false
+            return nil
+        end
+        local at = IngredientThrow.Origin(root)
+        local object = deps.IngredientService.Spawn(record.Id :: string, at, nil, true, {
+            BeforePublish = function(prepared: Instance)
+                removeAt(player, itemIndex)
+                IngredientThrow.IgnoreCharacter(prepared, character)
+            end,
+        })
+        if not object then
+            record.Releasing = false
+            return nil
+        end
+        local part = WorldUtil.Part(object)
+        if part then
+            part.AssemblyLinearVelocity = at.LookVector * 25 + Vector3.new(0, 18, 0)
+        end
+        return object
+    end
     -- Retain the original character root for death/removal, even after Character changes.
     local at = record.Root.CFrame
     -- The held[player] reservation is exclusive only while carried. Both drop
     -- and throw release ownership so anyone can claim the loose world unit.
-    local offset = if throwing then record.ThrowOffset else CFrame.new(((dropIndex or 1) - 1) * 2, 2, -3)
+    local offset = if throwing then CFrame.new(0, 1, -3) else CFrame.new(((dropIndex or 1) - 1) * 2, 2, -3)
     local object = if record.Smoothie
         then deps.SmoothieWorldItemService.Spawn(record.Smoothie, at * offset)
         else deps.IngredientService.Spawn(record.Id :: string, at * offset, nil, true)
@@ -268,12 +291,12 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
             height += item.Height
         end
     end
-    local throwOffset = CFrame.new(0, 1, -3)
     local clearVisual: () -> () = function() end
     local itemHeight = 0
     local shiftDown: ((number) -> ())? = nil
     if not smoothie then
-        throwOffset, clearVisual, itemHeight, shiftDown = CarryPresentation.Attach(visual, tool, root, height)
+        local _visualOffset
+        _visualOffset, clearVisual, itemHeight, shiftDown = CarryPresentation.Attach(visual, tool, root, height)
     end
     local visualHost = if smoothie then nil elseif existing then existing.VisualHost else Instance.new("Model")
     if visualHost then
@@ -286,7 +309,6 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
         ItemType = if smoothie then "Smoothie" else "Ingredient",
         Smoothie = if smoothie then SmoothieItem.Copy(smoothie) else nil,
         Root = root,
-        ThrowOffset = throwOffset,
         ClearVisual = clearVisual,
         Height = itemHeight,
         ShiftDown = shiftDown,

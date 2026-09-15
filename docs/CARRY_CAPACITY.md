@@ -2,9 +2,9 @@
 
 ## Behavior and ownership
 
-InventoryService holds the authoritative ordered `held[player]` array. Each reservation retains its physical visual through cleanup, its shared equipped Tool, original character root, ingredient ID, and throw offset. This extends the existing consume/clone/reserve/spawn representation; it does not create another inventory service. IngredientService world identity and ownership validation remain unchanged.
+InventoryService holds the authoritative ordered `held[player]` array. Each reservation retains its physical visual through cleanup, its shared equipped Tool, original character root, and ingredient ID. This extends the existing consume/clone/reserve/spawn representation; it does not create another inventory service. IngredientService world identity and ownership validation remain unchanged.
 
-One Tool activation calls ThrowHeld once. It selects the last array entry and removes only that entry after a successful world spawn. Stash deposit also removes only the top entry, and withdrawal obeys physical carry capacity. HeldIngredientId identifies the top item; CarryCount reports the array length. Capacity is read from private PlayerDataService upgrade state, never from client attributes.
+One Tool activation calls ThrowHeld once. It selects the last array entry and removes only that entry after successful world geometry preparation and before world publication. Stash deposit also removes only the top entry, and withdrawal obeys physical carry capacity. HeldIngredientId identifies the top item; CarryCount reports the array length. Capacity is read from private PlayerDataService upgrade state, never from client attributes.
 
 IngredientCarryPresentation places every visual directly above the head. Each item's lower edge clears the previous item's upper edge by IngredientCarry.StackGap (0.5 studs). HeightAboveHead remains 0.35 studs. Multipart and rotated extents are included. Remaining items do not move when the top item is removed. Carried parts have collision and touch disabled and are massless. No arm joints or animation assets are changed by carrying.
 
@@ -49,3 +49,15 @@ Existing unrelated workspace changes were preserved. The upgrade UI test's stale
 No new instances, tags, animation assets, or manual UI setup are required. Sync with Rojo. Physics and live rendering were not playtested in Studio.
 
 Test capacity one, then grant session cash through existing server tooling and buy Carry II and III in the upgrades menu. Pick up Strawberry, Banana, Tire and confirm Tire is highest. Click once per throw and confirm Tire, Banana, Strawberry order. Check differently sized ingredient models for clear vertical gaps. At full capacity, verify another world ingredient remains available. Slap, reset, die, and unequip with three items; verify all three are claimable world ingredients again and purchased capacity remains after respawn. Check stash deposits remove only the top ingredient, withdrawal respects capacity, and thrown ingredients still enter the blender through its existing rules.
+
+## Avatar-independent ingredient throws
+
+IngredientThrow.Origin uses current HumanoidRootPart.CFrame * CFrame.new(0, 2, -5): five studs forward, two upward. Previously the spawn used the stored overhead carry offset, including head dimensions, ingredient bounds/pivot and stack height. Carried visuals were already Massless=true and CanCollide=false; the replacement world object was published before the carried visual was removed. The reported multi-drop chain has not been reproduced in Studio.
+
+IngredientService.Spawn accepts an optional server-only BeforePublish callback after geometry preparation succeeds. Inventory removes the selected reservation and updates the surviving carry weld offsets in this callback, then installs temporary NoCollisionConstraints against character parts (including carried visuals). Spawn positions the detached object before enabling world physics/publication. Failed geometry preparation preserves the carried item. Top removal leaves the existing survivor welds in place because their heights do not change.
+
+No collision-group architecture exists in the source. Pairwise exclusions expire through Debris after 0.2 seconds and leave blender/world collisions and overlap queries available immediately. Capacity, LIFO selection, launch velocity, stash behavior and ownership rules are unchanged.
+
+Run `python tests/run_state_tests.py --throw-only --luau <luau.exe>` for the authoritative throw regression and multipart blender integration. Throw-position assertions now live there instead of carry presentation. Tests cover three held items producing one world item, count 3 to 2, both survivors remaining usable, short/wide and tall geometry, rotated HRP, collision grace and blender acceptance during grace. CLI fixtures do not simulate contact physics.
+
+No Studio setup is required beyond Rojo sync. Studio smoke test: use short/wide and tall R15 avatars, carry three ingredients, throw once toward a nearby blender, verify one launch and two survivors, and verify world/body collisions resume after the grace period.
