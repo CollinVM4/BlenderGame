@@ -190,6 +190,7 @@ local function instance(class)
         clone.Color = self.Color
         clone.CFrame = self.CFrame
         clone.Grip = self.Grip
+        clone.RigType, clone.DisplayName = self.RigType, self.DisplayName
         clone.Enabled, clone.ManualActivationOnly = self.Enabled, self.ManualActivationOnly
         clone.Anchored = self.Anchored
         clone.CanCollide, clone.CanTouch, clone.CanQuery = self.CanCollide, self.CanTouch, self.CanQuery
@@ -413,6 +414,8 @@ local env = setmetatable({
     Enum = {
         RaycastFilterType = { Exclude = "Exclude" },
         Font = { GothamBold = "GothamBold" },
+        TextXAlignment = { Center = "Center" },
+        TextYAlignment = { Center = "Center" },
         ProximityPromptStyle = { Custom = "Custom", Default = "Default" },
     },
     task = {

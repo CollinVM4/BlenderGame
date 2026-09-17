@@ -6,6 +6,7 @@ export type IngredientDefinition = {
 	Tags: { string },
 	BlendColor: Color3,
 	Rarity: ("Common" | "Uncommon" | "Rare" | "Mystery")?,
+	JumpLocation: number
 }
 
 local Ingredients: { [string]: IngredientDefinition } = {
@@ -15,14 +16,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Healthy", "Red" },
 		BlendColor = Color3.fromRGB(210, 55, 45),
 		Rarity = "Common",
-	},
-
-	Avocado = {
-		Id = "Avocado",
-		DisplayName = "Avocado",
-		Tags = { "Fruit", "Healthy", "Green" },
-		BlendColor = Color3.fromRGB(115, 160, 70),
-		Rarity = "Common",
+		JumpLocation = 0
 	},
 
 	Banana = {
@@ -31,6 +25,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Yellow" },
 		BlendColor = Color3.fromRGB(250, 225, 105),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Blueberry = {
@@ -39,8 +34,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Blue" },
 		BlendColor = Color3.fromRGB(80, 75, 190),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
-
 
 
 	Cabbage = {
@@ -49,6 +44,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Veggie", "Healthy", "Green" },
 		BlendColor = Color3.fromRGB(125, 180, 95),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Carrot = {
@@ -57,6 +53,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Veggie", "Healthy", "Orange" },
 		BlendColor = Color3.fromRGB(240, 125, 45),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Crab = {
@@ -65,6 +62,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Seafood", "Red", "Weird" },
 		BlendColor = Color3.fromRGB(200, 50, 50),
 		Rarity = "Rare",
+		JumpLocation = 2
 	},
 
 	Cherries = {
@@ -73,6 +71,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Red" },
 		BlendColor = Color3.fromRGB(190, 35, 55),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Chili_Pepper = {
@@ -81,6 +80,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Veggie", "Spicy", "Red" },
 		BlendColor = Color3.fromRGB(215, 45, 35),
 		Rarity = "Common",
+		JumpLocation = 1
 	},
 
 	Coconut = {
@@ -89,14 +89,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Tropical" },
 		BlendColor = Color3.fromRGB(225, 220, 195),
 		Rarity = "Uncommon",
-	},
-
-	Corn = {
-		Id = "Corn",
-		DisplayName = "Corn",
-		Tags = { "Veggie", "Sweet", "Yellow" },
-		BlendColor = Color3.fromRGB(245, 210, 65),
-		Rarity = "Common",
+		JumpLocation = 2
 	},
 
 
@@ -106,6 +99,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Pink" },
 		BlendColor = Color3.fromRGB(235, 90, 155),
 		Rarity = "Mystery",
+		JumpLocation = 3,
 	},
 
 
@@ -115,6 +109,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Mushroom", "White" },
 		BlendColor = Color3.fromRGB(225, 215, 180),
 		Rarity = "Uncommon",
+		JumpLocation = 0
 	},
 
 
@@ -124,6 +119,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Purple" },
 		BlendColor = Color3.fromRGB(125, 65, 170),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Green_Apple = {
@@ -132,6 +128,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Healthy", "Green" },
 		BlendColor = Color3.fromRGB(130, 190, 65),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 
@@ -141,6 +138,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Green" },
 		BlendColor = Color3.fromRGB(115, 170, 65),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Lemon = {
@@ -149,14 +147,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sour", "Yellow" },
 		BlendColor = Color3.fromRGB(245, 225, 65),
 		Rarity = "Common",
-	},
-
-	Lime = {
-		Id = "Lime",
-		DisplayName = "Lime",
-		Tags = { "Fruit", "Citrus", "Green" },
-		BlendColor = Color3.fromRGB(110, 190, 65),
-		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Cinnamon = {
@@ -165,14 +156,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Cinnamon", "Brown", "Spice" },
 		BlendColor = Color3.fromRGB(150, 100, 50),
 		Rarity = "Rare",
-	},
-
-	Mango = {
-		Id = "Mango",
-		DisplayName = "Mango",
-		Tags = { "Fruit", "Sweet", "Orange" },
-		BlendColor = Color3.fromRGB(245, 155, 55),
-		Rarity = "Common",
+		JumpLocation = 3
 	},
 
 	Melon = {
@@ -181,6 +165,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Green", "Cloud Garden" },
 		BlendColor = Color3.fromRGB(160, 205, 105),
 		Rarity = "Rare",
+		JumpLocation = 3
 	},
 
 
@@ -192,6 +177,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Veggie", "White", "Weird", "Healthy" },
 		BlendColor = Color3.fromRGB(220, 205, 170),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Gummy_Bear = {
@@ -200,6 +186,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Candy", "Sweet", "Red" },
 		BlendColor = Color3.fromRGB(255, 100, 100),
 		Rarity = "Rare",
+		JumpLocation = 0,
 	},
 
 	Orange = {
@@ -208,14 +195,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Citrus", "Orange" },
 		BlendColor = Color3.fromRGB(245, 145, 45),
 		Rarity = "Common",
-	},
-
-	Papaya = {
-		Id = "Papaya",
-		DisplayName = "Papaya",
-		Tags = { "Fruit", "Sweet", "Orange" },
-		BlendColor = Color3.fromRGB(245, 145, 75),
-		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Peach = {
@@ -224,22 +204,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Pink", "Cloud Garden" },
 		BlendColor = Color3.fromRGB(245, 150, 125),
 		Rarity = "Rare",
-	},
-
-	Pear = {
-		Id = "Pear",
-		DisplayName = "Pear",
-		Tags = { "Fruit", "Sweet", "Green" },
-		BlendColor = Color3.fromRGB(170, 195, 85),
-		Rarity = "Common",
-	},
-
-	Persimmon = {
-		Id = "Persimmon",
-		DisplayName = "Persimmon",
-		Tags = { "Fruit", "Sweet", "Orange" },
-		BlendColor = Color3.fromRGB(235, 105, 45),
-		Rarity = "Uncommon",
+		JumpLocation = 3,
 	},
 
 	Pineapple = {
@@ -248,14 +213,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Yellow" },
 		BlendColor = Color3.fromRGB(235, 190, 65),
 		Rarity = "Common",
-	},
-
-	Plum = {
-		Id = "Plum",
-		DisplayName = "Plum",
-		Tags = { "Fruit", "Sweet", "Purple" },
-		BlendColor = Color3.fromRGB(110, 55, 135),
-		Rarity = "Common",
+		JumpLocation = 1,
 	},
 
 	Squid = {
@@ -264,6 +222,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Seafood", "White", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
 		Rarity = "Uncommon",
+		JumpLocation = 2,
 	},
 
 	Fish = {
@@ -272,6 +231,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Seafood", "Blue", "Weird", "Protein" },
 		BlendColor = Color3.fromRGB(25, 164, 223),
 		Rarity = "Rare",
+		JumpLocation = 2,
 	},
 
 	Pomegranate = {
@@ -280,6 +240,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Red" },
 		BlendColor = Color3.fromRGB(185, 45, 65),
 		Rarity = "Uncommon",
+		JumpLocation = 2,
 	},
 
 	Potato = {
@@ -288,31 +249,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Vegetable", "Golden", "Cloud Garden" },
 		BlendColor = Color3.fromRGB(247, 250, 61),
 		Rarity = "Mystery",
+		JumpLocation = 3,
 	},
 
-	Raspberry = {
-		Id = "Raspberry",
-		DisplayName = "Raspberry",
-		Tags = { "Fruit", "Sweet", "Red" },
-		BlendColor = Color3.fromRGB(205, 45, 85),
-		Rarity = "Common",
-	},
-
-	Red_Bell_Pepper = {
-		Id = "Red_Bell_Pepper",
-		DisplayName = "Red Bell Pepper",
-		Tags = { "Vegetable", "Healthy", "Red" },
-		BlendColor = Color3.fromRGB(220, 55, 45),
-		Rarity = "Common",
-	},
-
-	Red_Onion = {
-		Id = "Red_Onion",
-		DisplayName = "Red Onion",
-		Tags = { "Vegetable", "Purple" },
-		BlendColor = Color3.fromRGB(145, 70, 125),
-		Rarity = "Common",
-	},
 
 	Starfruit = {
 		Id = "Starfruit",
@@ -320,6 +259,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Yellow" },
 		BlendColor = Color3.fromRGB(235, 205, 75),
 		Rarity = "Uncommon",
+		JumpLocation = 1,
 	},
 
 	Strawberry = {
@@ -328,14 +268,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Red" },
 		BlendColor = Color3.fromRGB(235, 65, 80),
 		Rarity = "Common",
-	},
-
-	Sweet_Potato = {
-		Id = "Sweet_Potato",
-		DisplayName = "Sweet Potato",
-		Tags = { "Vegetable", "Sweet", "Orange" },
-		BlendColor = Color3.fromRGB(205, 105, 60),
-		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Tomato = {
@@ -344,15 +277,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Golden", "Cloud Garden" },
 		BlendColor = Color3.fromRGB(236, 227, 59),
 		Rarity = "Mystery",
+		JumpLocation = 3,
 	},
 
-	Turnip = {
-		Id = "Turnip",
-		DisplayName = "Turnip",
-		Tags = { "Vegetable", "White" },
-		BlendColor = Color3.fromRGB(210, 195, 185),
-		Rarity = "Common",
-	},
 
 	Watermelon = {
 		Id = "Watermelon",
@@ -360,14 +287,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Red", "Watermelon" },
 		BlendColor = Color3.fromRGB(240, 95, 110),
 		Rarity = "Common",
-	},
-
-	Yellow_Bell_Pepper = {
-		Id = "Yellow_Bell_Pepper",
-		DisplayName = "Yellow Bell Pepper",
-		Tags = { "Vegetable", "Healthy", "Yellow" },
-		BlendColor = Color3.fromRGB(240, 205, 55),
-		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	-- Existing non-pack ingredients
@@ -378,6 +298,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Cold", "White", "Blue" },
 		BlendColor = Color3.fromRGB(190, 235, 255),
 		Rarity = "Common",
+		JumpLocation = 0,
 	},
 
 	Milk = {
@@ -386,15 +307,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Milk", "White" },
 		BlendColor = Color3.fromRGB(245, 245, 245),
 		Rarity = "Uncommon",
+		JumpLocation = 2,
 	},
 
-	Spinach = {
-		Id = "Spinach",
-		DisplayName = "Spinach",
-		Tags = { "Healthy", "Green", "Veggie" },
-		BlendColor = Color3.fromRGB(70, 150, 65),
-		Rarity = "Common",
-	},
 
 	Tire = {
 		Id = "Tire",
@@ -402,6 +317,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Black", "Gross", "Weird" },
 		BlendColor = Color3.fromRGB(45, 45, 50),
 		Rarity = "Uncommon",
+		JumpLocation = 1,
 	},
 
 	Sushi = {
@@ -410,6 +326,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Seafood", "Weird", "Protein", "Black" },
 		BlendColor = Color3.fromRGB(200, 200, 200),
 		Rarity = "Rare",
+		JumpLocation = 2,
 	},
 
 	Steak = {
@@ -418,6 +335,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Protein", "Steak" },
 		BlendColor = Color3.fromRGB(150, 50, 50),
 		Rarity = "Rare",
+		JumpLocation = 1,
 	},
 
 	Hamburger = {
@@ -426,6 +344,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Protein", "Weird", "Fast Food" },
 		BlendColor = Color3.fromRGB(180, 100, 60),
 		Rarity = "Uncommon",
+		JumpLocation = 1,
 	},
 
 	Noob = {
@@ -434,6 +353,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Weird", "Yellow", "Noob" },
 		BlendColor = Color3.fromRGB(245, 210, 55),
 		Rarity = "Rare",
+		JumpLocation = 3,
 	},
 
 	GoldenTomato = {
@@ -442,6 +362,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Fruit", "Sweet", "Healthy", "Yellow" },
 		BlendColor = Color3.fromRGB(255, 205, 55),
 		Rarity = "Rare",
+		JumpLocation = 3,
 	},
 
 	-- Mystery uses the same deterministic RGB mean as every other unit.
@@ -451,7 +372,174 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Tags = { "Weird", "Mystery" },
 		BlendColor = Color3.fromRGB(170, 65, 230),
 		Rarity = "Mystery",
+		JumpLocation = 3,
 	},
+
+	    -- Exact / scavenger-hunt requests
+
+    {
+        Id = "AppleBananaIce",
+        DisplayText = "APPLE, BANANA, and ICE! Don't mess it up!",
+        GoodResponse = "Exactly what I ordered!",
+        BadResponse = "That is NOT my recipe!",
+        RequiredTags = {},
+        RequiredIngredients = { "Apple", "Banana", "Ice" },
+        ExactIngredients = true,
+        BasePayout = 50,
+        MinJumpTier = 0,
+    },
+
+    {
+        Id = "BerryTrio",
+        DisplayText = "STRAWBERRY, BLUEBERRY, CHERRIES! Berry time!",
+        GoodResponse = "BERRY good!",
+        BadResponse = "You're missing one of my berries!",
+        RequiredTags = {},
+        RequiredIngredients = { "Strawberry", "Blueberry", "Cherries" },
+        ExactIngredients = true,
+        BasePayout = 50,
+        MinJumpTier = 0,
+    },
+
+    {
+        Id = "SaladSmoothie",
+        DisplayText = "CABBAGE, CARROT, and ONION... trust me.",
+        GoodResponse = "Tastes healthy enough!",
+        BadResponse = "That's not my salad smoothie!",
+        RequiredTags = {},
+        RequiredIngredients = { "Cabbage", "Carrot", "Onion" },
+        ExactIngredients = true,
+        BasePayout = 50,
+        MinJumpTier = 0,
+    },
+
+    {
+        Id = "AppleSour",
+        DisplayText = "I need an APPLE and something SOUR!",
+        GoodResponse = "Sweet AND sour!",
+        BadResponse = "Where's my apple and sour stuff?!",
+        RequiredTags = { "Sour" },
+        RequiredIngredients = { "Apple" },
+        BasePayout = 50,
+        MinJumpTier = 0,
+    },
+
+    {
+        Id = "SpicyPineapple",
+        DisplayText = "PINEAPPLE, CHILI PEPPER, ICE!",
+        GoodResponse = "HOT... COLD... PERFECT!",
+        BadResponse = "You ruined it!",
+        RequiredTags = {},
+        RequiredIngredients = { "Pineapple", "Chili_Pepper", "Ice" },
+        ExactIngredients = true,
+        BasePayout = 75,
+        MinJumpTier = 1,
+    },
+
+    {
+        Id = "MushroomOnion",
+        DisplayText = "MUSHROOMS and ONION! Surprise me with the rest.",
+        GoodResponse = "Strangely delicious!",
+        BadResponse = "I said MUSHROOMS and ONION!",
+        RequiredTags = {},
+        RequiredIngredients = { "Mushrooms", "Onion" },
+        BasePayout = 75,
+        MinJumpTier = 1,
+    },
+
+    {
+        Id = "JunkFoodDisaster",
+        DisplayText = "HAMBURGER, TIRE, and ICE. Don't ask questions.",
+        GoodResponse = "That is absolutely horrible. I love it.",
+        BadResponse = "Somehow this isn't gross enough!",
+        RequiredTags = {},
+        RequiredIngredients = { "Hamburger", "Tire", "Ice" },
+        ExactIngredients = true,
+        BasePayout = 100,
+        MinJumpTier = 1,
+    },
+
+    {
+        Id = "SeafoodPlatter",
+        DisplayText = "FISH, SQUID, and SUSHI! Blend the whole ocean!",
+        GoodResponse = "Now THAT'S seafood!",
+        BadResponse = "My seafood platter is missing something!",
+        RequiredTags = {},
+        RequiredIngredients = { "Fish", "Squid", "Sushi" },
+        ExactIngredients = true,
+        BasePayout = 125,
+        MinJumpTier = 2,
+    },
+
+    {
+        Id = "CrabCoconut",
+        DisplayText = "CRAB and COCONUT! You choose the last ingredient.",
+        GoodResponse = "Tropical seafood... somehow it works!",
+        BadResponse = "Where's my CRAB and COCONUT?!",
+        RequiredTags = {},
+        RequiredIngredients = { "Crab", "Coconut" },
+        BasePayout = 100,
+        MinJumpTier = 2,
+    },
+
+    {
+        Id = "FancyFruitShake",
+        DisplayText = "POMEGRANATE, COCONUT, and MILK. Make it fancy!",
+        GoodResponse = "Ahhh... exquisite!",
+        BadResponse = "This is NOT what I ordered!",
+        RequiredTags = {},
+        RequiredIngredients = { "Pomegranate", "Coconut", "Milk" },
+        ExactIngredients = true,
+        BasePayout = 125,
+        MinJumpTier = 2,
+    },
+
+    {
+        Id = "CloudFruitSalad",
+        DisplayText = "PEACH, MELON, STARFRUIT! Straight from the CLOUDS!",
+        GoodResponse = "Heavenly!",
+        BadResponse = "Those aren't my cloud fruits!",
+        RequiredTags = {},
+        RequiredIngredients = { "Peach", "Melon", "Starfruit" },
+        ExactIngredients = true,
+        BasePayout = 175,
+        MinJumpTier = 3,
+    },
+
+    {
+        Id = "DragonSpice",
+        DisplayText = "DRAGON FRUIT and CINNAMON! Pick the last ingredient.",
+        GoodResponse = "Now THAT is exotic!",
+        BadResponse = "Where's the DRAGON FRUIT and CINNAMON?!",
+        RequiredTags = {},
+        RequiredIngredients = { "Dragon_Fruit", "Cinnamon" },
+        BasePayout = 150,
+        MinJumpTier = 3,
+    },
+
+    {
+        Id = "GoldenCloud",
+        DisplayText = "POTATO, GOLDEN TOMATO, and TOMATO! Golden everything!",
+        GoodResponse = "It's beautiful... probably.",
+        BadResponse = "This isn't golden enough!",
+        RequiredTags = {},
+        RequiredIngredients = { "Potato", "GoldenTomato", "Tomato" },
+        ExactIngredients = true,
+        BasePayout = 200,
+        MinJumpTier = 3,
+    },
+
+    {
+        Id = "MysteryDisaster",
+        DisplayText = "MYSTERY, NOOB, and a TIRE. I know what I'm doing.",
+        GoodResponse = "...I have made a terrible decision.",
+        BadResponse = "Nope. Needs to be WAY weirder.",
+        RequiredTags = {},
+        RequiredIngredients = { "Mystery", "Noob", "Tire" },
+        ExactIngredients = true,
+        BasePayout = 200,
+        MinJumpTier = 3,
+    },
 }
 
 return Ingredients

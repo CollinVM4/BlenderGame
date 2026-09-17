@@ -23,6 +23,7 @@ selection.add_argument("--sprint-only", action="store_true")
 selection.add_argument("--customer-only", action="store_true", help="Compatibility: run legacy customer/state prefix")
 selection.add_argument("--customer-walk-only", action="store_true", help="Run customer walk and rig validation")
 selection.add_argument("--customer-presentation-only", action="store_true", help="Run customer placement, names and walk presentation")
+selection.add_argument("--request-validation-only", action="store_true", help="Run request state and serving integration")
 selection.add_argument("--requests-only", action="store_true", help="Run request integration and placement separately")
 selection.add_argument("--stash-only", action="store_true")
 selection.add_argument("--smoothie-only", action="store_true", help="Run smoothie state, round-trip and geometry separately")
@@ -37,6 +38,7 @@ SUITES = {
     "stash": ("state", ("stash_interaction.spec.luau",)),
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
     "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
+    "customer-validation": ("state", ("customer_validation.spec.luau",)),
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
     "sprint": ("state", ("sprint.spec.luau",)),
     "legacy-state": ("integration", ("server_state.spec.luau",)),
@@ -61,6 +63,7 @@ focused = {
     "carry_only": ("carry", "throw", "carry-presentation"),
     "sprint_only": ("sprint",),
     "customer_only": ("legacy-state",),
+    "request_validation_only": ("customer-validation", "customer-compatibility", "requests"),
     "requests_only": ("requests", "customer-placement", "customer-walk"),
     "customer_presentation_only": ("customer-placement", "customer-walk"),
     "customer_walk_only": ("customer-walk",),

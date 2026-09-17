@@ -221,31 +221,6 @@ end)
 local bad = blend.GetSnapshot(p).Result
 local requestConfig = loadModule("CustomerRequests")
 local requests = requestConfig.Definitions
-local requestsById = {}
-for _, request in requests do
-    -- Schema/uniqueness is owned by customer_requests.spec.luau.
-    requestsById[request.Id] = request
-end
--- Unit-level tag validation accepts arbitrary arrays; these are not serving fixtures.
-local function requestResult(ids)
-    return { Ingredients = ids, Tags = { "Red", "Sweet", "Cold" } }
-end
-check(
-    customer.ValidateRequest(requestResult({ "Strawberry", "Tire" }), requests[1]),
-    "one Red ingredient suffices despite extras"
-)
-check(customer.ValidateRequest(requestResult({ "Banana" }), requests[2]), "Sweet uses metadata for Banana")
-check(customer.ValidateRequest(requestResult({ "Ice" }), requestsById.Cold), "Cold uses metadata for Ice")
-check(not customer.ValidateRequest(requestResult({ "Tire" }), requests[1]), "forged result tags cannot satisfy Red")
-check(not customer.ValidateRequest(requestResult({}), requests[1]), "empty smoothie fails")
-check(not customer.ValidateRequest(requestResult({ "Unknown" }), requests[1]), "unknown ingredient fails closed")
-local combined =
-    { Id = "RedCold", DisplayText = "Red and cold", RequiredTags = { "Red", "Cold" }, BasePayout = 40, MinJumpTier = 3 }
-check(
-    customer.ValidateRequest(requestResult({ "Strawberry", "Ice" }), combined),
-    "combined request accepts tags across ingredients"
-)
-check(not customer.ValidateRequest(requestResult({ "Strawberry" }), combined), "combined request requires every tag")
 -- Legacy grading/payout/reaction helpers live in customer_compatibility.spec.luau.
 
 local spawned, missing = 0, false

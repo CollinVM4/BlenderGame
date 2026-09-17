@@ -7,6 +7,9 @@ cache.StudioServices = {
 env.math = table.clone(math)
 env.Enum.HumanoidDisplayDistanceType = { None = "None" }
 env.Enum.HumanoidHealthDisplayType = { AlwaysOff = "AlwaysOff" }
+env.UDim2.fromOffset = function(x, y)
+    return { X = { Scale = 0, Offset = x }, Y = { Scale = 0, Offset = y } }
+end
 local function player(name)
     local owner = instance("Player")
     owner.Name = name
@@ -47,11 +50,16 @@ for _, request in requests do
     )
 end
 -- Exercise actual arrival/refresh selection with every random index, not statistical sampling.
+for id, mapping in requestConfig.NPCs do
+    check(ids[mapping.RequestId], "authored NPC RequestId resolves: " .. id)
+end
 do
     local owner = player("RequestTiers")
     data.AddPlayer(owner)
     data.SetCash(owner, 10000)
     local savedRequests = table.clone(requests)
+    local savedWindow = requestConfig.RegularRequestRecencyWindow
+    requestConfig.RegularRequestRecencyWindow = 0 -- Exhaust eligibility independently of recency below.
     local savedRandom, savedWarn = env.math.random, env.warn
     local warnings = 0
     env.warn = function(message)
@@ -126,8 +134,245 @@ do
         table.insert(requests, request)
     end
     env.math.random, env.warn = savedRandom, savedWarn
+    requestConfig.RegularRequestRecencyWindow = savedWindow
     data.RemovePlayer(owner)
 end
+-- Exhaust the authored pool at each tier, including all advanced definitions.
+do
+    local owner = player("AuthoredRequestTiers")
+    data.AddPlayer(owner)
+    local savedRandom = env.math.random
+    for tier = 0, 3 do
+        owner:SetAttribute("JumpLevel", tier)
+        local eligible = {}
+        for _, request in requests do
+            if not request.NPCOnly and request.MinJumpTier <= tier then
+                table.insert(eligible, request)
+            end
+        end
+        for roll, expected in eligible do
+            env.math.random = function(low, high)
+                check(low == 1 and high == #eligible, "authored pool includes exactly unlocked normal requests")
+                return roll
+            end
+            local model = customer.SpawnForPlayer(owner)
+            flush()
+            flush()
+            check(
+                customer.GetSnapshot(owner).RequestId == expected.Id,
+                "authored request remains selectable: " .. expected.Id
+            )
+            customer.RemovePlayer(owner)
+        end
+    end
+    env.math.random = savedRandom
+    data.RemovePlayer(owner)
+end
+
+-- The real serve path uses forbidden metadata, authored feedback, and one payment.
+do
+    local owner = player("AdvancedServing")
+    data.AddPlayer(owner)
+    owner:SetAttribute("JumpLevel", 3)
+    local selected, selectedIndex
+    local index = 0
+    for _, request in requests do
+        if not request.NPCOnly then
+            index += 1
+            if request.Id == "SweetColdNoSpicy" then
+                selected, selectedIndex = request, index
+            end
+        end
+    end
+    local savedRandom = env.math.random
+    env.math.random = function()
+        return selectedIndex
+    end
+    local cup
+    customer.Init({
+        PlayerDataService = data,
+        TycoonService = {
+            GetReference = function(_, name)
+                return refs[name]
+            end,
+        },
+        BlendService = {
+            ConsumeCup = function()
+                local result = cup
+                cup = nil
+                return result
+            end,
+        },
+    }, function() end, function()
+        return true
+    end)
+    for _, example in
+        {
+            { { "Strawberry", "Ice", "Banana" }, true },
+            { { "Strawberry", "Ice", "Chili_Pepper" }, false },
+            { { "Strawberry", "Banana", "Banana" }, false },
+        }
+    do
+        local model = customer.SpawnForPlayer(owner)
+        flush()
+        flush()
+        cup = { Ingredients = example[1], Tags = { "Sweet", "Cold" }, BlendId = "advanced" }
+        local cash = data.GetCash(owner)
+        check(customer.Serve(owner), "advanced serving completes")
+        flush()
+        check(
+            data.GetCash(owner) == cash + (if example[2] then selected.BasePayout else 0),
+            "advanced validation controls payment"
+        )
+        check(
+            model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text
+                == (if example[2] then selected.GoodResponse else selected.BadResponse),
+            "advanced result uses authored response"
+        )
+        check(cup == nil and not customer.Serve(owner), "advanced cup consumed once and cannot be served twice")
+        customer.RemovePlayer(owner)
+    end
+    env.math.random = savedRandom
+    data.RemovePlayer(owner)
+end
+
+-- Recency contracts through real spawn/arrival/refresh, with deterministic first-candidate rolls.
+do
+    local savedRequests = table.clone(requests)
+    local savedRandom, savedChance = env.math.random, requestConfig.SpecialCustomerChance
+    local savedMapping = requestConfig.NPCs.steak.RequestId
+    table.clear(requests)
+    for index = 1, 6 do
+        table.insert(requests, {
+            Id = "Recent" .. index,
+            DisplayText = "Same text",
+            RequiredTags = { "Red" },
+            BasePayout = 25,
+            MinJumpTier = if index == 5 then 3 else 0,
+            NPCOnly = index == 6,
+        })
+    end
+    env.math.random = function(low)
+        return low or 0
+    end
+    requestConfig.SpecialCustomerChance = 0
+    local function child(class, name, parent)
+        local item = instance(class)
+        item.Name, item.Parent = name, parent
+        if class == "Humanoid" then
+            item.RigType = { Name = "R15" }
+        end
+        return item
+    end
+    local folder = child("Folder", "CustomerNPCs", storage)
+    local regular = child("Folder", "Regular", folder)
+    local special = child("Folder", "Special", folder)
+    local templates = {}
+    for index = 1, 5 do
+        local model = child("Model", "Template" .. index, if index == 5 then special else regular)
+        child("Humanoid", "Humanoid", model)
+        child("Part", "HumanoidRootPart", model)
+        model:SetAttribute("SourceProbe", index)
+        if index == 5 then
+            model:SetAttribute("CustomerId", "steak")
+        end
+        templates[index] = model
+    end
+    local a, b = player("RecencyA"), player("RecencyB")
+    local function spawn(owner)
+        local model = customer.SpawnForPlayer(owner)
+        setup(model ~= nil, "recency customer spawns")
+        flush()
+        flush()
+        return model, customer.GetSnapshot(owner).RequestId
+    end
+    local function depart(model)
+        model:Destroy() -- Preserve player history between selections.
+        flush()
+    end
+    for turn = 1, 9 do
+        customer.BeginDay(a) -- Day boundaries do not erase regular history.
+        local model, id = spawn(a)
+        local expected = (turn - 1) % 4 + 1
+        check(model:GetAttribute("SourceProbe") == expected, "template waits for three intervening regular selections")
+        check(
+            id == "Recent" .. expected,
+            "stable request IDs remain independent despite shared tags/text; locked/NPCOnly excluded"
+        )
+        depart(model)
+    end
+    local modelB, idB = spawn(b)
+    check(
+        modelB:GetAttribute("SourceProbe") == 1 and idB == "Recent1",
+        "another player starts with independent histories"
+    )
+    depart(modelB)
+    local modelA, idA = spawn(a)
+    check(modelA:GetAttribute("SourceProbe") == 2 and idA == "Recent2", "other player cannot advance either history")
+    customer:RefreshOrder(modelA)
+    check(customer.GetSnapshot(a).RequestId == "Recent3", "refresh advances only request history")
+    depart(modelA)
+    modelA, idA = spawn(a)
+    check(
+        modelA:GetAttribute("SourceProbe") == 3 and idA == "Recent4",
+        "template and request histories advance independently"
+    )
+    depart(modelA)
+    requestConfig.SpecialCustomerChance = 1
+    for _, forcedId in { "Recent4", "Recent6" } do
+        requestConfig.NPCs.steak.RequestId = forcedId
+        customer.BeginDay(a)
+        modelA, idA = spawn(a)
+        check(
+            modelA:GetAttribute("SourceProbe") == 5 and idA == forcedId,
+            "special bypasses recent request and NPCOnly exclusion"
+        )
+        customer:RefreshOrder(modelA)
+        check(customer.GetSnapshot(a).RequestId == forcedId, "special refresh preserves forced request")
+        depart(modelA)
+        -- Existing special immediate-repeat rule needs a regular between specials.
+        requestConfig.SpecialCustomerChance = 0
+        modelA, idA = spawn(a)
+        check(
+            modelA:GetAttribute("SourceProbe") == (if forcedId == "Recent4" then 4 else 1),
+            "special does not advance template history"
+        )
+        check(
+            idA == (if forcedId == "Recent4" then "Recent1" else "Recent2"),
+            "special does not advance request history"
+        )
+        depart(modelA)
+        requestConfig.SpecialCustomerChance = 1
+    end
+    requestConfig.SpecialCustomerChance = 0
+    customer.RemovePlayer(a)
+    modelA, idA = spawn(a)
+    check(modelA:GetAttribute("SourceProbe") == 1 and idA == "Recent1", "player removal clears both histories")
+    depart(modelA)
+    for index = 2, 4 do
+        templates[index]:Destroy()
+    end
+    table.clear(requests)
+    table.insert(
+        requests,
+        { Id = "Recent1", DisplayText = "Only", RequiredTags = { "Red" }, BasePayout = 25, MinJumpTier = 0 }
+    )
+    for _ = 1, 5 do
+        modelA, idA = spawn(a)
+        check(modelA:GetAttribute("SourceProbe") == 1 and idA == "Recent1", "all-recent pools fall back safely")
+        depart(modelA)
+    end
+    customer.RemovePlayer(a)
+    customer.RemovePlayer(b)
+    folder:Destroy()
+    table.clear(requests)
+    for _, request in savedRequests do
+        table.insert(requests, request)
+    end
+    env.math.random, requestConfig.SpecialCustomerChance = savedRandom, savedChance
+    requestConfig.NPCs.steak.RequestId = savedMapping
+end
+
 -- Custom templates use the same request and serving transaction.
 do
     local owner = player("ImportedAvatars")
@@ -143,6 +388,9 @@ do
     folder.Name, folder.Parent = "CustomerNPCs", storage
     local function child(class, name, parent)
         local item = instance(class)
+        if class == "Humanoid" then
+            item.RigType = { Name = "R15" }
+        end
         item.Name, item.Parent = name, parent
         return item
     end
@@ -224,10 +472,21 @@ do
         check(nameText.Text == config.DisplayName, "name comes from config: " .. id)
         -- All IDs exercise mapping; shared nameplate styling needs one representative.
         if id == "steak" then
-            check(bubble.StudsOffset.Y == 2.5 + 2, "billboard rises exactly two studs")
+            check(bubble.MaxDistance == 30 and bubble.Enabled == false, "approaching owner order defaults private")
             check(bubble.StudsOffset.X == 0 and bubble.StudsOffset.Z == 0, "billboard preserves original X/Z")
             check(bubble.AlwaysOnTop and nameText.BackgroundTransparency == 1, "name keeps transparent topmost style")
-            check(nameText.TextStrokeTransparency == 0.25, "name keeps outlined text")
+            check(nameText.TextStrokeTransparency <= 0.2 and nameText.TextSize < 24, "name is secondary and outlined")
+            local dialogue = bubble:FindFirstChildOfClass("TextLabel")
+            check(nameText.Position.Y.Offset >= dialogue.Size.Y.Offset, "name sits below a separate dialogue row")
+            local serve = selected:FindFirstChild("ServePrompt", true)
+            check(
+                serve.Style == "Custom" and serve:GetAttribute("InteractionActionText") == "SERVE",
+                "serve uses custom action"
+            )
+            check(
+                selected:FindFirstChild(serve:GetAttribute("InteractionOrigin"), true) ~= nil,
+                "serve has generated origin"
+            )
             check(
                 selected:FindFirstChildOfClass("Humanoid").DisplayDistanceType == "None",
                 "custom row replaces clone nameplate"
