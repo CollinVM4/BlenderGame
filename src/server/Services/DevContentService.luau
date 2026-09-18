@@ -229,7 +229,6 @@ function DevContentService.ResetScene(player: Player): boolean
     deps.InventoryService.ClearHeld(player)
     deps.GameService.Reset(player)
     deps.BlendService.Reset(player)
-    deps.BlendService.ClearCup(player)
     deps.IngredientService.RemovePlayer(player)
     return true
 end

@@ -2,6 +2,14 @@
   "name": "BlenderGame",
   "tree": {
     "$className": "DataModel",
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "CustomerNPCs": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      }
+    },
     
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",

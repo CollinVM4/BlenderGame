@@ -1,4 +1,5 @@
 --!strict
+--! This script controls the display of rare ingredient spawns in the player's GUI.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Controller = {}

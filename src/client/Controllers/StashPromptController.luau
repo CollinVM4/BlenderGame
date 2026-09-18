@@ -13,7 +13,7 @@ function Controller.Init()
     local visible: { [ProximityPrompt]: boolean } = {}
     local function label(id: string): string
         local definition = Definitions[id]
-        return if definition then definition.DisplayName else id
+        return if definition then definition.DisplayName or id else id
     end
     local function update(prompt: ProximityPrompt)
         local slot = prompt.Parent
@@ -22,11 +22,20 @@ function Controller.Init()
             return
         end
         local player = Players.LocalPlayer
-        local held = player:GetAttribute("HeldIngredientId")
-        local id = slot:GetAttribute("StashIngredientId")
-        local count = slot:GetAttribute("StashCount") or 0
+        local heldAttribute = player:GetAttribute("HeldIngredientId")
+        local held = if typeof(heldAttribute) == "string" then heldAttribute else nil
+        local heldType = player:GetAttribute("HeldItemType")
+        local slotType = slot:GetAttribute("StashItemType")
+        local idAttribute = slot:GetAttribute("StashIngredientId")
+        local id = if typeof(idAttribute) == "string" then idAttribute else nil
+        local countAttribute = slot:GetAttribute("StashCount")
+        local count = if typeof(countAttribute) == "number" then countAttribute else 0
         if slot:GetAttribute("StashOwnerUserId") ~= player.UserId then
             prompt.ActionText = "Owner only"
+        elseif heldType == "Smoothie" then
+            prompt.ActionText = if count > 0 then "Slot occupied" else "Store smoothie"
+        elseif held and slotType == "Smoothie" then
+            prompt.ActionText = "Slot occupied"
         elseif held then
             if count >= 5 then
                 prompt.ActionText = "Slot full (5/5)"
@@ -35,10 +44,12 @@ function Controller.Init()
             else
                 prompt.ActionText = "Store " .. label(held) .. (if count > 0 then " (" .. count .. "/5)" else "")
             end
+        elseif slotType == "Smoothie" and count > 0 then
+            prompt.ActionText = "Take smoothie"
         elseif id and count > 0 then
             prompt.ActionText = "Take " .. label(id) .. " (" .. count .. "/5)"
         else
-            prompt.ActionText = "Hold an ingredient to store"
+            prompt.ActionText = "Hold an item to store"
         end
     end
     ProximityPromptService.PromptShown:Connect(function(prompt)

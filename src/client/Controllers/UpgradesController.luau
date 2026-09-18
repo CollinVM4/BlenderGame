@@ -37,10 +37,12 @@ function Controller.Init()
                 local state = rowState(track)
                 local isMax = serverMax[track.Id] or (state ~= nil and state.Max)
                 local enabled = remote ~= nil and pending == nil and state ~= nil and not isMax
-                row.Level.Text = if state then "Level " .. tostring(state.Level) else "Loading…"
+                row.Level.Text = if state
+                    then "Level " .. tostring(state.Level + (if track.Id == "CarryCapacity" then 1 else 0))
+                    else "Loading…"
                 row.Stat.Text = if state then state.Stat else "—"
                 row.Purchase.Text = if pending == track.Id
-                    then "BUYING…"
+                    then "UPGRADING…"
                     elseif isMax then "MAX"
                     elseif feedback[track.Id] then feedback[track.Id]
                     elseif state and state.Price then "$" .. tostring(state.Price) .. " UPGRADE"
@@ -82,7 +84,7 @@ function Controller.Init()
                 generation += 1
                 local token = generation
                 refresh()
-                request:FireServer("PurchaseUpgrade", track.Id)
+                request:FireServer("PurchaseUpgrade", track.Id, state.Level + 2)
                 -- The shared server throttle can drop a request without a response.
                 task.delay(5, function()
                     if generation == token and pending == track.Id then

@@ -1,14 +1,15 @@
 --!strict
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
     MovementService = require(script.Services.MovementService),
+    CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
     IngredientService = require(script.Services.IngredientService),
+    SmoothieWorldItemService = require(script.Services.SmoothieWorldItemService),
     InventoryService = require(script.Services.InventoryService),
     BlendService = require(script.Services.BlendService),
     CustomerService = require(script.Services.CustomerService),
@@ -57,8 +58,8 @@ local function addPlayer(player: Player)
     services.GameService.AddPlayer(player)
     services.TycoonService.AssignPlot(player)
     local function onCharacterAdded(character: Model)
-        services.BlendService.ClearCup(player)
-        services.InventoryService.DropHeld(player)
+        services.CharacterPhysicsService.ApplyCharacter(player, character)
+        services.InventoryService.CleanupCharacter(player)
         player:SetAttribute("StunnedUntil", 0)
         services.MovementService.ApplyCharacter(player, character)
         services.SprintService.ResetCharacter(player)
@@ -89,6 +90,7 @@ Players.PlayerRemoving:Connect(function(player)
             "TycoonService",
             "SprintService",
             "MovementService",
+            "CharacterPhysicsService",
             "PlayerDataService",
         }
     do
@@ -97,14 +99,13 @@ Players.PlayerRemoving:Connect(function(player)
     initialized[player] = nil
 end)
 
-if RunService:IsStudio() then
-    require(script.Services.StudioJumpTestService).Init(services)
-end
 services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
+    require(script.Components.BlenderVacuum),
     require(script.Components.IngredientPickup),
+    require(script.Components.SmoothiePickup),
     require(script.Components.IngredientSpawn),
     require(script.Components.AnnouncedIngredientSpawn),
     require(script.Components.TurbineWheel),
@@ -113,6 +114,7 @@ local components: { { Init: (any) -> () } } = {
     require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),
+    require(script.Components.BlenderKillScript),
     require(script.Components.Stash),
     require(script.Components.DayButton),
 }

@@ -33,7 +33,7 @@ function GameplayService.Init(services: any)
         elseif action == "PurchaseUpgrade" then
             local success, reason = false, "InvalidUpgrade"
             if validId then
-                success, reason = services.PlayerDataService.PurchaseUpgrade(player, id)
+                success, reason = services.PlayerDataService.PurchaseUpgrade(player, id, slot)
             end
             if success and (id == "MovementSpeed" or id == "Jump" or id == "SprintStamina") then
                 services.MovementService.RefreshPlayer(player)

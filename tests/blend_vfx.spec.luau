@@ -233,6 +233,19 @@ return function(t)
     local currentOwner = owner
     local deps = {
         IngredientService = ingredients,
+        -- Presentation observes dispense; authoritative grant/capacity is covered by
+        -- smoothie state and round-trip suites, so no character/Tool internals here.
+        InventoryService = {
+            GetCarryCount = function()
+                return 0
+            end,
+            GetCarryCapacity = function()
+                return 3
+            end,
+            GrantSmoothie = function()
+                return true
+            end,
+        },
         TycoonService = {
             GetOwner = function()
                 return currentOwner
@@ -314,8 +327,21 @@ return function(t)
     cleaning()
     load("BlendVFX", true).Init(deps)
     check(#folder:GetChildren() == 2, "reattachment restores accepted preblend batch from snapshot")
-    blend.AddProgress(owner, wheel, 1)
-    check(#folder:GetChildren() == 0 and animations[1].Cancelled, "start clears copies and cancels arrival")
+    check(accept("Ice"), "third ingredient makes the presentation fixture ready")
+    canonical = owner:GetAttribute("BlendColor")
+    local arrivals = {}
+    for _, animation in animations do
+        if animation.Played and not animation.Cancelled and animation.Object:IsDescendantOf(folder) then
+            table.insert(arrivals, animation)
+        end
+    end
+    check(#arrivals > 0, "valid batch has a live arrival effect before start")
+    check(blend.AddProgress(owner, wheel, 1), "valid three-ingredient batch starts")
+    local stopped = true
+    for _, animation in arrivals do
+        stopped = stopped and animation.Cancelled and animation.Object.Destroyed
+    end
+    check(#folder:GetChildren() == 0 and stopped, "start clears copies and cancels arrival")
     check(puff1.Enabled and puff2.Enabled, "puff emitters beneath BlendVisualOrigin activate")
     check(
         liquid.Color.R == canonical.R and liquid.Transparency < 1 and liquid.Transparency > 0.8,
@@ -345,7 +371,9 @@ return function(t)
     blend.Reset(owner)
     accept("Ice")
     check(#folder:GetChildren() == 1, "new batch has fresh visual state")
-    blend.AddProgress(owner, wheel, 20)
+    accept("Ice")
+    accept("Ice")
+    check(blend.AddProgress(owner, wheel, 20), "pause fixture starts a valid batch")
     local pausedTransparency = liquid.Transparency
     check(
         not blend.AddProgress(owner, wheel, 0) and liquid.Transparency == pausedTransparency and puff1.Enabled,
@@ -407,9 +435,11 @@ return function(t)
         #folder:GetChildren() == 1 and blend.GetSnapshot(visitor).State == "LOADING",
         "missing liquid does not block accepted visual"
     )
-    blend.Ready(visitor)
+    accept("Ice", visitor)
+    accept("Ice", visitor)
+    check(blend.Ready(visitor), "missing-liquid fixture has a ready batch")
     services.RunService.Heartbeat:Fire(0.1)
-    check(#folder:GetChildren() == 1, "READY at zero progress does not immediately clear accepted visual")
+    check(#folder:GetChildren() == 3, "READY at zero progress does not immediately clear accepted visuals")
     check(
         table.find(logs, "[BlendVFX] emitters found=4") and table.find(logs, "[BlendVFX] accepted ingredient=Ice"),
         "Studio logs prove emitter discovery and acceptance callback delivery"
@@ -439,7 +469,9 @@ return function(t)
     local alternate = child("Part", "Liquid", body)
     alternate.Color, alternate.Transparency = authoredColor, 0.1
     load("BlendVFX", true).Init(deps)
-    blend.AddProgress(visitor, wheel, 100)
+    accept("Ice", visitor)
+    accept("Ice", visitor)
+    check(blend.AddProgress(visitor, wheel, 100), "alternative liquid fixture completes valid batch")
     check(alternate.Transparency == 0.1, "recursive Body.Liquid is discovered")
     cleaning()
     alternate.Parent = blender
@@ -460,7 +492,9 @@ return function(t)
     blender.DescendantAdded:Fire(alternate)
     check(alternate.Transparency == 1, "late liquid is bound and hidden for empty batch")
     accept("Ice", visitor)
-    blend.AddProgress(visitor, wheel, 100)
+    accept("Ice", visitor)
+    accept("Ice", visitor)
+    check(blend.AddProgress(visitor, wheel, 100), "late liquid fixture completes valid batch")
     check(alternate.Transparency == 0.1, "late authored cylinder receives finished presentation")
     cleaning()
     blend.Reset(visitor)
@@ -497,11 +531,17 @@ return function(t)
     accept("Strawberry", visitor)
     local proxy = authoredFolder:FindFirstChild("BlendIngredientVisual")
     check(proxy and proxy:IsA("Model"), "real CreateVisual selects ServerStorage.Ingredients.Strawberry model")
-    for _, part in proxy:GetChildren() do
+    for _, name in { "Fruit", "Leaf" } do
+        local part = proxy:FindFirstChild(name)
         check(
-            part.Color == skin.Color and part.Size == skin.Size and part:FindFirstChild("Texture"),
+            part and part.Color == skin.Color and part.Size == skin.Size and part:FindFirstChild("Texture"),
             "template colors, geometry and texture survive sanitization"
         )
+    end
+    for _, part in proxy:GetDescendants() do
+        if not part:IsA("BasePart") then
+            continue
+        end
         check(
             part.Anchored
                 and not part.CanCollide
@@ -512,7 +552,9 @@ return function(t)
         )
     end
     check(#authoredFolder:GetChildren() == 2, "loaded visual coexists with unrelated authored content")
-    blend.AddProgress(visitor, wheel, 1)
+    accept("Strawberry", visitor)
+    accept("Strawberry", visitor)
+    check(blend.AddProgress(visitor, wheel, 1), "authored-folder fixture starts a valid batch")
     check(proxy.Destroyed and not decoration.Destroyed, "blend start clears only owned visual")
     blend.Reset(visitor)
     check(

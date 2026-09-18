@@ -2,8 +2,16 @@
 export type BlendState = "EMPTY" | "LOADING" | "READY" | "BLENDING" | "COMPLETE" | "DISPENSED"
 export type DayState = "PREP" | "SERVING" | "FINISHED"
 export type Grade = "A" | "B" | "C" | "D"
-export type StashSlot =
-    { SlotIndex: number, IngredientId: string?, Count: number, Capacity: number, Protected: boolean }
+export type SmoothieData = { BlendId: string, Ingredients: { string } }
+export type StashSlot = {
+    SlotIndex: number,
+    ItemType: ("Ingredient" | "Smoothie")?,
+    IngredientId: string?,
+    Smoothie: SmoothieData?,
+    Count: number,
+    Capacity: number,
+    Protected: boolean,
+}
 export type Stack = { IngredientId: string, Count: number }
 export type Smoothie =
     { BlendId: string?, Ingredients: { string }, Tags: { string }, Color: Color3, Discovery: string? }
@@ -11,6 +19,7 @@ export type PlayerData = {
     Cash: number,
     Upgrades: {
         Hand: number,
+        CarryCapacity: number,
         StackSize: number,
         BlendSpeed: number,
         Payout: number,

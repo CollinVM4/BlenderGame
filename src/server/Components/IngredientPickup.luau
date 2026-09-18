@@ -11,6 +11,8 @@ function IngredientPickup.Init(services: any)
             return nil
         end
         local prompt = WorldUtil.Prompt(part, "CarryPrompt", "Pickup")
+        prompt.Style = Enum.ProximityPromptStyle.Custom
+        prompt:SetAttribute("IngredientPickupPrompt", true)
         prompt.ObjectText = record.Id
         local connection = prompt.Triggered:Connect(function(player)
             services.InventoryService.CarryWorldItem(player, object)

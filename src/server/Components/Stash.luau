@@ -28,17 +28,7 @@ function Stash.Init(services: any)
                 connections,
                 prompt.Triggered:Connect(function(player)
                     local owner = services.TycoonService.GetOwner(object)
-                    if not owner then
-                        return
-                    end
-                    local id = services.InventoryService.GetHeldIngredientId(player)
-                    if id then
-                        if owner == player then
-                            services.InventoryService.Deposit(player, id, index)
-                        end
-                    else
-                        services.InventoryService.Withdraw(player, index, owner)
-                    end
+                    services.InventoryService.InteractStash(player, index, owner)
                 end)
             )
         end
@@ -51,7 +41,9 @@ function Stash.Init(services: any)
                 Presentation.Refresh(slot, state, services.IngredientService)
                 prompts[index].ObjectText = (if index <= 2 then "Protected slot " else "Slot ") .. index
                 prompts[index].ActionText = if state and state.Count > 0
-                    then "Take " .. state.IngredientId .. " (" .. state.Count .. "/5)"
+                    then (if state.ItemType == "Smoothie"
+                        then "Take smoothie"
+                        else "Take " .. state.IngredientId .. " (" .. state.Count .. "/5)")
                     else "Store ingredient"
             end
         end
@@ -77,7 +69,16 @@ function Stash.Init(services: any)
             end
             for _, slot in slots do
                 Presentation.Clear(slot)
-                for _, name in { "StashOwnerUserId", "StashIngredientId", "StashCount", "StashProtected" } do
+                for _, name in
+                    {
+                        "StashOwnerUserId",
+                        "StashIngredientId",
+                        "StashItemType",
+                        "StashCapacity",
+                        "StashCount",
+                        "StashProtected",
+                    }
+                do
                     slot:SetAttribute(name, nil)
                 end
             end

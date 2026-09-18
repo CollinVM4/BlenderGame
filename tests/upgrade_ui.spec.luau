@@ -18,6 +18,8 @@ local function signal()
 end
 local attributes = {
     playerCash = 425,
+    CarryCapacity = 1,
+    CarryCapacityLevel = 0,
     MovementSpeedLevel = 0,
     SprintStaminaLevel = 0,
     JumpLevel = 0,
@@ -76,7 +78,7 @@ local creates = 0
 modules.UpgradesGui = {
     Create = function()
         creates += 1
-        for _, id in { "MovementSpeed", "SprintStamina", "Jump" } do
+        for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity" } do
             view.Rows[id] = { Level = {}, Stat = {}, Purchase = { Activated = signal() } }
         end
         return view
@@ -123,15 +125,19 @@ end
 local display = load("UpgradeDisplay")
 for _, track in display.Tracks do
     local tiers = load("Upgrades")[track.Id]
-    for level = 0, 3 do
+    for level = 0, #tiers - 1 do
         local row = display.Row(track.Id, level, tiers[level + 1].Value)
         check(row.Level == level, "displayed level")
-        check(row.Max == (level == 3), "max level detection")
-        check(row.Price == (if level < 3 then tiers[level + 2].Cost else nil), "next price")
+        check(row.Max == (level == #tiers - 1), "max level detection")
+        check(row.Price == (if level < #tiers - 1 then tiers[level + 2].Cost else nil), "next price")
         check(
             row.Stat
                 == display.Stat(track.Id, tiers[level + 1].Value)
-                    .. (if level < 3 then " → " .. display.Stat(track.Id, tiers[level + 2].Value) else ""),
+                    .. (
+                        if level < #tiers - 1
+                            then " → " .. display.Stat(track.Id, tiers[level + 2].Value)
+                            else (if track.Id == "CarryCapacity" then " / 3" else "")
+                    ),
             "next stat"
         )
     end
@@ -156,11 +162,15 @@ local function result(id, success, reason)
         { upgradeId = id, success = success, reason = reason, level = 3 }
     )
 end
-for _, id in { "MovementSpeed", "SprintStamina", "Jump" } do
+for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity" } do
     local before = #sent
     click(id)
     check(
-        #sent == before + 1 and #sent[#sent] == 2 and sent[#sent][1] == "PurchaseUpgrade" and sent[#sent][2] == id,
+        #sent == before + 1
+            and #sent[#sent] == 3
+            and sent[#sent][3] == 2
+            and sent[#sent][1] == "PurchaseUpgrade"
+            and sent[#sent][2] == id,
         "exact request contract"
     )
     click(id)
@@ -175,7 +185,7 @@ check(view.Rows.MovementSpeed.Purchase.Text == "UPGRADED!", "success feedback")
 check(view.Rows.MovementSpeed.Level.Text == "Level 0" and view.Cash.Text == "$ 800", "result does not own state")
 set("MovementSpeedLevel", 1)
 set("BaseWalkSpeed", 25)
-check(view.Rows.MovementSpeed.Stat.Text == "25 → 28", "replication after response")
+check(view.Rows.MovementSpeed.Stat.Text == "25 → 30", "replication after response")
 result("Jump", false, "MaxLevel")
 local before = #sent
 click("Jump")
@@ -196,3 +206,18 @@ check(#sent == before + 1, "retry after timeout")
 timeout[2]()
 check(view.Rows.MovementSpeed.Purchase.Text == "BUYING…", "stale timer cannot clear new request")
 print(string.format("PASS: %d upgrade UI assertions.", count))
+
+result("MovementSpeed", true, "Success")
+click("CarryCapacity")
+check(sent[#sent][2] == "CarryCapacity" and sent[#sent][3] == 2, "carry requests next tier")
+result("CarryCapacity", true, "Success")
+set("CarryCapacityLevel", 1)
+set("CarryCapacity", 2)
+check(view.Rows.CarryCapacity.Level.Text == "Level 2", "carry level uses one-based label")
+click("CarryCapacity")
+check(sent[#sent][3] == 3, "carry requests third tier")
+result("CarryCapacity", true, "Success")
+set("CarryCapacityLevel", 2)
+set("CarryCapacity", 3)
+check(view.Rows.CarryCapacity.Stat.Text == "3 / 3" and view.Rows.CarryCapacity.Purchase.Text == "MAX", "carry max UI")
+print("PASS: carry upgrade integration")

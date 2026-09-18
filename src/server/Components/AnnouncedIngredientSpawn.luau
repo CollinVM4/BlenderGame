@@ -1,4 +1,5 @@
 --!strict
+--! Server script for announcing rare ingredient spawns to clients.
 local Events = game:GetService("ReplicatedStorage").Shared.Events
 local IngredientSpawn = require(script.Parent.IngredientSpawn)
 local AnnouncedIngredientSpawn = {}

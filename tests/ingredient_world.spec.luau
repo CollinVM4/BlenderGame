@@ -146,7 +146,7 @@ end
 local announcements = 0
 component.Init(spawnDeps)
 component.Bind(spawnDeps, "AnnouncedIngredientSpawn", function(_, id)
-    check(id == "GoldenApple", "rare announcement uses explicitly configured identity")
+    check(id == "GoldenTomato", "rare announcement uses explicitly configured identity")
     announcements += 1
 end)
 local normal = marker("Strawberry", 10)
@@ -159,7 +159,7 @@ timers[1].Run()
 check(#spawned == 2 and announcements == 0, "normal respawn stays silent")
 cleanup()
 check(spawned[2].Destroyed and #timers == 1, "cleanup destroys stock without scheduling a refill")
-local rare = marker("GoldenApple", 300)
+local rare = marker("GoldenTomato", 300)
 rare:SetAttribute("MinRespawnSeconds", 240)
 rare:SetAttribute("MaxRespawnSeconds", 360)
 local cleanRare = attachments.AnnouncedIngredientSpawn(rare)
@@ -206,6 +206,7 @@ setfenv(
                 Bind = function(_, tag, callback)
                     check(tag == "AnnouncedIngredientSpawn", "rare adapter binds only rare tag")
                     emittedCallback = callback
+                    component.Bind(spawnDeps, tag, callback)
                 end,
             }
         end,
@@ -215,7 +216,7 @@ local announced = announceChunk()
 announced.Init(deps)
 announced.Init(deps)
 rare:SetAttribute("LocationName", "Rainbow Cloud")
-emittedCallback(rare, "GoldenApple")
+emittedCallback(rare, "GoldenTomato")
 local remote = shared.Events:FindFirstChild("RareIngredientSpawned")
 local payload = presentation[#presentation].Moment
 check(
@@ -223,8 +224,8 @@ check(
     "rare adapter broadcasts presentation remote"
 )
 check(
-    payload.IngredientId == "GoldenApple"
-        and payload.DisplayName == "Golden Apple"
+    payload.IngredientId == "GoldenTomato"
+        and payload.DisplayName == "Golden Tomato"
         and payload.LocationName == "Rainbow Cloud",
     "rare payload uses server definition and authored location"
 )
@@ -266,10 +267,235 @@ check(
     inventory.GetHeldIngredientId(player) == nil and inventory.GetSnapshot(player).Stash[3].Count == 1,
     "stash stores one ID/count and clears hands"
 )
+-- Exercise reconstruction from a template with no authored PrimaryPart.
+template.Clone = clone
 check(inventory.Withdraw(player, 3), "stash withdrawal equips authored model visual")
+local heldTool = character:FindFirstChildOfClass("Tool")
+local heldModel = heldTool:FindFirstChildOfClass("Model")
+check(heldModel.PrimaryPart and heldModel.PrimaryPart.Name == "IngredientRoot", "stash carry resolves a physical root")
+for _, name in { "Leaf", "Fruit" } do
+    local child = heldModel:FindFirstChild(name)
+    local weld = child:FindFirstChild("IngredientAssembly")
+    check(weld and weld.Part0 == heldModel.PrimaryPart and weld.Part1 == child, "stash child welded to shared root")
+    check(
+        not child.Anchored and not child.CanTouch and not child.CanCollide,
+        "all carried children are passive visuals"
+    )
+    check(not ingredients.Resolve(child), "carried child is not a registered world ingredient")
+end
+check(inventory.GetCarryCount(player) == 1, "multipart stash reconstruction reserves one ingredient")
 local restored = inventory.ThrowHeld(player)
 check(
     restored:IsA("Model") and restored:FindFirstChild("Fruit").Size.Y == 3,
     "stash withdrawal and throw restore authored model size"
 )
+-- The real scanner must attempt each registered object once even on rejection.
+local heartbeat = signal()
+local scanInput = instance("Part")
+local scanModel = spawn()
+local scanPart = ingredients.Spawn("Banana", frame())
+scanInput.Overlaps =
+    { scanModel:FindFirstChild("Leaf"), scanModel:FindFirstChild("Fruit"), scanModel.PrimaryPart, scanPart }
+local attempts = {}
+local inputChunk = assert(loadstring(sources.BlenderInputComponent))
+setfenv(
+    inputChunk,
+    setmetatable({
+        script = { Parent = { Parent = { Services = parent } } },
+        game = {
+            GetService = function()
+                return { Heartbeat = heartbeat }
+            end,
+        },
+        require = function()
+            return {
+                BindTag = function(_, attach)
+                    attach(scanInput)
+                end,
+            }
+        end,
+    }, { __index = env })
+)
+inputChunk().Init({
+    IngredientService = ingredients,
+    TycoonService = {
+        GetOwner = function()
+            return player
+        end,
+    },
+    BlendService = {
+        TryInput = function(_, object)
+            attempts[object] = (attempts[object] or 0) + 1
+            return false
+        end,
+    },
+})
+heartbeat:Fire(0.1)
+check(attempts[scanModel] == 1, "rejected multipart ingredient attempted once per scan")
+check(attempts[scanPart] == 1, "single part attempted independently once")
+heartbeat:Fire(0.1)
+check(attempts[scanModel] == 2 and attempts[scanPart] == 2, "rejected ingredients retry on next scan")
+check(ingredients.GetRecord(scanModel) ~= nil, "rejected scan preserves whole model")
+local children = scanModel:GetDescendants()
+check(not ingredients.Consume(scanModel:FindFirstChild("Leaf")), "child cannot independently be consumed")
+check(ingredients.Consume(scanModel) == "Strawberry", "registered model consumes as one ingredient")
+for _, child in children do
+    check(child.Destroyed, "whole ingredient consumption leaves no child behind")
+end
+local singleVisual = ingredients.CreateVisual("Banana")
+check(singleVisual:IsA("BasePart") and #singleVisual:GetDescendants() == 0, "single visual has no added root or weld")
+-- Frozen stock uses the real spawn, authorization, carry and refill transaction.
+local pickupChunk = assert(loadstring(sources.IngredientPickupComponent))
+setfenv(
+    pickupChunk,
+    setmetatable({
+        script = { Parent = { Parent = { Services = parent } } },
+        require = function()
+            return world
+        end,
+    }, { __index = env })
+)
+pickupChunk().Init(deps)
+local appleTemplate = instance("MeshPart")
+appleTemplate.Name, appleTemplate.Parent = "Apple", templates
+appleTemplate.Anchored, appleTemplate.CanCollide, appleTemplate.CanTouch = false, true, false
+appleTemplate.Massless, appleTemplate.CustomPhysicalProperties = false, { Density = 2 }
+local function checkParts(object, anchored, message)
+    local parts = object:GetDescendants()
+    table.insert(parts, object)
+    for _, part in parts do
+        if part:IsA("BasePart") then
+            check(part.Anchored == anchored, message)
+        end
+    end
+end
+for _, setting in { "missing", false, true } do
+    local station = marker("Apple", 5)
+    if setting ~= "missing" then
+        station:SetAttribute("FreezeSpawnedItem", setting)
+    end
+    local clean = attachments.IngredientSpawn(station)
+    local apple = spawned[#spawned]
+    check(apple:IsA("MeshPart"), "single MeshPart template supported")
+    checkParts(apple, setting == true, "spawner boolean controls anchoring")
+    check(apple:GetAttribute("FrozenUntilPickup") == (if setting == true then true else nil), "outer freeze metadata")
+    check(apple.CanCollide and not apple.CanTouch and apple.CanQuery, "freeze preserves normal collision/touch/query")
+    check(
+        not apple.Massless and apple.CustomPhysicalProperties == appleTemplate.CustomPhysicalProperties,
+        "mass unchanged"
+    )
+    check(
+        ingredients.GetRecord(apple).Claimable and services.CollectionService:HasTag(apple, "IngredientWorldItem"),
+        "pickup eligibility retained"
+    )
+    clean()
+end
+check(
+    not appleTemplate.Anchored and appleTemplate:GetAttribute("FrozenUntilPickup") == nil,
+    "source MeshPart untouched"
+)
+
+for _, id in { "Apple", "Strawberry" } do
+    local station = marker(id, 5)
+    station:SetAttribute("FreezeSpawnedItem", true)
+    local clean = attachments.IngredientSpawn(station)
+    local frozen = spawned[#spawned]
+    local cleanPrompt = attachments.IngredientWorldItem(frozen)
+    local pickupPrompt = cache.WorldUtil.Part(frozen):FindFirstChild("CarryPrompt")
+    check(
+        pickupPrompt and pickupPrompt:GetAttribute("IngredientPickupPrompt") == true,
+        "frozen stock retains custom pickup prompt"
+    )
+    checkParts(frozen, true, "all runtime parts frozen including generated pivot root")
+    for _, child in frozen:GetDescendants() do
+        if child:IsA("BasePart") then
+            check(ingredients.Resolve(child) == frozen, "frozen child resolves registered outer object")
+        end
+    end
+    player.Near = false
+    pickupPrompt.Triggered:Fire(player)
+    check(
+        frozen:GetAttribute("FrozenUntilPickup") == true and inventory.GetCarryCount(player) == 0,
+        "failed prompt pickup stays frozen"
+    )
+    check(not inventory.CarryWorldItem(player, frozen), "distant frozen pickup rejected")
+    player.Near = true
+    humanoid.Health = 0
+    check(not inventory.CarryWorldItem(player, frozen), "dead frozen pickup rejected")
+    humanoid.Health = 100
+    backpack.Parent = nil
+    check(not inventory.CarryWorldItem(player, frozen), "missing backpack rejected")
+    backpack.Parent = player
+    setup(inventory.CarryWorldItem(player, ingredients.Spawn("Banana", frame())), "fill carry capacity")
+    check(not inventory.CarryWorldItem(player, frozen), "full carry rejects frozen pickup")
+    inventory.ClearHeld(player)
+    local addUnit = inventory.AddUnit
+    inventory.AddUnit = function()
+        return false
+    end
+    check(not inventory.CarryWorldItem(player, frozen), "failed unit reservation leaves stock")
+    inventory.AddUnit = addUnit
+    checkParts(frozen, true, "all failed validations preserve anchors")
+    check(
+        frozen:GetAttribute("FrozenUntilPickup") == true and ingredients.GetRecord(frozen) ~= nil,
+        "failed claim preserves frozen identity"
+    )
+    blend.Reset(player)
+    input.Overlaps = { cache.WorldUtil.Part(frozen) }
+    check(not blend.TryInput(player, frozen, input), "incidental blender overlap rejects frozen stock")
+    checkParts(frozen, true, "blender overlap leaves stock anchored")
+    pickupPrompt.Triggered:Fire(player)
+    check(
+        inventory.GetHeldIngredientId(player) == id and ingredients.GetRecord(frozen) == nil,
+        "successful prompt pickup transfers ownership without leaving world stock"
+    )
+    cleanPrompt()
+    local tool = character:FindFirstChildOfClass("Tool")
+    local visual = tool:FindFirstChild(id)
+    check(visual and visual:GetAttribute("FrozenUntilPickup") == nil, "carry clone clears frozen metadata")
+    checkParts(visual, false, "carry visual fully unanchored")
+    check(tool:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry") ~= nil, "existing carry weld takes over")
+    timers[#timers].Run()
+    local replacement = spawned[#spawned]
+    check(
+        replacement ~= frozen and replacement:GetAttribute("FrozenUntilPickup") == true,
+        "same station refills frozen"
+    )
+    checkParts(replacement, true, "replacement parts anchored")
+    station:SetAttribute("FreezeSpawnedItem", false)
+    replacement:Destroy()
+    timers[#timers].Run()
+    checkParts(spawned[#spawned], false, "refill re-reads current spawner preference")
+    clean()
+    local thrownFrozen = inventory.ThrowHeld(player)
+    checkParts(thrownFrozen, false, "throw after frozen pickup restores physics")
+    check(
+        thrownFrozen:GetAttribute("FrozenUntilPickup") == nil
+            and cache.WorldUtil.Part(thrownFrozen).AssemblyLinearVelocity.Y == 18,
+        "normal throw velocity and metadata"
+    )
+    check(inventory.CarryWorldItem(player, thrownFrozen), "thrown ingredient remains pickable")
+    local droppedFrozen = inventory.DropHeld(player)
+    checkParts(droppedFrozen, false, "drop after frozen pickup restores physics")
+    input.Overlaps = { cache.WorldUtil.Part(droppedFrozen) }
+    check(blend.TryInput(player, droppedFrozen, input), "released frozen ingredient ingests normally")
+    -- One frozen-origin stash flow is enough: multipart reconstruction is already
+    -- exercised above, and generic transfer validation belongs to stash tests.
+    if id == "Apple" then
+        local stashItem = ingredients.Spawn(id, frame(), nil, true, { FreezeUntilPickup = true })
+        setup(inventory.CarryWorldItem(player, stashItem), "carry frozen-origin stash fixture")
+        check(inventory.Deposit(player, id, 3) and inventory.Withdraw(player, 3), "frozen-origin stash round-trip")
+        inventory.ClearHeld(player)
+    end
+end
+check(not appleTemplate.Anchored and not template.PrimaryPart, "templates never acquire runtime anchors or root")
+for _, part in template:GetDescendants() do
+    check(not part.Anchored, "multipart template never anchored")
+end
+local frozenRare = marker("GoldenTomato", 5)
+frozenRare:SetAttribute("FreezeSpawnedItem", true)
+local cleanFrozenRare = attachments.AnnouncedIngredientSpawn(frozenRare)
+check(spawned[#spawned]:GetAttribute("FrozenUntilPickup") == true, "real announced adapter uses freeze option")
+checkParts(spawned[#spawned], true, "announced stock anchored")
+cleanFrozenRare()
 print("PASS: " .. count .. " ingredient world assertions.")

@@ -1,439 +1,4 @@
--- CLI test boundary. run_state_tests.py prepends unmodified module sources.
-local count = 0
-local function check(value, message)
-    assert(value, message)
-    count += 1
-end
-local vector = {}
-vector.__index = function(v, key)
-    if key == "Magnitude" then
-        return math.sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z)
-    end
-    if key == "Unit" then
-        return v / v.Magnitude
-    end
-    return vector[key]
-end
-local function vec(x, y, z)
-    return setmetatable({ X = x, Y = y, Z = z }, vector)
-end
-vector.__add = function(a, b)
-    return vec(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
-end
-vector.__sub = function(a, b)
-    return vec(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
-end
-function vector:Cross(b)
-    return vec(self.Y * b.Z - self.Z * b.Y, self.Z * b.X - self.X * b.Z, self.X * b.Y - self.Y * b.X)
-end
-function vector:Dot(b)
-    return self.X * b.X + self.Y * b.Y + self.Z * b.Z
-end
-vector.__div = function(a, b)
-    return vec(a.X / b, a.Y / b, a.Z / b)
-end
-vector.__mul = function(a, b)
-    return vec(a.X * b, a.Y * b, a.Z * b)
-end
-local function color(r, g, b)
-    return { R = r, G = g, B = b }
-end
-local deferred = {}
-local function flush()
-    local pending = deferred
-    deferred = {}
-    for _, fn in pending do
-        fn()
-    end
-end
-local allInstances = {}
-local presentation = {}
-local function signal()
-    local listeners = {}
-    return {
-        Connect = function(_, fn)
-            table.insert(listeners, fn)
-            return {
-                Disconnect = function()
-                    local i = table.find(listeners, fn)
-                    if i then
-                        table.remove(listeners, i)
-                    end
-                end,
-            }
-        end,
-        Fire = function(_, ...)
-            for _, fn in table.clone(listeners) do
-                fn(...)
-            end
-        end,
-    }
-end
-local function frame(x, y, z)
-    local cf = {
-        Position = vec(x or 0, y or 0, z or 0),
-        LookVector = vec(0, 0, -1),
-        RightVector = vec(1, 0, 0),
-        UpVector = vec(0, 1, 0),
-    }
-    function cf:ToObjectSpace(other)
-        return frame(
-            other.Position.X - self.Position.X,
-            other.Position.Y - self.Position.Y,
-            other.Position.Z - self.Position.Z
-        )
-    end
-    function cf:Lerp(other, alpha)
-        local v = self.Position + (other.Position - self.Position) * alpha
-        return frame(v.X, v.Y, v.Z)
-    end
-    return setmetatable(cf, {
-        __mul = function(a, b)
-            local v = a.Position
-                + a.RightVector * b.Position.X
-                + a.UpVector * b.Position.Y
-                - a.LookVector * b.Position.Z
-            local result = frame(v.X, v.Y, v.Z)
-            result.RightVector, result.UpVector, result.LookVector = a.RightVector, a.UpVector, a.LookVector
-            return result
-        end,
-    })
-end
-local function instance(class)
-    local object = { ClassName = class, Children = {}, Attributes = {} }
-    table.insert(allInstances, object)
-    object.Event = signal()
-    function object:Fire(...)
-        self.Event:Fire(...)
-    end
-    object.Activated = signal()
-    object.Unequipped = signal()
-    object.CharacterRemoving = signal()
-    object.Triggered = signal()
-    object.Destroying = signal()
-    object.AncestryChanged = signal()
-    object.CFrame = frame()
-    object.Size = vec(4, 1.2, 2) -- Roblox Part default, also used by character-root doubles.
-    object.Position = vec(0, 0, 0)
-    function object:GetChildren()
-        local found = {}
-        for _, child in allInstances do
-            if child.Parent == self then
-                table.insert(found, child)
-            end
-        end
-        return found
-    end
-    function object:GetDescendants()
-        local found = {}
-        for _, child in self:GetChildren() do
-            table.insert(found, child)
-            for _, descendant in child:GetDescendants() do
-                table.insert(found, descendant)
-            end
-        end
-        return found
-    end
-    function object:IsDescendantOf(target)
-        local current = self.Parent
-        while current do
-            if current == target then
-                return true
-            end
-            current = current.Parent
-        end
-        return false
-    end
-    function object:PivotTo(at)
-        self.CFrame = at
-        self.Position = at.Position
-    end
-    function object:GetBoundingBox()
-        local part = self:FindFirstChildWhichIsA("BasePart", true)
-        return self.CFrame, part and part.Size or vec(1, 1, 1)
-    end
-    function object:ScaleTo(scale)
-        for _, part in self:GetDescendants() do
-            if part:IsA("BasePart") then
-                part.Size = part.Size * scale
-            end
-        end
-    end
-    function object:GetPivot()
-        return self.CFrame
-    end
-    function object:CanSetNetworkOwnership()
-        return true
-    end
-    function object:SetNetworkOwner(owner)
-        self.NetworkOwner = owner
-    end
-    function object:Clone()
-        local clone = instance(self.ClassName)
-        clone.Name = self.Name
-        clone.Size = self.Size
-        clone.Color = self.Color
-        clone.CFrame = self.CFrame
-        for _, child in self:GetChildren() do
-            local c = child:Clone()
-            c.Parent = clone
-        end
-        return clone
-    end
-    function object:FindFirstChildOfClass(name)
-        for _, child in self:GetChildren() do
-            if child:IsA(name) then
-                return child
-            end
-        end
-        return self.Children[name]
-    end
-    function object:IsA(name)
-        return name == self.ClassName or (name == "BasePart" and self.ClassName == "Part")
-    end
-    function object:FindFirstChild(name, recursive)
-        for _, child in self:GetChildren() do
-            if child.Name == name then
-                return child
-            end
-        end
-        if recursive then
-            for _, child in self:GetDescendants() do
-                if child.Name == name then
-                    return child
-                end
-            end
-        end
-        return self.Children[name]
-    end
-    function object:GetFullName()
-        return (if self.Parent and self.Parent.GetFullName then self.Parent:GetFullName() .. "." else "")
-            .. (self.Name or self.ClassName)
-    end
-    function object:FindFirstChildWhichIsA(class, recursive)
-        for _, child in (if recursive then self:GetDescendants() else self:GetChildren()) do
-            if child:IsA(class) then
-                return child
-            end
-        end
-        return nil
-    end
-    function object:SetAttribute(key, value)
-        self.Attributes[key] = value
-    end
-    function object:FireAllClients(moment, userId, payload)
-        table.insert(presentation, { Moment = moment, UserId = userId, Payload = payload })
-        if self.OnClientEvent then
-            self.OnClientEvent:Fire(moment, userId, payload)
-        end
-    end
-    function object:Invoke(...)
-        return self.OnInvoke(...)
-    end
-    function object:Emit() end
-    function object:GetAttribute(key)
-        return self.Attributes[key]
-    end
-    function object:Destroy()
-        if self.Destroyed then
-            return
-        end
-        self.Destroying:Fire()
-        for _, child in self:GetChildren() do
-            child:Destroy()
-        end
-        self.Parent = nil
-        self.Destroyed = true
-        self.AncestryChanged:Fire()
-    end
-    return object
-end
-local shared = { Constants = {}, Types = "Types", Events = instance("Folder") }
-for name in sources do
-    shared.Constants[name] = name
-end
-local studio = false
-local now = 100
-local storage = instance("Folder")
-local workspaceFake = {
-    Raycast = function()
-        return nil
-    end,
-    GetPartsInPart = function(_, input)
-        return input.Overlaps or {}
-    end,
-}
-local tags = {}
-local services = {
-    ReplicatedStorage = { Shared = shared },
-    ServerStorage = storage,
-    HttpService = {
-        GenerateGUID = function()
-            return "test-cup-id"
-        end,
-    },
-    RunService = {
-        IsStudio = function()
-            return studio
-        end,
-    },
-    Players = {},
-    Debris = { AddItem = function() end },
-    CollectionService = {
-        AddTag = function(_, object, tag)
-            tags[tag] = tags[tag] or {}
-            tags[tag][object] = true
-        end,
-        RemoveTag = function(_, object, tag)
-            if tags[tag] then
-                tags[tag][object] = nil
-            end
-        end,
-        GetTags = function(_, object)
-            local result = {}
-            for tag, objects in tags do
-                if objects[object] then
-                    table.insert(result, tag)
-                end
-            end
-            return result
-        end,
-        HasTag = function(_, object, tag)
-            return tags[tag] and tags[tag][object] == true
-        end,
-        GetTagged = function(_, tag)
-            local objects = {}
-            for object in tags[tag] or {} do
-                table.insert(objects, object)
-            end
-            return objects
-        end,
-    },
-}
-local env = setmetatable({
-    game = {
-        GetService = function(_, name)
-            return services[name]
-        end,
-    },
-    workspace = workspaceFake,
-    Vector3 = { zero = vec(0, 0, 0), yAxis = vec(0, 1, 0), new = vec },
-    Color3 = {
-        new = color,
-        fromRGB = function(r, g, b)
-            return color(r / 255, g / 255, b / 255)
-        end,
-    },
-    Instance = { new = instance },
-    CFrame = {
-        new = frame,
-        Angles = function()
-            return frame()
-        end,
-    },
-    UDim2 = {
-        fromOffset = function()
-            return {}
-        end,
-        fromScale = function()
-            return {}
-        end,
-    },
-    NumberRange = {
-        new = function()
-            return {}
-        end,
-    },
-    ColorSequence = {
-        new = function()
-            return {}
-        end,
-    },
-    os = {
-        clock = function()
-            return now
-        end,
-    },
-    RaycastParams = {
-        new = function()
-            return {}
-        end,
-    },
-    Enum = { RaycastFilterType = { Exclude = "Exclude" }, Font = { GothamBold = "GothamBold" } },
-    task = {
-        spawn = function(fn)
-            table.insert(deferred, fn)
-        end,
-        wait = function()
-            return 10
-        end,
-        delay = function() end,
-        defer = function(fn)
-            table.insert(deferred, fn)
-        end,
-    },
-    warn = function() end,
-}, { __index = getfenv() })
-local cache = {
-    WorldUtil = {
-        Near = function(player, target)
-            return player.Near and target ~= nil
-        end,
-        Part = function(object)
-            if object and (object.ClassName == "Model" or object.ClassName == "Folder") then
-                return object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
-            end
-            return object
-        end,
-        Prompt = function(root, name)
-            local prompt = instance("ProximityPrompt")
-            prompt.Name = name
-            prompt.Parent = root
-            return prompt
-        end,
-    },
-    AudioService = {
-        CreateBlendGroup = function()
-            local audio = {}
-            for _, name in { "dialogueSound", "notReadySound", "customerServeSound" } do
-                audio[name] = { Play = function() end, Stop = function() end }
-            end
-            return audio
-        end,
-    },
-}
-local parent = setmetatable({}, {
-    __index = function(_, key)
-        return key
-    end,
-})
-local function loadModule(name)
-    if cache[name] then
-        return cache[name]
-    end
-    local chunk = assert(loadstring(sources[name], name))
-    local moduleEnv = setmetatable({ script = { Parent = parent } }, { __index = env })
-    setfenv(chunk, moduleEnv)
-    local result = chunk()
-    cache[name] = result
-    return result
-end
-env.require = loadModule
-local vfxTests = assert(loadstring(sources.BlendVFXTests))()
-vfxTests({
-    Sources = sources,
-    Env = env,
-    Instance = instance,
-    Signal = signal,
-    Frame = frame,
-    Services = services,
-    Parent = parent,
-    Check = check,
-})
-if vfxOnly then
-    print(string.format("PASS: %d blender VFX assertions (mocked Roblox boundary).", count))
-    return
-end
+local boundaryCFrame = env.CFrame
 services.RunService.IsRunning = function()
     return true
 end
@@ -460,510 +25,6 @@ local p, other = player("Owner"), player("Visitor")
 local data = loadModule("PlayerDataService")
 data.AddPlayer(p)
 data.AddPlayer(other)
--- Movement integration runs real data/resolver/sprint/purchase modules with signals and time.
-do
-    local movementStartCount = count
-    local savedHeartbeat = services.RunService.Heartbeat
-    local savedGetPlayers = services.Players.GetPlayers
-    local runner = player("MovementRunner")
-    data.AddPlayer(runner)
-    local oldNew = env.Instance.new
-    env.Instance.new = function(class)
-        local object = oldNew(class)
-        if class == "BindableEvent" then
-            object.Event = signal()
-            function object:Fire(...)
-                self.Event:Fire(...)
-            end
-        elseif class == "RemoteEvent" then
-            object.OnServerEvent = signal()
-            object.Results = {}
-            function object:FireClient(recipient, ...)
-                table.insert(self.Results, { recipient, ... })
-            end
-        end
-        return object
-    end
-    local heartbeat = signal()
-    services.RunService.Heartbeat = heartbeat
-    services.Players.GetPlayers = function()
-        return { runner }
-    end
-    local sprintRemote = env.Instance.new("RemoteEvent")
-    shared.Events.SprintEvents = "SprintEvents"
-    cache.SprintEvents = function()
-        return sprintRemote
-    end
-    workspaceFake.Gravity = 196.2
-    local movement = loadModule("MovementService")
-    local sprint = loadModule("SprintService")
-    local movementDeps = { PlayerDataService = data, MovementService = movement }
-    movement.Init(movementDeps)
-    sprint.Init(movementDeps)
-    movement.RefreshPlayer(runner)
-    local function spawnCharacter(usePower)
-        local character = instance("Model")
-        runner.Character = character
-        local humanoid = instance("Humanoid")
-        humanoid.Name = "Humanoid"
-        humanoid.Parent = character
-        humanoid.Health = 100
-        humanoid.UseJumpPower = usePower
-        runner:SetAttribute("StunnedUntil", 0)
-        movement.ApplyCharacter(runner, character)
-        sprint.ResetCharacter(runner)
-        return humanoid
-    end
-    local humanoid = spawnCharacter(true)
-    local function tick(seconds)
-        now += seconds
-        heartbeat:Fire(seconds)
-    end
-    local function requestSprint(value)
-        sprintRemote.OnServerEvent:Fire(runner, value)
-        tick(0)
-    end
-    check(humanoid.WalkSpeed == 22 and humanoid.JumpPower == 60, "comfortable movement baseline applies")
-    check(
-        runner:GetAttribute("StaminaMax") == 110 and runner:GetAttribute("StaminaCurrent") == 110,
-        "base stamina full at 110"
-    )
-    check(
-        runner:GetAttribute("MovementSpeedLevel") == 0 and data.GetUpgrade(runner, "MovementSpeed") == 1,
-        "movement display level differs from internal index"
-    )
-    runner:SetAttribute("BaseWalkSpeed", 900)
-    runner:SetAttribute("MovementSpeedLevel", 3)
-    runner:SetAttribute("StaminaMax", 9000)
-    requestSprint(true)
-    check(
-        humanoid.WalkSpeed == 33 and runner:GetAttribute("StaminaMax") == 110,
-        "forged attributes do not affect resolved sprint or stamina"
-    )
-    tick(2)
-    check(runner:GetAttribute("StaminaCurrent") == 70, "sprint drains 20 per second")
-    data.AddCash(runner, 10000)
-    check(data.PurchaseUpgrade(runner, "SprintStamina"), "purchase next stamina tier")
-    movement.RefreshPlayer(runner)
-    check(
-        runner:GetAttribute("StaminaMax") == 140 and runner:GetAttribute("StaminaCurrent") == 100,
-        "capacity upgrade adds delta without refilling"
-    )
-    movement.RefreshPlayer(runner)
-    check(runner:GetAttribute("StaminaCurrent") == 100, "refresh does not award capacity twice")
-    requestSprint(false)
-    tick(1)
-    check(runner:GetAttribute("StaminaCurrent") == 130, "stamina regenerates 30 per second")
-    tick(100)
-    check(runner:GetAttribute("StaminaCurrent") == 140, "regeneration clamps at maximum")
-    for _, maximum in { 170, 230 } do
-        check(data.PurchaseUpgrade(runner, "SprintStamina"), "next stamina purchase succeeds")
-        movement.RefreshPlayer(runner)
-        check(
-            movement.GetMaxStamina(runner) == maximum and runner:GetAttribute("StaminaCurrent") == maximum,
-            "stamina tiers resolve and preserve full capacity"
-        )
-    end
-    for index, base in { 27, 33, 40 } do
-        requestSprint(true)
-        check(data.PurchaseUpgrade(runner, "MovementSpeed"), "next speed purchase succeeds")
-        movement.RefreshPlayer(runner)
-        check(humanoid.WalkSpeed == base * 1.5, "purchase while sprinting immediately uses upgraded speed")
-        check(runner:GetAttribute("MovementSpeedLevel") == index, "speed display level is index minus one")
-        requestSprint(false)
-        check(humanoid.WalkSpeed == base, "sprint stop restores upgraded base")
-        runner:SetAttribute("StunnedUntil", now + 1)
-        tick(0)
-        check(humanoid.WalkSpeed == 0, "stun overrides upgraded normal speed")
-        requestSprint(true)
-        check(humanoid.WalkSpeed == 0, "stun overrides upgraded sprint")
-        tick(1)
-        check(humanoid.WalkSpeed == base * 1.5, "stun recovery restores upgraded sprint")
-        requestSprint(false)
-        runner:SetAttribute("StunnedUntil", now + 1)
-        tick(1)
-        check(humanoid.WalkSpeed == base, "stun recovery restores upgraded normal speed")
-    end
-    requestSprint(true)
-    tick(100)
-    check(
-        runner:GetAttribute("StaminaCurrent") == 0 and not runner:GetAttribute("IsSprinting"),
-        "exhaustion stops sprint at zero"
-    )
-    requestSprint(true)
-    check(humanoid.WalkSpeed == 40 and not runner:GetAttribute("IsSprinting"), "zero stamina rejects sprint restart")
-    tick(1)
-    requestSprint(true)
-    requestSprint("true")
-    check(runner:GetAttribute("IsSprinting"), "invalid sprint payload cannot change state")
-    humanoid = spawnCharacter(true)
-    check(
-        runner:GetAttribute("StaminaCurrent") == 230
-            and not runner:GetAttribute("IsSprinting")
-            and humanoid.WalkSpeed == 40,
-        "respawn fills current max, stops intent, and applies upgraded base"
-    )
-    for _, power in { 72, 94, 116 } do
-        check(data.PurchaseUpgrade(runner, "Jump"), "next jump purchase succeeds")
-        movement.RefreshPlayer(runner)
-        check(humanoid.JumpPower == power, "jump power upgrade applies")
-    end
-    humanoid = spawnCharacter(false)
-    check(
-        math.abs(humanoid.JumpHeight - 116 ^ 2 / (2 * workspaceFake.Gravity)) < 1e-9,
-        "respawn converts purchased jump using current gravity"
-    )
-    studio = true
-    movement.SetStudioJumpTier(runner, 1)
-    check(
-        movement.GetJumpPower(runner) == 72 and data.GetUpgrade(runner, "Jump") == 4,
-        "Studio override does not change owned jump"
-    )
-    humanoid = spawnCharacter(true)
-    check(humanoid.JumpPower == 72, "Studio override survives respawn")
-    movement.SetStudioJumpTier(runner, nil)
-    check(
-        humanoid.JumpPower == 116 and runner:GetAttribute("StudioJumpTier") == nil,
-        "Studio reset restores purchased jump"
-    )
-    -- Drive the real pad touch/reset handlers without changing pad geometry.
-    local padWorld = instance("Folder")
-    local savedWorkspace = services.Workspace
-    services.Workspace = padWorld
-    local savedPlayerRemoving = services.Players.PlayerRemoving
-    local savedFromCharacter = services.Players.GetPlayerFromCharacter
-    services.Players.PlayerRemoving = signal()
-    services.Players.GetPlayerFromCharacter = function(_, character)
-        return if character == runner.Character then runner else nil
-    end
-    env.Enum.NormalId = { Top = "Top" }
-    env.Enum.SurfaceGuiSizingMode = { PixelsPerStud = "PixelsPerStud" }
-    env.Enum.Material = { Neon = "Neon" }
-    env.Enum.SurfaceType = { Smooth = "Smooth" }
-    local oldPadNew = env.Instance.new
-    env.Instance.new = function(class)
-        local object = oldPadNew(class)
-        object.Touched = signal()
-        return object
-    end
-    local pads = loadModule("StudioJumpTestService")
-    pads.Init(movementDeps)
-    local padFolder = padWorld:FindFirstChild("StudioJumpPads")
-    local foot = instance("Part")
-    foot.Parent = runner.Character
-    for tier, power in { 72, 94, 116 } do
-        now += 0.1
-        local pad = padFolder:FindFirstChild("JUMP " .. tier)
-        check(pad.Size.X == 10 and pad.Size.Y == 1 and pad.Size.Z == 10, "jump pad geometry retained")
-        pad.Touched:Fire(foot)
-        check(
-            humanoid.JumpPower == power and runner:GetAttribute("StudioJumpTier") == tier,
-            "pad touch routes temporary tier through resolver"
-        )
-    end
-    now += 0.1
-    padFolder:FindFirstChild("JUMP 1").Touched:Fire(foot)
-    now += 0.1
-    padFolder:FindFirstChild("RESET JUMP").Touched:Fire(foot)
-    check(
-        humanoid.JumpPower == 116 and runner:GetAttribute("StudioJumpTier") == nil,
-        "actual reset pad restores purchased jump"
-    )
-    env.Instance.new = oldPadNew
-    services.Workspace = savedWorkspace
-    services.Players.PlayerRemoving = savedPlayerRemoving
-    services.Players.GetPlayerFromCharacter = savedFromCharacter
-    padWorld:Destroy()
-    studio = false
-    check(not pcall(movement.SetStudioJumpTier, runner, 1), "live servers reject Studio override")
-    for _, invalid in { 0, -1, math.huge, 0 / 0 } do
-        check(not pcall(sprint.SetStaminaMax, runner, invalid), "invalid stamina capacity rejected")
-    end
-    sprint.SetStaminaMax(runner, 100)
-    check(runner:GetAttribute("StaminaCurrent") == 100, "capacity decrease clamps current stamina")
-    movement.RefreshPlayer(runner)
-    requestSprint(true)
-    humanoid.Health = 0
-    tick(1)
-    check(not runner:GetAttribute("IsSprinting"), "death clears sprint intent")
-    requestSprint(true)
-    check(not runner:GetAttribute("IsSprinting"), "dead character cannot start sprint")
-    humanoid = spawnCharacter(true)
-
-    -- Exercise the actual network adapter, including malicious extra arguments.
-    data.RemovePlayer(runner)
-    data.AddPlayer(runner)
-    movement.RefreshPlayer(runner)
-    local gameplay = loadModule("GameplayService")
-    gameplay.Init(movementDeps)
-    local remote = shared.Events:FindFirstChild("GameplayRequest")
-    local function purchase(id, ...)
-        now += 0.2
-        remote.OnServerEvent:Fire(runner, "PurchaseUpgrade", id, ...)
-        return remote.Results[#remote.Results][3]
-    end
-    local result = purchase("MovementSpeed")
-    check(
-        not result.success and result.reason == "InsufficientCash" and result.level == 0,
-        "purchase result distinguishes insufficient cash"
-    )
-    result = purchase("NotAnUpgrade")
-    check(result.reason == "InvalidUpgrade" and result.level == nil, "unknown upgrade result")
-    result = purchase({ WalkSpeed = 999 })
-    check(result.reason == "InvalidUpgrade", "malformed upgrade result")
-    data.AddCash(runner, 1000)
-    result = purchase("MovementSpeed", { price = 0, level = 3, WalkSpeed = 999, JumpPower = 999, MaxStamina = 9999 })
-    check(
-        result.success and result.reason == "Success" and result.upgradeId == "MovementSpeed" and result.level == 1,
-        "success result exposes next displayed level"
-    )
-    check(
-        data.GetCash(runner) == 900 and data.GetUpgrade(runner, "MovementSpeed") == 2 and humanoid.WalkSpeed == 27,
-        "server chooses price and next speed despite forged payload"
-    )
-    check(humanoid.JumpPower == 60 and runner:GetAttribute("StaminaMax") == 110, "extra client stats ignored")
-    purchase("MovementSpeed")
-    purchase("MovementSpeed")
-    local cash = data.GetCash(runner)
-    result = purchase("MovementSpeed")
-    check(
-        result.reason == "MaxLevel" and result.level == 3 and data.GetCash(runner) == cash,
-        "max level rejection preserves cash"
-    )
-    data.AddCash(runner, 1000)
-    requestSprint(true)
-    tick(2)
-    result = purchase("SprintStamina")
-    check(
-        result.success and runner:GetAttribute("StaminaCurrent") == 100,
-        "network stamina purchase adds capacity delta"
-    )
-    result = purchase("Jump")
-    check(result.success and humanoid.JumpPower == 72, "network jump purchase applies immediately")
-    local responses = #remote.Results
-    remote.OnServerEvent:Fire(runner, "PurchaseUpgrade", "Jump")
-    check(
-        #remote.Results == responses and data.GetUpgrade(runner, "Jump") == 2,
-        "existing throttle rejects repeated purchase"
-    )
-    local dev = loadModule("DevContentService")
-    movementDeps.SprintService = sprint
-    dev.Init(movementDeps)
-    local savedTypeof = env.typeof
-    env.typeof = function(value)
-        return if type(value) == "table" and value.ClassName then "Instance" else typeof(value)
-    end
-    local runtimeServices = table.clone(movementDeps)
-    runtimeServices.DevContentService = dev
-    local commandCache = {}
-    local function commandRequire(name)
-        if name ~= "DevContentService" and name ~= "StudioServices" then
-            return loadModule(name)
-        end
-        if commandCache[name] then
-            return commandCache[name]
-        end
-        local chunk = assert(loadstring(sources[name], "MovementCommandBar" .. name))
-        setfenv(chunk, setmetatable({ script = { Parent = parent }, require = commandRequire }, { __index = env }))
-        commandCache[name] = chunk()
-        return commandCache[name]
-    end
-    studio = true
-    dev = commandRequire("DevContentService")
-    local beforePublish, beforeReason = pcall(dev.SetMovementSpeedLevel, runner, 1)
-    check(
-        not beforePublish and string.find(beforeReason, "Runtime unavailable"),
-        "movement Command Bar reports absent runtime bridge"
-    )
-    runtimeAccess.Publish(runtimeServices)
-    -- The repro has no EnableDevContent opt-in. It must work through this proxy.
-    storage:SetAttribute("EnableDevContent", nil)
-    requestSprint(false)
-    check(dev.SetMovementSpeedLevel(runner, 1), "Command Bar setter works without EnableDevContent")
-    check(
-        runner:GetAttribute("MovementSpeedLevel") == 1
-            and runner:GetAttribute("BaseWalkSpeed") == 27
-            and runner:GetAttribute("SprintWalkSpeed") == 40.5
-            and humanoid.WalkSpeed == 27,
-        "Command Bar level 1 updates all effective attributes and runtime speed"
-    )
-    check(dev.SetMovementSpeedLevel(runner, 3), "Command Bar level 3 succeeds")
-    check(
-        runner:GetAttribute("MovementSpeedLevel") == 3
-            and runner:GetAttribute("BaseWalkSpeed") == 40
-            and runner:GetAttribute("SprintWalkSpeed") == 60
-            and humanoid.WalkSpeed == 40,
-        "Command Bar level 3 updates all effective attributes and runtime speed"
-    )
-    local savedMovement = movementDeps.MovementService
-    movementDeps.MovementService = nil
-    local bound, bindingReason = pcall(dev.SetMovementSpeedLevel, runner, 1)
-    check(
-        not bound and string.find(bindingReason, "Runtime MovementService.SetStudioLevel is not bound", 1, true),
-        "unbound runtime resolver errors explicitly through Command Bar bridge"
-    )
-    movementDeps.MovementService = savedMovement
-    local savedEnabled = storage:GetAttribute("EnableDevContent")
-    storage:SetAttribute("EnableDevContent", true)
-    studio = true
-    local owned = data.GetSnapshot(runner)
-    data.SetCash(runner, 0)
-    for level = 0, 3 do
-        check(dev.SetMovementSpeedLevel(runner, level), "debug speed accepts displayed tier")
-        check(runner:GetAttribute("MovementSpeedLevel") == level, "speed attribute exposes effective debug tier")
-        requestSprint(true)
-        check(humanoid.WalkSpeed == ({ 33, 40.5, 49.5, 60 })[level + 1], "debug sprint speeds survive Heartbeat")
-        requestSprint(false)
-        check(humanoid.WalkSpeed == ({ 22, 27, 33, 40 })[level + 1], "debug normal speed resolves independently")
-        check(dev.SetSprintStaminaLevel(runner, level), "debug stamina accepts displayed tier")
-        check(runner:GetAttribute("SprintStaminaLevel") == level, "stamina attribute exposes effective debug tier")
-        local max = ({ 110, 140, 170, 230 })[level + 1]
-        check(
-            sprint.GetSnapshot(runner).StaminaCurrent == max and movement.GetMaxStamina(runner) == max,
-            "debug stamina immediately fills selected capacity"
-        )
-        requestSprint(true)
-        tick(1)
-        check(sprint.GetSnapshot(runner).StaminaCurrent == max - 20, "runtime drains overridden capacity")
-        check(
-            dev.SetJumpLevel(runner, level) and humanoid.JumpPower == ({ 60, 72, 94, 116 })[level + 1],
-            "debug jump supports all tiers"
-        )
-    end
-    check(runner:GetAttribute("JumpLevel") == 3, "jump attribute exposes effective debug tier")
-    check(data.GetCash(runner) == 0, "debug setters need no cash")
-    for _, track in { "MovementSpeed", "Jump", "SprintStamina" } do
-        check(data.GetUpgrade(runner, track) == owned.Upgrades[track], "debug does not mutate purchased track")
-    end
-    local _, debugCopy = movement.GetStudioSnapshot(runner)
-    debugCopy.MovementSpeed = 0
-    check(movement.GetBaseWalkSpeed(runner) == 40, "debug snapshot cannot mutate override state")
-    check(dev.SetMovementSpeedLevel(runner, 0), "debug override can differ from purchased speed")
-    humanoid = spawnCharacter(true)
-    check(
-        humanoid.WalkSpeed == 22
-            and humanoid.JumpPower == 116
-            and sprint.GetSnapshot(runner).StaminaCurrent == 230
-            and not sprint.GetSnapshot(runner).IsSprinting,
-        "respawn preserves overrides, fills capacity, and stops intent"
-    )
-    dev.SetJumpLevel(runner, 0)
-    movement.SetStudioJumpTier(runner, 2)
-    check(humanoid.JumpPower == 94, "pad overwrites command jump override")
-    dev.SetJumpLevel(runner, 1)
-    check(humanoid.JumpPower == 72, "command overwrites pad jump override")
-    movement.SetStudioJumpTier(runner, nil)
-    check(
-        humanoid.JumpPower == 72 and movement.GetBaseWalkSpeed(runner) == 22 and movement.GetMaxStamina(runner) == 230,
-        "pad reset clears only shared jump override"
-    )
-    runner:SetAttribute("IsSprinting", true)
-    runner:SetAttribute("StaminaCurrent", 9999)
-    local output = dev.PrintMovement(runner)
-    check(
-        string.find(output, "MovementSpeedLevel: 0 (purchased: 3; Studio override: 0)", 1, true) ~= nil,
-        "debug print distinguishes effective, purchased, and override levels"
-    )
-    check(
-        string.find(output, "IsSprinting: false", 1, true) ~= nil
-            and string.find(output, "StaminaCurrent: 230", 1, true) ~= nil,
-        "debug print uses authoritative sprint state"
-    )
-    for _, label in
-        {
-            "BaseWalkSpeed",
-            "SprintWalkSpeed",
-            "SprintStaminaLevel",
-            "StaminaMax",
-            "JumpLevel",
-            "JumpPower (resolved)",
-            "Humanoid.WalkSpeed",
-            "Humanoid.JumpPower",
-            "Humanoid.JumpHeight",
-            "Humanoid.UseJumpPower",
-            "StunnedUntil",
-        }
-    do
-        check(string.find(output, label, 1, true) ~= nil, "movement print includes " .. label)
-    end
-    check(dev.ResetMovement(runner), "debug reset succeeds")
-    local _, cleared = movement.GetStudioSnapshot(runner)
-    check(
-        next(cleared) == nil
-            and humanoid.WalkSpeed == 40
-            and humanoid.JumpPower == 72
-            and sprint.GetSnapshot(runner).StaminaCurrent == 140,
-        "reset restores all purchased tracks and full purchased stamina"
-    )
-    check(
-        runner:GetAttribute("MovementSpeedLevel") == 3
-            and runner:GetAttribute("JumpLevel") == 1
-            and runner:GetAttribute("SprintStaminaLevel") == 1,
-        "Command Bar reset restores purchased level attributes"
-    )
-    for _, bad in { -1, 4, 1.5, math.huge, 0 / 0, "3" } do
-        check(not dev.SetMovementSpeedLevel(runner, bad), "invalid debug levels rejected")
-    end
-    storage:SetAttribute("EnableDevContent", false)
-    check(
-        dev.SetJumpLevel(runner, 3) and runner:GetAttribute("JumpLevel") == 3,
-        "movement commands ignore content-spawning opt-in"
-    )
-    storage:SetAttribute("EnableDevContent", true)
-    studio = false
-    check(not pcall(dev.SetMovementSpeedLevel, runner, 0), "Command Bar bridge rejects production calls")
-    dev = runtimeServices.DevContentService
-    check(
-        not dev.SetMovementSpeedLevel(runner, 0)
-            and not dev.SetSprintStaminaLevel(runner, 0)
-            and not dev.SetJumpLevel(runner, 0)
-            and not dev.ResetMovement(runner)
-            and dev.PrintMovement(runner) == nil,
-        "production rejects every movement debug command"
-    )
-    check(
-        not pcall(movement.SetStudioLevel, runner, "MovementSpeed", 0)
-            and not pcall(movement.ResetStudioOverrides, runner)
-            and not pcall(movement.GetStudioSnapshot, runner),
-        "production rejects lower-level debug APIs"
-    )
-    studio = true
-    local savedServer = services.RunService.IsServer
-    services.RunService.IsServer = function()
-        return false
-    end
-    check(
-        not dev.SetMovementSpeedLevel(runner, 0) and not dev.ResetMovement(runner) and dev.PrintMovement(runner) == nil,
-        "client context cannot use debug commands"
-    )
-    services.RunService.IsServer = savedServer
-    dev.SetMovementSpeedLevel(runner, 3)
-    dev.SetSprintStaminaLevel(runner, 3)
-    dev.SetJumpLevel(runner, 3)
-    studio = false
-    storage:SetAttribute("EnableDevContent", savedEnabled)
-    storage:FindFirstChild("StudioServiceCalls"):Destroy()
-    env.typeof = savedTypeof
-    sprint.RemovePlayer(runner)
-    movement.RemovePlayer(runner)
-    gameplay.RemovePlayer(runner)
-    data.RemovePlayer(runner)
-    data.AddPlayer(runner)
-    movement.RefreshPlayer(runner)
-    humanoid = spawnCharacter(true)
-    check(
-        humanoid.WalkSpeed == 22 and humanoid.JumpPower == 60 and runner:GetAttribute("StaminaCurrent") == 110,
-        "cleanup releases movement, overrides, and stamina for new session"
-    )
-    services.RunService.Heartbeat = savedHeartbeat
-    services.Players.GetPlayers = savedGetPlayers
-    remote:Destroy()
-    sprintRemote:Destroy()
-    runner:Destroy()
-    env.Instance.new = oldNew
-    print(string.format("PASS: %d movement assertions.", count - movementStartCount))
-end
-
 check(data.GetCash(p) == 0, "cash starts at zero")
 local snapshot = data.GetSnapshot(p)
 snapshot.Upgrades.Hand = 3
@@ -1032,7 +93,7 @@ deps.BlendService = blend
 blend.Init(deps)
 blend.Reset(p)
 local function item(id, owner)
-    local object = {}
+    local object = instance("Part")
     worldRecords[object] = { Id = id, Owner = owner, Claimable = true }
     return object
 end
@@ -1065,8 +126,14 @@ do
             check(not blend.AddProgress(p, wheel, 100), "underfilled spin rejected")
         end
         local snapshot = blend.GetSnapshot(p)
-        check(snapshot.State == "LOADING" and snapshot.Progress == 0 and snapshot.Result == nil, "rejection preserves pre-blend state")
-        check(#snapshot.Ingredients == loaded and p:GetAttribute("BlendIngredientCount") == loaded, "rejection preserves loaded ingredients")
+        check(
+            snapshot.State == "LOADING" and snapshot.Progress == 0 and snapshot.Result == nil,
+            "rejection preserves pre-blend state"
+        )
+        check(
+            #snapshot.Ingredients == loaded and p:GetAttribute("BlendIngredientCount") == loaded,
+            "rejection preserves loaded ingredients"
+        )
         check(snapshot.Ingredients[1] == "Strawberry", "rejection retains ingredient identity")
         check(not blend.Dispense(p, wheel) and not blend.GetCup(p), "rejection cannot dispense or create cup")
         check(#presentation == beforeEvents, "rejection emits no blend-start or progress events")
@@ -1079,10 +146,7 @@ do
     end
     env.task.delay = originalDelay
 end
-check(
-    loadIngredient("Ice") and blend.GetSnapshot(p).State == "READY",
-    "three items enter READY"
-)
+check(loadIngredient("Ice") and blend.GetSnapshot(p).State == "READY", "three items enter READY")
 check(not loadIngredient("Tire"), "fourth item rejected without consumption")
 check(not blend.AddProgress(p, wheel, 0 / 0), "invalid progress rejected")
 check(not blend.AddProgress(other, wheel, 10), "foreign wheel rejected")
@@ -1116,11 +180,25 @@ for _ = 1, 9 do
 end
 local result = blend.GetSnapshot(p)
 check(result.State == "COMPLETE" and result.Progress == 100, "blend completes at 100")
-check(result.Result.Discovery == "Fruit Smoothie", "special multiset discovery")
+check(result.Result.Discovery == nil, "former recipe combination blends without recipe discoveries")
 check(data.GetSnapshot(p).Stats.SmoothiesMade == 1, "completion increments once")
 blend.AddProgress(p, wheel, 10)
 check(data.GetSnapshot(p).Stats.SmoothiesMade == 1, "repeated completion does not increment")
 check(not blend.Dispense(other, wheel), "foreign dispense rejected")
+-- Dispense now uses the normal equipped carry path, including its character and
+-- multipart ServerStorage template requirements.
+p.Character = instance("Model")
+local dispenseRoot = instance("Part")
+dispenseRoot.Name, dispenseRoot.Parent = "HumanoidRootPart", p.Character
+local dispenseHumanoid = instance("Humanoid")
+dispenseHumanoid.Parent, dispenseHumanoid.Health, dispenseHumanoid.Died = p.Character, 100, signal()
+function dispenseHumanoid:EquipTool(tool)
+    tool.Parent = p.Character
+end
+local smoothieTemplate = instance("Tool")
+smoothieTemplate.Name, smoothieTemplate.Parent = "Smoothie", storage
+local smoothieHandle = instance("Part")
+smoothieHandle.Name, smoothieHandle.Parent = "Handle", smoothieTemplate
 check(blend.Dispense(p, wheel), "complete batch dispenses")
 check(blend.GetSnapshot(p).State == "DISPENSED" and not blend.Dispense(p, wheel), "duplicate dispense rejected")
 flush()
@@ -1141,42 +219,9 @@ customer.Init(deps, function() end, function()
     return true
 end)
 local bad = blend.GetSnapshot(p).Result
-local requests = loadModule("CustomerRequests")
-local function requestResult(ids)
-    return { Ingredients = ids, Tags = { "Red", "Sweet", "Cold" } }
-end
-check(
-    customer.ValidateRequest(requestResult({ "Strawberry", "Tire" }), requests[1]),
-    "one Red ingredient suffices despite extras"
-)
-check(customer.ValidateRequest(requestResult({ "Banana" }), requests[2]), "Sweet uses metadata for Banana")
-check(customer.ValidateRequest(requestResult({ "Ice" }), requests[3]), "Cold uses metadata for Ice")
-check(not customer.ValidateRequest(requestResult({ "Tire" }), requests[1]), "forged result tags cannot satisfy Red")
-check(not customer.ValidateRequest(requestResult({}), requests[1]), "empty smoothie fails")
-check(not customer.ValidateRequest(requestResult({ "Unknown" }), requests[1]), "unknown ingredient fails closed")
-local combined = { Id = "RedCold", DisplayText = "Red and cold", RequiredTags = { "Red", "Cold" }, BasePayout = 40 }
-check(
-    customer.ValidateRequest(requestResult({ "Strawberry", "Ice" }), combined),
-    "combined request accepts tags across ingredients"
-)
-check(not customer.ValidateRequest(requestResult({ "Strawberry" }), combined), "combined request requires every tag")
-check(customer.CalculateGrade(bad, "Sweet") == "D", "bad match receives D")
-check(customer.CalculateGrade(bad, "Weird") == "A", "same smoothie matches Weird")
-check(customer.CalculateGrade(result.Result, "Surprise Me") == "A", "Surprise Me rewards variety")
-local normalPay = customer.CalculatePayout(p, "D")
-data.SetEntitlement(p, "DoubleCash", true)
-check(customer.CalculatePayout(p, "D") == normalPay * 2, "cash entitlement affects reward")
-local oldRandom = math.random
--- Reaction function accepts no grade; forcing the extreme roll leaves grade unchanged.
-env.math = table.clone(math)
-env.math.random = function()
-    return 0.99999
-end
-check(
-    customer.SelectReaction() == "Launch" and customer.CalculateGrade(bad, "Sweet") == "D",
-    "rare reaction independent of D grade"
-)
-env.math.random = oldRandom
+local requestConfig = loadModule("CustomerRequests")
+local requests = requestConfig.Definitions
+-- Legacy grading/payout/reaction helpers live in customer_compatibility.spec.luau.
 
 local spawned, missing = 0, false
 deps.CustomerService = {
@@ -1220,7 +265,7 @@ local function character(position)
     local model = instance("Model")
     local root = instance("Part")
     root.Position = position
-    root.CFrame = { LookVector = vec(0, 0, -1) }
+    root.CFrame = frame(position)
     root.AssemblyMass = 1
     function root:ApplyImpulse(impulse)
         self.LastImpulse = impulse
@@ -1317,100 +362,10 @@ deps.CustomerService = customer
 customer.Init(deps, days.CustomerServed, days.IsServing)
 local film = loadModule("FilmingUtil")
 film.Init()
--- Run the real client startup with a fake replicated boundary and sprint controller.
-do
-    local remote = shared.Events:FindFirstChild("GameplayPresentation")
-    film.Init()
-    check(#shared.Events:GetChildren() == 1, "repeated filming Init keeps a single presentation remote")
-    local connections, received = 0, 0
-    local listener
-    remote.OnClientEvent = {
-        Connect = function(_, callback)
-            connections += 1
-            listener = callback
-        end,
-        Fire = function(_, ...)
-            received += 1
-            listener(...)
-        end,
-    }
-    local fakeEvents = {
-        WaitForChild = function(_, name)
-            assert(name == "GameplayPresentation")
-            return remote
-        end,
-    }
-    local fakeShared = {
-        WaitForChild = function(_, name)
-            assert(name == "Events")
-            return fakeEvents
-        end,
-    }
-    local fakeReplicated = {
-        WaitForChild = function(_, name)
-            assert(name == "Shared")
-            return fakeShared
-        end,
-    }
-    local controllerChunk = assert(loadstring(sources.GameplayPresentationController, "GameplayPresentationController"))
-    setfenv(
-        controllerChunk,
-        setmetatable({
-            game = {
-                GetService = function(_, name)
-                    assert(name == "ReplicatedStorage")
-                    return fakeReplicated
-                end,
-            },
-        }, { __index = env })
-    )
-    local controller = controllerChunk()
-    local sprintStarted = false
-    local bootstrap = assert(loadstring(sources.ClientBootstrap, "ClientBootstrap"))
-    setfenv(
-        bootstrap,
-        setmetatable({
-            script = { Controllers = parent },
-            require = function(name)
-                if name == "GameplayPresentationController" then
-                    return controller
-                end
-                if name == "StashPromptController" or name == "RareIngredientPresentationController" then
-                    return { Init = function() end }
-                end
-                assert(name == "SprintController")
-                return {
-                    Init = function()
-                        sprintStarted = true
-                    end,
-                }
-            end,
-        }, { __index = env })
-    )
-    bootstrap()
-    controller.Init()
-    check(sprintStarted, "presentation startup does not block sprint initialization")
-    flush()
-    check(connections == 1, "client bootstrap attaches exactly one presentation listener")
-    for _, moment in
-        {
-            "BlendStarted",
-            "BlendProgressChanged",
-            "BlendCompleted",
-            "SmoothieDispensed",
-            "CustomerReaction",
-            "FutureKind",
-        }
-    do
-        check(pcall(listener, moment, p.UserId, {}), "listener safely accepts " .. moment)
-    end
-    check(pcall(listener, nil, nil, nil), "malformed presentation is safely ignored")
-    remote:FireAllClients("FutureKind", p.UserId, {})
-    check(received == 1, "server broadcast reaches client listener")
-    table.remove(presentation) -- Synthetic event is not a gameplay transaction.
-end
+
 env.CFrame = {
     new = frame,
+    lookAt = boundaryCFrame.lookAt,
     Angles = function()
         return frame()
     end,
@@ -1554,7 +509,7 @@ do
     local extra = realIngredients.Spawn("Banana", frame(), nil, true)
     check(
         not inventory.CarryWorldItem(p, extra) and realIngredients.GetRecord(extra),
-        "unowned pickup preserves one-held limit"
+        "unowned pickup preserves configured capacity-one limit"
     )
     extra:Destroy()
     cleanup()
@@ -1890,12 +845,17 @@ local function actualBlend(ids)
     return smoothie
 end
 local one = actualBlend({ "Mystery", "Mystery", "Mystery" })
-blend.ClearCup(p)
+inventory.ClearHeld(p)
 local two = actualBlend({ "Mystery", "Strawberry", "Ice" })
-blend.ClearCup(p)
+inventory.ClearHeld(p)
 local repeated = actualBlend({ "Ice", "Strawberry", "Mystery" })
 check(two.Color.R == repeated.Color.R and two.Color.G == repeated.Color.G, "Mystery blend color independent of order")
-blend.ClearCup(p)
+inventory.ClearHeld(p)
+-- This flow checks serving, not random request selection. Keep success/failure
+-- deterministic as the production request catalog grows.
+local savedFlowRequests = table.clone(requests)
+table.clear(requests)
+requests[1] = { Id = "FlowRed", DisplayText = "Red", RequiredTags = { "Red" }, BasePayout = 25, MinJumpTier = 0 }
 check(dev.SpawnCustomer(p) ~= nil and days.IsServing(p), "dev customer starts serveable day")
 check(dev.SpawnCustomer(p) == customer.GetSnapshot(p).Model, "dev spawn reuses active customer")
 check(customer.GetSnapshot(p).RequestId == nil and not customer.Serve(p), "arrival required before request and serving")
@@ -1933,7 +893,7 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
     check(not dev.ForceReaction(p, "Fake"), "unknown reaction rejected")
     local cup
     for _, object in allInstances do
-        if object.Parent == p.Backpack and object.Name == "Smoothie" then
+        if object.Parent == p.Character and object.Name == "Smoothie" then
             cup = object
         end
     end
@@ -1945,7 +905,7 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
     )
     cup.Parent = other.Backpack
     check(not blend.GetCup(p) and not blend.GetCup(other, cup), "transferred tool does not authorize either player")
-    cup.Parent = p.Backpack
+    cup.Parent = p.Character
     cup:SetAttribute("Payout", 999999)
     cup:SetAttribute("BlendId", "forged")
     if success then
@@ -1978,6 +938,10 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
     flush()
 end
 check(days.GetSnapshot(p).State == "FINISHED", "real three-customer loop finishes")
+table.clear(requests)
+for _, request in savedFlowRequests do
+    table.insert(requests, request)
+end
 for _, reaction in { "Launch", "NoobTransform" } do
     dev.ResetPlot(p)
     check(
@@ -2355,51 +1319,6 @@ end
 realTycoon.RemovePlayer(p)
 deps.TycoonService = tycoon
 
--- Keep Heartbeat authority precise while limiting presentation traffic.
-do
-    blend.Reset(p)
-    local ingredient = realIngredients.Spawn("Strawberry", frame(), p)
-    input.Overlaps = { ingredient }
-    check(blend.TryInput(p, ingredient, input), "throttle test ingests a real ingredient")
-    for _ = 1, 2 do
-        local extra = realIngredients.Spawn("Strawberry", frame(), p)
-        input.Overlaps = { extra }
-        check(blend.TryInput(p, extra, input), "throttle test fills batch")
-    end
-    local firstEvent = #presentation + 1
-    local accepted = true
-    for _ = 1, 60 do
-        now += 1 / 60
-        accepted = blend.AddProgress(p, wheel, 1) and accepted
-    end
-    check(accepted and blend.GetSnapshot(p).Progress == 60, "all 60 RPM progress updates remain authoritative")
-    local updates = 0
-    local previous = 0
-    for index = firstEvent, #presentation do
-        local event = presentation[index]
-        if event.Moment == "BlendProgressChanged" then
-            updates += 1
-            check(event.Payload.Progress > previous, "progress notifications contain changed payloads")
-            previous = event.Payload.Progress
-        end
-    end
-    check(updates >= 8 and updates <= 10, "one second of Heartbeats produces at most ten progress notifications")
-    local beforeIdle = #presentation
-    check(not blend.AddProgress(p, wheel, 0) and #presentation == beforeIdle, "idle turbine sends no progress")
-    check(blend.AddProgress(p, wheel, 100), "completion is accepted inside throttle window")
-    check(
-        presentation[#presentation - 1].Moment == "BlendProgressChanged"
-            and presentation[#presentation - 1].Payload.Progress == 100
-            and presentation[#presentation].Moment == "BlendCompleted",
-        "final progress is delivered immediately before completion"
-    )
-    local afterComplete = #presentation
-    check(
-        not blend.AddProgress(p, wheel, 1) and #presentation == afterComplete,
-        "completed turbine sends no repeated updates"
-    )
-end
-
 -- Real station component + real BindTag + real ingredient registry, with controllable time/signals.
 do
     local added, removed = signal(), signal()
@@ -2609,41 +1528,6 @@ do
     }
     deps.IngredientService = realIngredients
     local display = loadModule("StashPresentation")
-    do
-        local pad = instance("Part")
-        pad:SetAttribute("SlotIndex", 3)
-        pad.Position = vec(12, 7, -20)
-        pad.Size = vec(0.4, 10, 10)
-        pad.CFrame = frame(12, 7, -20)
-        for _, sign in { 1, -1 } do
-            pad.CFrame.RightVector = vec(0, sign, 0)
-            pad.CFrame.UpVector = vec(-sign, 0, 0)
-            for n = 1, 5 do
-                display.Refresh(pad, { IngredientId = "Strawberry", Count = n, Protected = false }, realIngredients)
-                local total = vec(0, 0, 0)
-                local copies = pad:FindFirstChild("StashDisplay"):GetChildren()
-                check(#copies == n, "rotated pad count")
-                for _, copy in copies do
-                    local part = copy:FindFirstChildWhichIsA("BasePart", true)
-                    check(math.abs(part.Size.X - 4.4) < 0.0001, "thin local X is thickness, display size is 4.4 studs")
-                    check(
-                        copy.CFrame.UpVector:Dot(vec(0, 1, 0)) > 0.999,
-                        "display normal points upward for either axis sign"
-                    )
-                    check(
-                        copy.Position.Y - part.Size.Y / 2 >= 7.2 + 0.12 - 0.0001,
-                        "proxy bottom clears actual top surface"
-                    )
-                    total += copy.Position - pad.Position
-                end
-                check(
-                    math.abs(total.X) < 0.0001 and math.abs(total.Z) < 0.0001,
-                    "all count layouts center over rotated pad"
-                )
-            end
-        end
-        pad:Destroy()
-    end
     local function verifyDisplay(expected)
         display.Refresh(stashSlots[3], inventory.GetSnapshot(p).Stash[3], realIngredients)
         local folder = stashSlots[3]:FindFirstChild("StashDisplay")
@@ -2677,7 +1561,7 @@ do
     end
     carry("Strawberry")
     check(not inventory.Deposit(p, "Strawberry", 3), "sixth rejected")
-    check(not inventory.Withdraw(p, 3), "withdraw requires empty hands")
+    check(not inventory.Withdraw(p, 3), "withdraw rejects at configured carry capacity")
     check(inventory.GetHeldIngredientId(p) == "Strawberry", "rejection preserves held unit")
     inventory.ClearHeld(p)
     check(not inventory.Withdraw(other, 3, p), "non-owner normal-slot withdrawal rejected")

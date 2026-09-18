@@ -14,6 +14,7 @@ function PlayerDataService.AddPlayer(player: Player)
         Cash = 0,
         Upgrades = {
             Hand = 1,
+            CarryCapacity = 1,
             StackSize = 1,
             BlendSpeed = 1,
             Payout = 1,
@@ -27,6 +28,8 @@ function PlayerDataService.AddPlayer(player: Player)
     entitlements[player] = { VIPStorage = false, DoubleCash = false }
     player:SetAttribute("playerCash", 0)
     player:SetAttribute("HasSmoothie", false)
+    player:SetAttribute("CarryCapacity", 1)
+    player:SetAttribute("CarryCapacityLevel", 0)
     for _, id in { "MovementSpeed", "Jump", "SprintStamina" } do
         player:SetAttribute(id .. "Level", 0)
     end
@@ -56,12 +59,15 @@ end
 function PlayerDataService.GetUpgrade(player: Player, id: string): number
     return (data(player).Upgrades :: any)[id] or 1
 end
-function PlayerDataService.PurchaseUpgrade(player: Player, id: string): (boolean, string?)
+function PlayerDataService.PurchaseUpgrade(player: Player, id: string, requestedLevel: number?): (boolean, string?)
     local levels = (Upgrades :: any)[id]
     if not levels then
         return false, "InvalidUpgrade"
     end
     local nextLevel = PlayerDataService.GetUpgrade(player, id) + 1
+    if id == "CarryCapacity" and requestedLevel ~= nextLevel then
+        return false, "InvalidLevel"
+    end
     local definition = levels[nextLevel]
     if not definition then
         return false, "MaxLevel"
@@ -72,6 +78,10 @@ function PlayerDataService.PurchaseUpgrade(player: Player, id: string): (boolean
     PlayerDataService.SetCash(player, data(player).Cash - definition.Cost)
     local ownedUpgrades = data(player).Upgrades :: any
     ownedUpgrades[id] = nextLevel
+    if id == "CarryCapacity" then
+        player:SetAttribute("CarryCapacity", definition.Value)
+        player:SetAttribute("CarryCapacityLevel", nextLevel - 1)
+    end
     if id == "MovementSpeed" or id == "Jump" or id == "SprintStamina" then
         player:SetAttribute(id .. "Level", nextLevel - 1)
     end

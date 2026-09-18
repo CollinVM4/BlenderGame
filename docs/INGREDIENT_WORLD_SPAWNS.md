@@ -76,6 +76,7 @@ After editing attributes during Play, remove and re-add the tag to rebind.
 | --- | --- | --- |
 | IngredientId (String) | Strawberry | Required definition ID; no rarity pool |
 | RespawnSeconds (Number) | 10 | Positive finite delay; default 5 |
+| FreezeSpawnedItem (Boolean) | true | Optional; holds this marker's runtime stock fixed until successful pickup. Missing/false keeps normal physics. |
 
 The pivot spawns three studs above the marker's local top face. This preserves
 existing marker placement; allow extra clearance for large authored fruit. Use a
@@ -83,7 +84,7 @@ transparent noncolliding marker over a solid surface if a visible block is unwan
 Place common ingredients deliberately on lower rings and rarer ingredients at
 specific higher/hidden locations, each with its own timer. Normal spawns are silent.
 
-Legacy MarketPedestal uses the same attributes but keeps its previous one-stud
+Legacy MarketPedestal uses IngredientId/RespawnSeconds but keeps its previous one-stud
 top clearance and default Economy.MarketRespawnSeconds (12). Its one-second poll
 can add up to one second before starting/refilling the cooldown after ordinary pickup.
 
@@ -101,6 +102,7 @@ this refactor adds no jump progression or island geometry.
 | RespawnSeconds (Number) | 300 | Fixed cooldown when no valid min/max pair is set |
 | MinRespawnSeconds (Number) | 240 | Optional minimum delay |
 | MaxRespawnSeconds (Number) | 360 | Optional maximum, at least the minimum |
+| FreezeSpawnedItem (Boolean) | true | Same optional freeze behavior as normal ingredient markers |
 
 A valid positive finite min/max pair overrides RespawnSeconds for rare markers
 only. Missing/invalid fixed delay defaults to 5, so configure rare cooldowns
@@ -190,3 +192,170 @@ Unrelated existing failures, left unchanged:
 - `tests/server_state.spec.luau`: updates market contract and new controller mock.
 - `docs/MVP_ARCHITECTURE.md`: replaces obsolete weighted-market description.
 - `docs/INGREDIENT_WORLD_SPAWNS.md` (new): audit, setup, migration, and validation report.
+
+## Frozen tree stock
+
+Studio setup (the marker itself must be a BasePart):
+
+```text
+Workspace
+└── AppleTree
+    └── AppleSpawner [tag: IngredientSpawn]
+        Attributes:
+            IngredientId = "Apple"       (String)
+            FreezeSpawnedItem = true      (Boolean)
+            RespawnSeconds = 5           (Number, optional)
+```
+
+Anchor the marker. Position it so its existing spawn transform,
+`AppleSpawner.CFrame * CFrame.new(0, AppleSpawner.Size.Y / 2 + 3, 0)`, places
+the apple pivot on the branch. The offset is unchanged. No tree weld or template
+anchoring is needed. Use only one spawn tag; `AnnouncedIngredientSpawn` supports
+the same Boolean. Market stock remains loose.
+
+`IngredientSpawn.Bind` reads `FreezeSpawnedItem == true` for each new copy and
+passes `FreezeUntilPickup` to `IngredientService.Spawn`. Unlike the ID/timer
+configuration, changing this Boolean affects the next refill without rebinding;
+it does not change existing stock. Spawn marks the registered outer MeshPart or
+Model `FrozenUntilPickup = true` and anchors every BasePart, including a generated
+pivot root for Models without a PrimaryPart. Only runtime clones change. Existing
+welds, tags, identity, mass, collision/touch settings and pickup prompts are retained;
+normal spawn preparation still enables CanQuery.
+
+Pickup remains `IngredientPickup` -> `InventoryService.CarryWorldItem`. After
+validation and unit reservation, `ClaimWorldItem` calls `Consume(object, true)`:
+the service removes registration, unanchors all original parts, clears the frozen
+attribute and destroys the consumed world object. `IngredientCarryPresentation.Attach`
+clears the cloned visual's attribute and unanchors its parts before joining the
+character assembly. The transaction is synchronous, so no physics frame occurs
+between release and carry. Failed validation/reservation preserves frozen stock.
+Drop/throw creates an ordinary world copy; stash uses the existing ID/count flow.
+
+Vacuum rejects anchored assemblies; blender intake explicitly rejects frozen stock.
+Contact does not release it. Existing lifetime expiry, removal, cleanup and respawn
+rules still apply. A replacement is frozen again while the marker Boolean is true.
+
+Regression coverage lives in the existing ingredient world, carry, prompt and vacuum
+suites. In Studio, additionally verify the visible prompt on a branch, bump/contact
+stability, multipart pickup without character anchoring, throw/drop into a blender,
+stash round trip, and frozen refill. CLI mocks do not simulate Roblox physics.
+
+Validation for frozen stock: ingredient world/prompt integration passed 176 assertions;
+carry passed 221; vacuum passed 642. All 70 source files compiled, changed server
+modules passed Roblox-aware Luau LSP checking, StyLua passed on touched Luau files,
+Rojo build passed, and `git diff --check` passed. Full-source type checking still
+reports four errors in unchanged `StashPromptController.luau` (lines 16, 36 and 39).
+The standalone prompt UI suite fails at `rarity Uncommon`; the full state suite
+fails at `start clears copies and cancels arrival` in blend VFX. Both test failures
+were reproduced in a temporary baseline without the frozen-stock changes. No Studio
+physics playtest was performed.
+
+Files changed for this feature:
+- `src/server/Components/IngredientSpawn.luau`
+- `src/server/Services/IngredientService.luau`
+- `src/server/Services/InventoryService.luau`
+- `src/server/Services/IngredientCarryPresentation.luau`
+- `src/server/Services/BlendService.luau`
+- `tests/ingredient_world.spec.luau`
+- `tests/ingredient_prompt.spec.luau`
+- `tests/blender_vacuum.spec.luau`
+- `tests/server_state.spec.luau` (clone physics and MeshPart mock fidelity)
+- `docs/INGREDIENT_WORLD_SPAWNS.md`
+
+`AnnouncedIngredientSpawn` and `IngredientPickup` retain their existing adapters;
+their shared spawn and inventory paths provide the new behavior.
+
+## Studio Spawn Preview
+
+This is a true **Edit-mode Command Bar utility**, following the other `docs/studio`
+authoring tools. It is not a runtime Script or an automatically installed plugin.
+`docs/studio/IngredientSpawnPreview.luau` is outside `default.project.json` and is
+not included in the Rojo place build. The utility checks `RunService:IsStudio()`
+and `RunService:IsEdit()`, and disconnects/removes its visuals on leaving Edit
+(including entering Play/Run or a paused test). The container is non-Archivable so
+it is excluded from saving and cloning. See Roblox's [RunService API](https://create.roblox.com/docs/reference/engine/classes/RunService)
+and [Instance.Archivable contract](https://create.roblox.com/docs/reference/engine/classes/Instance#Archivable).
+
+1. Sync the project with Rojo in Studio and remain in **Edit mode**.
+2. Create an anchored BasePart marker and tag it `IngredientSpawn` (or, for an
+   announced marker, only `AnnouncedIngredientSpawn`). Configure it like this:
+
+```text
+Workspace
+└── AppleTree
+    └── AppleSpawner [IngredientSpawn]
+        Attributes:
+            IngredientId = "Apple"        (String)
+            FreezeSpawnedItem = true      (Boolean)
+            ShowSpawnPreview = true       (Boolean)
+```
+
+3. Open Studio's **Command Bar**, paste the entire contents of
+   [`studio/IngredientSpawnPreview.luau`](studio/IngredientSpawnPreview.luau), and
+   execute it once. The Apple template must exist in `ServerStorage.Ingredients`.
+4. Move, rotate, or resize the marker until the translucent apple sits on the
+   branch. Updates are live; no retagging or Play session is required. The cyan
+   arrow beside the ghost points along the marker's **local forward (-Z)**.
+5. Press Play. Previews are removed and the authoritative frozen runtime Apple
+   uses the same placement. Pickup/carry/throw/drop are unchanged. After stopping
+   Play, paste/run the utility again to start a new editing session.
+
+`ShowSpawnPreview` missing/false creates no ghost and never affects gameplay.
+Preview visibility is independent of `FreezeSpawnedItem`, so loose spawns can also
+be authored with this tool. Both runtime and preview call
+`IngredientSpawn.GetSpawnCFrame(marker)`:
+`marker.CFrame * CFrame.new(0, marker.Size.Y / 2 + 3, 0)`.
+Both also call the extracted `IngredientGeometry.CreateVisual` path for template
+cloning, sanitization and generated Model pivot roots. `IngredientService.CreateVisual`
+retains its API. Geometry is not rescaled or reoriented independently of runtime.
+
+Ghosts live under `Workspace._IngredientSpawnPreviews`. Each group has a
+`SourceMarker` ObjectValue linking to its actual marker, so duplicate names work.
+Parts are anchored, locked, at least 0.5 transparent, and noncolliding, nontouching
+and nonqueryable. More-transparent authored parts remain so. Scripts, interaction
+objects, joints/constraints and gameplay tags/attributes are removed. Ghosts are
+never registered with IngredientService and never receive pickup prompts. Source
+templates are untouched; the runtime item remains the only authoritative stock.
+
+Marker CFrame/Size, IngredientId, ShowSpawnPreview, name and ancestry changes update
+live. Template property/pivot/geometry changes and template replacement trigger a
+coalesced rebuild. Deletion, tag removal, hiding, or an invalid/missing template
+removes the ghost; invalid configuration warns once until it changes. The preview
+intentionally shows no ghost for missing geometry, even though runtime retains its
+existing fallback cube. Fix the template to preview the intended authored asset.
+
+To force a rebuild in the current Edit session:
+
+```lua
+_G.IngredientSpawnPreview.Refresh()
+```
+
+To remove all previews and disconnect all listeners:
+
+```lua
+_G.IngredientSpawnPreview.Stop()
+```
+
+Re-running the full utility also safely replaces its previous session. Deleting
+its container stops the session; rerun to restore it. A same-named unrelated
+container is not deleted: rename it before starting the utility. If shared Luau
+source was changed after it was already required in the Command Bar, reopen the
+place to clear Studio's module cache before starting a fresh session.
+
+Preview changes in this pass: `IngredientSpawn.luau` (shared transform),
+`IngredientService.luau` and new `IngredientGeometry.luau` (unchanged clone preparation
+extracted for Edit-mode reuse), new `docs/studio/IngredientSpawnPreview.luau`, new
+`tests/spawn_preview.spec.luau` and `tests/run_spawn_preview_tests.py`, plus this guide.
+No Rojo mapping or runtime bootstrap change is required.
+
+Preview validation: `python tests/run_spawn_preview_tests.py --luau <luau>` passes
+52 mocked-Studio assertions, including runtime/helper parity, rotated and resized
+markers, MeshPart/Model templates, ghost safety, duplicate names, live template
+updates, warnings and cleanup. Existing world (176), carry (221), and vacuum (642)
+assertions pass. All current source files plus the utility compile (71 files in
+this validation), changed code and the utility pass Roblox-aware type checking,
+StyLua passes, Rojo build passes, and `git diff --check` passes. Full-source checking
+still reports the four existing `StashPromptController.luau` type errors and a
+`LoadCharacterAppearance` deprecation warning. A Studio visual/physics playtest has
+not been performed; verify an actual tree preview against its frozen runtime stock
+and confirm Play/Stop cleanup in Studio using the workflow above.

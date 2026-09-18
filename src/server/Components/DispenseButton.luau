@@ -10,6 +10,9 @@ function DispenseButton.Init(services: any)
             return nil
         end
         local prompt = WorldUtil.Prompt(part, "DispensePrompt", "Dispense smoothie")
+        prompt:SetAttribute("InteractionOrigin", "DispenserTextOrigin")
+        prompt:SetAttribute("InteractionActionText", "DISPENSE")
+        prompt.Style = Enum.ProximityPromptStyle.Custom
         local audio = AudioService.CreateBlendGroup(part)
         local connection = prompt.Triggered:Connect(function(player)
             if services.TycoonService.GetOwner(part) ~= player then

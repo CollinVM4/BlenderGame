@@ -96,22 +96,12 @@ function MovementService.SetStudioLevel(player: Player, track: string, level: nu
     local levels = overrides[player] or {}
     levels[track] = level
     overrides[player] = levels
-    if track == "Jump" then
-        player:SetAttribute("StudioJumpTier", level)
-    end
     MovementService.RefreshPlayer(player)
-end
-
--- Pads and Command Bar commands share one jump override. Last setter wins.
-function MovementService.SetStudioJumpTier(player: Player, tier: number?)
-    assert(tier == nil or (tier >= 1 and tier <= 3 and tier == math.floor(tier)), "Invalid Studio jump tier")
-    MovementService.SetStudioLevel(player, "Jump", tier)
 end
 
 function MovementService.ResetStudioOverrides(player: Player)
     assertStudioServer()
     overrides[player] = nil
-    player:SetAttribute("StudioJumpTier", nil)
     MovementService.RefreshPlayer(player)
 end
 
