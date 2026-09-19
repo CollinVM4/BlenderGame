@@ -434,9 +434,9 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Jynxzi",
-    DisplayText = "Bazalright.. need MILK to sleep before bed!",
+    DisplayText = "Bazalright.. this kitten needs MILK to sleep before bed!",
     GoodResponse = "wait, it's clocking sisters..!",
-    BadResponse = "HIIIIVISEEEE GET ME OUTT OF HERE!",
+    BadResponse = "HIIIIVISEEEE GET A DIFFERENT SMOOTHIE!",
     RequiredTags = { "Milk" },
     BasePayout = 105,
     MinJumpTier = 2,
@@ -450,6 +450,26 @@ table.insert(requests, {
     RequiredTags = { "Protein" },
     BasePayout = 105,
     MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Brooke",
+    DisplayText = "LET ME TELL YOU SOMTHING..! I want it RED!",
+    GoodResponse = "Thanks, Daffodil!",
+    BadResponse = "This isnt what I asked for!",
+    RequiredTags = { "Red" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "Verity",
+    DisplayText = "LET ME TELL YOU SOMTHING..! I want it RED!",
+    GoodResponse = "Thanks, Daffodil!",
+    BadResponse = "This isnt what I asked for!",
+    RequiredTags = { "Red" },
+    BasePayout = 105,
+    MinJumpTier = 0,
     NPCOnly = true,
 })
 table.insert(requests, {
@@ -482,6 +502,77 @@ table.insert(requests, {
     MinJumpTier = 1,
     NPCOnly = true,
 })
+table.insert(requests, {
+    Id = "TotallyNotKreek",
+    DisplayText = "Alright chat... make me something RED, and throw in FAST FOOD!",
+    GoodResponse = "Okayyy, you actually cooked!",
+    BadResponse = "Bro... I said RED AND FAST FOOD. We gotta lock in!",
+    RequiredTags = { "Red", "Fast Food" },
+    BasePayout = 105,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "DefinitelyNotCaylus",
+    DisplayText = "Make me the CRAZIEST smoothie possible. I want something WEIRD and SWEET!",
+    GoodResponse = "Okay... that's actually insane.",
+    BadResponse = "Nahhh, that wasn't crazy enough!",
+    RequiredTags = { "Weird", "Sweet" },
+    BasePayout = 105,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "NotFlamingo",
+    DisplayText = "I want something WEIRD... and absolutely NO FRUIT.",
+    GoodResponse = "Excellent. This should not exist.",
+    BadResponse = "Too normal. I expected worse.",
+    RequiredTags = { "Weird" },
+    ForbiddenTags = { "Fruit" },
+    BasePayout = 125,
+    MinJumpTier = 1,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "FoltynMaybe",
+    DisplayText = "Gimme something SWEET and COLD. Don't sell.",
+    GoodResponse = "W smoothie.",
+    BadResponse = "Nah bro, we're running that back.",
+    RequiredTags = { "Sweet", "Cold" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "TotallyNotSketch",
+    DisplayText = "Okay buddy... something YELLOW and SWEET. Easy enough, right?",
+    GoodResponse = "Beautiful. Absolutely beautiful.",
+    BadResponse = "Yeahhh... that ain't it.",
+    RequiredTags = { "Yellow", "Sweet" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "NotFunneh",
+    DisplayText = "Can I get something PURPLE and ICE COLD?",
+    GoodResponse = "Okayyy, this is actually really good!",
+    BadResponse = "Nooo! You forgot something!",
+    RequiredTags = { "Purple", "Cold" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
+table.insert(requests, {
+    Id = "ProbablyNotRusso",
+    DisplayText = "I need something BLUE and expensive-looking. Surprise me.",
+    GoodResponse = "Okay definitely worth the Robux.",
+    BadResponse = "I spent WHAT on this?!",
+    RequiredTags = { "Blue" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
 
 local CustomerRequests = {
     Definitions = requests,
@@ -504,28 +595,24 @@ local CustomerRequests = {
             RequestId = "Blueman",
             Weight = 1,
         },
-
         prankster = {
             Type = "Special",
             DisplayName = "Edgar",
             RequestId = "Prankster",
             Weight = 1,
         },
-
         pirate = {
             Type = "Special",
             DisplayName = "Pirate",
             RequestId = "Pirate",
             Weight = 1,
         },
-
         caseoh = {
             Type = "Special",
             DisplayName = "dookieman12",
             RequestId = "Caseoh",
             Weight = 1,
         },
-
         walter = {
             Type = "Special",
             DisplayName = "Walter White",
@@ -536,6 +623,48 @@ local CustomerRequests = {
             Type = "Special",
             DisplayName = "Junko",
             RequestId = "Jynxzi",
+            Weight = 1,
+        },
+        totallynotkreek = {
+            Type = "Special",
+            DisplayName = "TotallyNotKreek",
+            RequestId = "TotallyNotKreek",
+            Weight = 1,
+        },
+        caylus = {
+            Type = "Special",
+            DisplayName = "DefinitelyNotCaylus",
+            RequestId = "DefinitelyNotCaylus",
+            Weight = 1,
+        },
+        flamingo = {
+            Type = "Special",
+            DisplayName = "NotFlamingo",
+            RequestId = "NotFlamingo",
+            Weight = 1,
+        },
+        foltyn = {
+            Type = "Special",
+            DisplayName = "FoltynMaybe",
+            RequestId = "FoltynMaybe",
+            Weight = 1,
+        },
+        sketch = {
+            Type = "Special",
+            DisplayName = "TotallyNotSketch",
+            RequestId = "TotallyNotSketch",
+            Weight = 1,
+        },
+        funneh = {
+            Type = "Special",
+            DisplayName = "NotFunneh",
+            RequestId = "NotFunneh",
+            Weight = 1,
+        },
+        russo = {
+            Type = "Special",
+            DisplayName = "ProbablyNotRusso",
+            RequestId = "ProbablyNotRusso",
             Weight = 1,
         },
     } :: {
