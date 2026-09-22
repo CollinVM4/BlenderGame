@@ -69,8 +69,24 @@ validate({ "sWeEt", "COLD" }, { "sPiCy" }, { "Strawberry", "Ice" }, true)
 validate({ "Cold" }, { "fast food" }, { "Ice", "Hamburger" }, false, "Contains forbidden tag: fast food")
 validate({ "Sweet" }, { "SWEET" }, { "Strawberry" }, false, "Contains forbidden tag: SWEET")
 validate({}, nil, { "Strawberry" }, false, "Empty request")
+-- Wildcards accept every catalog ingredient, without bypassing other constraints.
+for id in loadModule("Ingredients") do
+    validate({ "*" }, nil, { id }, true)
+end
+validate({ "*" }, nil, {}, false, "Empty smoothie")
+validate({ "*" }, nil, { "Unknown" }, false, "Unknown ingredient: Unknown")
+validate({ "*", "Cold" }, nil, { "Strawberry" }, false, "Missing required tag: Cold")
+validate({ "*", "Cold" }, nil, { "Ice" }, true)
+validate({ "*" }, { "Spicy" }, { "Chili_Pepper" }, false, "Contains forbidden tag: Spicy")
+check(customer.ValidateRequest(requestResult({ "Banana" }), requestsById.Nathan), "Nathan accepts a non-blue smoothie")
 
-local function ingredientRequest(requiredIngredients, forbiddenIngredients, exactIngredients, requiredTags, forbiddenTags)
+local function ingredientRequest(
+    requiredIngredients,
+    forbiddenIngredients,
+    exactIngredients,
+    requiredTags,
+    forbiddenTags
+)
     return {
         Id = "IngredientValidation",
         DisplayText = "Test",
@@ -83,7 +99,16 @@ local function ingredientRequest(requiredIngredients, forbiddenIngredients, exac
         MinJumpTier = 0,
     }
 end
-local function validateIngredients(requiredIngredients, forbiddenIngredients, exactIngredients, ids, expected, reason, requiredTags, forbiddenTags)
+local function validateIngredients(
+    requiredIngredients,
+    forbiddenIngredients,
+    exactIngredients,
+    ids,
+    expected,
+    reason,
+    requiredTags,
+    forbiddenTags
+)
     local success, actualReason = customer.ValidateRequest(
         requestResult(ids),
         ingredientRequest(requiredIngredients, forbiddenIngredients, exactIngredients, requiredTags, forbiddenTags)
@@ -95,23 +120,74 @@ local function validateIngredients(requiredIngredients, forbiddenIngredients, ex
 end
 
 validateIngredients({ "Apple", "Ice" }, nil, nil, { "Apple", "Ice", "Banana" }, true)
-validateIngredients({ "Apple", "Lemon" }, nil, nil, { "Apple", "Banana", "Ice" }, false, "Missing required ingredient: Lemon")
+validateIngredients(
+    { "Apple", "Lemon" },
+    nil,
+    nil,
+    { "Apple", "Banana", "Ice" },
+    false,
+    "Missing required ingredient: Lemon"
+)
 validateIngredients({ "Apple" }, nil, nil, { "Apple", "Banana" }, true, nil, { "Sweet" })
 validateIngredients({ "Apple" }, nil, nil, { "Apple", "Ice" }, false, "Missing required tag: Sweet", { "Sweet" })
-validateIngredients(nil, { "Banana" }, nil, { "Apple", "Banana" }, false, "Contains forbidden ingredient: Banana", { "Fruit" })
-validateIngredients({ "Apple" }, { "Banana" }, nil, { "Apple", "Banana" }, false, "Contains forbidden ingredient: Banana", { "Fruit" }, { "Milk" })
+validateIngredients(
+    nil,
+    { "Banana" },
+    nil,
+    { "Apple", "Banana" },
+    false,
+    "Contains forbidden ingredient: Banana",
+    { "Fruit" }
+)
+validateIngredients(
+    { "Apple" },
+    { "Banana" },
+    nil,
+    { "Apple", "Banana" },
+    false,
+    "Contains forbidden ingredient: Banana",
+    { "Fruit" },
+    { "Milk" }
+)
 validateIngredients({ "Apple", "Banana", "Ice" }, nil, true, { "Ice", "Apple", "Banana" }, true)
-validateIngredients({ "Apple", "Banana", "Ice" }, nil, true, { "Apple", "Banana", "Ice", "Strawberry" }, false, "Exact ingredient mismatch")
-validateIngredients({ "Apple", "Banana", "Ice" }, nil, true, { "Apple", "Banana" }, false, "Missing required ingredient: Ice")
-validateIngredients({ "Apple", "Apple", "Ice" }, nil, nil, { "Apple", "Ice" }, false, "Missing required ingredient: Apple")
+validateIngredients(
+    { "Apple", "Banana", "Ice" },
+    nil,
+    true,
+    { "Apple", "Banana", "Ice", "Strawberry" },
+    false,
+    "Exact ingredient mismatch"
+)
+validateIngredients(
+    { "Apple", "Banana", "Ice" },
+    nil,
+    true,
+    { "Apple", "Banana" },
+    false,
+    "Missing required ingredient: Ice"
+)
+validateIngredients(
+    { "Apple", "Apple", "Ice" },
+    nil,
+    nil,
+    { "Apple", "Ice" },
+    false,
+    "Missing required ingredient: Apple"
+)
 validateIngredients({ "Apple", "Apple", "Ice" }, nil, true, { "Ice", "Apple", "Apple" }, true)
 validateIngredients(nil, nil, true, { "Apple" }, false, "ExactIngredients requires at least one RequiredIngredient")
 
 local invalidDefinition = ingredientRequest({ "Strawbery", "Fish" }, { "Bananna" }, nil, { "Fruit" })
 invalidDefinition.MinJumpTier = 0
 local definitionDiagnostics = customer.ValidateRequestDefinition(invalidDefinition)
-check(table.find(definitionDiagnostics, "Unknown required ingredient: Strawbery") ~= nil, "invalid required ingredient is diagnosed")
-check(table.find(definitionDiagnostics, "Unknown forbidden ingredient: Bananna") ~= nil, "invalid forbidden ingredient is diagnosed")
+check(
+    table.find(definitionDiagnostics, "Unknown required ingredient: Strawbery") ~= nil,
+    "invalid required ingredient is diagnosed"
+)
+check(
+    table.find(definitionDiagnostics, "Unknown forbidden ingredient: Bananna") ~= nil,
+    "invalid forbidden ingredient is diagnosed"
+)
 check(
     table.find(definitionDiagnostics, "Required ingredient Fish needs JumpLocation 2, above MinJumpTier 0") ~= nil,
     "required ingredient above request tier is diagnosed without rewriting the request"

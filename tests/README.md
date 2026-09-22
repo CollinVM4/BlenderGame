@@ -138,3 +138,12 @@ directory. No production edits or Studio setup are required for this cleanup.
 - Studio smoke coverage must still validate real multipart welds, Tool activation
   and respawn, two-client contention, replication and rendered NPC/stash geometry.
   No Studio session was run. No SmoothieWorldItem behavior was added.
+
+## Customer queue migration
+
+`--customer-queue-only` runs the new plot/queue lifecycle integration suite.
+`--customer-presentation-only` includes simultaneous owner visibility for three
+orders, separately from gameplay. Existing request tests now activate owned
+plots and assert continuous cooldown/serving instead of day completion. See
+[customer queue validation](../docs/CUSTOMER_QUEUE.md#validation) for the
+current results, baseline failures, and required Studio checks.

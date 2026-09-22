@@ -59,12 +59,17 @@ local wheel = instance("Part")
 wheel.Owner = p
 wheel.AssemblyAngularVelocity = vec(0, 0, 0)
 local refs = { BlenderInput = input, PlayerStash = {}, StartDayButton = {}, CustomerCounter = {} }
+local testPlots =
+    { [p] = { Owner = p, AncestryChanged = signal() }, [other] = { Owner = other, AncestryChanged = signal() } }
 local tycoon = {
     GetOwner = function(object)
         return object.Owner
     end,
     GetReference = function(_, id)
         return refs[id]
+    end,
+    GetPlot = function(owner)
+        return testPlots[owner]
     end,
     AssignPlot = function()
         return {}
@@ -223,32 +228,31 @@ local requestConfig = loadModule("CustomerRequests")
 local requests = requestConfig.Definitions
 -- Legacy grading/payout/reaction helpers live in customer_compatibility.spec.luau.
 
-local spawned, missing = 0, false
+local activated, missing = 0, false
 deps.CustomerService = {
-    CanSpawn = function()
-        return not missing, "Missing marker"
+    ActivateForPlayer = function()
+        if missing then
+            return false
+        end
+        activated += 1
+        return true
     end,
-    SpawnForPlayer = function()
-        spawned += 1
-        return {}
-    end,
-    RemovePlayer = function() end,
+    DeactivateForPlayer = function() end,
 }
 local days = loadModule("GameService")
 deps.GameService = days
 days.Init(deps)
 days.AddPlayer(p)
 missing = true
-check(not days.StartDay(p) and days.GetSnapshot(p).State == "PREP", "missing fixture does not start day")
+check(not days.StartDay(p), "legacy start fails without active plot")
 missing = false
-check(days.StartDay(p) and spawned == 1, "start day spawns customer")
-check(not days.StartDay(p), "duplicate day start rejected")
+check(days.StartDay(p) and activated == 1, "legacy start delegates activation")
+check(days.StartDay(p), "legacy activation can be repeated")
 days.CustomerServed(p, "A")
 days.CustomerServed(p, "D")
 days.CustomerServed(p, "B")
-check(spawned == 3 and days.GetSnapshot(p).State == "FINISHED", "exactly three customers per day")
-check(days.GetSnapshot(p).Grade == "B", "day grade averages grades")
-check(days.StartDay(p) and days.GetSnapshot(p).Day == 2, "next day restarts cleanly")
+check(days.GetSnapshot(p).Served == 3 and not days.FinishDay(p), "legacy summary cannot finish customer flow")
+check(days.GetSnapshot(p).Grade == "B", "legacy grade summarizes latest serve")
 
 local dev = loadModule("DevContentService")
 dev.Init(deps)
@@ -380,7 +384,7 @@ function p.Character.Children.Humanoid:EquipTool(tool)
     tool.Parent = p.Character
 end
 input.CFrame = frame()
-for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
+for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerWait1", "CustomerWait2", "CustomerExit" } do
     refs[name] = instance("Part")
     refs[name].Name = name
     refs[name].CFrame = frame(if name == "CustomerCounter" then 9 else 0, 0, 0)
@@ -858,7 +862,10 @@ table.clear(requests)
 requests[1] = { Id = "FlowRed", DisplayText = "Red", RequiredTags = { "Red" }, BasePayout = 25, MinJumpTier = 0 }
 check(dev.SpawnCustomer(p) ~= nil and days.IsServing(p), "dev customer starts serveable day")
 check(dev.SpawnCustomer(p) == customer.GetSnapshot(p).Model, "dev spawn reuses active customer")
-check(customer.GetSnapshot(p).RequestId == nil and not customer.Serve(p), "arrival required before request and serving")
+check(
+    customer.GetSnapshot(p).RequestId ~= nil and not customer.Serve(p),
+    "request assigned immediately; arrival required before serving"
+)
 flush()
 for index, reaction in { "Love", "Disgust", "Freeze" } do
     local smoothie = actualBlend(if index == 2 then { "Tire", "Noob", "Tire" } else { "Strawberry", "Ice", "Tire" })
@@ -885,7 +892,7 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
         bubble:FindFirstChildWhichIsA("TextLabel").Text == request.DisplayText,
         "bubble displays configured request text"
     )
-    check(not customer.CanSpawn(p), "active order prevents duplicate spawn")
+    check(customer.CanSpawn(p), "queue has room for waiting orders")
     local success = index ~= 2
     local grade = if success then "A" else "D"
     local payout = if success then request.BasePayout else 0
@@ -919,7 +926,7 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
     )
     p.Near = true
     check(not customer.Serve(other), "foreign player cannot serve owner's cup/customer")
-    check(customer.Serve(p, 999999), "real serve transaction succeeds")
+    check(customer.Serve(p), "real serve transaction succeeds")
     check(bubble.Destroyed, "order billboard destroyed on completion")
     check(
         data.GetCash(p) == cash + payout and p:GetAttribute("playerCash") == cash + payout,
@@ -934,10 +941,13 @@ for index, reaction in { "Love", "Disgust", "Freeze" } do
         "order completed on success or failure"
     )
     check(cup.Destroyed and not blend.GetCup(p) and not customer.Serve(p), "served cup cannot be replayed")
-    check(#days.GetSnapshot(p).Grades == index, "GameService records authoritative completion")
+    check(days.GetSnapshot(p).Served == index, "GameService records authoritative completion")
+    if index < 3 then
+        setup(customer.SpawnForPlayer(p), "next scheduled arrival")
+    end
     flush()
 end
-check(days.GetSnapshot(p).State == "FINISHED", "real three-customer loop finishes")
+check(days.GetSnapshot(p).State == "SERVING", "third serve leaves flow active")
 table.clear(requests)
 for _, request in savedFlowRequests do
     table.insert(requests, request)
@@ -1018,6 +1028,8 @@ local fixtureNames = {
     StartDayButton = "Start Day",
     CustomerSpawn = "Spawn",
     CustomerCounter = "Counter",
+    CustomerWait1 = "Wait1",
+    CustomerWait2 = "Wait2",
     CustomerExit = "Exit",
     PlayerStash = "Stash",
 }

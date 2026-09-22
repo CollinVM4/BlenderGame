@@ -25,7 +25,11 @@ require(script.Services.FilmingUtil).Init()
 -- Inject dependencies once; service modules never require one another in cycles.
 services.MovementService.Init(services)
 services.SprintService.Init(services)
-services.TycoonService.Init(services.PlayerDataService)
+services.TycoonService.Init(services.PlayerDataService, function(player)
+    services.CustomerService.ActivateForPlayer(player)
+end, function(player)
+    services.CustomerService.DeactivateForPlayer(player)
+end)
 for _, name in
     { "InventoryService", "BlendService", "GameService", "MarketService", "CombatService", "DevContentService" }
 do

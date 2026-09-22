@@ -1,10 +1,12 @@
 --!strict
+local Ingredients = require(script.Parent.Ingredients)
+
 export type Request = {
     Id: string,
     DisplayText: string,
     GoodResponse: string?,
     BadResponse: string?,
-    RequiredTags: { string }, -- All must be present across the smoothie's ingredient tags.
+    RequiredTags: { string }, -- All must match; "*" matches any ingredient tag.
     ForbiddenTags: { string }?, -- None may be present; omitted means empty.
     RequiredIngredients: { string }?, -- All IDs must be present; duplicates require matching quantities.
     ForbiddenIngredients: { string }?, -- None of these IDs may be present.
@@ -12,6 +14,17 @@ export type Request = {
     BasePayout: number,
     MinJumpTier: number,
     NPCOnly: boolean?,
+}
+
+-- Tag groups match any member and automatically include newly authored ingredient tags.
+local allTags: { [string]: boolean } = {}
+for _, ingredient in Ingredients do
+    for _, tag in ingredient.Tags do
+        allTags[string.lower(tag)] = true
+    end
+end
+local tagGroups: { [string]: { [string]: boolean } } = {
+    ["*"] = allTags,
 }
 
 local requests: { Request } = {
@@ -63,7 +76,7 @@ local requests: { Request } = {
     {
         Id = "Yellow",
         DisplayText = "I'll have you know my favorite color is YELLOW!",
-        GoodResponse = "Gotta love yellow!",
+        GoodResponse = "Thanks a lot, smoothie master!",
         BadResponse = "This isn't yellow enough!",
         RequiredTags = { "Yellow" },
         BasePayout = 25,
@@ -137,6 +150,7 @@ local requests: { Request } = {
         DisplayText = "I'll treat myself to a POMEGRANATE smoothie!",
         GoodResponse = "Ah yes! How delightful",
         BadResponse = "Next time remember the pomegranate!",
+        RequiredTags = {},
         RequiredIngredients = { "Pomegranate" },
         BasePayout = 75,
         MinJumpTier = 2,
@@ -245,8 +259,8 @@ local requests: { Request } = {
         BasePayout = 100,
         MinJumpTier = 3,
     },
-    
-	    -- Exact / scavenger-hunt requests
+
+    -- Exact / scavenger-hunt requests
 
     {
         Id = "AppleBananaIce",
@@ -494,7 +508,7 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Walter",
-    DisplayText = "You know the business, and I know the chemistry.. get me a BLUE smoothie!",
+    DisplayText = "I am the one who KNOCKS!! Now get me a BLUE smoothie!",
     GoodResponse = "Ha! You're hired kid. meet a los pollos 4 o'clock",
     BadResponse = "you've got more work to do.. Not Impressed!",
     RequiredTags = { "Blue" },
@@ -504,7 +518,7 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "TotallyNotKreek",
-    DisplayText = "Alright chat... make me something RED, and throw in FAST FOOD!",
+    DisplayText = "Alright... make me something RED, and throw in FAST FOOD!",
     GoodResponse = "Okayyy, you actually cooked!",
     BadResponse = "Bro... I said RED AND FAST FOOD. We gotta lock in!",
     RequiredTags = { "Red", "Fast Food" },
@@ -524,10 +538,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "NotFlamingo",
-    DisplayText = "I want something WEIRD... and absolutely NO FRUIT.",
+    DisplayText = "I want something with Fish... and absolutely NO FRUIT.",
     GoodResponse = "Excellent. This should not exist.",
     BadResponse = "Too normal. I expected worse.",
-    RequiredTags = { "Weird" },
+    RequiredTags = { "Seafood" },
     ForbiddenTags = { "Fruit" },
     BasePayout = 125,
     MinJumpTier = 1,
@@ -545,10 +559,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "TotallyNotSketch",
-    DisplayText = "Okay buddy... something YELLOW and SWEET. Easy enough, right?",
+    DisplayText = "Okay buddy... something YELLOW and SOUR. Easy enough, right?",
     GoodResponse = "Beautiful. Absolutely beautiful.",
     BadResponse = "Yeahhh... that ain't it.",
-    RequiredTags = { "Yellow", "Sweet" },
+    RequiredTags = { "Yellow", "Sour" },
     BasePayout = 105,
     MinJumpTier = 0,
     NPCOnly = true,
@@ -573,12 +587,23 @@ table.insert(requests, {
     MinJumpTier = 0,
     NPCOnly = true,
 })
+table.insert(requests, {
+    Id = "Nathan",
+    DisplayText = "Fill me up! Anything will do.",
+    GoodResponse = "This will definitely fill me up! ",
+    BadResponse = "I can't do nathan with this..",
+    RequiredTags = { "*" },
+    BasePayout = 105,
+    MinJumpTier = 0,
+    NPCOnly = true,
+})
 
 local CustomerRequests = {
     Definitions = requests,
+    TagGroups = tagGroups,
 
-    SpecialCustomerChance = 0.32,
-    MaxSpecialCustomersPerDay = 1,
+    SpecialCustomerChance = 0.42,
+    -- Continuous special cooldown is configured in Economy.SpecialCustomerCooldownSeconds.
     RegularCustomerRecencyWindow = 3,
     RegularRequestRecencyWindow = 3,
 
@@ -665,6 +690,12 @@ local CustomerRequests = {
             Type = "Special",
             DisplayName = "ProbablyNotRusso",
             RequestId = "ProbablyNotRusso",
+            Weight = 1,
+        },
+        nathan = {
+            Type = "Special",
+            DisplayName = "Bigroll",
+            RequestId = "Nathan",
             Weight = 1,
         },
     } :: {

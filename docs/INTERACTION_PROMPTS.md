@@ -30,38 +30,9 @@ restart Play so runtime prompts are recreated with their presentation metadata.
 If the marker is absent, custom text stays hidden; the controller binds it when
 it arrives through replication/streaming. No fallback marker is invented.
 
-## Start Day setup
+## Retired Start Day interaction
 
-`src/server/Components/DayButton.luau` automatically applies Custom style,
-`InteractionOrigin = "StartDayTextOrigin"`, and
-`InteractionActionText = "START DAY"`. It clears any InteractionKeyText override
-so the shared view uses the actual prompt key. No manual attributes are required
-on the prompt or Attachment. Retain the existing StartDayButton fixture tag.
-
-```text
-Start Day
-├── StartDayTextOrigin [Attachment]
-├── ProximityPrompt
-├── StartButton
-└── base
-```
-
-The component reuses the authored sibling ProximityPrompt, or an existing prompt
-on the resolved button part. It only uses its original StartDayPrompt creation
-path when neither exists. This avoids creating a second prompt alongside the
-authored one. Authored prompt parenting, key codes, activation distance, hold
-duration, line of sight, Enabled state, and click settings are preserved. The
-fallback keeps the original 10-stud range and RequiresLineOfSight = false.
-
-The existing Triggered owner check, GameService.StartDay call, and LastActionError
-result reporting are unchanged. Cleanup disconnects the handler and restores
-borrowed prompt presentation settings; only component-created prompts are destroyed.
-
-The legacy visual found in repository code was Roblox's default prompt UI; Custom
-style disables it. No separate Start Day BillboardGui/SurfaceGui/key renderer was
-found in source. The shared controller/view supplies fixed 300 x 56 pixel text,
-dynamic key labeling, and duplicate-free lifecycle at the untouched authored origin.
-Sync and restart Play. Live Studio-only scripts/assets were not inspected.
+DayButton leaves the physical fixture in place and disables its authored prompt. It creates no replacement prompt or Triggered handler. Plot ownership starts customer flow automatically. Legacy remote/Studio activation APIs remain idempotent; see [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md).
 
 ## Opt another prompt in
 

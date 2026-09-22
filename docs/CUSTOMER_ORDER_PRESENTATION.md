@@ -1,5 +1,7 @@
 # Customer order presentation
 
+Every queued customer receives an order at spawn and keeps it visible to the owner while waiting or advancing. Only the counter customer has an enabled serve prompt after arrival. See [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md).
+
 `CustomerService` creates a transparent, fixed 270 x 84 order billboard, with
 21 px GothamBold dialogue in a 56 px row and an 18 px name in a 28 px row below it.
 Both use white text and a dark stroke. The head-relative offset is 3 studs and
@@ -28,7 +30,7 @@ Studio smoke checks still required:
   name above head, SERVE near the counter, with no visual overlap.
 - Exercise keyboard, gamepad, and touch serving; confirm the top valid smoothie
   is consumed once, repeated input does not serve twice, and leaving/resetting
-  the day removes the custom prompt.
+  the customer flow removes the custom prompt.
 
 Automated validation: customer requests, placement/walk, custom prompt lifecycle,
 and local owner visibility suites; Roblox-aware typecheck; StyLua; Rojo build.

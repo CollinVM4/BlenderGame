@@ -103,7 +103,17 @@ local function player(capacity)
         part("Slot" .. index, fixtures[p]):SetAttribute("SlotIndex", index)
     end
     references[p] = {}
-    for _, name in { "BlenderInput", "TurbineWheel", "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
+    for _, name in
+        {
+            "BlenderInput",
+            "TurbineWheel",
+            "CustomerSpawn",
+            "CustomerCounter",
+            "CustomerWait1",
+            "CustomerWait2",
+            "CustomerExit",
+        }
+    do
         local object = part(name)
         object.Owner = p
         references[p][name] = object

@@ -23,13 +23,33 @@ local requestConfig = loadModule("CustomerRequests")
 local requests = requestConfig.Definitions
 local customer = loadModule("CustomerService")
 local refs = {}
-for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
+for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerWait1", "CustomerWait2", "CustomerExit" } do
     refs[name] = instance("Part")
     refs[name].CFrame = frame()
+end
+local plots = {}
+local function getPlot(owner)
+    if not plots[owner] then
+        plots[owner] = instance("Model")
+        plots[owner].Owner = owner
+    end
+    return plots[owner]
+end
+local function getOwner(plot)
+    return plot.Owner
+end
+local function spawnFor(owner)
+    local random = env.math.random
+    env.math.random = math.random
+    customer.ActivateForPlayer(owner)
+    env.math.random = random
+    return customer.SpawnForPlayer(owner)
 end
 customer.Init({
     PlayerDataService = data,
     TycoonService = {
+        GetPlot = getPlot,
+        GetOwner = getOwner,
         GetReference = function(_, name)
             return refs[name]
         end,
@@ -86,7 +106,7 @@ do
                 check(low == 1 and high == tier + 1, "random bounds contain exactly eligible requests")
                 return roll
             end
-            local model = customer.SpawnForPlayer(owner)
+            local model = spawnFor(owner)
             check(model ~= nil, "eligible player can spawn")
             flush()
             flush()
@@ -101,25 +121,27 @@ do
         error("empty pool must not call random")
     end
     table.clear(requests)
-    check(
-        customer.SpawnForPlayer(owner) == nil and customer.GetSnapshot(owner) == nil,
-        "empty pool creates no customer"
-    )
+    check(spawnFor(owner) == nil and customer.GetSnapshot(owner) == nil, "empty pool creates no customer")
     -- Only locked requests is also an empty eligible pool.
     owner:SetAttribute("JumpLevel", 0)
     requests[1] = savedRequests[1]
     local savedTier = requests[1].MinJumpTier
     requests[1].MinJumpTier = 1
-    check(customer.SpawnForPlayer(owner) == nil, "all locked requests fail safely")
+    check(spawnFor(owner) == nil, "all locked requests fail safely")
     requests[1].MinJumpTier = savedTier
     -- Configuration/progression can change during arrival or before a refresh.
-    local arriving = customer.SpawnForPlayer(owner)
+    env.math.random = savedRandom
+    local arriving = spawnFor(owner)
     table.clear(requests)
     flush()
-    check(arriving.Destroyed and customer.GetSnapshot(owner) == nil, "empty arrival cleans up without an order")
+    check(
+        not arriving.Destroyed and customer.GetSnapshot(owner).RequestId ~= nil,
+        "queued request survives catalog changes during arrival"
+    )
+    arriving:Destroy()
     requests[1] = savedRequests[1]
     env.math.random = savedRandom
-    local ready = customer.SpawnForPlayer(owner)
+    local ready = spawnFor(owner)
     flush()
     flush()
     table.clear(requests)
@@ -129,7 +151,7 @@ do
     customer:RefreshOrder(ready)
     check(ready.Destroyed and customer.GetSnapshot(owner) == nil, "empty refresh removes stale order")
     check(not customer.Serve(owner), "empty pool cannot be served or paid")
-    check(warnings == 4, "all empty pool paths warn")
+    check(warnings == 3, "all empty pool paths warn")
     for _, request in savedRequests do
         table.insert(requests, request)
     end
@@ -155,7 +177,7 @@ do
                 check(low == 1 and high == #eligible, "authored pool includes exactly unlocked normal requests")
                 return roll
             end
-            local model = customer.SpawnForPlayer(owner)
+            local model = spawnFor(owner)
             flush()
             flush()
             check(
@@ -192,6 +214,8 @@ do
     customer.Init({
         PlayerDataService = data,
         TycoonService = {
+            GetPlot = getPlot,
+            GetOwner = getOwner,
             GetReference = function(_, name)
                 return refs[name]
             end,
@@ -213,7 +237,7 @@ do
             { { "Strawberry", "Banana", "Banana" }, false },
         }
     do
-        local model = customer.SpawnForPlayer(owner)
+        local model = spawnFor(owner)
         flush()
         flush()
         cup = { Ingredients = example[1], Tags = { "Sweet", "Cold" }, BlendId = "advanced" }
@@ -280,7 +304,7 @@ do
     end
     local a, b = player("RecencyA"), player("RecencyB")
     local function spawn(owner)
-        local model = customer.SpawnForPlayer(owner)
+        local model = spawnFor(owner)
         setup(model ~= nil, "recency customer spawns")
         flush()
         flush()
@@ -321,6 +345,7 @@ do
     requestConfig.SpecialCustomerChance = 1
     for _, forcedId in { "Recent4", "Recent6" } do
         requestConfig.NPCs.steak.RequestId = forcedId
+        now += 300 -- Continuous cooldown, independent of BeginDay.
         customer.BeginDay(a)
         modelA, idA = spawn(a)
         check(
@@ -443,7 +468,7 @@ do
         }
     end
     local function spawn()
-        local model = customer.SpawnForPlayer(owner)
+        local model = spawnFor(owner)
         setup(model ~= nil, "customer spawns")
         check(presentations[#presentations].Moving, "route start plays walk before the first movement step")
         flush()
@@ -618,7 +643,7 @@ do
         "regular excludes Special and old flat folder models"
     )
     customer.RemovePlayer(owner)
-    model = customer.SpawnForPlayer(owner)
+    model = spawnFor(owner)
     model:Destroy()
     flush()
     check(
@@ -638,6 +663,8 @@ do
         PlayerDataService = data,
         CustomerService = customer,
         TycoonService = {
+            GetPlot = getPlot,
+            GetOwner = getOwner,
             AssignPlot = function() end,
             GetReference = function(_, name)
                 return refs[name]
@@ -654,10 +681,20 @@ do
     days.Init(dependency)
     days.AddPlayer(owner)
     customer.Init(dependency, days.CustomerServed, days.IsServing)
+    local transactionRequests = table.clone(requests)
+    local sweet
+    for _, request in requests do
+        if request.Id == "Sweet" then
+            sweet = request
+        end
+    end
+    table.clear(requests)
+    table.insert(requests, sweet)
     check(days.StartDay(owner), "custom customer starts day")
     local previous = nil
     local specials = 0
     for turn = 1, 3 do
+        setup(spawnFor(owner) ~= nil, "timed arrival boundary spawns next customer")
         flush()
         flush()
         snapshot = customer.GetSnapshot(owner)
@@ -708,19 +745,24 @@ do
             "success pays and failure rejects forged tags"
         )
         check(not customer.Serve(owner), "completed order cannot pay twice")
-        check(#days.GetSnapshot(owner).Grades == turn, "completion advances day once")
+        check(days.GetSnapshot(owner).Served == turn, "completion records each serve once")
     end
-    check(days.GetSnapshot(owner).State == "FINISHED", "custom day ends after exactly three customers")
+    check(days.GetSnapshot(owner).State == "SERVING", "third customer does not end flow")
     check(specials == 1, "at most one special even with 100 percent chance")
-    check(days.StartDay(owner), "next day starts")
+    check(days.StartDay(owner), "legacy start is idempotent")
+    setup(spawnFor(owner) ~= nil, "flow continues after third serve")
     flush()
-    check(customer.GetSnapshot(owner).CustomerId == "steak", "new day resets special budget")
+    check(customer.GetSnapshot(owner).CustomerId ~= "steak", "legacy start cannot reset special cooldown")
     customer.RemovePlayer(owner)
     local allCleaned = true
     for _, presentation in presentations do
         allCleaned = allCleaned and presentation.Destroyed and not presentation.Moving
     end
     check(allCleaned, "reset removes active and departing presentation")
+    table.clear(requests)
+    for _, request in transactionRequests do
+        table.insert(requests, request)
+    end
     requestConfig.NPCs.steak.RequestId = "Steak"
     requestConfig.NPCs.random_avatar = nil
     second:Destroy()

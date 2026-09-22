@@ -3,9 +3,13 @@ local CollectionService = game:GetService("CollectionService")
 local WorldUtil = require(script.Parent.WorldUtil)
 local TycoonService = {}
 local data: any
+local activate: ((Player) -> ())?
+local deactivate: ((Player) -> ())?
 local plots: { [Player]: Instance } = {}
 
-function TycoonService.Init(playerDataService)
+function TycoonService.Init(playerDataService, onActivate: ((Player) -> ())?, onDeactivate: ((Player) -> ())?)
+    activate = onActivate
+    deactivate = onDeactivate
     data = playerDataService
 end
 function TycoonService.GetPlot(player: Player): Instance?
@@ -44,6 +48,8 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
             "DispenseButton",
             "CustomerSpawn",
             "CustomerCounter",
+            "CustomerWait1",
+            "CustomerWait2",
             "CustomerExit",
             "StartDayButton",
             "PlayerStash",
@@ -68,7 +74,8 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
     end
 end
 
-local customerRoles = { CustomerSpawn = true, CustomerCounter = true, CustomerExit = true }
+local customerRoles =
+    { CustomerSpawn = true, CustomerCounter = true, CustomerWait1 = true, CustomerWait2 = true, CustomerExit = true }
 
 -- Customer destinations must be explicit markers, never an arbitrary part of a tagged area.
 -- Prefer tagged parts over legacy tagged containers so tagging the actual marker repairs
@@ -170,6 +177,9 @@ function TycoonService.AssignPlot(player: Player): Instance?
         if plot:IsDescendantOf(workspace) and not TycoonService.GetOwner(plot) then
             plots[player] = plot
             plot:SetAttribute("OwnerUserId", player.UserId)
+            if activate then
+                activate(player)
+            end
             return plot
         end
     end
@@ -177,6 +187,9 @@ function TycoonService.AssignPlot(player: Player): Instance?
     return nil
 end
 function TycoonService.RemovePlayer(player: Player)
+    if deactivate then
+        deactivate(player)
+    end
     local plot = plots[player]
     if plot then
         plot:SetAttribute("OwnerUserId", nil)

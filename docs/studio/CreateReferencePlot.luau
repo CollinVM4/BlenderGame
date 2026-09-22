@@ -64,6 +64,8 @@ for name, position in
     {
         CustomerSpawn = Vector3.new(18, 3, 6),
         CustomerCounter = Vector3.new(11, 3, 2),
+        CustomerWait1 = Vector3.new(14, 3, 2),
+        CustomerWait2 = Vector3.new(17, 3, 2),
         CustomerExit = Vector3.new(18, 3, -8),
     }
 do

@@ -1,5 +1,7 @@
 # Film one smoothie
 
+Customer flow now starts on plot ownership; add CustomerWait1 and CustomerWait2 markers. See [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md) for the current queue setup.
+
 The slice implements physical pickup/throw, validated ingestion, 1–3 unit blending, deterministic color, a genuine one-use cup, customer grading/reaction, cash payout, and GameService completion. Tests exercise the real domain services against a mocked Roblox boundary. **Engine physics, Tool grip, prompt reach and replication still need a Studio Play test.**
 
 ## Current Studio Plot1
@@ -42,7 +44,7 @@ Workspace
 | Blender/InputZone | `BlenderInput` | Tag the BasePart itself; `CanQuery=true`, `CanCollide=false`, usually invisible and anchored |
 | Actual turbine spinning blade | `TurbineWheel` | Prefer the actual unanchored blade BasePart; legacy Models must resolve to that rotating part |
 | Physical dispenser button | `DispenseButton` | BasePart or Model resolving to its button BasePart |
-| Physical Start Day button | `StartDayButton` | BasePart or Model resolving to its button BasePart |
+| Legacy Start Day button | `StartDayButton` | Optional physical object; prompt is disabled |
 | Customer Area/Spawn | `CustomerSpawn` | Resolves to a BasePart; anchored marker at NPC pivot height |
 | Customer Area/Counter | `CustomerCounter` | Resolves to a BasePart; anchored, within serving reach |
 | Customer Area/Exit | `CustomerExit` | Resolves to a BasePart; anchored exit marker |
@@ -154,7 +156,7 @@ Clear just the blender batch:
 local p = game.Players:GetPlayers()[1]; assert(require(game.ServerScriptService.Server.Services.DevContentService).ClearBlender(p))
 ```
 
-Spawn a serveable customer (stand near the tagged Start Day button first):
+Spawn a customer immediately through the gated Studio helper (normal plot flow starts automatically):
 
 ```lua
 local p = game.Players:GetPlayers()[1]; assert(require(game.ServerScriptService.Server.Services.DevContentService).SpawnCustomer(p))
@@ -190,7 +192,7 @@ Every dev API requires **both Studio and EnableDevContent=true**, including Vali
 
 ## Record the loop
 
-1. Near the tagged Start Day button, spawn a customer and optionally force a reaction.
+1. Claim a plot, spawn a customer with the Studio helper, and optionally force a reaction.
 2. Prepare the combination above your plot's InputZone. Pick up each prop with its prompt. It equips automatically; click/tap to throw while equipped. Move close enough to face and throw into InputZone, tuning distance for your real blender placement. Repeat for up to three props. Aim follows character facing, not mouse position.
 3. Check accepted count and LOADING/READY logs. One or two ingredients seal through READY on the first measured physical spin; three become READY immediately. A fourth stays in the world. Registered units must overlap this owner's detector; its 0.1-second polling accepts each only once.
 4. Physically push the turbine wheel until COMPLETE. Keep the tagged blade unanchored with working rotation constraints. Server Heartbeat measures `blade.AssemblyAngularVelocity.Magnitude`: progress is angular speed times `Economy.BlendProgressScale` (default 3) times delta time. Faster spin gives proportionally faster progress; stopping the blade gives zero, and coasting still counts after stepping away. There is no turbine prompt. The existing billboard shows progress. Output logs progress at 10-point boundaries and the resulting color. `PhysicsService.GetRPM(blade)` is available for display/debugging only.
@@ -236,7 +238,7 @@ Ingredient station and pickup checks: **366 server-state assertions passed**, al
 
 Run `python tests/run_state_tests.py --luau <luau-executable>`, compile `src/*.luau` recursively, run Roblox-aware Luau LSP analysis with Rojo sourcemap/definitions, check touched files with StyLua, build with Rojo, and run `git diff --check`.
 
-Domain tests cover genuine/duplicate/foreign ingestion; 1–3 units and state transitions; color averaging/Mystery/order; incomplete/duplicate dispense; pickup/throw reservation; one-use/foreign/forged cups; actual cash transactions; separate reactions/grades; real three-customer callbacks; presentation moments; production security and reset cleanup. The fake engine explicitly simulates overlaps and waypoint time: these tests cannot certify real collision detection or networking.
+Domain tests cover genuine/duplicate/foreign ingestion; 1–3 units and state transitions; color averaging/Mystery/order; incomplete/duplicate dispense; pickup/throw reservation; one-use/foreign/forged cups; actual cash transactions; separate reactions/grades; endless queue callbacks; presentation moments; production security and reset cleanup. The fake engine explicitly simulates overlaps and waypoint time: these tests cannot certify real collision detection or networking.
 
 Studio acceptance still required: boot with no fixtures (warnings, no hang); create this plot; perform the full physical loop; test another player's pickup/dispense/serve rejection; reset while holding a prop; respawn with a cup; remove/restore customer markers; confirm client event delivery. No Studio Play session was run from this workspace.
 

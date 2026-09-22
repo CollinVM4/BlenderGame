@@ -50,15 +50,22 @@ function DevContentService.ValidatePlot(player: Player): (boolean, { string })
                 "BlenderInput",
                 "TurbineWheel",
                 "DispenseButton",
-                "StartDayButton",
                 "CustomerSpawn",
                 "CustomerCounter",
+                "CustomerWait1",
+                "CustomerWait2",
                 "CustomerExit",
                 "PlayerStash",
             }
         do
             local fixtures = deps.TycoonService.GetFixtures(plot, role)
-            if role == "CustomerSpawn" or role == "CustomerCounter" or role == "CustomerExit" then
+            if
+                role == "CustomerSpawn"
+                or role == "CustomerCounter"
+                or role == "CustomerWait1"
+                or role == "CustomerWait2"
+                or role == "CustomerExit"
+            then
                 local marker, reason = deps.TycoonService.GetReference(player, role)
                 report(
                     role,
@@ -206,18 +213,11 @@ function DevContentService.SpawnCustomer(player: Player): Model?
     if existing then
         return existing.Model
     end
-    local ok, reason
-    if deps.GameService.IsServing(player) then
-        ok = deps.GameService.ResumeDay(player)
-    else
-        ok, reason = deps.GameService.StartDay(player)
-    end
-    if not ok then
-        warn("[DevContentService] " .. (reason or "Customer spawn failed; check plot markers"))
+    deps.TycoonService.AssignPlot(player)
+    if not deps.CustomerService.ActivateForPlayer(player) then
         return nil
     end
-    local customer = deps.CustomerService.GetSnapshot(player)
-    return customer and customer.Model
+    return deps.CustomerService.SpawnForPlayer(player)
 end
 function DevContentService.ForceReaction(player: Player, reaction: string?): boolean
     return allowed(player) and deps.CustomerService.SetForcedReaction(player, reaction)

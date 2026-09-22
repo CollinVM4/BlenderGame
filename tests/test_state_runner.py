@@ -31,7 +31,7 @@ class StateRunnerTests(unittest.TestCase):
         code, calls, output = self.run_runner()
         self.assertEqual(code, 0)
         names = [name for name, _ in calls]
-        for name in ("carry", "stash", "smoothie", "requests", "world", "vfx", "smoothie-roundtrip"):
+        for name in ("carry", "stash", "smoothie", "requests", "customer-queue", "customer-orders", "world", "vfx", "smoothie-roundtrip"):
             self.assertIn(name, names)
         self.assertEqual(len(names), len(set(names)))
         for group in ("state", "integration", "presentation"):
@@ -51,14 +51,14 @@ class StateRunnerTests(unittest.TestCase):
     def test_state_group_does_not_execute_integration_or_presentation(self):
         code, calls, _ = self.run_runner("--group", "state")
         self.assertEqual(code, 0)
-        self.assertEqual({name for name, _ in calls}, {"carry", "stash", "smoothie", "customer-compatibility", "sprint"})
+        self.assertEqual({name for name, _ in calls}, {"throw", "carry", "stash", "smoothie-world", "smoothie", "customer-validation", "customer-compatibility", "sprint"})
 
     def test_focused_smoothie_keeps_flow_and_geometry_coverage(self):
         code, calls, _ = self.run_runner("--smoothie-only")
         self.assertEqual(code, 0)
         self.assertEqual(
             {name for name, _ in calls},
-            {"smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"},
+            {"smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"},
         )
 
 

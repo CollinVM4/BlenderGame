@@ -4,20 +4,20 @@ Custom avatar setup and NPC overrides are documented in [CUSTOMER_NPCS.md](CUSTO
 
 Requests live in `src/shared/Constants/CustomerRequests.luau` under `Definitions`: stable `Id`, `DisplayText`, `RequiredTags`, `BasePayout`, and `MinJumpTier`. Red, Sweet, and Cold each pay $25. Add an entry with `RequiredTags = { "Red", "Sweet" }` to require both tags; different ingredients may supply them. Ingredient semantic tags live in `src/shared/Constants/Ingredients.luau`, not CollectionService tags on physical props.
 
-CustomerService reads the server-owned `JumpLevel` attribute (0–3), initialized by PlayerDataService and updated by MovementService, including Studio overrides. For NPCs without a valid explicit override, both arrival and order refresh build a non-NPCOnly pool where `JumpLevel >= MinJumpTier` before choosing uniformly at random. Missing JumpLevel defaults to 0. Empty pools warn and prevent spawning or remove the affected arriving/refreshing customer. No progression API extension is needed; tag validation and payouts are unchanged. Request IDs are unique; the duplicate Cold entry was removed.
+CustomerService reads the server-owned `JumpLevel` attribute (0–3), initialized by PlayerDataService and updated by MovementService, including Studio overrides. For NPCs without a valid explicit override, both spawning and order refresh build a non-NPCOnly pool where `JumpLevel >= MinJumpTier` before choosing uniformly at random. Missing JumpLevel defaults to 0. Empty pools warn and prevent spawning or remove the affected arriving/refreshing customer. No progression API extension is needed; tag validation and payouts are unchanged. Request IDs are unique; the duplicate Cold entry was removed.
 
-Set `MinJumpTier` to the earliest area tier providing every required tag. **Seafood and Cold currently use tier 3 placeholders for the designer to configure**; Red, Sweet, Weird, and Yellow use tier 0. No new Studio objects or attributes need to be authored. Run focused regression coverage with `python tests/run_state_tests.py --requests-only --luau <luau-executable>`.
+Set `MinJumpTier` to the earliest area tier providing every required tag. **Seafood and Cold currently use tier 3 placeholders for the designer to configure**; Red, Sweet, Weird, and Yellow use tier 0. The queue requires the five plot markers below. Run focused regression coverage with `python tests/run_state_tests.py --requests-only --luau <luau-executable>`.
 
-Start Day still uses `DayButton` or `GameplayRequest("StartDay")` → `GameService.StartDay` → `CustomerService.SpawnForPlayer`. The existing fast three-customer day is retained, with one active order per owner. Served customers can leave while their successor approaches. No timer was added.
+Plot ownership automatically activates an endless, timed three-place queue. All orders are assigned on spawn and visible to the owner; only the counter customer can be served. See [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md).
 
-`TycoonService.GetReference(player, role)` takes a Player (not a plot). Customer roles use CollectionService tags `CustomerSpawn`, `CustomerCounter`, and `CustomerExit` inside that player's assigned plot. Tag one marker BasePart for each role. Tagged BaseParts take precedence over legacy tagged containers. Without a tagged BasePart, a legacy container must contain exactly one BasePart named for the role, or only one BasePart total; its PrimaryPart/first arbitrary part is no longer used. Duplicate marker parts, ambiguous containers, and Start Day button targets fail with a diagnostic reason. No generic reference tag or reference attribute is used. Children of `Workspace.Plots` also support legacy objects named exactly by role through automatic tagging when assigned. Explicit tags take precedence. The existing direct pivot movement goes Spawn → Counter → Exit; no pathfinding or walk animation is added. Put spawn near the counter for quick testing, with horizontal marker top surfaces at floor height (see the custom NPC guide).
+`TycoonService.GetReference(player, role)` takes a Player (not a plot). Customer roles use CollectionService tags `CustomerSpawn`, `CustomerCounter`, `CustomerWait1`, `CustomerWait2`, and `CustomerExit` inside that player's assigned plot. Tag one marker BasePart for each role. Tagged BaseParts take precedence over legacy tagged containers. Without a tagged BasePart, a legacy container must contain exactly one BasePart named for the role, or only one BasePart total; its PrimaryPart/first arbitrary part is no longer used. Duplicate marker parts, ambiguous containers, and Start Day button targets fail with a diagnostic reason. No generic reference tag or reference attribute is used. Children of `Workspace.Plots` also support legacy objects named exactly by role through automatic tagging when assigned. Explicit tags take precedence. The existing PivotTo movement and rig animations take customers from Spawn to their assigned marker, forward through the queue, then to Exit. Put spawn near the counter for quick testing, with horizontal marker top surfaces at floor height (see the custom NPC guide).
 
-The request is selected only after arrival and shown in the existing `OrderBubble` BillboardGui, adorning Head when available and the root otherwise. The server creates `ServePrompt`, `RequestId`, `Preference`, and result attributes automatically. Optional `ServerStorage.Customer` and `ServerStorage.Smoothie` templates retain their existing fallbacks.
+The request is selected when queued and shown in the existing `OrderBubble` BillboardGui, adorning Head when available and the root otherwise. The server creates `ServePrompt`, `RequestId`, `Preference`, and result attributes automatically. Optional `ServerStorage.Customer` and `ServerStorage.Smoothie` templates retain their existing fallbacks.
 
 Serve path:
 
 1. Customer `ServePrompt.Triggered` verifies the actor is the owner and calls `CustomerService.Serve`.
-2. Serve checks ready state, active day, and server distance.
+2. Serve checks counter readiness, current plot ownership, and server distance.
 3. `BlendService.ConsumeCup` → `GetCup` authenticates the recorded Tool in the owner's Backpack/Character, copies the completed server smoothie, and destroys/clears the cup. Ingredient IDs came from accepted world ingredients, blend completion, and `Dispense`; Tool attributes are not read as contents.
 4. The order is removed from active state without yielding. `CustomerService.ValidateRequest` resolves those ingredient IDs against metadata and requires at least one ingredient for each required tag. Extra ingredients are allowed; unknown ingredients and empty smoothies fail.
 5. Only a match calls `PlayerDataService.AddCash` with the request's base payout. Private in-memory `records[player].Cash` remains authoritative; `SetCash` replicates `playerCash` using the existing convention. This slice does not apply the legacy grade/upgrade payout formula or add persistence.
@@ -27,12 +27,7 @@ Studio Output logs spawn, assigned request, evaluated IDs, blend ID, success/fai
 
 ## Studio setup and playtest
 
-No new tags or hand-authored attributes are needed for an already configured plot. If customer fixtures are missing, add three anchored marker parts inside the plot and tag them `CustomerSpawn`, `CustomerCounter`, and `CustomerExit`. Retain the existing `StartDayButton`, `BlenderInput`, `TurbineWheel`, and `DispenseButton` fixtures. Keep customer paths clear and the counter within interaction reach. Ingredient stations use the existing `IngredientSpawn` tag and `IngredientId` attribute; semantic request tags require only the ingredient configuration.
-
-1. Sync Rojo and start Play. Start a day near the plot's button. Confirm one customer approaches, then shows one configured request above its head. Repeated starts must not duplicate it.
-2. Blend Strawberry + Ice (covers all three initial requests), dispense, and serve. Verify +$25 in authoritative cash / `playerCash`, cleared order bubble, positive reaction, and departure. Repeated serving cannot pay again.
-3. Serve Tire to the next request. Confirm a missing-tag reason in Output, cleared order bubble, negative reaction, and unchanged cash. The next customer/day remains playable.
-4. In a two-player test, another player must not serve or receive cash from your customer/cup. Check arrival, bubble placement, physical proximity, audio, and departure in Studio; CLI tests do not simulate these engine visuals/physics.
+Existing plots need CustomerWait1 and CustomerWait2 marker parts. Follow [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md) for the five required markers and the Studio smoke test. Start Day is disabled; claiming a plot starts timed arrivals. All three order bubbles remain visible while the queue advances. Existing blender, stash, and ingredient fixtures retain their setup.
 
 ## Marker / prompt debugging fix
 
@@ -45,6 +40,8 @@ Workspace
       Customer Area                       (no role tag needed)
         CustomerSpawn [CustomerSpawn]
         CustomerCounter [CustomerCounter]
+        CustomerWait1 [CustomerWait1]
+        CustomerWait2 [CustomerWait2]
         CustomerExit [CustomerExit]
       StartDayButton [StartDayButton]
 ```

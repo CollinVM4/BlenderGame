@@ -16,6 +16,7 @@ check(
     held.BlendId == id and table.concat(held.Ingredients, ",") == "Strawberry,Banana,Strawberry" and slot(p).Count == 0,
     "round-trip preserves identity, ingredient order and duplicates without a stored copy"
 )
+setup(customer.ActivateForPlayer(p), "activate owned plot")
 setup(customer.SpawnForPlayer(p) ~= nil, "spawn round-trip customer")
 flush()
 flush()

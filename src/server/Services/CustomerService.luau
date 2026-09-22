@@ -18,12 +18,21 @@ local Film = require(script.Parent.FilmingUtil)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade) -> ()
-local canServe: (Player) -> boolean
-local active: { [Player]: any } = {}
+local queues: { [Player]: any } = {}
+local queueMarkers = { "CustomerCounter", "CustomerWait1", "CustomerWait2" }
+local function front(player: Player): any
+    local queue = queues[player]
+    return if queue then queue.Customers[1] else nil
+end
+local function current(player: Player, queue: any): boolean
+    return queues[player] == queue
+        and deps.TycoonService.GetPlot(player) == queue.Plot
+        and deps.TycoonService.GetOwner(queue.Plot) == player
+end
 local ownedModels: { [Player]: { [Model]: boolean } } = {}
-local specialCounts: { [Player]: number } = {}
+local lastSpecialSpawn: { [Player]: number } = {}
 local lastTemplates: { [Player]: Model } = {}
--- Runtime-only regular selections; BeginDay deliberately leaves both histories intact.
+-- Runtime-only regular selections survive flow restarts.
 local recentTemplates: { [Player]: { Model } } = {}
 local recentRequests: { [Player]: { string } } = {}
 
@@ -55,7 +64,7 @@ end
 -- Only tag comparisons ignore case; ingredient IDs and CustomerIds keep their existing semantics.
 function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Request): { string }
     local diagnostics: { string } = {}
-    local requiredIngredients = request.RequiredIngredients or {}
+    local requiredIngredients: { string } = request.RequiredIngredients or {}
     for _, id in requiredIngredients do
         local definition = Ingredients[id]
         if not definition then
@@ -72,7 +81,8 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
             )
         end
     end
-    for _, id in request.ForbiddenIngredients or {} do
+    local forbiddenIngredients: { string } = request.ForbiddenIngredients or {}
+    for _, id in forbiddenIngredients do
         if not Ingredients[id] then
             table.insert(diagnostics, "Unknown forbidden ingredient: " .. id)
         end
@@ -84,7 +94,7 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
 end
 
 function CustomerService.ValidateRequest(result: Types.Smoothie, request: CustomerRequests.Request): (boolean, string)
-    local requiredIngredients = request.RequiredIngredients or {}
+    local requiredIngredients: { string } = request.RequiredIngredients or {}
     if #result.Ingredients == 0 then
         return false, "Empty smoothie"
     end
@@ -107,7 +117,18 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
         end
     end
     for _, tag in request.RequiredTags do
-        if not tags[string.lower(tag)] then
+        local normalizedTag = string.lower(tag)
+        local matches = tags[normalizedTag] == true
+        local group = CustomerRequests.TagGroups[normalizedTag]
+        if group then
+            for member in group do
+                if tags[member] then
+                    matches = true
+                    break
+                end
+            end
+        end
+        if not matches then
             return false, "Missing required tag: " .. tag
         end
     end
@@ -126,7 +147,8 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
             return false, "Missing required ingredient: " .. id
         end
     end
-    for _, id in request.ForbiddenIngredients or {} do
+    local forbiddenIngredients: { string } = request.ForbiddenIngredients or {}
+    for _, id in forbiddenIngredients do
         if ingredientCounts[id] then
             return false, "Contains forbidden ingredient: " .. id
         end
@@ -196,7 +218,7 @@ local function assignRequest(player: Player, record: any): boolean
     local request = selectedRequest :: CustomerRequests.Request
     record.Request = request
     record.RequestId = request.Id
-    record.Preference = request.RequiredTags[1]
+    record.Preference = request.RequiredTags[1] or "Surprise Me"
     record.Model:SetAttribute("Preference", record.Preference)
     record.Model:SetAttribute("RequestId", request.Id)
     if not forced and record.CustomerType == "Regular" then
@@ -347,7 +369,7 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
         end
     end
     local useSpecial = #special > 0
-        and (specialCounts[player] or 0) < CustomerRequests.MaxSpecialCustomersPerDay
+        and (lastSpecialSpawn[player] == nil or os.clock() - lastSpecialSpawn[player] >= Economy.SpecialCustomerCooldownSeconds)
         and math.random() < CustomerRequests.SpecialCustomerChance
     local candidates = if useSpecial then special else regular
     -- Regulars use rolling recency; specials retain their existing immediate-repeat rule.
@@ -394,9 +416,7 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
         end
         if ok and clone and clone:FindFirstChildOfClass("Humanoid") and npcRoot(clone) then
             lastTemplates[player] = template
-            if candidate.CustomerType == "Special" then
-                specialCounts[player] = (specialCounts[player] or 0) + 1
-            else
+            if candidate.CustomerType == "Regular" then
                 remember(recentTemplates, player, template, CustomerRequests.RegularCustomerRecencyWindow)
                 diagnostic(
                     string.format(
@@ -422,10 +442,8 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
     return nil, nil
 end
 
--- Called only on a new authoritative day, never when resuming an interrupted day.
-function CustomerService.BeginDay(player: Player)
-    specialCounts[player] = 0
-end
+-- Legacy compatibility: day boundaries no longer reset special eligibility.
+function CustomerService.BeginDay(_player: Player) end
 
 local function ensureCustomerCounterGlow(customerModel: Model): ParticleEmitter?
     local existingGlow = customerModel:FindFirstChild("CustomerCounterGlow")
@@ -503,10 +521,9 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
     end)
 end
 
-function CustomerService.Init(services, servedCallback, servingCallback)
+function CustomerService.Init(services, servedCallback, _servingCallback)
     deps = services
     onServed = servedCallback
-    canServe = servingCallback
     if RunService:IsStudio() then
         for _, request in CustomerRequests.Definitions do
             for _, message in CustomerService.ValidateRequestDefinition(request) do
@@ -558,13 +575,17 @@ function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): nu
     return math.floor(Economy.BasePayout * Economy.GradeMultiplier[grade] * upgrade * multiplier)
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
-    if active[player] then
-        return false, "Customer already active"
+    local queue = queues[player]
+    if not queue or not current(player, queue) then
+        return false, "Plot flow inactive"
+    end
+    if #queue.Customers >= Economy.MaxCustomersPerPlot then
+        return false, "Customer queue full"
     end
     if #eligibleRequests(player) == 0 then
         return false, "No eligible customer requests"
     end
-    for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerExit" } do
+    for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerWait1", "CustomerWait2", "CustomerExit" } do
         local marker, reason = deps.TycoonService.GetReference(player, name)
         if not marker then
             local message = "Cannot resolve "
@@ -583,6 +604,8 @@ function CustomerService.CanSpawn(player: Player): (boolean, string?)
 end
 -- Simple deterministic waypoint movement for the filming skeleton, not pathfinding.
 local function move(record: any, destination: CFrame, finished: () -> ())
+    record.MoveToken = (record.MoveToken or 0) + 1
+    local token = record.MoveToken
     local current: CFrame = record.Model:GetPivot()
     local start = Placement.Face(current.Position, destination.Position, current)
     destination = Placement.Face(destination.Position, destination.Position + start.LookVector, start)
@@ -594,11 +617,14 @@ local function move(record: any, destination: CFrame, finished: () -> ())
         local elapsed = 0
         while record.Model.Parent and elapsed < duration do
             elapsed += task.wait()
-            if not record.Model.Parent then
-                break
+            if not record.Model.Parent or record.MoveToken ~= token then
+                return
             end
             local nextFrame = start:Lerp(destination, math.min(1, elapsed / duration))
             record.Model:PivotTo(nextFrame)
+        end
+        if record.MoveToken ~= token then
+            return
         end
         record.Walk.SetMoving(false)
         if record.Model.Parent then
@@ -606,6 +632,96 @@ local function move(record: any, destination: CFrame, finished: () -> ())
         end
     end)
 end
+-- One ordered queue owns both destinations and eligibility. Route tokens invalidate old arrivals.
+function CustomerService.RefreshQueue(player: Player)
+    local queue = queues[player]
+    if not queue then
+        return
+    end
+    if not current(player, queue) then
+        CustomerService.DeactivateForPlayer(player)
+        return
+    end
+    for index, record in queue.Customers do
+        local marker = deps.TycoonService.GetReference(player, queueMarkers[index])
+        record.Model:SetAttribute("QueuePosition", index)
+        if not marker then
+            record.MoveToken = (record.MoveToken or 0) + 1
+            record.TargetMarker = nil
+            record.Ready = false
+            record.Prompt.Enabled = false
+            record.Walk.SetMoving(false)
+        else
+            local destination = Placement.AtMarker(marker, record.BottomOffset)
+            if record.TargetMarker ~= marker or record.MarkerFrame ~= marker.CFrame or record.QueueIndex ~= index then
+                record.TargetMarker = marker
+                record.MarkerFrame = marker.CFrame
+                record.QueueIndex = index
+                record.Ready = false
+                record.Prompt.Enabled = false
+                move(record, destination, function()
+                    if current(player, queue) and table.find(queue.Customers, record) then
+                        record.Ready = queue.Customers[1] == record
+                        record.Prompt.Enabled = record.Ready
+                    end
+                end)
+            else
+                record.Ready = index == 1 and record.Ready
+                record.Prompt.Enabled = record.Ready
+            end
+        end
+    end
+end
+
+function CustomerService.ActivateForPlayer(player: Player): boolean
+    local plot = deps.TycoonService.GetPlot(player)
+    if not plot or deps.TycoonService.GetOwner(plot) ~= player then
+        CustomerService.DeactivateForPlayer(player)
+        return false
+    end
+    local existing = queues[player]
+    if existing and current(player, existing) then
+        return true
+    end
+    CustomerService.DeactivateForPlayer(player)
+    local queue: any = { Customers = {}, Plot = plot, Full = false }
+    queues[player] = queue
+    queue.PlotConnection = plot.AncestryChanged:Connect(function()
+        if queues[player] == queue and not current(player, queue) then
+            CustomerService.DeactivateForPlayer(player)
+        end
+    end)
+    player:SetAttribute("CustomerFlowState", "PLOT_ACTIVE")
+    diagnostic("flow started owner=" .. player.Name)
+    local function tick()
+        if queues[player] ~= queue then
+            return
+        end
+        if not current(player, queue) then
+            CustomerService.DeactivateForPlayer(player)
+            return
+        end
+        CustomerService.RefreshQueue(player)
+        local full = #queue.Customers >= Economy.MaxCustomersPerPlot
+        if full and not queue.Full then
+            diagnostic("queue full owner=" .. player.Name)
+        end
+        queue.Full = full
+        local spawned = not full and CustomerService.SpawnForPlayer(player) ~= nil
+        if not current(player, queue) then
+            return
+        end
+        task.delay(
+            if spawned
+                then math.random(Economy.CustomerSpawnMinSeconds, Economy.CustomerSpawnMaxSeconds)
+                else math.random(Economy.CustomerFullRetryMinSeconds, Economy.CustomerFullRetryMaxSeconds),
+            tick
+        )
+    end
+    task.delay(math.random(Economy.InitialCustomerDelayMin, Economy.InitialCustomerDelayMax), tick)
+    return true
+end
+
 function CustomerService.SpawnForPlayer(player: Player): Model?
     if not CustomerService.CanSpawn(player) then
         return nil
@@ -751,6 +867,7 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     prompt.Style = Enum.ProximityPromptStyle.Custom
     local record: any = {
         Owner = player,
+        BottomOffset = bottomOffset,
         CustomerType = if candidate then candidate.CustomerType else "Regular",
         FixedRequest = if candidate then candidate.Request else nil,
         DisplayName = displayName,
@@ -771,14 +888,25 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         Exit = exitAt,
         ForcedReaction = nil,
     }
-    active[player] = record
+    local queue = queues[player]
+    if not queue or not current(player, queue) or not assignRequest(player, record) then
+        walk.Destroy()
+        if ownedModels[player] then
+            ownedModels[player][model] = nil
+        end
+        model:Destroy()
+        return nil
+    end
+    table.insert(queue.Customers, record)
+    if record.CustomerType == "Special" then
+        lastSpecialSpawn[player] = os.clock()
+    end
     model:SetAttribute("CustomerId", record.CustomerId)
-    model:SetAttribute("RequestId", nil)
     model:SetAttribute("OwnerUserId", player.UserId)
-    diagnostic("spawned owner=" .. player.Name)
+    diagnostic(string.format("queued owner=%s position=%d request=%s", player.Name, #queue.Customers, record.RequestId))
     prompt.Triggered:Connect(function(actor)
         if actor == player then
-            CustomerService.Serve(actor)
+            CustomerService.Serve(actor, model)
         end
     end)
     model.Destroying:Connect(function()
@@ -787,20 +915,17 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         if ownedModels[player] then
             ownedModels[player][model] = nil
         end
-        if active[player] == record then
-            active[player] = nil
-        end
-    end)
-    move(record, counterAt, function()
-        if active[player] == record then
-            if not assignRequest(player, record) then
-                return
+        record.MoveToken = (record.MoveToken or 0) + 1
+        if queues[player] == queue then
+            local index = table.find(queue.Customers, record)
+            if index then
+                table.remove(queue.Customers, index)
+                CustomerService.RefreshQueue(player)
             end
-            typewriterText(text, (record.Request :: CustomerRequests.Request).DisplayText, audio.dialogueSound)
-            record.Ready = true
-            prompt.Enabled = true
         end
     end)
+    typewriterText(text, record.Request.DisplayText, audio.dialogueSound)
+    CustomerService.RefreshQueue(player)
     return model
 end
 function CustomerService.GetSnapshot(player: Player): {
@@ -810,7 +935,7 @@ function CustomerService.GetSnapshot(player: Player): {
     Ready: boolean,
     Model: Model,
 }?
-    local record = active[player]
+    local record = front(player)
     if not record then
         return nil
     end
@@ -822,13 +947,17 @@ function CustomerService.GetSnapshot(player: Player): {
         Model = record.Model,
     }
 end
-function CustomerService.Serve(player: Player): (boolean, string?)
-    local record = active[player]
+function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean, string?)
+    local queue = queues[player]
+    local record = front(player)
     if
         not record
         or not record.Ready
         or not record.Request
-        or not canServe(player)
+        or record.Served
+        or (expectedModel ~= nil and expectedModel ~= record.Model)
+        or not queue
+        or not current(player, queue)
         or not WorldUtil.Near(player, record.Root, Economy.InteractionDistance)
     then
         diagnostic("serve rejected owner=" .. player.Name .. " reason=No customer ready nearby")
@@ -847,7 +976,8 @@ function CustomerService.Serve(player: Player): (boolean, string?)
     -- No yield between consumption, payout, and removal from active state.
     record.Served = true
     record.Prompt.Enabled = false
-    active[player] = nil
+    table.remove(queue.Customers, 1)
+    record.Model:SetAttribute("QueuePosition", nil)
     local success, reason = CustomerService.ValidateRequest(result, record.Request)
     local grade: Types.Grade = if success then "A" else "D"
     local response = Presentation.Response(record.Request, grade)
@@ -917,12 +1047,14 @@ function CustomerService.Serve(player: Player): (boolean, string?)
             end)
         end
     end)
+    CustomerService.RefreshQueue(player)
+    diagnostic(string.format("advanced owner=%s count=%d", player.Name, #queue.Customers))
     onServed(player, grade)
     return true
 end
 -- Only DevContentService exposes this through its Studio gate; no remote.
 function CustomerService.SetForcedReaction(player: Player, reaction: string?): boolean
-    if not active[player] then
+    if not front(player) then
         return false
     end
     if reaction then
@@ -936,7 +1068,7 @@ function CustomerService.SetForcedReaction(player: Player, reaction: string?): b
             return false
         end
     end
-    active[player].ForcedReaction = reaction
+    front(player).ForcedReaction = reaction
     return true
 end
 -- Legacy colon-call compatibility. Unowned auto-spawns and attribute-based cup checks were removed.
@@ -957,30 +1089,42 @@ function CustomerService:GetSatisfaction(player: Player, item: Instance?, prefer
     end
     return CustomerService.CalculateGrade(
         result,
-        preference or (active[player] and active[player].Preference) or "Surprise Me"
+        preference or (front(player) and front(player).Preference) or "Surprise Me"
     )
 end
 function CustomerService:RefreshOrder(model: Model)
-    for player, record in active do
-        if record.Model == model and record.Ready then
-            if not assignRequest(player, record) then
+    for player, queue in queues do
+        for _, record in queue.Customers do
+            if record.Model == model then
+                if assignRequest(player, record) then
+                    typewriterText(record.Text, record.Request.DisplayText, record.Audio.dialogueSound)
+                end
                 return
             end
-            typewriterText(record.Text, record.Request.DisplayText, record.Audio.dialogueSound)
         end
     end
 end
-function CustomerService.RemovePlayer(player: Player)
-    specialCounts[player] = nil
-    lastTemplates[player] = nil
-    recentTemplates[player] = nil
-    recentRequests[player] = nil
-    local record = active[player]
-    active[player] = nil
-    if record then
-        activeTypingTasks[record.Text] = nil
-        record.Model:Destroy()
+-- Snapshots expose presentation state, never mutable authoritative records.
+function CustomerService.GetQueueSnapshot(player: Player): { any }
+    local result = {}
+    local queue = queues[player]
+    if queue then
+        for index, record in queue.Customers do
+            table.insert(
+                result,
+                { Model = record.Model, RequestId = record.RequestId, Ready = record.Ready, Position = index }
+            )
+        end
     end
+    return result
+end
+function CustomerService.DeactivateForPlayer(player: Player)
+    local queue = queues[player]
+    queues[player] = nil -- Invalidate scheduler and movement callbacks before destroying models.
+    if queue and queue.PlotConnection then
+        queue.PlotConnection:Disconnect()
+    end
+    player:SetAttribute("CustomerFlowState", "PLOT_INACTIVE")
     local models = ownedModels[player]
     ownedModels[player] = nil
     if models then
@@ -988,5 +1132,15 @@ function CustomerService.RemovePlayer(player: Player)
             model:Destroy()
         end
     end
+    if queue then
+        diagnostic("flow stopped owner=" .. player.Name)
+    end
+end
+function CustomerService.RemovePlayer(player: Player)
+    CustomerService.DeactivateForPlayer(player)
+    lastSpecialSpawn[player] = nil
+    lastTemplates[player] = nil
+    recentTemplates[player] = nil
+    recentRequests[player] = nil
 end
 return require(script.Parent.StudioServices).Wrap("CustomerService", CustomerService)

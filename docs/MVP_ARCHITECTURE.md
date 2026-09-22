@@ -4,7 +4,7 @@ The architecture now supports a filmable vertical slice, not a finished playable
 
 ## Core loop and authority
 
-PREP: collect shared market stock, optionally fight, and deposit carried ingredients in the plot stash. Start Day at your plot. A customer moves from the spawn marker to the counter and requests a loose preference. Release 1–3 owned units into the blender detector, turn the turbine, dispense a cup, and serve it. After three customers, the day receives a grade and finishes. Prepare/upgrades and another Start Day repeat the loop.
+Claiming a plot automatically starts an endless customer queue. Up to three customers walk to the counter and two waiting markers, each showing an order. Collect ingredients, blend, dispense, and serve only the counter customer. Waiting customers advance while the served NPC reacts and exits; timed arrivals refill free slots. See [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md) for lifecycle, authority, configuration, and Studio setup.
 
 Any valid combination can be served. Ingredients supply tags and blend colors. Recipe matching has been removed; the optional smoothie Discovery field remains nil for compatibility. Result color is the mean of the unit colors.
 
@@ -45,22 +45,11 @@ The bootstrap explicitly loads services, injects dependencies, initializes exist
 - The server stores the Tool's identity and result, independently of Tool attributes. Serving destroys/consumes it once. Attributes are presentation only. Dispense publishes DISPENSED, then defers EMPTY; the cup record survives that batch reset.
 - `Reset` discards only the loaded batch. `ClearCup` removes a cup separately. Respawn clears the cup and reserved held prop, retains the batch/day/ordinary inventory, and clears movement stun. Leaving removes all per-player state and owned world items.
 
-### Day state machine
+### Customer flow lifecycle
 
-`PREP → SERVING → FINISHED → SERVING …`
+`PLOT_INACTIVE -> PLOT_ACTIVE -> PLOT_INACTIVE`
 
-StartDay checks an assigned plot, living-player distance to its button/counter, and the three customer markers before committing. Duplicate starts are rejected. Successful serving consumes a server cup, computes grade/reaction/reward, awards cash, removes the active customer, then notifies GameService. The first two callbacks spawn successors; the third ends the day. Grade scores A=4/B=3/C=2/D=1 are averaged and rounded at 3.5/2.5/1.5 thresholds.
-
-If a marker disappears between customers, the day remains SERVING and warns. Restore the marker and call `GameService.ResumeDay(player)` from the server; it refuses an already active customer. `Reset` returns to PREP for scene recovery. Customers already served exit independently and are cleaned on leave/reset as well.
-
-### Inventory, market, combat, economy defaults
-
-- Carried inventory is one stack per ingredient ID, cap 5 (earned upgrade to 10). There is no total carried-slot limit in this skeleton. Materializing/throwing a unit removes it from carried counts; collecting it returns it to counts. Throw position/velocity are computed on the server. Unowned claimable station props and your owned world props support a pickup prompt and equipped Tool throw through InventoryService. Its shared getLoosePickupRecord helper authorizes loose-world pickup for CarryWorldItem and ClaimWorldItem; foreign-owned loose items are rejected. Future stash-to-held acquisition must use server-validated slot/protection rights separately from loose pickup; no new stash interaction is implemented. Throw position/velocity follow server-observed character facing; mouse aiming remains deferred.
-- Normal stash: five slots, first two protected. VIP: ten slots, first five protected. Each slot is one ingredient stack. Capacity/protection use server entitlements, not attributes. Downgrading VIP preserves inaccessible upper slots in memory rather than deleting items. A production entitlement adapter must define retention across saves.
-- Steals require living-player proximity to the victim stash, an unprotected valid slot, and room in the thief's stack. One unit moves per success. Thief cooldown is 3s; victim protection is 5s. Failed transfers do not remove items.
-- Market stock is free in this skeleton. One claimant wins; full inventory leaves stock intact. Refill after claim is 12s. Unclaimed world stock expires after 120s, then refills with another rarity-weighted selection. Tags removed/re-added and objects moved out of/into Workspace detach/rebind components.
-- Slap Tool must be granted by a trusted server caller. Three earned Hand levels define damage/knockback/size. Slap cooldown 0.8s; range 8 studs; movement stun 0.5s with 1s immunity after it; carried-unit drop protection 4s. Only logical carried inventory participates in slap drops; an already-thrown world item is not dropped again. NPC combat/ants are TODO.
-- Cash payout is floor(base 25 × grade multiplier × earned Payout upgrade × optional DoubleCash). VIP Storage and DoubleCash default false. No pass IDs, receipts, prompts, or MarketplaceService calls are implemented.
+CustomerService owns ordered queues, guarded timed arrivals, request assignment, and advancement. TycoonService ownership callbacks activate/deactivate flow. GameService receives serve notifications only for legacy summaries; its day fields never stop the queue. No third-customer completion or daily special reset remains. See [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md).
 
 ## Workspace/tag contract
 
@@ -73,9 +62,10 @@ Create physical models in Studio. Put plot fixtures under their owning plot; tag
 | `IngredientSpawn` | Anchored BasePart anywhere in Workspace; String `IngredientId` matching a definition and optional Number `RespawnSeconds` (default 5). Spawns one unowned registered unit three studs above its top; refills after removal/consumption. See the station playtest in FILMING_VERTICAL_SLICE.md. |
 | `TurbineWheel` | Prefer tagging the actual spinning blade BasePart inside the plot. Legacy Models must resolve to that blade. Keep the blade unanchored and preserve the physical turbine constraints so it can rotate. Physically push the wheel; progress comes only from server Heartbeat sampling. |
 | `DispenseButton` | BasePart or Model with PrimaryPart inside plot. Component generates a Dispense prompt. |
-| `StartDayButton` | BasePart/Model with PrimaryPart inside plot, near counter. Component generates Start Day prompt. |
-| `CustomerSpawn` | Anchored marker BasePart inside each plot; CFrame marks the NPC's pivot, not its foot. |
+| `StartDayButton` | BasePart/Model with PrimaryPart inside plot, near counter. Legacy physical fixture; its prompt is disabled. |
+| `CustomerSpawn` | Anchored marker BasePart inside each plot; Horizontal marker top marks ground height. |
 | `CustomerCounter` | Anchored marker BasePart for arrival/serving, inside plot. Keep within reach. |
+| `CustomerWait1`, `CustomerWait2` | Anchored marker BaseParts for queue positions 2 and 3. |
 | `CustomerExit` | Anchored exit marker BasePart inside plot. Route is straight-line spawn→counter→exit, without pathfinding or obstacle avoidance. |
 | `MarketPedestal` | Anchored BasePart/Model with PrimaryPart in the shared market. One auto-generated physical stock unit and Collect prompt. No IngredientId attribute needed. |
 | `PlayerStash` | Model with PrimaryPart, inside plot. Optional child Slot1…Slot10 BaseParts with integer `SlotIndex` attributes generate take/steal prompts. Put slots within 12 studs of the primary part. Deposit uses the API/remote until inventory UI is built. |
@@ -94,7 +84,7 @@ Existing SprintRequest remains server-created. New `ReplicatedStorage.Shared.Eve
 
 | Action | Arguments | Server behavior |
 | --- | --- | --- |
-| StartDay | none | Ownership/proximity/fixture/day validation. |
+| StartDay | none | Legacy idempotent activation for the owned plot; never forces a spawn. |
 | ReleaseIngredient | ingredient ID | Removes one owned unit and throws it forward/up from the player's character; position and speed are server-selected. |
 | Deposit | ingredient ID, slot index | One carried unit to the player's nearby stash. |
 | Withdraw | nil, slot index | One unit from the player's nearby stash. |
@@ -143,7 +133,7 @@ python tests/run_state_tests.py --luau <luau-executable>
 git diff --check
 ```
 
-Studio acceptance: boot an empty Workspace (warnings but no blocked bootstrap); then a one-plot scene for the complete three-customer loop; then two plots/clients for foreign input/dispense/serve rejection, contested claims, protected stealing, cooldowns, respawn and leave/reset cleanup. Remove/re-add tags and reparent fixtures out of/into Workspace to verify component detachment and rebinding. Missing customer markers must leave the day unstarted or recoverable via ResumeDay.
+Studio acceptance: boot an empty Workspace (warnings but no blocked bootstrap); then a one-plot scene for the endless queue loop; then two plots/clients for foreign input/dispense/serve rejection, contested claims, protected stealing, cooldowns, respawn and leave/reset cleanup. Remove/re-add tags and reparent fixtures out of/into Workspace to verify component detachment and rebinding. Missing customer markers prevent arrivals until repaired; the scheduler retries automatically.
 
 ## Movement upgrade foundation
 

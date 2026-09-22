@@ -1,7 +1,14 @@
 --!strict
 local rarityWeights: { [string]: number } = { Common = 75, Uncommon = 20, Rare = 5 }
 return {
-    CustomersPerDay = 3,
+    MaxCustomersPerPlot = 3,
+    InitialCustomerDelayMin = 2,
+    InitialCustomerDelayMax = 5,
+    CustomerSpawnMinSeconds = 35,
+    CustomerSpawnMaxSeconds = 65,
+    CustomerFullRetryMinSeconds = 5,
+    CustomerFullRetryMaxSeconds = 10,
+    SpecialCustomerCooldownSeconds = 300,
     BasePayout = 25,
     GradeMultiplier = { A = 1.5, B = 1, C = 0.7, D = 0.4 },
     GradeScore = { A = 4, B = 3, C = 2, D = 1 },
