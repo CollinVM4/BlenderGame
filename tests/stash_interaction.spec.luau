@@ -23,7 +23,7 @@ do
         },
         IngredientService = {
             GetDefinition = function(id)
-                return id == "Strawberry" or id == "Banana" or id == "Cabbage" or id == "Milk"
+                return loadModule("Ingredients")[id]
             end,
             GetRecord = function(object)
                 return records[object]
@@ -61,7 +61,14 @@ do
         local humanoid = instance("Humanoid")
         humanoid.Parent, humanoid.Health, humanoid.Died = p.Character, 100, signal()
         function humanoid:EquipTool(tool)
+            for _, current in p.Character:GetChildren() do
+                if current:IsA("Tool") and current ~= tool then
+                    current.Parent = p:FindFirstChildOfClass("Backpack")
+                    current.Unequipped:Fire()
+                end
+            end
             tool.Parent = p.Character
+            tool.Equipped:Fire()
         end
         local backpack = instance("Backpack")
         backpack.Parent = p

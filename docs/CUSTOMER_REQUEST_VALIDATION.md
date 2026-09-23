@@ -9,6 +9,8 @@ the same quantity in the smoothie. Extras are allowed unless forbidden or
 Customer IDs are case-sensitive stable IDs.
 
 ```luau
+export type IngredientRequirement = string | { string }
+
 export type Request = {
     Id: string,
     DisplayText: string,
@@ -16,7 +18,7 @@ export type Request = {
     BadResponse: string?,
     RequiredTags: { string },
     ForbiddenTags: { string }?,
-    RequiredIngredients: { string }?,
+    RequiredIngredients: { IngredientRequirement }?,
     ForbiddenIngredients: { string }?,
     ExactIngredients: boolean?,
     BasePayout: number,
@@ -27,8 +29,12 @@ export type Request = {
 
 Omitted and empty forbidden lists are equivalent. Empty smoothies and requests
 without either required tags or required ingredient IDs fail. `ExactIngredients`
-requires a non-empty `RequiredIngredients` list and compares the complete ID
-multiset without regard to order. Validation reports required-tag failures, then
+requires a non-empty `RequiredIngredients` list and exactly one physical ingredient
+per slot, without regard to order or any extras. A string slot requires that exact
+ID; a table slot accepts any one listed ID. Each physical ingredient can satisfy
+only one slot, including overlapping alternatives and duplicate requirements.
+For example, `{{"Apple", "Green_Apple"}, "Banana", "Ice"}` accepts either apple
+with Banana and Ice; it rejects both apples together when exact matching is enabled. Validation reports required-tag failures, then
 forbidden tags, missing required ingredients, forbidden ingredients, and exact
 mismatches. The existing Studio-only serve diagnostic prints the reason; players
 still receive the authored GoodResponse/BadResponse. Special NPCs use this same
@@ -37,6 +43,9 @@ validator, including existing lowercase `protein` and `weird` requests.
 At `CustomerService.Init`, Studio warns without changing definitions when a
 required or forbidden ingredient ID is unknown, an exact request has no required
 ingredients, or a required ingredient's `JumpLocation` exceeds `MinJumpTier`.
+Alternative groups warn for unknown IDs and empty groups. A group gets a tier
+warning only when it has valid alternatives but none are accessible at the
+request's `MinJumpTier`.
 
 ## Initial orders and catalog witnesses
 
@@ -75,3 +84,26 @@ spawns, exercise an advanced order with a valid smoothie, one missing a required
 tag, and one containing a forbidden tag. Check the authored response and the
 existing Studio diagnostic. Automated tests use a mocked Roblox boundary;
 physical map traversal and Studio playtesting are not automated here.
+
+## Ingredient name highlighting
+
+Authored `DisplayText` stays plain. `CustomerService.FormatRequestText` resolves
+required ingredient IDs (including all alternatives), uses
+`definition.DisplayName or definition.Id`, and colors whole names case-insensitively
+with that ingredient's `BlendColor`. Longer names take precedence over contained
+names, authored capitalization is retained, and original markup characters are
+escaped. Required and forbidden tag words use the centralized presentation-only
+`CustomerPresentation.TagHighlights` palette, including authored aliases such as
+Spicy ? SPICE/HEAT. Only tags present in that request activate their phrases;
+`*` and unknown tags have no highlight. Concrete required ingredient names win
+when the same phrase is also a tag, preserving `Ingredients.BlendColor` as their
+source of truth. Tag colors never affect request validation.
+
+The order label enables RichText, types escaped plain text at the existing cadence,
+and replaces the completed order with its colored version. Restored orders use
+the same formatting; success/failure responses retain their existing coloring.
+Presentation coverage lives separately in `customer_order_queue.spec.luau` and
+`customer_order_text.spec.luau`. Run `--customer-order-text-only` for the spawned
+NPC label/typewriter integration checks, including the Yellow request.
+No Studio setup is required; visually check the typewriter and final ingredient
+colors on AppleBananaIce in Studio.

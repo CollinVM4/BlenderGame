@@ -42,11 +42,11 @@ function Presentation.Offset(visual: Instance, characterRoot: BasePart, stackHei
         highest - lowest + Config.StackGap
 end
 
--- Keep the Tool for activation/lifecycle, but omit a named Handle so Roblox
--- cannot create a competing RightGrip. All placement is server-owned.
+-- Visuals live on the character independently of Backpack selection.
+-- All placement is server-owned; no hand grip is created.
 function Presentation.Attach(
     visual: Instance,
-    tool: Tool,
+    host: Instance,
     root: BasePart,
     stackHeight: number?
 ): (CFrame, () -> (), number, (number) -> ())
@@ -65,7 +65,7 @@ function Presentation.Attach(
     anchor.CanQuery = false
     anchor.Massless = true
     anchor.CFrame = root.CFrame * offset
-    anchor.Parent = tool
+    anchor.Parent = host
     local parts = visual:GetDescendants()
     table.insert(parts, visual)
     -- The successful pickup consumed the authoritative world object. Its cloned
@@ -90,7 +90,7 @@ function Presentation.Attach(
             weld.Parent = anchor
         end
     end
-    visual.Parent = tool
+    visual.Parent = host
     local carryWeld = Instance.new("Weld")
     carryWeld.Name = "OverheadCarry"
     carryWeld.Part0 = root

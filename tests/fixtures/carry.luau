@@ -85,7 +85,14 @@ player.Character, player.Near = character, true
 local humanoid = instance("Humanoid")
 humanoid.Parent, humanoid.Health, humanoid.Died = character, 100, signal()
 function humanoid:EquipTool(tool)
+    for _, current in character:GetChildren() do
+        if current:IsA("Tool") and current ~= tool then
+            current.Parent = player:FindFirstChildOfClass("Backpack")
+            current.Unequipped:Fire()
+        end
+    end
     tool.Parent = character
+    tool.Equipped:Fire()
 end
 local backpack = instance("Backpack")
 backpack.Parent = player

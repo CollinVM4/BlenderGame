@@ -119,6 +119,39 @@ local function validateIngredients(
     end
 end
 
+local alternatives = { { "Apple", "Green_Apple" }, "Banana", "Ice" }
+validateIngredients(alternatives, nil, true, { "Apple", "Banana", "Ice" }, true)
+validateIngredients(alternatives, nil, true, { "Green_Apple", "Banana", "Ice" }, true)
+validateIngredients(
+    alternatives,
+    nil,
+    true,
+    { "Apple", "Green_Apple", "Banana", "Ice" },
+    false,
+    "Exact ingredient mismatch"
+)
+validateIngredients(alternatives, nil, true, { "Strawberry", "Banana", "Ice" }, false)
+validateIngredients(alternatives, nil, false, { "Apple", "Green_Apple", "Banana", "Ice" }, true)
+validateIngredients({ { "Apple", "Green_Apple" }, "Apple" }, nil, true, { "Apple", "Green_Apple" }, true)
+validateIngredients({ { "Apple", "Green_Apple" }, "Apple" }, nil, false, { "Apple" }, false)
+validateIngredients({ { "Apple", "Green_Apple" }, { "Apple", "Green_Apple" } }, nil, true, { "Apple", "Apple" }, true)
+validateIngredients({ {} }, nil, false, { "Apple" }, false)
+check(
+    customer.ValidateRequest(requestResult({ "Green_Apple", "Banana", "Ice" }), requestsById.AppleBananaIce),
+    "authored recipe supports green apple"
+)
+local accessibleGroup = ingredientRequest({ { "Fish", "Apple", "Unknown" } })
+local groupDiagnostics = customer.ValidateRequestDefinition(accessibleGroup)
+check(
+    #groupDiagnostics == 1 and groupDiagnostics[1] == "Unknown required ingredient: Unknown",
+    "accessible alternative suppresses tier warning but retains unknown ID warning"
+)
+check(
+    #customer.ValidateRequestDefinition(ingredientRequest({ { "Fish", "Squid" } })) == 1,
+    "inaccessible alternatives produce one group warning"
+)
+check(#customer.ValidateRequestDefinition(ingredientRequest({ {} })) == 1, "empty alternative group is diagnosed")
+
 validateIngredients({ "Apple", "Ice" }, nil, nil, { "Apple", "Ice", "Banana" }, true)
 validateIngredients(
     { "Apple", "Lemon" },

@@ -9,10 +9,10 @@ do
     check(inventory.ConsumeHeldSmoothie(p).BlendId == "top-smoothie", "serve selects top smoothie")
     carry(p, "Strawberry")
     check(inventory.GetHeldSmoothie(p) == nil and blend.ConsumeCup(p) == nil, "ingredient cannot serve lower smoothie")
-    tool(p).Activated:Fire()
+    inventory.ThrowHeld(p)
     check(
         inventory.GetCarryCount(p) == 2 and inventory.GetHeldIngredientId(p) == "Banana",
-        "one activation removes only the selected ingredient"
+        "one throw removes only the newest ingredient"
     )
     p.Character:FindFirstChildOfClass("Humanoid"):EquipTool(lowerTool)
     check(inventory.ConsumeHeldSmoothie(p).BlendId == "lower-smoothie", "last smoothie consumed")

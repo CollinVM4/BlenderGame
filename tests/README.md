@@ -147,3 +147,8 @@ orders, separately from gameplay. Existing request tests now activate owned
 plots and assert continuous cooldown/serving instead of day completion. See
 [customer queue validation](../docs/CUSTOMER_QUEUE.md#validation) for the
 current results, baseline failures, and required Studio checks.
+
+## Blender ready floor cue
+
+The standalone presentation suite is `python tests/run_blender_ready_tests.py --luau <luau.exe>`.
+See [setup and validation](../docs/BLENDER_READY_INDICATOR.md) for readiness, lifecycle coverage, and Studio checks.

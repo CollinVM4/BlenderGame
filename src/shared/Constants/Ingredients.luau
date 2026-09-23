@@ -150,6 +150,35 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		JumpLocation = 0,
 	},
 
+	Rock = {
+		Id = "Rock",
+		DisplayName = "Rock",
+		Tags = { "Rock", "Gray", "Weird" },
+		BlendColor = Color3.fromRGB(150, 150, 150),
+		Rarity = "Common",
+		JumpLocation = 0,
+	},
+
+	Shit = {
+		Id = "Shit",
+		DisplayName = "Bunoid Droppings",
+		Tags = { "Weird", "Brown" },
+		BlendColor = Color3.fromRGB(120, 85, 60),
+		Rarity = "Common",
+		JumpLocation = 0,
+	},
+
+	Worm = {
+		Id = "Worm",
+		DisplayName = "Worm",
+		Tags = { "Weird", "Protein", "Brown" },
+		BlendColor = Color3.fromRGB(120, 85, 60),
+		Rarity = "Common",
+		JumpLocation = 0,
+	},
+	-- have carry system fill in hotbar slots, not stack in one
+	-- have item name use Ingredients.Ingredient.DisplayName
+
 	Cinnamon = {
 		Id = "Cinnamon",
 		DisplayName = "Cinnamon",

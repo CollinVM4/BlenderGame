@@ -23,6 +23,7 @@ selection.add_argument("--sprint-only", action="store_true")
 selection.add_argument("--customer-queue-only", action="store_true")
 selection.add_argument("--customer-only", action="store_true", help="Compatibility: run legacy customer/state prefix")
 selection.add_argument("--customer-walk-only", action="store_true", help="Run customer walk and rig validation")
+selection.add_argument("--customer-order-text-only", action="store_true", help="Run order text through spawning and yielding typewriter")
 selection.add_argument("--customer-presentation-only", action="store_true", help="Run customer placement, names and walk presentation")
 selection.add_argument("--request-validation-only", action="store_true", help="Run request state and serving integration")
 selection.add_argument("--requests-only", action="store_true", help="Run request integration and placement separately")
@@ -35,6 +36,8 @@ args = parser.parse_args()
 SUITES = {
     "throw": ("state", ("fixtures/carry.luau", "ingredient_throw.spec.luau")),
     "throw-blender": ("integration", ("fixtures/carry.luau", "ingredient_throw_blender.spec.luau")),
+    "carry-input": ("integration", ("fixtures/carry.luau", "carry_input.spec.luau")),
+    "ingredient-slots": ("integration", ("fixtures/smoothie.luau", "ingredient_slots.spec.luau")),
     "carry": ("state", ("fixtures/carry.luau", "ingredient_carry.spec.luau")),
     "stash": ("state", ("stash_interaction.spec.luau",)),
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
@@ -52,6 +55,7 @@ SUITES = {
     "vfx": ("presentation", ("vfx_runner.spec.luau",)),
     "carry-presentation": ("presentation", ("fixtures/carry.luau", "carry_presentation.spec.luau")),
     "smoothie-geometry": ("presentation", ("fixtures/smoothie.luau", "smoothie_geometry.spec.luau")),
+    "customer-order-text": ("presentation", ("customer_order_text.spec.luau",)),
     "customer-orders": ("presentation", ("customer_order_queue.spec.luau",)),
     "customer-placement": ("presentation", ("customer_placement.spec.luau",)),
     "customer-walk": ("presentation", ("customer_walk.spec.luau",)),
@@ -63,13 +67,14 @@ focused = {
     "vfx_only": ("vfx",),
     "world_only": ("world",),
     "throw_only": ("throw", "throw-blender"),
-    "carry_only": ("carry", "throw", "carry-presentation"),
+    "carry_only": ("carry", "throw", "ingredient-slots", "carry-input", "carry-presentation"),
     "sprint_only": ("sprint",),
     "customer_queue_only": ("customer-queue",),
     "customer_only": ("legacy-state",),
     "request_validation_only": ("customer-validation", "customer-compatibility", "requests"),
     "requests_only": ("requests", "customer-placement", "customer-walk"),
-    "customer_presentation_only": ("customer-orders", "customer-placement", "customer-walk"),
+    "customer_order_text_only": ("customer-order-text",),
+    "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
     "customer_walk_only": ("customer-walk",),
     "stash_only": ("stash", "stash-presentation"),
     "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
@@ -98,6 +103,7 @@ sources["DispenserComponent"] = (ROOT / "src/server/Components/Dispenser.luau").
 sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/GameplayPresentationController.luau").read_text(encoding="utf-8")
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
+sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (
     "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"

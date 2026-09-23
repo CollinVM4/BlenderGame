@@ -37,7 +37,7 @@ for _, dimensions in { vec(2, 2, 1), vec(8, 0.5, 6), vec(1, 9, 1) } do
         end
         publish(self, object, tag)
     end
-    character:FindFirstChildOfClass("Tool").Activated:Fire()
+    inventory.ThrowHeld(player)
     services.CollectionService.AddTag = publish
     check(#released == 1, "one Throw action publishes exactly one world item")
     local thrown = released[1]
@@ -55,8 +55,8 @@ for _, dimensions in { vec(2, 2, 1), vec(8, 0.5, 6), vec(1, 9, 1) } do
     )
     local survivorTool = character:FindFirstChildOfClass("Tool")
     local survivorCount = 0
-    for _, child in survivorTool:GetChildren() do
-        if child.Name ~= "CarryAnchor" and child:IsA("BasePart") then
+    for _, child in character:GetDescendants() do
+        if child.Parent.Name == "IngredientCarryVisuals" and child.Name ~= "CarryAnchor" and child:IsA("BasePart") then
             survivorCount += 1
         end
     end

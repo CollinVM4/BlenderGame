@@ -71,7 +71,7 @@ check(
 template.Name = savedTemplateName
 check(world.Spawn(smoothie("invalid", { "Banana" }), frame()) == nil, "invalid contents cannot register")
 
--- Real activation wiring selects the equipped reservation, not acquisition order.
+-- Central throw selects the equipped smoothie reservation, not acquisition order.
 do
     local owner, humanoid = player()
     carry(owner, "Banana")
@@ -100,7 +100,7 @@ do
         return result
     end
     template.Name = "MissingAsset"
-    olderTool.Activated:Fire()
+    inventory.ThrowHeld(owner)
     check(
         #spawned == 0
             and inventory.GetCarryCount(owner) == 3
@@ -110,7 +110,7 @@ do
     template.Name = savedTemplateName
     newerTool.Activated:Fire()
     check(#spawned == 0, "backpack Tool activation cannot throw equipped smoothie")
-    olderTool.Activated:Fire()
+    inventory.ThrowHeld(owner)
     check(
         #spawned == 1 and inventory.GetCarryCount(owner) == 2,
         "one click removes exactly selected smoothie and spawns one world item"
@@ -127,15 +127,15 @@ do
     )
     humanoid:EquipTool(ingredientTool)
     check(
-        ingredientTool:FindFirstChild("CarryAnchor") ~= nil,
-        "selecting ingredient restores overhead Tool presentation"
+        owner.Character:FindFirstChild("IngredientCarryVisuals") ~= nil,
+        "selecting ingredient retains overhead presentation"
     )
-    ingredientTool.Activated:Fire()
+    inventory.ThrowHeld(owner)
     check(
         inventory.GetCarryCount(owner) == 1 and inventory.GetHeldSmoothie(owner).BlendId == "newer-survivor",
-        "ingredient activation survives smoothie removal"
+        "ingredient throw survives smoothie removal"
     )
-    newerTool.Activated:Fire()
-    check(#spawned == 2 and inventory.GetCarryCount(owner) == 0, "remaining smoothie activation stays connected")
+    inventory.ThrowHeld(owner)
+    check(#spawned == 2 and inventory.GetCarryCount(owner) == 0, "remaining smoothie remains throwable")
     world.Spawn = spawn
 end

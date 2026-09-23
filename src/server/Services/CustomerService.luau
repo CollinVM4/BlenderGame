@@ -64,8 +64,35 @@ end
 -- Only tag comparisons ignore case; ingredient IDs and CustomerIds keep their existing semantics.
 function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Request): { string }
     local diagnostics: { string } = {}
-    local requiredIngredients: { string } = request.RequiredIngredients or {}
-    for _, id in requiredIngredients do
+    local requiredIngredients: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
+    for slot, requirement in requiredIngredients do
+        if type(requirement) == "table" then
+            local accessible = false
+            local valid = false
+            if #requirement == 0 then
+                table.insert(diagnostics, "Empty ingredient alternative group at slot " .. slot)
+            end
+            for _, id in requirement do
+                local definition = Ingredients[id]
+                if not definition then
+                    table.insert(diagnostics, "Unknown required ingredient: " .. id)
+                else
+                    valid = true
+                    accessible = accessible or definition.JumpLocation <= request.MinJumpTier
+                end
+            end
+            if valid and not accessible then
+                table.insert(
+                    diagnostics,
+                    "No ingredient alternative at slot "
+                        .. slot
+                        .. " is accessible at MinJumpTier "
+                        .. request.MinJumpTier
+                )
+            end
+            continue
+        end
+        local id = requirement
         local definition = Ingredients[id]
         if not definition then
             table.insert(diagnostics, "Unknown required ingredient: " .. id)
@@ -94,7 +121,7 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
 end
 
 function CustomerService.ValidateRequest(result: Types.Smoothie, request: CustomerRequests.Request): (boolean, string)
-    local requiredIngredients: { string } = request.RequiredIngredients or {}
+    local requiredIngredients: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
     if #result.Ingredients == 0 then
         return false, "Empty smoothie"
     end
@@ -138,13 +165,30 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
             return false, "Contains forbidden tag: " .. tag
         end
     end
-    local requiredCounts: { [string]: number } = {}
-    for _, id in requiredIngredients do
-        requiredCounts[id] = (requiredCounts[id] or 0) + 1
+    -- Augmenting paths let overlapping slots reassign earlier matches instead of
+    -- greedily consuming the only ingredient available to a later slot.
+    local assignedSlots: { [number]: number } = {}
+    local function matchSlot(slot: number, visited: { [number]: boolean }): boolean
+        local requirement = requiredIngredients[slot]
+        for index, id in result.Ingredients do
+            local matches = if type(requirement) == "string"
+                then requirement == id
+                else table.find(requirement, id) ~= nil
+            if matches and not visited[index] then
+                visited[index] = true
+                local previousSlot = assignedSlots[index]
+                if not previousSlot or matchSlot(previousSlot, visited) then
+                    assignedSlots[index] = slot
+                    return true
+                end
+            end
+        end
+        return false
     end
-    for id, count in requiredCounts do
-        if (ingredientCounts[id] or 0) < count then
-            return false, "Missing required ingredient: " .. id
+    for slot, requirement in requiredIngredients do
+        if not matchSlot(slot, {}) then
+            local description = if type(requirement) == "string" then requirement else table.concat(requirement, " or ")
+            return false, "Missing required ingredient: " .. description
         end
     end
     local forbiddenIngredients: { string } = request.ForbiddenIngredients or {}
@@ -153,12 +197,8 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
             return false, "Contains forbidden ingredient: " .. id
         end
     end
-    if request.ExactIngredients then
-        for id, count in ingredientCounts do
-            if requiredCounts[id] ~= count then
-                return false, "Exact ingredient mismatch"
-            end
-        end
+    if request.ExactIngredients and #result.Ingredients ~= #requiredIngredients then
+        return false, "Exact ingredient mismatch"
     end
     return true, "Request requirements matched"
 end
@@ -472,7 +512,97 @@ local function ensureCustomerCounterGlow(customerModel: Model): ParticleEmitter?
     return counterGlow
 end
 
-local function typewriterText(textLabel: TextLabel, message: string, dialogueSound: Sound?)
+local function escapeRichText(message: string): string
+    local escaped = message:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+    return escaped
+end
+
+function CustomerService.FormatRequestText(request: CustomerRequests.Request): string
+    local names: { { Name: string, Color: Color3 } } = {}
+    local seen: { [string]: boolean } = {}
+    local requiredIngredients: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
+    for _, requirement in requiredIngredients do
+        local alternatives: { string } = if type(requirement) == "string" then { requirement } else requirement
+        for _, id in alternatives do
+            local definition = Ingredients[id]
+            if definition then
+                local name = string.lower(definition.DisplayName or definition.Id)
+                if name ~= "" and not seen[name] then
+                    seen[name] = true
+                    table.insert(names, { Name = name, Color = definition.BlendColor })
+                end
+            end
+        end
+    end
+    -- Ingredient names were added first, so a tag cannot replace their catalog color.
+    local function addTag(tag: string)
+        local normalized = string.lower(tag)
+        local highlight = Presentation.TagHighlights[normalized]
+        if not highlight then
+            return
+        end
+        local phrases = { normalized }
+        local aliases: { string } = highlight.Aliases or {}
+        for _, alias in aliases do
+            table.insert(phrases, alias)
+        end
+        for _, phrase in phrases do
+            if not seen[phrase] then
+                seen[phrase] = true
+                table.insert(names, { Name = phrase, Color = highlight.Color })
+            end
+        end
+    end
+    local requiredTags: { string } = request.RequiredTags or {}
+    for _, tag in requiredTags do
+        addTag(tag)
+    end
+    local forbiddenTags: { string } = request.ForbiddenTags or {}
+    for _, tag in forbiddenTags do
+        addTag(tag)
+    end
+    -- Prefer full multiword names over shorter names contained within them.
+    table.sort(names, function(a, b)
+        return #a.Name > #b.Name
+    end)
+    local message = request.DisplayText
+    local lower = string.lower(message)
+    local output: { string } = {}
+    local index = 1
+    while index <= #message do
+        local matched = false
+        for _, entry in names do
+            local last = index + #entry.Name - 1
+            if
+                lower:sub(index, last) == entry.Name
+                and not lower:sub(index - 1, index - 1):match("[%w_]")
+                and not lower:sub(last + 1, last + 1):match("[%w_]")
+            then
+                local color = entry.Color
+                table.insert(
+                    output,
+                    string.format(
+                        '<font color="rgb(%d,%d,%d)">%s</font>',
+                        math.round(color.R * 255),
+                        math.round(color.G * 255),
+                        math.round(color.B * 255),
+                        escapeRichText(message:sub(index, last))
+                    )
+                )
+                index = last + 1
+                matched = true
+                break
+            end
+        end
+        if not matched then
+            table.insert(output, escapeRichText(message:sub(index, index)))
+            index += 1
+        end
+    end
+    return table.concat(output)
+end
+
+local function typewriterText(textLabel: TextLabel, message: string, dialogueSound: Sound?, richMessage: string?)
     local currentToken = {}
     activeTypingTasks[textLabel] = currentToken
     local dialogueStep = 3
@@ -481,6 +611,7 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
         dialogueSound:Stop()
     end
 
+    textLabel.RichText = true
     textLabel.Text = ""
 
     task.spawn(function()
@@ -490,7 +621,7 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
             end
 
             local character = string.sub(message, index, index)
-            textLabel.Text = string.sub(message, 1, index)
+            textLabel.Text = escapeRichText(string.sub(message, 1, index))
 
             local shouldPlayDialogueSound = dialogueSound
                 and dialogueSound.Parent
@@ -515,7 +646,8 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
             task.wait(0.04)
         end
 
-        if activeTypingTasks[textLabel] == currentToken then
+        if textLabel.Parent and activeTypingTasks[textLabel] == currentToken then
+            textLabel.Text = richMessage or escapeRichText(message)
             activeTypingTasks[textLabel] = nil
         end
     end)
@@ -924,7 +1056,12 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
             end
         end
     end)
-    typewriterText(text, record.Request.DisplayText, audio.dialogueSound)
+    typewriterText(
+        text,
+        record.Request.DisplayText,
+        audio.dialogueSound,
+        CustomerService.FormatRequestText(record.Request)
+    )
     CustomerService.RefreshQueue(player)
     return model
 end
@@ -1097,7 +1234,12 @@ function CustomerService:RefreshOrder(model: Model)
         for _, record in queue.Customers do
             if record.Model == model then
                 if assignRequest(player, record) then
-                    typewriterText(record.Text, record.Request.DisplayText, record.Audio.dialogueSound)
+                    typewriterText(
+                        record.Text,
+                        record.Request.DisplayText,
+                        record.Audio.dialogueSound,
+                        CustomerService.FormatRequestText(record.Request)
+                    )
                 end
                 return
             end

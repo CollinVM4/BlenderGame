@@ -23,6 +23,7 @@ type StashIntent = {
 local stashIntents: { [Player]: StashIntent } = {}
 type HeldItem = {
     Tool: Tool,
+    CarryItemId: number,
     VisualHost: Model?,
     ItemType: "Ingredient" | "Smoothie",
     Id: string?,
@@ -36,6 +37,7 @@ type HeldItem = {
     Connections: { RBXScriptConnection },
 }
 local held: { [Player]: { HeldItem } } = {}
+local nextCarryItemId = 0
 local function topItem(player: Player): HeldItem?
     local stack = held[player]
     return if stack then stack[#stack] else nil
@@ -63,9 +65,6 @@ function InventoryService.GetCarryCapacity(player: Player): number
 end
 local function syncHeld(player: Player)
     local top = selectedItem(player)
-    if top then
-        top.Tool.Name = if top.ItemType == "Smoothie" then "Smoothie" else (top.Id :: string) .. " (click to throw)"
-    end
     player:SetAttribute("HeldIngredientId", if top and top.ItemType == "Ingredient" then top.Id else nil)
     player:SetAttribute("HeldItemType", if top then top.ItemType else nil)
     local hasSmoothie = false
@@ -88,46 +87,39 @@ local function removeAt(player: Player, index: number?)
     if not record then
         return
     end
-    local successor: HeldItem? = nil
-    for _, item in stack do
-        if item.Tool == record.Tool then
-            successor = item
-            break
-        end
-    end
-    if successor then
-        if #record.Connections > 0 then
-            successor.Connections = record.Connections
-        end
-    else
-        for _, connection in record.Connections do
-            connection:Disconnect()
-        end
+    for _, connection in record.Connections do
+        connection:Disconnect()
     end
     if #stack == 0 then
         held[player] = nil
     end
     for i = removedIndex, #stack do
         local item = stack[i]
-        if item.Tool == record.Tool then
-            if item.ShiftDown then
-                item.ShiftDown(record.Height)
-            end
+        if item.ShiftDown then
+            item.ShiftDown(record.Height)
         end
     end
     local wasEquipped = record.Tool.Parent == player.Character
     record.ClearVisual()
-    if not successor then
-        if record.VisualHost then
-            record.VisualHost:Destroy()
-        end
-        if not record.Destroying then
-            record.Tool:Destroy()
-        end
+    if record.VisualHost then
+        record.VisualHost:Destroy()
+    end
+    if not record.Destroying then
+        record.Tool:Destroy()
     end
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if wasEquipped and not successor and #stack > 0 and humanoid and humanoid.Health > 0 and not switching[player] then
-        equipTool(player, humanoid, stack[#stack].Tool)
+    if wasEquipped and #stack > 0 and humanoid and humanoid.Health > 0 and not switching[player] then
+        local nextItem = stack[#stack]
+        -- Continue the ingredient stack when removing its selected slot in mixed carry.
+        if record.ItemType == "Ingredient" then
+            for i = #stack, 1, -1 do
+                if stack[i].ItemType == "Ingredient" then
+                    nextItem = stack[i]
+                    break
+                end
+            end
+        end
+        equipTool(player, humanoid, nextItem.Tool)
     end
     syncHeld(player)
 end
@@ -237,7 +229,7 @@ function InventoryService.CleanupCharacter(player: Player)
     InventoryService.ClearHeld(player)
 end
 
--- The equipped Tool selects its own reservation (or top ingredient); contents stay server-owned.
+-- Smoothie selection is exact; ingredient throwing preserves the original newest-first order.
 function InventoryService.ThrowHeld(player: Player): Instance?
     local record = selectedItem(player)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -251,6 +243,14 @@ function InventoryService.ThrowHeld(player: Player): Instance?
         or humanoid.Health <= 0
     then
         return nil
+    end
+    if record.ItemType == "Ingredient" then
+        local stack = held[player]
+        for index = #stack, 1, -1 do
+            if stack[index].ItemType == "Ingredient" then
+                return releaseHeld(player, true, nil, index)
+            end
+        end
     end
     return releaseHeld(player, true, nil, table.find(held[player], record))
 end
@@ -272,17 +272,17 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
         return false
     end
     local stack: { HeldItem } = held[player] or {}
-    local existing: HeldItem? = nil
-    if not smoothie then
-        for _, item in stack do
-            if item.ItemType == "Ingredient" then
-                existing = item
-                break
-            end
-        end
+    local tool = if smoothie then visual :: Tool else Instance.new("Tool")
+    nextCarryItemId += 1
+    if smoothie then
+        tool.Name = "Smoothie"
+    else
+        local definition = deps.IngredientService.GetDefinition(id)
+        tool.Name = definition.DisplayName or (id :: string)
+        tool:SetAttribute("IngredientId", id)
+        tool:SetAttribute("CarryItemId", nextCarryItemId)
+        tool:SetAttribute("ItemType", "Ingredient")
     end
-    local tool = if smoothie then visual :: Tool elseif existing then existing.Tool else Instance.new("Tool")
-    tool.Name = if smoothie then "Smoothie" else (id :: string) .. " (click to throw)"
     tool.CanBeDropped = false
     tool.RequiresHandle = smoothie ~= nil
     local height = 0
@@ -294,17 +294,18 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
     local clearVisual: () -> () = function() end
     local itemHeight = 0
     local shiftDown: ((number) -> ())? = nil
-    if not smoothie then
-        local _visualOffset
-        _visualOffset, clearVisual, itemHeight, shiftDown = CarryPresentation.Attach(visual, tool, root, height)
-    end
-    local visualHost = if smoothie then nil elseif existing then existing.VisualHost else Instance.new("Model")
+    local visualHost = if smoothie then nil else Instance.new("Model")
     if visualHost then
         visualHost.Name = "IngredientCarryVisuals"
+        visualHost:SetAttribute("CarryItemId", nextCarryItemId)
+        visualHost.Parent = root.Parent
+        local _visualOffset
+        _visualOffset, clearVisual, itemHeight, shiftDown = CarryPresentation.Attach(visual, visualHost, root, height)
     end
     local reservation: HeldItem = {
         VisualHost = visualHost,
         Tool = tool,
+        CarryItemId = nextCarryItemId,
         Id = id,
         ItemType = if smoothie then "Smoothie" else "Ingredient",
         Smoothie = if smoothie then SmoothieItem.Copy(smoothie) else nil,
@@ -319,12 +320,6 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
     table.insert(stack, reservation)
     held[player] = stack
     syncHeld(player)
-    if existing then
-        if tool.Parent ~= player.Character then
-            equipTool(player, humanoid, tool)
-        end
-        return true
-    end
     local function ownsTool(): boolean
         local current: { HeldItem } = held[player] or {}
         for _, item in current do
@@ -342,12 +337,6 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
     table.insert(
         reservation.Connections,
         tool.Equipped:Connect(function()
-            if visualHost then
-                for _, child in visualHost:GetChildren() do
-                    child.Parent = tool
-                end
-                visualHost.Parent = nil
-            end
             syncHeld(player)
         end)
     )
@@ -357,25 +346,8 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
             if not ownsTool() then
                 return
             end
-            if visualHost then
-                for _, child in tool:GetChildren() do
-                    child.Parent = visualHost
-                end
-                visualHost.Parent = root.Parent
-            end
-            if switching[player] then
-                return
-            end
-            -- Backpack smoothies remain selectable. Mixed inventory keeps the overhead
-            -- ingredient assembly while the player switches to a smoothie Tool.
-            local current: { HeldItem } = held[player] or {}
-            for _, item in current do
-                if item.Smoothie then
-                    syncHeld(player)
-                    return
-                end
-            end
-            InventoryService.DropHeld(player)
+            -- Selection changes never transfer ownership or remove overhead visuals.
+            syncHeld(player)
         end)
     )
     table.insert(reservation.Connections, humanoid.Died:Connect(cleanupThisTool))
@@ -390,15 +362,6 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
                     item.Destroying = true
                     releaseHeld(player, false, nil, index)
                 end
-            end
-        end)
-    )
-    table.insert(
-        reservation.Connections,
-        tool.Activated:Connect(function()
-            local selected = selectedItem(player)
-            if ownsTool() and selected and selected.Tool == tool then
-                InventoryService.ThrowHeld(player)
             end
         end)
     )

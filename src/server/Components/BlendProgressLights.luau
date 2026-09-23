@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
+local BlenderReadyIndicator = require(script.Parent.BlenderReadyIndicator)
 local BlendProgressLights = {}
 
 type Light = {
@@ -105,6 +106,9 @@ function BlendProgressLights.Init(services: any)
             local completed = if reset
                 then 0
                 else math.clamp(math.floor((progress :: number) / Economy.RequiredProgress * 5), 0, 5)
+            if completed == 5 and not BlenderReadyIndicator.IsReady(state, progress) then
+                completed = 4
+            end
             for index, milestoneLights in lights do
                 for _, light in milestoneLights do
                     setMode(light, if index <= completed then "solid" else "off")

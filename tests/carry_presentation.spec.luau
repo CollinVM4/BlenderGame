@@ -32,7 +32,7 @@ local function restored()
     end
 end
 local tool = equip()
-check(not tool.RequiresHandle and not tool:FindFirstChild("Handle"), "Tool keeps activation without default hand grip")
+check(not tool.RequiresHandle and not tool:FindFirstChild("Handle"), "passive Tool has no default hand grip")
 for _, motor in motors do
     check(motor.Enabled == (motor.Name ~= "LeftWrist"), "carry leaves arm motors unchanged")
 end
@@ -47,3 +47,70 @@ restored()
 equip()
 inventory.ClearHeld(player)
 restored()
+
+-- Overhead stack stays visible and vertical regardless of hotbar selection.
+local function visualFor(t)
+    for _, host in character:GetChildren() do
+        if
+            host.Name == "IngredientCarryVisuals"
+            and host:GetAttribute("CarryItemId") == t:GetAttribute("CarryItemId")
+        then
+            return host
+        end
+    end
+    error("missing overhead visual")
+end
+local slots, hosts, positions = {}, {}, {}
+for _, id in { "Strawberry", "Ice", "Cherries" } do
+    setup(inventory.CarryWorldItem(player, ingredients.Spawn(id, translate(), nil, true)), "stack visual pickup")
+    local t = character:FindFirstChildOfClass("Tool")
+    table.insert(slots, t)
+    local host = visualFor(t)
+    table.insert(hosts, host)
+    table.insert(positions, host:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position)
+end
+for index, position in positions do
+    check(position.X == 0 and position.Z == 0, "overhead stack remains vertical")
+    if index > 1 then
+        check(position.Y > positions[index - 1].Y, "pickup order increases overhead height")
+    end
+end
+humanoid:EquipTool(slots[1])
+slots[1].Parent = backpack
+slots[1].Unequipped:Fire()
+for index, host in hosts do
+    check(host:IsDescendantOf(character), "unequipped ingredients remain visible on character")
+    local position = host:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position
+    check((position - positions[index]).Magnitude < 1e-6, "selection never moves overhead items")
+end
+-- Stash removal uses the same per-record removal/reflow path.
+local fixture = instance("Model")
+local stashPart = part("Slot", fixture, vec(1, 1, 1), translate())
+stashPart:SetAttribute("SlotIndex", 1)
+inventory.Init({
+    IngredientService = ingredients,
+    PlayerDataService = data,
+    TycoonService = {
+        GetPlot = function()
+            return fixture
+        end,
+        GetFixtures = function()
+            return { fixture }
+        end,
+        GetOwner = function()
+            return player
+        end,
+    },
+})
+humanoid:EquipTool(slots[2])
+setup(inventory.Deposit(player, "Ice", 1), "stash middle visual")
+check(
+    hosts[2].Destroyed and not hosts[1].Destroyed and not hosts[3].Destroyed,
+    "only removed item's overhead visual disappears"
+)
+local lower = hosts[1]:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position
+local upper = hosts[3]:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position
+check((lower - positions[1]).Magnitude < 1e-6, "middle removal preserves lower visual position")
+check(math.abs(upper.Y - positions[2].Y) < 1e-6, "middle removal closes exactly the removed stack gap")
+inventory.ClearHeld(player)
+check(hosts[1].Destroyed and hosts[3].Destroyed, "clear retires remaining overhead visuals")

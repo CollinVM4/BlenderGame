@@ -114,6 +114,7 @@ local components: { { Init: (any) -> () } } = {
     require(script.Components.AnnouncedIngredientSpawn),
     require(script.Components.TurbineWheel),
     require(script.Components.BlendProgressLights),
+    require(script.Components.BlenderReadyIndicator),
     require(script.Components.BlenderStatusPresentation),
     require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),

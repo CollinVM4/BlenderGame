@@ -1,6 +1,8 @@
 --!strict
 local Ingredients = require(script.Parent.Ingredients)
 
+export type IngredientRequirement = string | { string }
+
 export type Request = {
     Id: string,
     DisplayText: string,
@@ -8,9 +10,9 @@ export type Request = {
     BadResponse: string?,
     RequiredTags: { string }, -- All must match; "*" matches any ingredient tag.
     ForbiddenTags: { string }?, -- None may be present; omitted means empty.
-    RequiredIngredients: { string }?, -- All IDs must be present; duplicates require matching quantities.
+    RequiredIngredients: { IngredientRequirement }?, -- One physical ingredient per slot; tables offer alternatives.
     ForbiddenIngredients: { string }?, -- None of these IDs may be present.
-    ExactIngredients: boolean?, -- Require exactly the RequiredIngredients multiset.
+    ExactIngredients: boolean?, -- Require one ingredient per requirement slot, with no extras.
     BasePayout: number,
     MinJumpTier: number,
     NPCOnly: boolean?,
@@ -268,7 +270,7 @@ local requests: { Request } = {
         GoodResponse = "Exactly what I ordered!",
         BadResponse = "That is NOT my recipe!",
         RequiredTags = {},
-        RequiredIngredients = { "Apple", "Banana", "Ice" },
+        RequiredIngredients = { { "Apple", "Green_Apple" }, "Banana", "Ice" } :: { IngredientRequirement },
         ExactIngredients = true,
         BasePayout = 50,
         MinJumpTier = 0,
@@ -602,7 +604,7 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    SpecialCustomerChance = 0.42,
+    SpecialCustomerChance = 1,
     -- Continuous special cooldown is configured in Economy.SpecialCustomerCooldownSeconds.
     RegularCustomerRecencyWindow = 3,
     RegularRequestRecencyWindow = 3,
@@ -612,85 +614,85 @@ local CustomerRequests = {
             Type = "Special",
             DisplayName = "Steak",
             RequestId = "Steak",
-            Weight = 1,
+            Weight = 0,
         },
         blueman = {
             Type = "Special",
             DisplayName = "Bluey",
             RequestId = "Blueman",
-            Weight = 1,
+            Weight = 0,
         },
         prankster = {
             Type = "Special",
             DisplayName = "Edgar",
             RequestId = "Prankster",
-            Weight = 1,
+            Weight = 0,
         },
         pirate = {
             Type = "Special",
             DisplayName = "Pirate",
             RequestId = "Pirate",
-            Weight = 1,
+            Weight = 0,
         },
         caseoh = {
             Type = "Special",
             DisplayName = "dookieman12",
             RequestId = "Caseoh",
-            Weight = 1,
+            Weight = 0,
         },
         walter = {
             Type = "Special",
             DisplayName = "Walter White",
             RequestId = "Walter",
-            Weight = 1,
+            Weight = 0,
         },
         jynxzi = {
             Type = "Special",
             DisplayName = "Junko",
             RequestId = "Jynxzi",
-            Weight = 1,
+            Weight = 0,
         },
-        totallynotkreek = {
+        kreek = {
             Type = "Special",
             DisplayName = "TotallyNotKreek",
             RequestId = "TotallyNotKreek",
-            Weight = 1,
+            Weight = 0,
         },
         caylus = {
             Type = "Special",
             DisplayName = "DefinitelyNotCaylus",
             RequestId = "DefinitelyNotCaylus",
-            Weight = 1,
+            Weight = 0,
         },
         flamingo = {
             Type = "Special",
             DisplayName = "NotFlamingo",
             RequestId = "NotFlamingo",
-            Weight = 1,
+            Weight = 0,
         },
         foltyn = {
             Type = "Special",
             DisplayName = "FoltynMaybe",
             RequestId = "FoltynMaybe",
-            Weight = 1,
+            Weight = 0,
         },
         sketch = {
             Type = "Special",
             DisplayName = "TotallyNotSketch",
             RequestId = "TotallyNotSketch",
-            Weight = 1,
+            Weight = 0,
         },
         funneh = {
             Type = "Special",
             DisplayName = "NotFunneh",
             RequestId = "NotFunneh",
-            Weight = 1,
+            Weight = 0,
         },
         russo = {
             Type = "Special",
             DisplayName = "ProbablyNotRusso",
             RequestId = "ProbablyNotRusso",
-            Weight = 1,
+            Weight = 0,
         },
         nathan = {
             Type = "Special",

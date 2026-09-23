@@ -15,3 +15,5 @@ SprintController.Init()
 require(script.Controllers.StashPromptController).Init()
 
 require(script.Controllers.UpgradesController).Init()
+
+require(script.Controllers.CarryInputController).Init()
