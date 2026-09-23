@@ -52,6 +52,36 @@ local function selectedItem(player: Player): HeldItem?
     end
     return nil
 end
+-- Client IDs are preferences, never ownership proof. Only this player's live records qualify.
+local function resolveActionItem(player: Player, requestedCarryItemId: any?): HeldItem?
+    local stack: { HeldItem } = held[player] or {}
+    local function available(item: HeldItem): boolean
+        return not item.Releasing and not item.Destroying
+    end
+    local selected = selectedItem(player)
+    -- Smoothies keep their existing exact equipped selection, independent of ingredient hints.
+    if selected and selected.ItemType == "Smoothie" and available(selected) then
+        return selected
+    end
+    local requested = requestedCarryItemId
+    if requested == nil and selected and selected.ItemType == "Ingredient" then
+        requested = selected.Tool:GetAttribute("CarryItemId")
+    end
+    if type(requested) == "number" and requested == requested and requested > 0 and requested % 1 == 0 then
+        for _, item in stack do
+            if item.CarryItemId == requested and item.ItemType == "Ingredient" and available(item) then
+                return item
+            end
+        end
+    end
+    for index = #stack, 1, -1 do
+        local item = stack[index]
+        if item.ItemType == "Ingredient" and available(item) then
+            return item
+        end
+    end
+    return nil
+end
 local function equipTool(player: Player, humanoid: Humanoid, tool: Tool)
     switching[player] = true
     humanoid:EquipTool(tool)
@@ -64,7 +94,8 @@ function InventoryService.GetCarryCapacity(player: Player): number
     return Upgrades.CarryCapacity[deps.PlayerDataService.GetUpgrade(player, "CarryCapacity")].Value
 end
 local function syncHeld(player: Player)
-    local top = selectedItem(player)
+    -- These attributes describe the action target, including unequipped ingredient fallback.
+    local top = resolveActionItem(player)
     player:SetAttribute("HeldIngredientId", if top and top.ItemType == "Ingredient" then top.Id else nil)
     player:SetAttribute("HeldItemType", if top then top.ItemType else nil)
     local hasSmoothie = false
@@ -229,28 +260,13 @@ function InventoryService.CleanupCharacter(player: Player)
     InventoryService.ClearHeld(player)
 end
 
--- Smoothie selection is exact; ingredient throwing preserves the original newest-first order.
-function InventoryService.ThrowHeld(player: Player): Instance?
-    local record = selectedItem(player)
+-- Exact selected identity takes priority; unselected/invalid ingredient hints use newest-first.
+function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?): Instance?
+    local record = resolveActionItem(player, requestedCarryItemId)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if
-        not record
-        or record.Tool.Parent ~= player.Character
-        or not root
-        or not root:IsA("BasePart")
-        or not humanoid
-        or humanoid.Health <= 0
-    then
+    if not record or not root or not root:IsA("BasePart") or not humanoid or humanoid.Health <= 0 then
         return nil
-    end
-    if record.ItemType == "Ingredient" then
-        local stack = held[player]
-        for index = #stack, 1, -1 do
-            if stack[index].ItemType == "Ingredient" then
-                return releaseHeld(player, true, nil, index)
-            end
-        end
     end
     return releaseHeld(player, true, nil, table.find(held[player], record))
 end
@@ -469,7 +485,7 @@ function InventoryService.GetStashLayout(_player: Player)
     return { Slots = 5, Protected = 2 }
 end
 function InventoryService.GetHeldIngredientId(player: Player): string?
-    local record = selectedItem(player)
+    local record = resolveActionItem(player)
     return if record and record.ItemType == "Ingredient" and not record.Releasing then record.Id else nil
 end
 function InventoryService.GetSnapshot(player: Player)
@@ -622,14 +638,13 @@ local function clearSlot(slot: Types.StashSlot)
     slot.Count, slot.Capacity = 0, 5
 end
 local function depositSelected(player: Player, itemType: string, key: string, index: number): boolean
-    local record = selectedItem(player)
+    local record = resolveActionItem(player)
     if
         not record
         or record.Releasing
         or record.Destroying
         or record.ItemType ~= itemType
         or heldKey(record) ~= key
-        or record.Tool.Parent ~= player.Character
         or not accessible(player, player, index)
     then
         return false
@@ -722,7 +737,7 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
         return false
     end
     if not intent then
-        local selected = selectedItem(player)
+        local selected = resolveActionItem(player)
         local key = if selected then heldKey(selected) else slotKey(slot)
         local itemType: ("Ingredient" | "Smoothie")? = if selected then selected.ItemType else slot.ItemType
         if not key or not itemType then
@@ -736,7 +751,7 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
     assert(intent)
     local success = false
     if intent.Direction == "STORE" then
-        local selected = selectedItem(player)
+        local selected = resolveActionItem(player)
         local key = if selected then heldKey(selected) else nil
         if selected and key then
             success = owner == player and depositSelected(player, selected.ItemType, key, index)

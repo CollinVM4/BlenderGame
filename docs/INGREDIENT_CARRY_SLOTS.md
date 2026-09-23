@@ -29,23 +29,39 @@ selection does not remove inventory, move the stack, or introduce hand geometry.
 
 ## Throw and selection behavior
 
-One `CarryInputController` action sends `GameplayRequest("ThrowHeld")`; the existing
+One `CarryInputController` action sends `GameplayRequest("ThrowHeld", selectedCarryItemId)`; the existing
 rate-limited server adapter calls `InventoryService.ThrowHeld`. Mouse click,
 gamepad R2, and a touch Throw button use this path. All per-Tool Activated throw
 listeners were removed, including the shared helper's smoothie listener, so a
 click cannot trigger two throw paths.
 
-Ingredient throwing remains newest-first while any ingredient slot is equipped.
-Selecting an older ingredient does not change throw order. A selected smoothie
-still throws that exact smoothie. No selected carry Tool means no throw. Server
-health checks, spawn failure retention, launch position/velocity, and collision
-grace remain. Input throttling now uses the existing 0.15-second request limit.
+The controller reads the equipped Tool under Character and sends its numeric
+`CarryItemId` when it also has `IngredientId`. It never uses a hotbar index, name,
+or ingredient ID as the item identity. Unequipping sends no selected ID; input
+remains enabled while CarryCount is positive.
 
-Ingredient selection now identifies that individual item for stash deposit.
-Previously only the shared ingredient Tool existed, so deposits chose its newest
-record. After removing an equipped ingredient, the newest remaining ingredient
-is selected when available. Smoothie selection, hand geometry, copied data,
-consumption, and stash behavior remain intact.
+Throw and stash share `resolveActionItem` on the server. An equipped smoothie
+keeps exact selection precedence. Otherwise a supplied ingredient carry ID (or
+the server-equipped ingredient Tool's ID when no hint is supplied) must match a
+live ingredient record in that player's held list. The record must not be
+releasing or destroying. Numeric IDs must be positive integers. Invalid, stale,
+malformed, or foreign IDs fall back only to that player's newest live ingredient.
+Nothing selected also uses that fallback. Unselected smoothies never become
+fallback items. Health and existing action-specific access checks still apply.
+
+Duplicates resolve by CarryItemId, so selecting the first Apple removes that
+record and its exact Tool/visual. Selection never reorders the held array.
+Server HeldIngredientId/HeldItemType presentation attributes report the effective
+action target, including fallback, so stash prompts describe the ingredient that
+will be stored. Stash burst direction, capacity, stacking, protections, and
+transfer checks remain unchanged. A fresh stash interaction with unequipped
+ingredients now starts STORE using the newest ingredient; an existing TAKE burst
+still continues TAKE. Removing an equipped item retains the existing automatic
+selection of a surviving Tool. Ingredient selection does not affect smoothie
+hand geometry, serving, or copied data.
+
+Launch position/velocity, spawn failure retention, collision grace, and the
+existing 0.15-second request limit are unchanged.
 
 Unequipping ingredients no longer drops the stack: this is necessary for passive
 hotbar selection. Explicit drops, death/reset, and player cleanup still release
@@ -100,3 +116,19 @@ and middle-item reflow, single mouse/gamepad/touch throws (including UI clicks),
 stash/withdraw, blender ingestion, smoothie selection/serving, and death/respawn.
 CLI doubles do not simulate Roblox input priority, networking, weld physics, or
 rendered hotbar behavior.
+
+## Selected-slot follow-up
+
+This follow-up changes only `CarryInputController.luau`, `GameplayService.luau`,
+`InventoryService.luau`, `carry_input.spec.luau`, `ingredient_slots.spec.luau`,
+`run_state_tests.py`, this document, and new `carry_selection.spec.luau`.
+No presentation implementation or authored assets changed.
+
+Validation: `--carry-only` passes all six suites, covering exact middle/first
+selection, duplicate throw/stash, nil fallback, malformed/foreign IDs, selection
+lifecycle, client ID forwarding, overhead preservation, and selected smoothies.
+The stash/smoothie focused runs retain the same four failures listed above,
+reproduced again on a copy of the local tree taken before this follow-up.
+Runner tests, Roblox-aware typecheck, StyLua, Rojo build, and whitespace checks
+pass. The existing deprecated API warning remains. Studio input/equip replication
+still needs manual verification; no Studio session was run.

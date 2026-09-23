@@ -36,14 +36,13 @@ check(#slots() == 3 and inventory.GetCarryCount(p) == 3, "selecting an older slo
 strawberry.Parent = backpack
 strawberry.Unequipped:Fire()
 check(#slots() == 3 and inventory.GetCarryCount(p) == 3, "unequip retains inventory")
-check(inventory.ThrowHeld(p) == nil, "no selected carry Tool cannot throw")
-humanoid:EquipTool(strawberry)
+
 -- Attributes are presentation only, never authorization for contents.
 cherries:SetAttribute("IngredientId", "Tire")
 local thrown = inventory.ThrowHeld(p)
 check(
     ingredients.GetRecord(thrown).Id == "Cherries",
-    "ingredient throw stays newest-first despite selection or attribute tampering"
+    "unequipped ingredient throw uses newest-first despite attribute tampering"
 )
 check(
     cherries.Destroyed and not ice.Destroyed and not strawberry.Destroyed and #slots() == 2,

@@ -25,7 +25,7 @@ function GameplayService.Init(services: any)
         if action == "StartDay" then
             services.GameService.StartDay(player)
         elseif action == "ThrowHeld" then
-            services.InventoryService.ThrowHeld(player)
+            services.InventoryService.ThrowHeld(player, id)
         elseif action == "ReleaseIngredient" and validId then
             services.InventoryService.ReleaseUnit(player, id)
         elseif action == "Deposit" and validId and validSlot then

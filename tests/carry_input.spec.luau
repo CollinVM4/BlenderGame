@@ -13,6 +13,12 @@ end
 local gameplay = loadModule("GameplayService")
 gameplay.Init({ InventoryService = inventory })
 local remote = shared.Events:FindFirstChild("GameplayRequest")
+local requestedIds = {}
+local send = remote.FireServer
+function remote:FireServer(actionName, id)
+    table.insert(requestedIds, id or false)
+    send(self, actionName, id)
+end
 function shared.Events:WaitForChild(name)
     return self:FindFirstChild(name)
 end
@@ -43,6 +49,13 @@ check(bindings == 1, "controller startup cannot duplicate throw action")
 for _, id in { "Banana", "Ice", "Cherries" } do
     setup(inventory.CarryWorldItem(player, ingredients.Spawn(id, translate(), nil, true)), "input fixture pickup")
 end
+local selectedTool
+for _, t in player:FindFirstChildOfClass("Backpack"):GetChildren() do
+    if t:GetAttribute("IngredientId") == "Ice" then
+        selectedTool = t
+    end
+end
+humanoid:EquipTool(selectedTool)
 textFocused = true
 action("ThrowHeld", "Begin")
 check(inventory.GetCarryCount(player) == 3, "typing does not throw")
@@ -50,14 +63,19 @@ textFocused = false
 action("ThrowHeld", "End")
 check(inventory.GetCarryCount(player) == 3, "release edge does not throw")
 action("ThrowHeld", "Begin")
-check(inventory.GetCarryCount(player) == 2, "one central input throws exactly one ingredient")
+check(inventory.GetCarryCount(player) == 2 and selectedTool.Destroyed, "one central input throws selected ingredient")
+check(requestedIds[1] == selectedTool:GetAttribute("CarryItemId"), "client sends exact equipped carry identity")
 action("ThrowHeld", "Begin")
 check(inventory.GetCarryCount(player) == 2, "server throttles repeated requests")
 now += 0.2
-remote.OnServerEvent:Fire(player, "ThrowHeld", "Tire", 99)
+local equipped = character:FindFirstChildOfClass("Tool")
+equipped.Parent = player:FindFirstChildOfClass("Backpack")
+equipped.Unequipped:Fire()
+action("ThrowHeld", "Begin")
+check(requestedIds[#requestedIds] == false, "deselect sends no carry identity")
 check(
     inventory.GetCarryCount(player) == 1 and inventory.GetHeldIngredientId(player) == "Banana",
-    "client arguments cannot select throw contents"
+    "unselected input throws newest held ingredient"
 )
 now += 0.2
 humanoid.Health = 0

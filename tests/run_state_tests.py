@@ -36,6 +36,7 @@ args = parser.parse_args()
 SUITES = {
     "throw": ("state", ("fixtures/carry.luau", "ingredient_throw.spec.luau")),
     "throw-blender": ("integration", ("fixtures/carry.luau", "ingredient_throw_blender.spec.luau")),
+    "carry-selection": ("integration", ("fixtures/smoothie.luau", "carry_selection.spec.luau")),
     "carry-input": ("integration", ("fixtures/carry.luau", "carry_input.spec.luau")),
     "ingredient-slots": ("integration", ("fixtures/smoothie.luau", "ingredient_slots.spec.luau")),
     "carry": ("state", ("fixtures/carry.luau", "ingredient_carry.spec.luau")),
@@ -67,7 +68,7 @@ focused = {
     "vfx_only": ("vfx",),
     "world_only": ("world",),
     "throw_only": ("throw", "throw-blender"),
-    "carry_only": ("carry", "throw", "ingredient-slots", "carry-input", "carry-presentation"),
+    "carry_only": ("carry", "throw", "ingredient-slots", "carry-selection", "carry-input", "carry-presentation"),
     "sprint_only": ("sprint",),
     "customer_queue_only": ("customer-queue",),
     "customer_only": ("legacy-state",),

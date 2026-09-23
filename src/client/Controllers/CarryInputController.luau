@@ -14,12 +14,21 @@ function Controller.Init()
     local player = Players.LocalPlayer
     local remote = ReplicatedStorage.Shared.Events:WaitForChild("GameplayRequest") :: RemoteEvent
     local function throw(_action: string, state: Enum.UserInputState): Enum.ContextActionResult
-        if not player:GetAttribute("HeldItemType") or UserInputService:GetFocusedTextBox() then
+        if (player:GetAttribute("CarryCount") or 0) <= 0 or UserInputService:GetFocusedTextBox() then
             return Enum.ContextActionResult.Pass
         end
         if state == Enum.UserInputState.Begin then
-            -- No client-provided item identity, contents, or launch position.
-            remote:FireServer("ThrowHeld")
+            local character = player.Character
+            local tool = character and character:FindFirstChildOfClass("Tool")
+            local selectedCarryItemId = nil
+            if tool and tool:GetAttribute("IngredientId") ~= nil then
+                local id = tool:GetAttribute("CarryItemId")
+                if typeof(id) == "number" then
+                    selectedCarryItemId = id
+                end
+            end
+            -- The server validates this preference against its own held records.
+            remote:FireServer("ThrowHeld", selectedCarryItemId)
         end
         return Enum.ContextActionResult.Sink
     end
