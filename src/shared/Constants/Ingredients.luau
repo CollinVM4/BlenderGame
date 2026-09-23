@@ -227,6 +227,15 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		JumpLocation = 0,
 	},
 
+	Mango = {
+		Id = "Mango",
+		DisplayName = "Mango",
+		Tags = { "Fruit", "Sweet", "Orange" },
+		BlendColor = Color3.fromRGB(255, 165, 65),
+		Rarity = "Rare",
+		JumpLocation = 2,
+	},
+
 	Peach = {
 		Id = "Peach",
 		DisplayName = "Peach",
