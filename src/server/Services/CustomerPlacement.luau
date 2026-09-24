@@ -17,7 +17,8 @@ end
 function CustomerPlacement.AtMarker(marker: BasePart, bottomOffset: number): CFrame
     -- Top surface at the marker's center X/Z. Author upright, horizontal route markers.
     local position = marker.CFrame.Position
-    return CFrame.new(position.X, position.Y + marker.Size.Y / 2 + bottomOffset, position.Z)
+    local grounded = Vector3.new(position.X, position.Y + marker.Size.Y / 2 + bottomOffset, position.Z)
+    return CustomerPlacement.Face(grounded, grounded + marker.CFrame.LookVector, marker.CFrame)
 end
 
 function CustomerPlacement.Face(position: Vector3, target: Vector3, fallback: CFrame): CFrame

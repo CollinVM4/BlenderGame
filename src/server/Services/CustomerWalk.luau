@@ -1,6 +1,9 @@
 --!strict
--- Presentation only: CustomerService owns the route and arrival timing.
+-- CustomerService owns queue destinations; this module owns locomotion and animation.
 local RunService = game:GetService("RunService")
+local PathfindingService = game:GetService("PathfindingService")
+local Movement = require(game:GetService("ReplicatedStorage").Shared.Constants.CustomerMovement)
+local Placement = require(script.Parent.CustomerPlacement)
 local CustomerWalk = {}
 local DEFAULT_WALK = {
     R15 = "rbxassetid://507777826",
@@ -44,7 +47,7 @@ local function missingParts(model: Model, rig: string): { string }
 end
 
 function CustomerWalk.PrepareRig(model: Model, root: BasePart)
-    -- PivotTo controls the anchored root. Standard body parts can animate regardless of joint type.
+    -- Standard body parts can animate regardless of joint type.
     -- Disconnected decorative parts retain the old anchored behavior.
     local connected: { [BasePart]: boolean } = { [root] = true }
     local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -78,8 +81,229 @@ function CustomerWalk.PrepareRig(model: Model, root: BasePart)
         end
     end
     for part in connected do
-        part.Anchored = part == root
+        part.Anchored = false
     end
+end
+
+-- Retain the existing non-colliding, controlled PivotTo locomotion style. These
+-- constraints hold the unanchored assembly between steps and while idle, without
+-- adding colliders or changing imported animation joints.
+function CustomerWalk.HoldRig(model: Model, root: BasePart): (CFrame) -> ()
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        -- This route owns forces and orientation, as the old anchored route did.
+        -- Keep the engine from enabling body collisions or fighting the pose hold.
+        -- Animator playback remains explicitly owned by Create below.
+        humanoid.EvaluateStateMachine = false
+    end
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "CustomerRouteAttachment"
+    attachment.Parent = root
+    local position = Instance.new("AlignPosition")
+    position.Mode = Enum.PositionAlignmentMode.OneAttachment
+    position.Attachment0 = attachment
+    position.ApplyAtCenterOfMass = true
+    position.RigidityEnabled = true
+    position.Parent = root
+    local orientation = Instance.new("AlignOrientation")
+    orientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    orientation.Attachment0 = attachment
+    orientation.RigidityEnabled = true
+    orientation.Parent = root
+    local function pose(at: CFrame)
+        model:PivotTo(at)
+        position.Position = root.Position
+        orientation.CFrame = root.CFrame
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+    pose(model:GetPivot())
+    root.Anchored = false
+    if root:CanSetNetworkOwnership() then
+        root:SetNetworkOwner(nil)
+    end
+    return pose
+end
+
+function CustomerWalk.Cancel(record: any)
+    record.MoveToken = (record.MoveToken or 0) + 1
+    record.Walk.SetMoving(false)
+    local humanoid = record.Model:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.AutoRotate = false
+    end
+end
+
+-- Path factory and step clock are injectable engine boundaries for deterministic tests.
+function CustomerWalk.Move(
+    record: any,
+    targets: { CFrame },
+    finished: (boolean) -> (),
+    adapter: any?,
+    arrived: ((number) -> ())?
+)
+    CustomerWalk.Cancel(record)
+    local token = record.MoveToken
+    local model: Model = record.Model
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local createPath = if adapter
+        then adapter.CreatePath
+        else function()
+            return PathfindingService:CreatePath(Movement.Agent)
+        end
+    local step = if adapter
+        then adapter.Step
+        else function()
+            return RunService.Heartbeat:Wait()
+        end
+    local function valid(): boolean
+        return model.Parent ~= nil and record.MoveToken == token
+    end
+    local function pose(at: CFrame)
+        record.Pose(at)
+    end
+    local function clearApproach(destination: Vector3): boolean
+        local start = model:GetPivot().Position
+        local delta = destination - start
+        if delta.Magnitude < 0.0001 then
+            return true
+        end
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { model }
+        params.RespectCanCollide = true
+        local height = Movement.Agent.AgentHeight
+        local radius = Movement.Agent.AgentRadius
+        local center = start + Vector3.new(0, height / 2 - record.BottomOffset + 0.1, 0)
+        return workspace:Blockcast(CFrame.new(center), Vector3.new(radius * 2, height, radius * 2), delta, params)
+            == nil
+    end
+    local function travel(destination: CFrame, blocked: () -> boolean): boolean
+        local current = model:GetPivot()
+        local start = Placement.Face(current.Position, destination.Position, current)
+        local goal = Placement.Face(destination.Position, destination.Position + start.LookVector, start)
+        local duration = (start.Position - goal.Position).Magnitude / Movement.Speed
+        local elapsed = 0
+        while elapsed < duration do
+            local dt = step()
+            if not valid() or blocked() then
+                return false
+            end
+            elapsed += dt
+            pose(start:Lerp(goal, math.min(1, elapsed / duration)))
+        end
+        return valid() and not blocked()
+    end
+    if humanoid then
+        humanoid.AutoRotate = true
+    end
+    record.Walk.SetMoving(true)
+    task.spawn(function()
+        if not valid() then
+            return
+        end
+        local success = true
+        for leg, destination in targets do
+            local reached = false
+            for _ = 1, Movement.MaxPathAttempts do
+                if not valid() then
+                    return
+                end
+                local path: any = nil
+                local ok = pcall(function()
+                    path = createPath()
+                    path:ComputeAsync(
+                        model:GetPivot().Position - Vector3.new(0, record.BottomOffset, 0),
+                        destination.Position - Vector3.new(0, record.BottomOffset, 0)
+                    )
+                end)
+                if not valid() then
+                    if path then
+                        path:Destroy()
+                    end
+                    return
+                end
+                if ok and path.Status == Enum.PathStatus.Success then
+                    local blocked, index = false, 1
+                    local connection = path.Blocked:Connect(function(at: number)
+                        if at >= index then
+                            blocked = true
+                        end
+                    end)
+                    local function isBlocked(): boolean
+                        return blocked
+                    end
+                    local points = path:GetWaypoints()
+                    reached = #points > 0
+                    for i, waypoint in points do
+                        index = i
+                        if waypoint.Action == Enum.PathWaypointAction.Jump then
+                            reached = false
+                            break
+                        end
+                        local at = waypoint.Position + Vector3.new(0, record.BottomOffset, 0)
+                        -- Only shorten the final segment; never cut a corner just because
+                        -- an earlier waypoint happens to be close to the marker.
+                        if
+                            i == #points
+                            and (model:GetPivot().Position - destination.Position).Magnitude
+                                <= Movement.FinalApproachDistance
+                        then
+                            break
+                        end
+                        if not travel(CFrame.new(at), isBlocked) then
+                            reached = false
+                            break
+                        end
+                    end
+                    if reached then
+                        -- Path endpoints can be projected far from an unreachable marker.
+                        reached = (model:GetPivot().Position - destination.Position).Magnitude
+                                <= Movement.FinalApproachDistance
+                            and clearApproach(destination.Position)
+                            and travel(destination, isBlocked)
+                    end
+                    connection:Disconnect()
+                end
+                if path then
+                    path:Destroy()
+                end
+                if reached then
+                    break
+                end
+            end
+            if not reached then
+                success = false
+                break
+            end
+            if arrived and valid() then
+                arrived(leg)
+            end
+        end
+        if not valid() then
+            return
+        end
+        record.Walk.SetMoving(false)
+        if humanoid then
+            humanoid.AutoRotate = false
+        end
+        if success then
+            local start = model:GetPivot()
+            local target = targets[#targets]
+            local goal = Placement.Face(start.Position, start.Position + target.LookVector, target)
+            local elapsed = 0
+            while elapsed < Movement.TurnSeconds do
+                elapsed += step()
+                if not valid() then
+                    return
+                end
+                pose(start:Lerp(goal, math.min(1, elapsed / Movement.TurnSeconds)))
+            end
+        end
+        if valid() then
+            finished(success)
+        end
+    end)
 end
 
 function CustomerWalk.Create(model: Model, templateName: string?)

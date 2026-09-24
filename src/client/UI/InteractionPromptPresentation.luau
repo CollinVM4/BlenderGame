@@ -11,6 +11,7 @@ export type Settings = {
     Height: number?,
     TextSize: number?,
     InputOnly: boolean?,
+    CustomerAction: string?,
 }
 
 -- One visible view; the caller owns PromptShown/PromptHidden and calls cleanup.
@@ -32,6 +33,22 @@ function Presentation.Create(
     local text = Instance.new("TextButton")
     text.Name = "Action"
     Style.ApplyText(text, config)
+    if config.CustomerAction then
+        -- Shared input behavior, with a compact customer-only visual treatment.
+        gui.Size = UDim2.fromOffset(220, 44)
+        gui.StudsOffset = Vector3.zero
+        gui.SizeOffset = Vector2.new(0, -(22 + 12) / 44) -- Top edge 12px below the shared rig anchor.
+        text.Font = Enum.Font.FredokaOne
+        text.TextSize = 21
+        text.TextColor3 = if config.CustomerAction == "TakeOrder"
+            then Color3.fromRGB(255, 222, 115)
+            else Color3.fromRGB(120, 235, 255)
+        text.TextStrokeTransparency = 1
+        local outline = Instance.new("UIStroke")
+        outline.Color = Color3.fromRGB(18, 22, 30)
+        outline.Thickness = 2.5
+        outline.Parent = text
+    end
     text.AutoButtonColor = false
     text.Parent = gui
     gui.Parent = parent

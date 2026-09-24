@@ -16,6 +16,12 @@ do
             at.Position.X == 4 and at.Position.Z == 8 and at.Position.Y - offset == 3,
             "bounds bottom rests on marker top preserving XZ"
         )
+        marker.CFrame.LookVector = vec(1, 0.5, 0)
+        local oriented = placement.AtMarker(marker, offset)
+        check(
+            oriented.LookVector.X > 0.999 and oriented.LookVector.Y == 0,
+            "marker facing is projected horizontally without tilting the avatar"
+        )
         model:SetAttribute("CustomerVerticalOffset", 0.75)
         check(placement.BottomOffset(model) == offset + 0.75, "optional numeric vertical offset")
         model:SetAttribute("CustomerVerticalOffset", "bad")
@@ -85,8 +91,8 @@ do
     end
     loadModule("CustomerWalk").PrepareRig(model, root)
     check(
-        root.Anchored and not body.Anchored and decoration.Anchored,
-        "root and disconnected decoration stay anchored while connected body can animate"
+        not root.Anchored and not body.Anchored and decoration.Anchored,
+        "root and body are unanchored; disconnected decoration is preserved"
     )
     check(motor.Parent == body and motor.Part0 == root and motor.Part1 == body, "authored joint remains usable")
 end

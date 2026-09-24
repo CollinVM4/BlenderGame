@@ -301,6 +301,9 @@ local studio = false
 local now = 100
 local storage = instance("Folder")
 local workspaceFake = {
+    Blockcast = function()
+        return nil
+    end,
     Raycast = function()
         return nil
     end,
@@ -318,11 +321,29 @@ local services = {
         end,
     },
     RunService = {
+        Heartbeat = {
+            Wait = function()
+                return 10
+            end,
+        },
         IsStudio = function()
             return studio
         end,
     },
     Players = {},
+    PathfindingService = {
+        CreatePath = function()
+            local path = { Status = "Success", Blocked = signal() }
+            function path:ComputeAsync(start, finish)
+                self.Points = { { Position = start }, { Position = finish } }
+            end
+            function path:GetWaypoints()
+                return self.Points
+            end
+            function path:Destroy() end
+            return path
+        end,
+    },
     Debris = { AddItem = function() end },
     CollectionService = {
         AddTag = function(_, object, tag)
@@ -362,6 +383,11 @@ local env = setmetatable({
         end,
     },
     workspace = workspaceFake,
+    Vector2 = {
+        new = function(x, y)
+            return { X = x, Y = y }
+        end,
+    },
     Vector3 = { zero = vec(0, 0, 0), yAxis = vec(0, 1, 0), new = vec },
     Color3 = {
         new = color,
@@ -384,11 +410,11 @@ local env = setmetatable({
         end,
     },
     UDim2 = {
-        fromOffset = function()
-            return {}
+        fromOffset = function(x, y)
+            return { X = { Scale = 0, Offset = x }, Y = { Scale = 0, Offset = y } }
         end,
-        fromScale = function()
-            return {}
+        fromScale = function(x, y)
+            return { X = { Scale = x, Offset = 0 }, Y = { Scale = y, Offset = 0 } }
         end,
     },
     NumberRange = {
@@ -412,8 +438,12 @@ local env = setmetatable({
         end,
     },
     Enum = {
+        PositionAlignmentMode = { OneAttachment = "OneAttachment" },
+        OrientationAlignmentMode = { OneAttachment = "OneAttachment" },
+        PathStatus = { Success = "Success", NoPath = "NoPath" },
+        PathWaypointAction = { Jump = "Jump", Walk = "Walk" },
         RaycastFilterType = { Exclude = "Exclude" },
-        Font = { GothamBold = "GothamBold" },
+        Font = { GothamBold = "GothamBold", FredokaOne = "FredokaOne" },
         TextXAlignment = { Center = "Center" },
         TextYAlignment = { Center = "Center" },
         ProximityPromptStyle = { Custom = "Custom", Default = "Default" },
@@ -478,3 +508,17 @@ local function loadModule(name)
     return result
 end
 env.require = loadModule
+
+-- Roblox adds utf8.graphemes; authored fixture dialogue uses uncombined characters.
+env.utf8 = table.clone(utf8)
+env.utf8.graphemes = function(message)
+    local cursor = 1
+    return function()
+        if cursor > #message then
+            return nil
+        end
+        local first = cursor
+        cursor = utf8.offset(message, 2, cursor) or (#message + 1)
+        return first, cursor - 1
+    end
+end

@@ -10,6 +10,9 @@ return {
     CustomerFullRetryMaxSeconds = 10,
     SpecialCustomerCooldownSeconds = 300,
     BasePayout = 25,
+    CashScale = 20, -- Request base values stay in authored units; scale only at award time.
+    MissedOrderFraction = 0.15,
+    PayoutRarityMultiplier = { Common = 1, Uncommon = 1.25, Rare = 1.75, Mystery = 2.5 },
     GradeMultiplier = { A = 1.5, B = 1, C = 0.7, D = 0.4 },
     GradeScore = { A = 4, B = 3, C = 2, D = 1 },
     MaxIngredients = 3,

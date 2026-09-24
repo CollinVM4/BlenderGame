@@ -52,6 +52,7 @@ env.UDim2.fromOffset = function(x, y)
 end
 local owner = instance("Player")
 owner.Name, owner.UserId, owner.Parent = "OrderTextOwner", 52, services.Players
+owner.Near = true
 owner:SetAttribute("JumpLevel", 3)
 local plot = instance("Model")
 local markers = {}
@@ -64,7 +65,9 @@ workspaceFake.GetDescendants = function()
     return {}
 end
 loadModule("CustomerOrderController").Init()
+local customer = loadModule("CustomerService")
 local function visibleLabel(model)
+    setup(customer.TakeOrder(owner, model), "take assigned order before typing")
     model.GetAttributeChangedSignal = function()
         return signal()
     end
@@ -73,7 +76,6 @@ local function visibleLabel(model)
     check(bubble.Enabled, "owner controller enables the same order bubble")
     return bubble:FindFirstChildOfClass("TextLabel")
 end
-local customer = loadModule("CustomerService")
 customer.Init({
     TycoonService = {
         GetPlot = function()
@@ -111,6 +113,10 @@ local function tagColored(tag, text)
     )
 end
 local cases = {
+    {
+        "AppleSour",
+        "I need an " .. colored("Apple", "APPLE") .. " and something " .. tagColored("Sour", "SOUR") .. "!",
+    },
     { "Yellow", "I'll have you know my favorite color is " .. tagColored("Yellow", "YELLOW") .. "!" },
     { "Red", "can you make a " .. tagColored("Red", "RED") .. " smoothie!" },
     { "Cold", "make it ice " .. tagColored("Cold", "COLD") .. "!" },
@@ -172,10 +178,35 @@ for _, case in cases do
     setup(model ~= nil, "spawn actual customer for " .. request.Id)
     check(model:GetAttribute("RequestId") == request.Id, "spawn selects current request")
     local label = visibleLabel(model)
+    check(
+        label.Font == "FredokaOne" and not label.TextScaled and label.TextWrapped,
+        "regular request wraps in playful font"
+    )
+    check(
+        label:FindFirstChildOfClass("UIStroke").Thickness >= 2
+            and label:FindFirstChildOfClass("UIStroke").Transparency == 0,
+        "regular dialogue has an opaque dark outline"
+    )
+    check(label.TextSize == 21, "regular text size stays fixed through reveal")
+    check(model:FindFirstChild("CustomerName", true).Visible == false, "generic name does not clutter regular dialogue")
+    check(model:FindFirstChild("TakeOrderPrompt", true).Style == "Custom", "take order uses custom prompt")
     check(label.Name ~= "CustomerName" and label.RichText == true, "actual dialogue label has RichText enabled")
     step()
-    check(label.Text == request.DisplayText:sub(1, 1), "first typewriter frame is plain text")
+    check(label.Text == expected and label.MaxVisibleGraphemes == 1, "first reveal frame retains full colored layout")
+    local bubble = label.Parent
+    local anchor = bubble.Adornee
+    check(
+        anchor:IsA("Attachment") and anchor.Parent == model.PrimaryPart and bubble.StudsOffset.Magnitude == 0,
+        "dialogue follows stable root attachment without camera-relative stud offset"
+    )
+    local canvas = bubble.Size
+    step()
+    check(
+        label.MaxVisibleGraphemes == 2 and label.Text == expected and bubble.Size == canvas and label.TextSize == 21,
+        "revealing characters cannot resize or relayout text"
+    )
     finish()
+    check(label.MaxVisibleGraphemes == -1, "completed request stays fully visible")
     check(label.Text == expected, "actual NPC order label ends with colored markup: " .. request.Id)
     customer.RefreshQueue(owner)
     finish()
@@ -198,7 +229,10 @@ selectRequest(alternate)
 local model = customer.SpawnForPlayer(owner)
 local label = visibleLabel(model)
 step()
-check(label.Text == "&lt;", "typing escapes source markup without adding font tags")
+check(
+    label.MaxVisibleGraphemes == 1 and label.Text:sub(1, 4) == "&lt;",
+    "escaped full layout reveals one visible character"
+)
 finish()
 check(
     label.Text
@@ -224,3 +258,53 @@ finish()
 check(label.Text == recipes.Nathan.DisplayText, "Nathan wildcard request intentionally remains plain")
 model:Destroy()
 finish()
+
+-- Reset during a yielding reveal cancels text and audio work.
+model = customer.SpawnForPlayer(owner)
+label = visibleLabel(model)
+step()
+local partial = label.MaxVisibleGraphemes
+local prompt = model:FindFirstChild("TakeOrderPrompt", true)
+customer.DeactivateForPlayer(owner)
+finish()
+check(
+    label.MaxVisibleGraphemes == partial and prompt.Destroyed,
+    "reset destroys prompts and cancels in-flight dialogue"
+)
+check(not customer.TakeOrder(owner, model), "stale reveal rejected after reset")
+
+-- Shared typography preserves the special dialogue/name regions and colored text.
+local presentation = loadModule("CustomerPresentation")
+local specialBubble = instance("BillboardGui")
+specialBubble.Size = env.UDim2.fromOffset(270, 84)
+specialBubble.SizeOffset = env.Vector2.new(0, 0.5)
+local specialText = instance("TextLabel")
+specialText.Size = env.UDim2.fromOffset(270, 56)
+specialText.Text = customer.FormatRequestText(recipes.SweetCold)
+specialText.RichText = true
+specialText.MaxVisibleGraphemes = 3
+specialText.Parent = specialBubble
+local specialName = instance("TextLabel")
+specialName.Name, specialName.Text = "CustomerName", "Special NPC"
+specialName.Position = env.UDim2.fromOffset(0, 56)
+specialName.Parent = specialBubble
+local markup, canvas = specialText.Text, specialBubble.Size
+presentation.StyleDialogue(specialBubble, specialText, true)
+for _, label in { specialText, specialName } do
+    check(
+        label.Font == "FredokaOne" and not label.TextScaled and label:FindFirstChildOfClass("UIStroke").Thickness == 2.5,
+        "special dialogue and name share rounded fixed lettering and charcoal outline"
+    )
+    check(
+        label.TextColor3.R == 1 and label.TextColor3.G == 1 and label.TextColor3.B == 1,
+        "special lettering has a white base"
+    )
+end
+check(
+    specialBubble.Size == canvas and specialName.Visible and specialName.Position.Y.Offset == 56,
+    "special name remains in its reserved row"
+)
+check(
+    specialText.Text == markup and specialText.RichText and specialText.MaxVisibleGraphemes == 3,
+    "shared styling preserves keyword markup and reveal progress"
+)

@@ -19,7 +19,7 @@ paths += [root / path for path in (
 bundle = "local sources = {\n" + "\n".join(
     f"[{json.dumps(path.stem)}] = {json.dumps(path.read_text())}," for path in paths
 ) + "\n}\n"
-bundle += (root / "tests/server_state.spec.luau").read_text().split("env.require = loadModule", 1)[0]
+bundle += (root / "tests/fixtures/roblox.luau").read_text()
 bundle += (root / "tests/interaction_prompt.spec.luau").read_text().split("local function module", 1)[0]
 bundle += (root / "tests/ingredient_prompt.spec.luau").read_text()
 with tempfile.TemporaryDirectory(prefix="ingredient-prompt-tests-") as directory:

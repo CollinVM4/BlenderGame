@@ -22,7 +22,10 @@ for index = 1, 3 do
 end
 loadModule("CustomerOrderController").Init()
 for index, bubble in bubbles do
-    check(bubble.Enabled, "counter and both waiting orders are simultaneously visible to owner")
+    check(not bubble.Enabled, "unrevealed orders are hidden even from owner")
+    bubble.Parent.Parent:SetAttribute("OrderRevealed", true)
+    changed[index]:Fire()
+    check(bubble.Enabled, "taken orders are visible in all queue slots")
     local model = bubble.Parent.Parent
     model:SetAttribute("QueuePosition", index - 1)
     changed[index]:Fire()

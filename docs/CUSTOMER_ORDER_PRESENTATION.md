@@ -1,37 +1,120 @@
 # Customer order presentation
 
-Every queued customer receives an order at spawn and keeps it visible to the owner while waiting or advancing. Only the counter customer has an enabled serve prompt after arrival. See [CUSTOMER_QUEUE.md](CUSTOMER_QUEUE.md).
+Customers receive assigned requests at spawn, but dialogue stays hidden and silent
+until the owner takes the order. Any of the three queued customers supports Take
+Order. Only the front customer can be served. This presentation pass preserves
+request state, dialogue audio cadence, server authorization/distance, one-time
+serving, cash calculation, and the 15% missed-order payout.
 
-`CustomerService` creates a transparent, fixed 270 x 84 order billboard, with
-21 px GothamBold dialogue in a 56 px row and an 18 px name in a 28 px row below it.
-Both use white text and a dark stroke. The head-relative offset is 3 studs and
-MaxDistance is 30, intentionally larger than the unchanged 10-stud serve range.
-Written requests, typewriter behavior, and response selection are unchanged.
+## Stable world layout
 
-The server creates OrderBubble disabled. `CustomerOrderController` enables it
-locally only when the containing customer's OwnerUserId matches LocalPlayer.UserId.
-Ownership changes, dynamically added customers, and streamed removal/reentry are
-handled through events. This controls normal UI visibility; request state still
-replicates and serving remains server authoritative.
+The previous UI followed the animated Head and used camera-relative StudsOffset
+(0, 3, 0). The regular dialogue also used TextScaled while the typewriter replaced
+its text with a growing prefix. That combination allowed head bobbing, projected
+offset drift, and text reflow. Billboard dimensions were already pixel-based;
+there was no distance-driven size tween to remove.
 
-Serving reuses InteractionPromptController and InteractionPromptPresentation,
-with Custom style, InteractionActionText = SERVE, and InteractionOrigin =
-ServePromptOrigin. The attachment is generated on the NPC root at (0, -0.5, -1.5),
-below the dialogue and toward the counter. The actual prompt stays on the root,
-preserving interaction distance and the existing Triggered/Serve path.
-No manual attachment or remote setup is required.
+CustomerPresentation.CreateAnchor measures the resting head height once and
+creates ServePromptOrigin on the stable root. Dialogue, custom actions, and serve
+results share that attachment with zero StudsOffset. There are no per-frame
+camera/distance position or scale updates. MaxDistance controls visibility only.
+The actual ProximityPrompts remain on the root, preserving activation distance.
 
-Studio smoke checks still required:
+The fixed pixel regions relative to the projected anchor are:
 
-- With two players, only the owner's nearby customer order is visible. Walk past
-  30 studs and confirm it disappears; test owner respawn and customer streaming.
-  Confirm the order appears while approaching, before the 10-stud SERVE prompt.
-- Inspect generic and imported rigs against bright terrain: dialogue above name,
-  name above head, SERVE near the counter, with no visual overlap.
-- Exercise keyboard, gamepad, and touch serving; confirm the top valid smoothie
-  is consumed once, repeated input does not serve twice, and leaving/resetting
-  the customer flow removes the custom prompt.
+| Element | Canvas | Vertical region (screen Y, relative to anchor) |
+|---|---|---|
+| Regular order dialogue | 300 x 112 | -112 to 0 |
+| Regular served reaction | 300 x 112 | -80 to +32 |
+| Success result | 300 x 54 | -140 to -86 |
+| Missed result | 300 x 76 | -162 to -86 |
+| Take Order / Serve | 220 x 44 | +12 to +56 |
 
-Automated validation: customer requests, placement/walk, custom prompt lifecycle,
-and local owner visibility suites; Roblox-aware typecheck; StyLua; Rojo build.
-These mocked tests do not verify engine distance culling or rendered appearance.
+The result has a fixed 6px gap above the reaction canvas; prompts remain 12px
+below the anchor. These gaps remain constant when the anchor moves on screen. Special-customer
+dialogue retains its original dimensions and separate name row, with the same
+Fredoka One, white primary text, and thick charcoal outline as regular dialogue.
+The result position uses that dialogue height. The separate ingredient pickup **RARE Steak** card,
+its layout, lettering, and outline are untouched.
+
+Regular and special dialogue use fixed 21px Fredoka One, white text, individually colored request
+keywords from the shared ingredient/tag formatter, and an opaque 2.5px charcoal outline. The generic name stays hidden.
+The typewriter assigns the complete escaped/rich string once, then changes only
+MaxVisibleGraphemes. Word wrapping and font size stay fixed throughout the reveal.
+Audio still chirps every third visible character and on the last character, with
+the existing whitespace handling and cancellation behavior.
+
+The result's first row uses 24px rounded lettering: grade-specific color and gold actual
+awarded cash (comma formatted). `Rarity Bonus xN` has its own white 18px row. Misses add a 16px
+red TRY AGAIN / 15% PAYOUT row. All rows use the same charcoal outline. The result
+remains owner-only and holds fully readable for four seconds without a fade.
+If the exit route completes sooner, only a presentation copy remains at the final
+root transform for the rest of that hold. Customer removal, queue progression,
+payment, and audio timing are unchanged.
+
+Take Order is compact gold; Serve is compact blue. Both reuse the shared custom
+prompt system and actual keyboard/gamepad bindings, plus touch hold input. No E
+key is hardcoded in the visual. Their existing mutual exclusion remains intact.
+
+References: [Roblox in-experience UI containers](https://create.roblox.com/docs/ui/in-experience-containers)
+and [TextLabel.MaxVisibleGraphemes](https://create.roblox.com/docs/reference/engine/classes/TextLabel#MaxVisibleGraphemes).
+
+## Changed files and validation
+
+Runtime: CustomerService.luau, CustomerPresentation.luau,
+InteractionPromptController.luau, InteractionPromptPresentation.luau.
+Tests: customer_order_text.spec.luau, customer_order_visibility.spec.luau,
+customer_result.spec.luau, customer_queue.spec.luau, fixtures/roblox.luau.
+
+Focused dialogue, custom customer prompt, result layout/ownership, queue, payout,
+serve replay, request integration/compatibility, and ingredient/Steak prompt tests
+pass. Typecheck, StyLua, Rojo build, and whitespace checks pass; typecheck reports
+the existing LoadCharacterAppearance deprecation warning.
+
+The broader customer-validation ingredient expectation fails unchanged in the
+pre-edit copy customer-stable-baseline-gnko1vyp under the system temporary folder.
+No unrelated production fixes were made. The mock grapheme iterator covers the
+uncombined characters in the test dialogue; production uses Roblox's iterator.
+
+## Studio visual checks still required
+
+No live Roblox camera/render session was available. Automated checks establish
+fixed sizes/spacing, root anchoring, layout-stable reveal, ownership, and cleanup;
+they do not prove rendered readability or clipping. Sync with Rojo; no manual
+attachment or asset setup is required.
+
+With all three customers queued, compare close (3 studs), medium (7 studs), and
+far (10 studs) interaction distances, then 20-30 studs for dialogue visibility.
+Orbit at eye level and elevated/low angles; check grass, market clutter, and sky.
+Confirm constant screen font size and gaps during idle/walk animations, reveal,
+and serving. Inspect long multiline requests and all three result rows on a
+320px-wide phone viewport as well as desktop. Verify the original RARE Steak
+card remains unchanged. Check cross-customer overlap at oblique angles, since
+world anchors can project near one another. Test two-client ownership, all input
+modes, and reset during reveal/feedback.
+
+## Color and result follow-up
+
+Regular Take Order and RefreshOrder now call the same formatter as specials
+without a uniform keyword override. Full RichText spans remain assigned before
+MaxVisibleGraphemes starts revealing characters. Grade and cash each have closed,
+independent color spans; all unaccented result text has a white base color.
+
+No Studio setup is required. Studio visual checks still needed: regular AppleSour,
+purple/cold special dialogue, successful and missed serves, short exit routes,
+and near/far camera views. Confirm the reward/reaction gap, hidden serve/take-order
+prompts after serving, special name row, and unchanged RARE Steak card. Automated
+layout checks verify canvas separation, not rendered font bounds or replication.
+
+## Shared special styling and lower served stack
+
+`StyleDialogue` now applies the same lettering to both customer types. Special
+names remain visible in their reserved row, using smaller 18px lettering. The
+formatter, typewriter, anchor, audio, request selection, and Steak pickup card
+are unchanged.
+
+On serving, the reaction and reward both move down 32 fixed pixels. Internal
+reward rows and the 6px reward/reaction gap are unchanged. This applies only once
+serving has disabled both action prompts, so the lower reaction cannot overlap
+an active Take Order or Serve prompt on that customer. Order placement before
+serving is unchanged. The four-second result hold is unchanged.

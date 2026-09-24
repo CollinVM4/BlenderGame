@@ -31,7 +31,7 @@ class StateRunnerTests(unittest.TestCase):
         code, calls, output = self.run_runner()
         self.assertEqual(code, 0)
         names = [name for name, _ in calls]
-        for name in ("carry", "stash", "smoothie", "requests", "customer-queue", "customer-orders", "world", "vfx", "smoothie-roundtrip"):
+        for name in ("carry", "stash", "smoothie", "requests", "customer-queue", "customer-orders", "customer-payout", "customer-payout-serve", "customer-result", "world", "vfx", "smoothie-roundtrip"):
             self.assertIn(name, names)
         self.assertEqual(len(names), len(set(names)))
         for group in ("state", "integration", "presentation"):
@@ -44,14 +44,14 @@ class StateRunnerTests(unittest.TestCase):
         code, calls, output = self.run_runner("--group", "presentation", fail_first=True)
         self.assertEqual(code, 1)
         self.assertGreater(len(calls), 1)
-        self.assertEqual(calls[0][0], "vfx")
-        self.assertIn("FAIL vfx", output)
+        self.assertEqual(calls[0][0], "customer-result")
+        self.assertIn("FAIL customer-result", output)
         self.assertIn("PASS stash-presentation", output)
 
     def test_state_group_does_not_execute_integration_or_presentation(self):
         code, calls, _ = self.run_runner("--group", "state")
         self.assertEqual(code, 0)
-        self.assertEqual({name for name, _ in calls}, {"throw", "carry", "stash", "smoothie-world", "smoothie", "customer-validation", "customer-compatibility", "sprint"})
+        self.assertEqual({name for name, _ in calls}, {"throw", "carry", "stash", "smoothie-world", "smoothie", "customer-validation", "customer-compatibility", "customer-payout", "sprint"})
 
     def test_focused_smoothie_keeps_flow_and_geometry_coverage(self):
         code, calls, _ = self.run_runner("--smoothie-only")

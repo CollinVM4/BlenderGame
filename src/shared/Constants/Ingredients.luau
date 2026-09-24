@@ -232,6 +232,15 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		DisplayName = "Mango",
 		Tags = { "Fruit", "Sweet", "Orange" },
 		BlendColor = Color3.fromRGB(255, 165, 65),
+		Rarity = "Uncommon",
+		JumpLocation = 2,
+	},
+
+	Chili_Sauce = {
+		Id = "Chili_Sauce",
+		DisplayName = "Chili Sauce",
+		Tags = {"Spicy", "Red", "Weird" },
+		BlendColor = Color3.fromRGB(255, 50, 50),
 		Rarity = "Rare",
 		JumpLocation = 2,
 	},
@@ -243,6 +252,15 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		BlendColor = Color3.fromRGB(245, 150, 125),
 		Rarity = "Rare",
 		JumpLocation = 3,
+	},
+
+	Shell = {
+		Id = "Shell",
+		DisplayName = "Shell",
+		Tags = { "Weird", "Red", "Protein", "Seafood" },
+		BlendColor = Color3.fromRGB(150, 36, 36),
+		Rarity = "Uncommon",
+		JumpLocation = 2,
 	},
 
 	Pineapple = {

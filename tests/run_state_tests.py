@@ -20,6 +20,8 @@ selection.add_argument("--world-only", action="store_true", help="Run ingredient
 selection.add_argument("--throw-only", action="store_true", help="Run ingredient throw contracts")
 selection.add_argument("--carry-only", action="store_true", help="Run carry state and presentation separately")
 selection.add_argument("--sprint-only", action="store_true")
+selection.add_argument("--customer-payout-only", action="store_true")
+selection.add_argument("--customer-result-only", action="store_true")
 selection.add_argument("--customer-queue-only", action="store_true")
 selection.add_argument("--customer-only", action="store_true", help="Compatibility: run legacy customer/state prefix")
 selection.add_argument("--customer-walk-only", action="store_true", help="Run customer walk and rig validation")
@@ -43,6 +45,9 @@ SUITES = {
     "stash": ("state", ("stash_interaction.spec.luau",)),
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
     "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
+    "customer-payout": ("state", ("customer_payout.spec.luau",)),
+    "customer-payout-serve": ("integration", ("customer_payout_serve.spec.luau",)),
+    "customer-result": ("presentation", ("customer_result.spec.luau",)),
     "customer-queue": ("integration", ("customer_queue.spec.luau",)),
     "customer-validation": ("state", ("customer_validation.spec.luau",)),
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
@@ -59,6 +64,7 @@ SUITES = {
     "customer-order-text": ("presentation", ("customer_order_text.spec.luau",)),
     "customer-orders": ("presentation", ("customer_order_queue.spec.luau",)),
     "customer-placement": ("presentation", ("customer_placement.spec.luau",)),
+    "customer-routing": ("presentation", ("customer_routing.spec.luau",)),
     "customer-walk": ("presentation", ("customer_walk.spec.luau",)),
     "client-presentation": ("presentation", ("client_presentation.spec.luau",)),
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
@@ -70,13 +76,15 @@ focused = {
     "throw_only": ("throw", "throw-blender"),
     "carry_only": ("carry", "throw", "ingredient-slots", "carry-selection", "carry-input", "carry-presentation"),
     "sprint_only": ("sprint",),
+    "customer_payout_only": ("customer-payout", "customer-payout-serve"),
+    "customer_result_only": ("customer-result",),
     "customer_queue_only": ("customer-queue",),
     "customer_only": ("legacy-state",),
     "request_validation_only": ("customer-validation", "customer-compatibility", "requests"),
     "requests_only": ("requests", "customer-placement", "customer-walk"),
     "customer_order_text_only": ("customer-order-text",),
     "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
-    "customer_walk_only": ("customer-walk",),
+    "customer_walk_only": ("customer-walk", "customer-routing"),
     "stash_only": ("stash", "stash-presentation"),
     "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
 }
@@ -108,7 +116,7 @@ sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputCont
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (
     "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"
-    + "\n".join(f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items())
+    + "\n".join(f"[{json.dumps(name)}] = {json.dumps(source, ensure_ascii=False)}," for name, source in sources.items())
     + "\n}\n"
 )
 fixture = (ROOT / "tests/fixtures/roblox.luau").read_text(encoding="utf-8")

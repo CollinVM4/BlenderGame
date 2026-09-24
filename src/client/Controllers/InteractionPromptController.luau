@@ -147,6 +147,11 @@ function Controller.Init()
             origin = nil
             reason = "Style is not Custom"
         end
+        local customerAction = prompt:GetAttribute("InteractionCustomerAction")
+        if customerAction and prompt:GetAttribute("InteractionOwnerUserId") ~= Players.LocalPlayer.UserId then
+            origin = nil
+            reason = "Customer prompt belongs to another player"
+        end
         if not origin then
             log(prompt, "Rejected: " .. (reason or "origin unavailable"))
         end
@@ -167,6 +172,7 @@ function Controller.Init()
                     .. tostring(action)
             )
             local cleanup, gui = Presentation.Create(prompt, origin, playerGui, entry.InputType, {
+                CustomerAction = if typeof(customerAction) == "string" then customerAction else nil,
                 ActionText = if typeof(action) == "string" then action else nil,
                 KeyText = if typeof(key) == "string" then key else nil,
                 MaxDistance = if typeof(distance) == "number" and distance > 0 then distance else nil,

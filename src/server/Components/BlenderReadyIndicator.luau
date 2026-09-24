@@ -21,7 +21,7 @@ function BlenderReadyIndicator.Init(services: any)
         local disk = Instance.new("Part")
         disk.Name = "BlenderReadyFloorIndicator"
         disk.Shape = Enum.PartType.Cylinder
-        disk.Size = Vector3.new(0.15, 20, 20
+        disk.Size = Vector3.new(0.15, 8, 8
 )
         disk.Anchored = true
         disk.CanCollide = false
@@ -29,7 +29,7 @@ function BlenderReadyIndicator.Init(services: any)
         disk.CanQuery = false
         disk.CastShadow = false
         disk.Material = Enum.Material.Neon
-        disk.Color = Color3.fromRGB(0, 255, 38)
+        disk.Color = Color3.fromRGB(1, 189, 29)
         disk.Transparency = 1
         -- Cylinder length is local X. Ignore marker rotation to remain floor-flat.
         local function place()

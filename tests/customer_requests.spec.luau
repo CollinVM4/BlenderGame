@@ -76,7 +76,7 @@ end
 do
     local owner = player("RequestTiers")
     data.AddPlayer(owner)
-    data.SetCash(owner, 10000)
+    data.SetCash(owner, 200000)
     local savedRequests = table.clone(requests)
     local savedWindow = requestConfig.RegularRequestRecencyWindow
     requestConfig.RegularRequestRecencyWindow = 0 -- Exhaust eligibility independently of recency below.
@@ -245,7 +245,7 @@ do
         check(customer.Serve(owner), "advanced serving completes")
         flush()
         check(
-            data.GetCash(owner) == cash + (if example[2] then selected.BasePayout else 0),
+            data.GetCash(owner) == cash + math.round(selected.BasePayout * 20 * 1.5 * (if example[2] then 1 else 0.15)),
             "advanced validation controls payment"
         )
         check(
@@ -502,6 +502,12 @@ do
             check(bubble.AlwaysOnTop and nameText.BackgroundTransparency == 1, "name keeps transparent topmost style")
             check(nameText.TextStrokeTransparency <= 0.2 and nameText.TextSize < 24, "name is secondary and outlined")
             local dialogue = bubble:FindFirstChildOfClass("TextLabel")
+            check(
+                dialogue.Font == "GothamBold"
+                    and dialogue.TextSize == 21
+                    and dialogue:FindFirstChildOfClass("UIStroke") == nil,
+                "Steak dialogue retains original font outline and layout"
+            )
             check(nameText.Position.Y.Offset >= dialogue.Size.Y.Offset, "name sits below a separate dialogue row")
             local serve = selected:FindFirstChild("ServePrompt", true)
             check(
@@ -569,7 +575,7 @@ do
     )
     check(snapshot.CustomerId == "steak" and snapshot.RequestId == "Steak", "trimmed stable ID forces Steak")
     check(model.PrimaryPart.Name == "HumanoidRootPart", "HRP takes priority over first body part")
-    check(model:GetPivot().LookVector.X > 0.999, "spawned avatar actually faces counter travel direction")
+    check(model:GetPivot().LookVector.Z < -0.999, "spawned avatar settles to counter orientation")
     check(model:GetPivot().Position.X == 10, "movement reaches counter XZ")
     check(model:GetPivot().Position.Y == 1.2, "spawned avatar uses marker top plus measured bottom offset")
     for _, name in { "ImportedCode", "Animate", "Module", "ImportedTool", "OtherPrompt" } do
@@ -579,8 +585,8 @@ do
         check(model:FindFirstChild(name, true) ~= nil, "clone preserves " .. name)
     end
     check(
-        model.PrimaryPart.Anchored and not model.PrimaryPart.CanCollide,
-        "route root stays anchored without changing collision policy"
+        not model.PrimaryPart.Anchored and not model.PrimaryPart.CanCollide,
+        "route root is unanchored without changing collision policy"
     )
     model:SetAttribute("CustomerId", "unknown")
     customer:RefreshOrder(model)
@@ -741,7 +747,7 @@ do
             )
         end
         check(
-            data.GetCash(owner) == cash + (if turn == 2 then 0 else 25),
+            data.GetCash(owner) == cash + (if turn == 2 then 141 else 750),
             "success pays and failure rejects forged tags"
         )
         check(not customer.Serve(owner), "completed order cannot pay twice")

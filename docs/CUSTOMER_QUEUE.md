@@ -24,7 +24,7 @@ Economy config sets a maximum of 3, an initial delay of 2-5 seconds, normal arri
 
 `ActivateForPlayer` is idempotent for the current owned plot. A delayed callback captures the queue session itself and revalidates both its identity and plot ownership. `DeactivateForPlayer` invalidates that session before removing waiting and departing NPCs. Plot release, removal from Workspace, reset, and player departure stop the flow. Explicit reactivation starts a new initial delay. Stale callbacks cannot populate a replacement session.
 
-`RefreshQueue` resolves each record's current marker. Per-record route tokens invalidate movement toward previous positions, including customers still entering when the front is served. Requests are retained during advancement. Existing PivotTo movement, ground placement, R6/R15 walk animation, and AnimationConstraint compatibility remain in use.
+`RefreshQueue` resolves each record's current marker. Per-record route tokens invalidate movement toward previous positions, including customers still entering when the front is served. Requests are retained during advancement. CustomerWalk now pathfinds each leg, retaining controlled PivotTo presentation and ground placement. New arrivals pass Wait2 and Wait1 before their assigned slot. Unanchored roots are held by server-owned pose constraints; stopped customers face their marker orientation. R6/R15 walk animation and AnimationConstraint compatibility remain in use. See [customer routing](CUSTOMER_ROUTING.md) for configuration, failure behavior, and Studio checks.
 
 ## Serving and special customers
 

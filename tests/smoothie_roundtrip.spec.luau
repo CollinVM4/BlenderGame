@@ -23,7 +23,7 @@ flush()
 local cash = dataService.GetCash(p)
 check(customer.Serve(p), "round-tripped smoothie serves successfully")
 check(
-    inventory.GetCarryCount(p) == 0 and dataService.GetCash(p) == cash + 25 and completedServes == 1,
+    inventory.GetCarryCount(p) == 0 and dataService.GetCash(p) == cash + 750 and completedServes == 1,
     "serve consumes the returned reservation and pays/completes once"
 )
-check(not customer.Serve(p) and dataService.GetCash(p) == cash + 25, "round-trip cannot replay payout")
+check(not customer.Serve(p) and dataService.GetCash(p) == cash + 750, "round-trip cannot replay payout")

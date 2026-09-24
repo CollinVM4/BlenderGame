@@ -51,7 +51,6 @@ local CUSTOMER_ORDER_MAX_DISTANCE = 30
 local CUSTOMER_ORDER_WIDTH = 270
 local CUSTOMER_ORDER_TEXT_HEIGHT = 56
 local CUSTOMER_ORDER_TEXT_SIZE = 21
-local CUSTOMER_ORDER_HEIGHT_OFFSET = 3
 
 local function diagnostic(message: string)
     if RunService:IsStudio() then
@@ -612,21 +611,24 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
     end
 
     textLabel.RichText = true
-    textLabel.Text = ""
+    textLabel.MaxVisibleGraphemes = 0
+    textLabel.Text = richMessage or escapeRichText(message)
 
     task.spawn(function()
-        for index = 1, #message do
+        local index = 0
+        for first, last in utf8.graphemes(message) do
+            index += 1
             if not textLabel.Parent or activeTypingTasks[textLabel] ~= currentToken then
                 return
             end
 
-            local character = string.sub(message, index, index)
-            textLabel.Text = escapeRichText(string.sub(message, 1, index))
+            local character = string.sub(message, first, last)
+            textLabel.MaxVisibleGraphemes = index
 
             local shouldPlayDialogueSound = dialogueSound
                 and dialogueSound.Parent
                 and character ~= " "
-                and (index % dialogueStep == 0 or index == #message)
+                and (index % dialogueStep == 0 or last == #message)
 
             if shouldPlayDialogueSound and dialogueSound then
                 dialogueSound.TimePosition = 0
@@ -647,7 +649,7 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
         end
 
         if textLabel.Parent and activeTypingTasks[textLabel] == currentToken then
-            textLabel.Text = richMessage or escapeRichText(message)
+            textLabel.MaxVisibleGraphemes = -1
             activeTypingTasks[textLabel] = nil
         end
     end)
@@ -704,7 +706,52 @@ end
 function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): number
     local upgrade = Upgrades.Payout[deps.PlayerDataService.GetUpgrade(player, "Payout")].Value
     local multiplier = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
-    return math.floor(Economy.BasePayout * Economy.GradeMultiplier[grade] * upgrade * multiplier)
+    return math.round(Economy.BasePayout * Economy.CashScale * Economy.GradeMultiplier[grade] * upgrade * multiplier)
+end
+
+-- Called only with the consumed server cup and the customer's assigned request.
+function CustomerService.CalculateOrderPayout(
+    player: Player,
+    result: Types.Smoothie,
+    request: CustomerRequests.Request,
+    success: boolean
+): (number, number)
+    local rarity = 1
+    local requirements: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
+    for _, id in result.Ingredients do
+        local definition = Ingredients[id]
+        if not definition then
+            continue
+        end
+        local qualifies = not success
+        for _, requestedTag in request.RequiredTags do
+            local normalized = string.lower(requestedTag)
+            local group = CustomerRequests.TagGroups[normalized]
+            for _, tag in definition.Tags do
+                local actual = string.lower(tag)
+                if actual == normalized or (group and group[actual]) then
+                    qualifies = true
+                end
+            end
+        end
+        -- On a validated order, an ingredient matching a slot can satisfy that
+        -- slot (including alternatives). Extras unrelated to any slot/tag cannot.
+        for _, requirement in requirements do
+            if
+                (type(requirement) == "string" and requirement == id)
+                or (type(requirement) == "table" and table.find(requirement, id) ~= nil)
+            then
+                qualifies = true
+            end
+        end
+        if qualifies then
+            rarity = math.max(rarity, Economy.PayoutRarityMultiplier[definition.Rarity])
+        end
+    end
+    local upgrade = Upgrades.Payout[deps.PlayerDataService.GetUpgrade(player, "Payout")].Value
+    local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    local amount = request.BasePayout * Economy.CashScale * Economy.GradeMultiplier.A * rarity * upgrade * entitlement
+    return math.round(amount * (if success then 1 else Economy.MissedOrderFraction)), rarity
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
     local queue = queues[player]
@@ -734,35 +781,30 @@ function CustomerService.CanSpawn(player: Player): (boolean, string?)
     end
     return true
 end
--- Simple deterministic waypoint movement for the filming skeleton, not pathfinding.
-local function move(record: any, destination: CFrame, finished: () -> ())
-    record.MoveToken = (record.MoveToken or 0) + 1
-    local token = record.MoveToken
-    local current: CFrame = record.Model:GetPivot()
-    local start = Placement.Face(current.Position, destination.Position, current)
-    destination = Placement.Face(destination.Position, destination.Position + start.LookVector, start)
-    record.Model:PivotTo(start)
-    local distance = (start.Position - destination.Position).Magnitude
-    local duration = math.max(0.1, distance / 8)
-    record.Walk.SetMoving(distance > 0.0001)
-    task.spawn(function()
-        local elapsed = 0
-        while record.Model.Parent and elapsed < duration do
-            elapsed += task.wait()
-            if not record.Model.Parent or record.MoveToken ~= token then
-                return
+-- Keep all low-level traversal and pose handling in the existing walking helper.
+local function move(record: any, destination: CFrame, finished: () -> (), via: { CFrame }?)
+    local targets = via or {}
+    local entryIndex = record.EntryIndex or 3
+    table.insert(targets, destination)
+    Walk.Move(
+        record,
+        targets,
+        function(reached)
+            if reached then
+                finished()
+            elseif record.Model.Parent then
+                -- Existing Destroying cleanup removes the failed entry and advances waiters.
+                warn("[CustomerWalk] route exhausted; removing unreachable customer")
+                record.Model:Destroy()
             end
-            local nextFrame = start:Lerp(destination, math.min(1, elapsed / duration))
-            record.Model:PivotTo(nextFrame)
+        end,
+        nil,
+        function(leg)
+            if not record.EnteredQueue then
+                record.EntryIndex = entryIndex - leg
+            end
         end
-        if record.MoveToken ~= token then
-            return
-        end
-        record.Walk.SetMoving(false)
-        if record.Model.Parent then
-            finished()
-        end
-    end)
+    )
 end
 -- One ordered queue owns both destinations and eligibility. Route tokens invalidate old arrivals.
 function CustomerService.RefreshQueue(player: Player)
@@ -778,7 +820,7 @@ function CustomerService.RefreshQueue(player: Player)
         local marker = deps.TycoonService.GetReference(player, queueMarkers[index])
         record.Model:SetAttribute("QueuePosition", index)
         if not marker then
-            record.MoveToken = (record.MoveToken or 0) + 1
+            Walk.Cancel(record)
             record.TargetMarker = nil
             record.Ready = false
             record.Prompt.Enabled = false
@@ -791,15 +833,26 @@ function CustomerService.RefreshQueue(player: Player)
                 record.QueueIndex = index
                 record.Ready = false
                 record.Prompt.Enabled = false
+                local via = {}
+                -- New arrivals visit the entrance slots before their assigned slot.
+                if not record.EnteredQueue then
+                    for entranceIndex = record.EntryIndex or 3, index + 1, -1 do
+                        local entrance = deps.TycoonService.GetReference(player, queueMarkers[entranceIndex])
+                        if entrance then
+                            table.insert(via, Placement.AtMarker(entrance, record.BottomOffset))
+                        end
+                    end
+                end
                 move(record, destination, function()
+                    record.EnteredQueue = true
                     if current(player, queue) and table.find(queue.Customers, record) then
                         record.Ready = queue.Customers[1] == record
-                        record.Prompt.Enabled = record.Ready
+                        record.Prompt.Enabled = record.Ready and record.OrderTaken
                     end
-                end)
+                end, via)
             else
                 record.Ready = index == 1 and record.Ready
-                record.Prompt.Enabled = record.Ready
+                record.Prompt.Enabled = record.Ready and record.OrderTaken
             end
         end
     end
@@ -936,8 +989,8 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     if model:FindFirstChildOfClass("Humanoid") then
         Walk.PrepareRig(model, root)
     end
-    -- The anchored PivotTo rig needs no network ownership assignment.
     model.Parent = workspace
+    local pose = Walk.HoldRig(model, root)
     local walk = Walk.Create(model, templateName)
     ownedModels[player] = ownedModels[player] or {}
     ownedModels[player][model] = true
@@ -949,8 +1002,9 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     -- Fail closed on every client; the owner's controller enables this locally.
     bubble.Enabled = false
     local head = model:FindFirstChild("Head", true)
-    bubble.Adornee = if head and head:IsA("BasePart") then head else root
-    bubble.StudsOffset = Vector3.new(0, CUSTOMER_ORDER_HEIGHT_OFFSET, 0)
+    bubble.Adornee = Presentation.CreateAnchor(root, if head and head:IsA("BasePart") then head else nil)
+    bubble.StudsOffset = Vector3.zero
+    bubble.SizeOffset = Vector2.new(0, 0.5) -- Bottom edge stays at the rig anchor.
     bubble.Parent = root
     local text = Instance.new("TextLabel")
     text.Size = UDim2.fromScale(1, 1)
@@ -987,19 +1041,28 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
             Presentation.HideDefaultDisplay(humanoid)
         end
     end
+    Presentation.StyleDialogue(bubble, text, candidate ~= nil and candidate.CustomerType ~= "Regular")
     local audio = AudioService.CreateBlendGroup(root)
-    local serveOrigin = Instance.new("Attachment")
-    serveOrigin.Name = "ServePromptOrigin"
-    serveOrigin.Position = Vector3.new(0, -0.5, -1.5)
-    serveOrigin.Parent = root
     local prompt = WorldUtil.Prompt(root, "ServePrompt", "Serve smoothie")
     prompt.Enabled = false
     prompt:SetAttribute("InteractionOrigin", "ServePromptOrigin")
     prompt:SetAttribute("InteractionActionText", "SERVE")
     prompt.Style = Enum.ProximityPromptStyle.Custom
+    local takeOrder = WorldUtil.Prompt(root, "TakeOrderPrompt", "Take Order")
+    takeOrder.Enabled = true
+    takeOrder.Style = Enum.ProximityPromptStyle.Custom
+    takeOrder:SetAttribute("InteractionOrigin", "ServePromptOrigin")
+    takeOrder:SetAttribute("InteractionActionText", "TAKE ORDER")
+    for _, interaction in { takeOrder, prompt } do
+        interaction:SetAttribute("InteractionOwnerUserId", player.UserId)
+        interaction:SetAttribute("InteractionCustomerAction", if interaction == takeOrder then "TakeOrder" else "Serve")
+    end
     local record: any = {
+        OrderTaken = false,
+        TakeOrderPrompt = takeOrder,
         Owner = player,
         BottomOffset = bottomOffset,
+        Pose = pose,
         CustomerType = if candidate then candidate.CustomerType else "Regular",
         FixedRequest = if candidate then candidate.Request else nil,
         DisplayName = displayName,
@@ -1035,7 +1098,11 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     end
     model:SetAttribute("CustomerId", record.CustomerId)
     model:SetAttribute("OwnerUserId", player.UserId)
+    model:SetAttribute("OrderRevealed", false)
     diagnostic(string.format("queued owner=%s position=%d request=%s", player.Name, #queue.Customers, record.RequestId))
+    takeOrder.Triggered:Connect(function(actor)
+        CustomerService.TakeOrder(actor, model)
+    end)
     prompt.Triggered:Connect(function(actor)
         if actor == player then
             CustomerService.Serve(actor, model)
@@ -1056,14 +1123,40 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
             end
         end
     end)
-    typewriterText(
-        text,
-        record.Request.DisplayText,
-        audio.dialogueSound,
-        CustomerService.FormatRequestText(record.Request)
-    )
     CustomerService.RefreshQueue(player)
     return model
+end
+-- Reveal only the assigned request; waiting customers are eligible too.
+function CustomerService.TakeOrder(player: Player, model: Model): boolean
+    local queue = queues[player]
+    if not queue or not current(player, queue) then
+        return false
+    end
+    for _, record in queue.Customers do
+        if record.Model == model then
+            if
+                record.OrderTaken
+                or record.Served
+                or not record.Request
+                or not model.Parent
+                or not WorldUtil.Near(player, record.Root, Economy.InteractionDistance)
+            then
+                return false
+            end
+            record.OrderTaken = true
+            record.TakeOrderPrompt.Enabled = false
+            record.Prompt.Enabled = record.Ready
+            model:SetAttribute("OrderRevealed", true)
+            typewriterText(
+                record.Text,
+                record.Request.DisplayText,
+                record.Audio.dialogueSound,
+                CustomerService.FormatRequestText(record.Request)
+            )
+            return true
+        end
+    end
+    return false
 end
 function CustomerService.GetSnapshot(player: Player): {
     Preference: string,
@@ -1112,6 +1205,8 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     end
     -- No yield between consumption, payout, and removal from active state.
     record.Served = true
+    record.TakeOrderPrompt.Enabled = false
+    record.Model:SetAttribute("OrderRevealed", true)
     record.Prompt.Enabled = false
     table.remove(queue.Customers, 1)
     record.Model:SetAttribute("QueuePosition", nil)
@@ -1119,10 +1214,8 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     local grade: Types.Grade = if success then "A" else "D"
     local response = Presentation.Response(record.Request, grade)
     local reaction = record.ForcedReaction or (if success then "Smile" else "Disgust")
-    local payout = if success then record.Request.BasePayout else 0
-    if success then
-        deps.PlayerDataService.AddCash(player, payout)
-    end
+    local payout, rarity = CustomerService.CalculateOrderPayout(player, result, record.Request, success)
+    deps.PlayerDataService.AddCash(player, payout)
     diagnostic(
         string.format(
             "served owner=%s request=%s blend=%s ingredients=[%s] success=%s reason=%s payout=%d cash=%d",
@@ -1142,6 +1235,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     record.Model:SetAttribute("Reaction", reaction)
     record.Model:SetAttribute("Grade", grade)
     record.Model:SetAttribute("OrderSucceeded", success)
+    local resultGui = Presentation.ShowResult(record.Bubble, grade, payout, rarity)
     record.Model:SetAttribute("RequestId", nil)
     record.Request = nil
     record.RequestId = nil
@@ -1180,6 +1274,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     task.delay(2, function()
         if record.Model.Parent then
             move(record, record.Exit, function()
+                Presentation.PreserveResult(resultGui)
                 record.Model:Destroy()
             end)
         end
@@ -1233,7 +1328,7 @@ function CustomerService:RefreshOrder(model: Model)
     for player, queue in queues do
         for _, record in queue.Customers do
             if record.Model == model then
-                if assignRequest(player, record) then
+                if assignRequest(player, record) and record.OrderTaken then
                     typewriterText(
                         record.Text,
                         record.Request.DisplayText,

@@ -10,7 +10,11 @@ function Controller.Init()
     started = true
     local tracked: { [BillboardGui]: () -> () } = {}
     local function attach(object: Instance)
-        if not object:IsA("BillboardGui") or object.Name ~= "OrderBubble" or tracked[object] then
+        if
+            not object:IsA("BillboardGui")
+            or (object.Name ~= "OrderBubble" and object.Name ~= "CustomerResult")
+            or tracked[object]
+        then
             return
         end
         object.Enabled = false
@@ -23,10 +27,13 @@ function Controller.Init()
         end
         local function refresh()
             object.Enabled = customer:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId
+                and (object.Name ~= "OrderBubble" or customer:GetAttribute("OrderRevealed") == true)
         end
         local ownership = customer:GetAttributeChangedSignal("OwnerUserId"):Connect(refresh)
+        local reveal = customer:GetAttributeChangedSignal("OrderRevealed"):Connect(refresh)
         tracked[object] = function()
             ownership:Disconnect()
+            reveal:Disconnect()
             object.Enabled = false
         end
         refresh()

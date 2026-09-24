@@ -177,10 +177,10 @@ do
     local root = model:FindFirstChild("HumanoidRootPart")
     loadModule("CustomerWalk").PrepareRig(model, root)
     check(
-        root.Anchored
+        not root.Anchored
             and not model:FindFirstChild("UpperTorso").Anchored
             and not model:FindFirstChild("LeftFoot").Anchored,
-        "standard body is free to animate while route root stays anchored"
+        "standard body is free to animate with an unanchored route root"
     )
     check(decoration.Anchored, "unrelated decoration retains anchoring")
 end

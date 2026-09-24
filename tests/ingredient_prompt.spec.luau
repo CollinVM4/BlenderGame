@@ -85,7 +85,27 @@ check(gui().Adornee == item and gui().StudsOffsetWorldSpace.Y == 2.35, "attachme
 local old = gui()
 show()
 check(old.Destroyed and #playerGui:GetChildren() == 1, "repeated shown cleans previous view")
-for id, rarity in { Crab = "Uncommon", Dragon_Fruit = "Rare", Mystery = "Mystery" } do
+item:SetAttribute("IngredientId", "Steak")
+show()
+check(
+    label("Rarity").Text == "RARE" and label("IngredientName").Text == "Steak",
+    "Steak retains its rarity and name card"
+)
+check(
+    label("IngredientName").Font == "GothamBold"
+        and label("IngredientName"):FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize == 29,
+    "Steak retains large bold lettering"
+)
+check(
+    label("IngredientName"):FindFirstChildOfClass("UIStroke").Thickness == 2 and gui().Size.X.Offset == 320,
+    "Steak outline and card width are unchanged"
+)
+check(
+    label("IngredientName").Position.Y.Offset == 30 and label("Action").Position.Y.Offset == 74,
+    "Steak title name and input layout is preserved"
+)
+for _, id in { "Crab", "Dragon_Fruit", "Mystery" } do
+    local rarity = definitions[id].Rarity
     item:SetAttribute("IngredientId", id)
     services.RunService.RenderStepped:Fire()
     check(label("Rarity").Text == string.upper(rarity), "rarity " .. rarity)

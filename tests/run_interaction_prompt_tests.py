@@ -8,6 +8,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
+parser.add_argument("--customer-only", action="store_true", help="Shared prompt core and customer presentation without legacy Start Day")
 args = parser.parse_args()
 paths = {
     "WorldBillboardStyle": "src/client/UI/WorldBillboardStyle.luau",
@@ -22,7 +23,8 @@ bundle = "local sources = " + "{\n" + "\n".join(
     for name, path in paths.items()
 ) + "\n}\n"
 bundle += (root / "tests/fixtures/roblox.luau").read_text()
-bundle += (root / "tests/interaction_prompt.spec.luau").read_text()
+prompt_spec = (root / "tests/interaction_prompt.spec.luau").read_text()
+bundle += prompt_spec.split("-- Start Day uses", 1)[0] if args.customer_only else prompt_spec
 bundle += "\n" + (root / "tests/customer_order_visibility.spec.luau").read_text()
 with tempfile.TemporaryDirectory(prefix="interaction-prompt-tests-") as directory:
     output = Path(directory) / "tests.luau"
