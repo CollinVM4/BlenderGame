@@ -38,6 +38,14 @@ function Presentation.Create(
         gui.Size = UDim2.fromOffset(220, 44)
         gui.StudsOffset = Vector3.zero
         gui.SizeOffset = Vector2.new(0, -(22 + 12) / 44) -- Top edge 12px below the shared rig anchor.
+        if config.CustomerAction == "Serve" and origin:IsA("Attachment") then
+            local root = origin.Parent
+            if root and root:IsA("BasePart") then
+                -- Center at the waist, scaled with the rig, without moving the shared anchor.
+                gui.StudsOffsetWorldSpace = Vector3.new(0, root.Size.Y * 0.25 - origin.Position.Y, 0)
+                gui.SizeOffset = Vector2.new(0, 0)
+            end
+        end
         text.Font = Enum.Font.FredokaOne
         text.TextSize = 21
         text.TextColor3 = if config.CustomerAction == "TakeOrder"

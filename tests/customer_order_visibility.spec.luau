@@ -3,6 +3,8 @@ services.Players.LocalPlayer.UserId = 123
 local customer = uiInstance("Model", "CustomerNPC", workspaceFake)
 local root = uiInstance("Part", "HumanoidRootPart", customer)
 local serveOrigin = uiInstance("Attachment", "ServePromptOrigin", root)
+root.Size = env.Vector3.new(2, 2, 1)
+serveOrigin.Position = env.Vector3.new(0, 2.85, 0)
 local serve = uiInstance("ProximityPrompt", "ServePrompt", root)
 serve.Style, serve.Enabled = "Custom", true
 serve.KeyboardKeyCode, serve.GamepadKeyCode = { Name = "E" }, { Name = "ButtonX" }
@@ -81,17 +83,34 @@ for _, action in { "TakeOrder", "Serve" } do
             text.Font == "FredokaOne" and text:FindFirstChildOfClass("UIStroke").Thickness >= 2,
             "bold outlined action"
         )
-        check(
-            -display.SizeOffset.Y * display.Size.Y.Offset - display.Size.Y.Offset / 2 == 12,
-            "prompt pixel bounds stay below full dialogue at all camera distances"
-        )
         if action == "TakeOrder" then
+            check(
+                -display.SizeOffset.Y * display.Size.Y.Offset - display.Size.Y.Offset / 2 == 12,
+                "take order retains its original pixel spacing"
+            )
             takeColor = text.TextColor3
         else
+            check(
+                math.abs(serveOrigin.Position.Y + display.StudsOffsetWorldSpace.Y - 0.5) < 0.001
+                    and display.SizeOffset.Y == 0,
+                "serve is centered at waist height"
+            )
             check(text.TextColor3 ~= takeColor, "action color and wording distinguish serve from take")
         end
         prompts.PromptHidden:Fire(serve)
     end
+end
+for _, scale in { 0.75, 1, 1.5 } do
+    root.Size = env.Vector3.new(2, 2 * scale, 1)
+    serveOrigin.Position = env.Vector3.new(0, 2.5 * scale + 0.35, 0)
+    prompts.PromptShown:Fire(serve, "Keyboard")
+    local display = gui()
+    local waistY = serveOrigin.Position.Y + display.StudsOffsetWorldSpace.Y
+    check(
+        display.Adornee == serveOrigin and math.abs(waistY / scale - 0.5) < 0.001,
+        "short, normal, and tall rigs retain proportional waist placement on the same anchor"
+    )
+    prompts.PromptHidden:Fire(serve)
 end
 serve:SetAttribute("InteractionOwnerUserId", nil)
 prompts.PromptShown:Fire(serve, "Keyboard")
