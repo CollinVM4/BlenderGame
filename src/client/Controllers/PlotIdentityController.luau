@@ -4,6 +4,8 @@ local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
 local Controller = {}
 local player = Players.LocalPlayer
 local portraits: { [number]: string } = {}
@@ -45,10 +47,7 @@ local function label(parent: Instance, text: string, y: number): TextLabel
     result.BackgroundTransparency = 1
     result.Size = UDim2.new(1, 0, 0, 28)
     result.Position = UDim2.fromOffset(0, y)
-    result.Font = Enum.Font.GothamBold
-    result.TextSize = 17
-    result.TextColor3 = Color3.new(1, 1, 1)
-    result.TextStrokeTransparency = 0.4
+    TextStyle.Apply(result, 17)
     result.Text = text
     result.Parent = parent
     return result
@@ -56,14 +55,19 @@ end
 local function button(parent: Instance, text: string, y: number, callback: () -> ()): TextButton
     local result = Instance.new("TextButton")
     result.Size = UDim2.new(1, -24, 0, 30)
-    result.Position = UDim2.fromOffset(12, y)
+    result.AnchorPoint = Vector2.new(0.5, 0.5)
+    result.Position = UDim2.new(0.5, 0, 0, y + 15)
     result.BackgroundColor3 = Color3.fromRGB(35, 92, 108)
-    result.TextColor3 = Color3.new(1, 1, 1)
-    result.Font = Enum.Font.GothamBold
-    result.TextSize = 15
+    result.BorderSizePixel = 0
+    TextStyle.Apply(result, 17)
     result.Text = text
     result.Parent = parent
-    Instance.new("UICorner", result).CornerRadius = UDim.new(0, 8)
+    Instance.new("UICorner", result).CornerRadius = UDim.new(0, 12)
+    local border = Instance.new("UIStroke")
+    border.Name = "ButtonOutline"
+    border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    border.Color, border.Thickness = TextStyle.Dark, 3
+    border.Parent = result
     result.Activated:Connect(callback)
     return result
 end
@@ -86,6 +90,46 @@ function Controller.Init()
     Instance.new("UICorner", panel)
     local managed: Instance? = nil
     local managedRevision: any = nil
+    local modeRows: { [string]: TextButton } = {}
+    local selectionTweens: { Tween } = {}
+    local selectedMode: any = nil
+    local modeTitles = { Open = "PUBLIC", FriendsOnly = "FRIENDS", Closed = "PRIVATE" }
+    local function updateSelection(mode: any, animate: boolean)
+        for _, tween in selectionTweens do
+            tween:Cancel()
+        end
+        table.clear(selectionTweens)
+        selectedMode = mode
+        for value, row in modeRows do
+            local selected = value == mode
+            row.Text = (if selected then "SELECTED: " else "") .. modeTitles[value]
+            row.TextColor3 = if selected then TextStyle.White else Color3.fromRGB(205, 215, 226)
+            local fill = if selected then Color3.fromRGB(45, 159, 123) else Color3.fromRGB(43, 56, 70)
+            local scale = row:FindFirstChild("SelectionScale") :: UIScale
+            local border = row:FindFirstChild("ButtonOutline") :: UIStroke
+            border.Color = if selected then TextStyle.Gold else TextStyle.Dark
+            border.Thickness = if selected then 3.5 else 2
+            local size = if selected then 1.1 else 1
+            if animate then
+                for _, tween in
+                    {
+                        TweenService:Create(
+                            scale,
+                            TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                            { Scale = size }
+                        ),
+                        TweenService:Create(row, TweenInfo.new(0.16), { BackgroundColor3 = fill }),
+                    }
+                do
+                    table.insert(selectionTweens, tween)
+                    tween:Play()
+                end
+            else
+                scale.Scale = size
+                row.BackgroundColor3 = fill
+            end
+        end
+    end
     local function context(plot: Instance): any
         return {
             PlotSessionId = plot:GetAttribute("PlotSessionId"),
@@ -97,7 +141,14 @@ function Controller.Init()
         remote:FireServer(action, plot, value, captured)
     end
     local function openManage(plot: Instance)
+        local previousMode = if managed == plot and panel.Visible then selectedMode else nil
+        for _, tween in selectionTweens do
+            tween:Cancel()
+        end
+        table.clear(selectionTweens)
+        table.clear(modeRows)
         panel:ClearAllChildren()
+        Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 16)
         managed = plot
         local captured = context(plot)
         managedRevision = captured.MembershipRevision
@@ -111,15 +162,19 @@ function Controller.Init()
             Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
         end
         for index, mode in { "Open", "FriendsOnly", "Closed" } do
-            local title = if mode == "FriendsOnly" then "Friends Only" else mode
-            button(
-                panel,
-                (if plot:GetAttribute("JoinMode") == mode then "Selected: " else "") .. title,
-                74 + (index - 1) * 36,
-                function()
-                    send(plot, "SetJoinMode", mode, captured)
-                end
-            )
+            local row = button(panel, modeTitles[mode], 74 + (index - 1) * 36, function()
+                send(plot, "SetJoinMode", mode, captured)
+            end)
+            row.Size = UDim2.new(1, -32, 0, 28) -- Leave space for the selected scale and outline.
+            row.AutoButtonColor = false
+            local scale = Instance.new("UIScale")
+            scale.Name, scale.Scale, scale.Parent = "SelectionScale", 1, row
+            modeRows[mode] = row
+        end
+        local mode = plot:GetAttribute("JoinMode")
+        updateSelection(if previousMode ~= nil then previousMode else mode, false)
+        if previousMode ~= nil and previousMode ~= mode then
+            updateSelection(mode, true)
         end
         if teammate then
             button(panel, "KICK TEAMMATE", 186, function()
@@ -166,6 +221,7 @@ function Controller.Init()
                 local display = Instance.new("BillboardGui")
                 display.Name = "PlotIdentity"
                 display.Size = UDim2.fromOffset(280, 200)
+                display.ClipsDescendants = false -- Allow fixed-width member columns around the existing action footprint.
                 display.AlwaysOnTop, display.MaxDistance, display.Active = true, 160, true
                 display.Parent = gui
                 displays[plot] = display
@@ -208,20 +264,22 @@ function Controller.Init()
                         head.Size, head.Position = UDim2.fromOffset(64, 64), UDim2.fromOffset(x, 0)
                         head.Image, head.BackgroundTransparency, head.Parent = portrait(id), 1, display
                         Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
-                        local nameLabel = label(display, name, 68)
-                        nameLabel.Size, nameLabel.Position = UDim2.fromOffset(140, 28), UDim2.fromOffset(x - 38, 68)
-                        nameLabel.TextScaled = true
-                        local roleLabel = label(display, role, 96)
-                        roleLabel.Size, roleLabel.Position = UDim2.fromOffset(140, 28), UDim2.fromOffset(x - 38, 96)
+                        local nameLabel = label(display, name, 72)
+                        nameLabel.TextSize = 24
+                        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                        local width = if teammate then 260 else 420
+                        nameLabel.Size = UDim2.fromOffset(width, 32)
+                        nameLabel.Position = UDim2.fromOffset(x + 32 - width / 2, 72)
+                        if role ~= "" then
+                            local roleLabel = label(display, role, 106)
+                            roleLabel.Size, roleLabel.Position =
+                                UDim2.fromOffset(width, 24), UDim2.fromOffset(x + 32 - width / 2, 106)
+                            roleLabel.TextSize = 14
+                        end
                     end
-                    member(
-                        owner,
-                        tostring(plot:GetAttribute("PlotOwnerName") or ""),
-                        if teammate then 38 else 108,
-                        "OWNER"
-                    )
+                    member(owner, tostring(plot:GetAttribute("PlotOwnerName") or ""), if teammate then -32 else 108, "")
                     if type(teammate) == "number" then
-                        member(teammate, tostring(plot:GetAttribute("PlotTeammateName") or ""), 178, "TEAMMATE")
+                        member(teammate, tostring(plot:GetAttribute("PlotTeammateName") or ""), 248, "TEAMMATE")
                     end
                 else
                     label(display, "AVAILABLE PLOT", 68)
@@ -258,6 +316,8 @@ function Controller.Init()
                 panel.Visible = false
             elseif managed:GetAttribute("PlotMembershipRevision") ~= managedRevision then
                 openManage(managed)
+            elseif managed:GetAttribute("JoinMode") ~= selectedMode then
+                updateSelection(managed:GetAttribute("JoinMode"), true)
             end
         end
     end)

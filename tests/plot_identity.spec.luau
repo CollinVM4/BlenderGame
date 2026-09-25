@@ -25,6 +25,27 @@ viewer.IsFriendsWithAsync = function()
     return true
 end
 env.Enum.ThumbnailType, env.Enum.ThumbnailSize = { HeadShot = 1 }, { Size150x150 = 1 }
+env.Enum.ApplyStrokeMode = { Border = "Border" }
+env.Enum.TextTruncate = { AtEnd = "AtEnd" }
+env.Enum.EasingStyle = { Quad = "Quad" }
+env.Enum.EasingDirection = { Out = "Out" }
+env.TweenInfo = {
+    new = function(...)
+        return { ... }
+    end,
+}
+services.TweenService = {
+    Create = function(_, object, _info, goal)
+        return {
+            Play = function()
+                for key, value in goal do
+                    object[key] = value
+                end
+            end,
+            Cancel = function() end,
+        }
+    end,
+}
 env.UDim = {
     new = function(a, b)
         return { Scale = a, Offset = b }
@@ -94,9 +115,30 @@ t.RemovePlayer(owner)
 tick()
 check(findText("MANAGE PLOT") and not findText("LEAVE TEAM"), "promotion changes management action")
 findText("MANAGE PLOT").Activated:Fire()
-check(findText("Empty Slot") and findText("Open"), "owner management shows slot and policy")
-findText("Open").Activated:Fire()
+check(findText("Empty Slot") and findText("PUBLIC"), "owner management shows slot and policy")
+local public, friends, private = findText("PUBLIC"), findText("SELECTED: FRIENDS"), findText("PRIVATE")
+local positions = { public.Position, friends.Position, private.Position }
+public.Activated:Fire()
 check(requests[3][1] == "SetJoinMode" and requests[3][3] == "Open", "management submits policy")
+check(friends.Text == "SELECTED: FRIENDS", "request does not optimistically change permission presentation")
+occupied:SetAttribute("JoinMode", "Open")
+tick()
+check(
+    public.Text == "SELECTED: PUBLIC" and friends.Text == "FRIENDS" and private.Text == "PRIVATE",
+    "selection prefix follows replicated mode"
+)
+check(
+    public.Position == positions[1] and friends.Position == positions[2] and private.Position == positions[3],
+    "selection keeps all three positions fixed"
+)
+check(
+    public:FindFirstChild("SelectionScale").Scale == 1.1 and friends:FindFirstChild("SelectionScale").Scale == 1,
+    "selected option grows in place and previous option settles"
+)
+friends.Activated:Fire()
+check(requests[#requests][3] == "FriendsOnly", "FRIENDS retains original wire value")
+private.Activated:Fire()
+check(requests[#requests][3] == "Closed", "PRIVATE retains original wire value")
 local fetched = thumbnails
 tick()
 tick()

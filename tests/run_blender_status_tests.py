@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 sources = {
+    "DialogueTextStyle": (ROOT / "src/shared/Constants/DialogueTextStyle.luau").read_text(),
     "Economy": (ROOT / "src/shared/Constants/Economy.luau").read_text(),
     "BlenderStatusPresentation": (ROOT / "src/server/Components/BlenderStatusPresentation.luau").read_text(),
     "BlenderStatusDistanceController": (ROOT / "src/client/Controllers/BlenderStatusDistanceController.luau").read_text(),
@@ -17,8 +18,7 @@ sources = {
 bundle = "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
 ) + "\n}\n"
-bundle += (ROOT / "tests/server_state.spec.luau").read_text().split("env.require = loadModule", 1)[0]
-bundle += "env.require = loadModule\n"
+bundle += (ROOT / "tests/fixtures/roblox.luau").read_text()
 bundle += (ROOT / "tests/blender_status.spec.luau").read_text()
 bundle += "\n" + (ROOT / "tests/blender_status_distance.spec.luau").read_text()
 with tempfile.TemporaryDirectory(prefix="blender-status-tests-") as directory:

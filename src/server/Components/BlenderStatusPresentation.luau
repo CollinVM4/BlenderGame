@@ -1,6 +1,7 @@
 --!strict
 local Players = game:GetService("Players")
 local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local BlenderStatusPresentation = {}
 
@@ -12,8 +13,8 @@ local COUNT_SIZE = UDim2.fromOffset(240, 72)
 local PROMPT_SIZE = UDim2.fromOffset(380, 80)
 local COUNT_OFFSET = Vector3.new(0, 0, 0)
 local PROMPT_OFFSET = Vector3.new(0, 0, 0)
-local WHITE = Color3.new(1, 1, 1)
-local FULL_COLOR = Color3.new(0.45, 1, 0.55)
+local WHITE = TextStyle.White
+local FULL_COLOR = TextStyle.Green
 
 -- Presentation markers accept Attachments without changing gameplay references,
 -- whose TycoonService.GetReference API intentionally returns BaseParts.
@@ -43,6 +44,7 @@ local function billboard(marker: Instance, name: string, size: UDim2, offset: Ve
     gui.Name = name
     gui.Adornee = marker
     gui.Size = size
+    gui.ClipsDescendants = false -- Keep the fixed completion line and brief count pop clear of the canvas edge.
     gui.StudsOffsetWorldSpace = offset
     gui.AlwaysOnTop = true
     gui.MaxDistance = MAX_DISTANCE
@@ -51,13 +53,7 @@ local function billboard(marker: Instance, name: string, size: UDim2, offset: Ve
     text.Size = UDim2.fromScale(1, 1)
     text.BackgroundTransparency = 1
     text.BorderSizePixel = 0
-    text.TextStrokeColor3 = Color3.new(0, 0, 0)
-    text.TextStrokeTransparency = 0.25
-    text.TextColor3 = WHITE
-    text.Font = Enum.Font.GothamBold
-    text.TextScaled = false
-    text.TextSize = TEXT_SIZE
-    text.TextWrapped = true
+    TextStyle.Apply(text, TEXT_SIZE)
     text.Text = ""
     text.Parent = gui
     gui.Parent = marker
@@ -95,12 +91,15 @@ function BlenderStatusPresentation.Init(services: any)
                 countText.TextColor3 = if full then FULL_COLOR else WHITE
             end
             if promptText then
+                promptText.TextColor3 = if state == "COMPLETE" then FULL_COLOR else WHITE
                 promptText.Text = if state == "COMPLETE"
                     then "READY TO DISPENSE!"
                     elseif state == "BLENDING" then "BLENDING..."
                     elseif state == "READY" and full then "SPIN TO BLEND!"
-                    elseif not full and owner and owner:GetAttribute("BlendNeedsItems") == true
-                        then string.format("NEEDS %d ITEMS!", Economy.MaxIngredients)
+                    elseif not full and owner and owner:GetAttribute("BlendNeedsItems") == true then string.format(
+                        "NEEDS %d ITEMS!",
+                        Economy.MaxIngredients
+                    )
                     else "LOAD INGREDIENTS TO BLEND!"
             end
         end

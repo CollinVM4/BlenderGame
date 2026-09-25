@@ -1,6 +1,7 @@
 --!strict
 local UserInputService = game:GetService("UserInputService")
 local Style = require(script.Parent.WorldBillboardStyle)
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local Presentation = {}
 
 export type Settings = {
@@ -33,6 +34,9 @@ function Presentation.Create(
     local text = Instance.new("TextButton")
     text.Name = "Action"
     Style.ApplyText(text, config)
+    if origin.Name == "DispenserTextOrigin" then
+        TextStyle.Apply(text, config.TextSize or 24)
+    end
     if config.CustomerAction then
         -- Shared input behavior, with a compact customer-only visual treatment.
         gui.Size = UDim2.fromOffset(220, 44)
@@ -46,16 +50,10 @@ function Presentation.Create(
                 gui.SizeOffset = Vector2.new(0, 0)
             end
         end
-        text.Font = Enum.Font.FredokaOne
+        text.Font = TextStyle.Font
         text.TextSize = 21
-        text.TextColor3 = if config.CustomerAction == "TakeOrder"
-            then Color3.fromRGB(255, 222, 115)
-            else Color3.fromRGB(120, 235, 255)
-        text.TextStrokeTransparency = 1
-        local outline = Instance.new("UIStroke")
-        outline.Color = Color3.fromRGB(18, 22, 30)
-        outline.Thickness = 2.5
-        outline.Parent = text
+        text.TextColor3 = if config.CustomerAction == "TakeOrder" then TextStyle.Gold else Color3.fromRGB(120, 235, 255)
+        TextStyle.Outline(text)
     end
     text.AutoButtonColor = false
     text.Parent = gui

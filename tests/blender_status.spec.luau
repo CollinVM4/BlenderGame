@@ -49,8 +49,18 @@ for _, refs in labels do
     refs.Count = refs.CountGui:FindFirstChild("Status")
     refs.Prompt = refs.PromptGui:FindFirstChild("Status")
     check(refs.CountGui.Adornee == refs.CountOrigin, "Attachment is the adornee")
-    check(refs.CountGui.AlwaysOnTop and refs.CountGui.MaxDistance == 80, "readable world-space settings")
-    check(refs.Count.BackgroundTransparency == 1 and refs.Count.TextStrokeTransparency == 0.25, "order bubble style")
+    check(
+        refs.CountGui.AlwaysOnTop and refs.CountGui.MaxDistance == 5,
+        "conservative range before client configures culling"
+    )
+    check(
+        refs.Count.BackgroundTransparency == 1 and refs.Count:FindFirstChild("DialogueOutline").Thickness == 2.5,
+        "NPC outline treatment"
+    )
+    check(
+        refs.Count.Font == "FredokaOne" and not refs.Count.TextScaled and not refs.Count.TextWrapped,
+        "fixed NPC lettering without automatic reflow"
+    )
     check(refs.Count.Text == "0 / 3", "initial empty count")
 end
 local owner = owners[plots[1]]

@@ -1,4 +1,5 @@
 --!strict
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local CustomerPresentation = {}
 
 local RESULT_DURATION = 4
@@ -23,17 +24,12 @@ function CustomerPresentation.CreateAnchor(root: BasePart, head: BasePart?): Att
 end
 
 local function outline(text: TextLabel)
-    text.TextStrokeTransparency = 1
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(18, 22, 30)
-    stroke.Thickness = 2.5
-    stroke.Transparency = 0
-    stroke.Parent = text
+    TextStyle.Outline(text)
 end
 
 -- Both customer types share lettering; specials retain their separate name row.
 local function styleDialogueText(text: TextLabel, size: number)
-    text.Font = Enum.Font.FredokaOne
+    text.Font = TextStyle.Font
     text.TextSize = size
     text.TextScaled = false
     text.TextWrapped = true
@@ -85,7 +81,7 @@ function CustomerPresentation.ShowResult(
         text.Size = UDim2.fromOffset(300, height)
         text.Position = UDim2.fromOffset(0, y)
         text.BackgroundTransparency = 1
-        text.Font = Enum.Font.FredokaOne
+        text.Font = TextStyle.Font
         text.TextSize = size
         text.TextScaled = false
         text.TextColor3 = Color3.new(1, 1, 1)

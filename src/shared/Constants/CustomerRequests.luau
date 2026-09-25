@@ -32,12 +32,22 @@ local tagGroups: { [string]: { [string]: boolean } } = {
 local requests: { Request } = {
     {
         Id = "Red",
-        DisplayText = "can you make a RED smoothie!",
+        DisplayText = "can you make me a RED smoothie!",
         GoodResponse = "Splendid! It's red!",
         BadResponse = "This isn't red enough!",
         RequiredTags = { "Red" },
         BasePayout = 25,
         MinJumpTier = 0,
+    },
+    {
+        Id = "RedNoFruit",
+        DisplayText = "can you make me a RED smoothie without any APPLE!",
+        GoodResponse = "Splendid! It's red!",
+        BadResponse = "This isn't red enough!",
+        RequiredTags = { "Red" },
+        ForbiddenIngredients = { "Apple" },
+        BasePayout = 25,
+        MinJumpTier = 2,
     },
     {
         Id = "Sweet",
@@ -50,10 +60,10 @@ local requests: { Request } = {
     },
     {
         Id = "Mushroom",
-        DisplayText = "I want something with MUSHROOMS!",
+        DisplayText = "I want something with MUSHROOMS and FRUIT!",
         GoodResponse = "Thank you!",
         BadResponse = "Where are the mushrooms?",
-        RequiredTags = { "Mushroom" },
+        RequiredTags = { "Mushroom", "Fruit" },
         BasePayout = 25,
         MinJumpTier = 0,
     },
@@ -68,7 +78,7 @@ local requests: { Request } = {
     },
     {
         Id = "Veggie",
-        DisplayText = "my new years resolution is to eat VEGGIES!",
+        DisplayText = "my new years resolution is to eat more VEGGIES!",
         GoodResponse = "I LOVE VEGGIES!",
         BadResponse = "Not enough veggies!",
         RequiredTags = { "Veggie" },
@@ -178,7 +188,7 @@ local requests: { Request } = {
     {
         Id = "Watermelon",
         DisplayText = "can you fit a whole WATERMELON in there?",
-        GoodResponse = "Watermelon wonder!",
+        GoodResponse = "how'd you do that!",
         BadResponse = "not enough watermelon!",
         RequiredTags = { "Watermelon" },
         BasePayout = 25,
@@ -222,12 +232,12 @@ local requests: { Request } = {
         MinJumpTier = 2,
     },
     {
-        Id = "FruitNoMilk",
-        DisplayText = "I want FRUIT but NO MILK!",
+        Id = "MilkNoFruit",
+        DisplayText = "I want MILK but NO FRUIT!",
         GoodResponse = "Perfect!",
-        BadResponse = "I said NO MILK!",
-        RequiredTags = { "Fruit" },
-        ForbiddenTags = { "Milk" },
+        BadResponse = "I said NO FRUIT!",
+        RequiredTags = { "Milk" },
+        ForbiddenTags = { "Fruit" },
         BasePayout = 75,
         MinJumpTier = 2,
     },
@@ -278,7 +288,7 @@ local requests: { Request } = {
 
     {
         Id = "BerryTrio",
-        DisplayText = "STRAWBERRY, BLUEBERRY, CHERRIES! Berry time!",
+        DisplayText = "STRAWBERRY, BLUEBERRY, CHERRIES! it's berry time!",
         GoodResponse = "BERRY good!",
         BadResponse = "You're missing one of my berries!",
         RequiredTags = {},
@@ -290,9 +300,9 @@ local requests: { Request } = {
 
     {
         Id = "SaladSmoothie",
-        DisplayText = "CABBAGE, CARROT, and ONION... trust me.",
-        GoodResponse = "Tastes healthy enough!",
-        BadResponse = "That's not my salad smoothie!",
+        DisplayText = "lemme get CABBAGE, CARROT, and ONION... trust me.",
+        GoodResponse = "Tastes healthy enough..",
+        BadResponse = "That's not right!",
         RequiredTags = {},
         RequiredIngredients = { "Cabbage", "Carrot", "Onion" },
         ExactIngredients = true,
@@ -450,9 +460,9 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Jynxzi",
-    DisplayText = "Bazalright.. this kitten needs MILK to sleep before bed!",
-    GoodResponse = "wait, it's clocking sisters..!",
-    BadResponse = "HIIIIVISEEEE GET A DIFFERENT SMOOTHIE!",
+    DisplayText = "Bazalright.. I always need MILK before bed!",
+    GoodResponse = "SCHWEEEET!",
+    BadResponse = "HIIIIVISEEEE GET ME A DIFFERENT SMOOTHIE!",
     RequiredTags = { "Milk" },
     BasePayout = 105,
     MinJumpTier = 2,
@@ -460,7 +470,7 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Caseoh",
-    DisplayText = "whats good cuh. you know i'm bout that PROTEIN action",
+    DisplayText = "whats good cuh. you know I'm bout that PROTEIN action",
     GoodResponse = "You're safe this time buster.",
     BadResponse = "Don't cross me again simpleton",
     RequiredTags = { "Protein" },
@@ -530,10 +540,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "DefinitelyNotCaylus",
-    DisplayText = "Make me the CRAZIEST smoothie possible. I want something WEIRD and SWEET!",
+    DisplayText = "Make me the CRAZIEST smoothie possible. I want something WEIRD and Spicy!",
     GoodResponse = "Okay... that's actually insane.",
     BadResponse = "Nahhh, that wasn't crazy enough!",
-    RequiredTags = { "Weird", "Sweet" },
+    RequiredTags = { "Weird", "Spicy" },
     BasePayout = 105,
     MinJumpTier = 1,
     NPCOnly = true,
@@ -546,7 +556,7 @@ table.insert(requests, {
     RequiredTags = { "Seafood" },
     ForbiddenTags = { "Fruit" },
     BasePayout = 125,
-    MinJumpTier = 1,
+    MinJumpTier = 2,
     NPCOnly = true,
 })
 table.insert(requests, {
@@ -581,10 +591,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "ProbablyNotRusso",
-    DisplayText = "I need something BLUE and expensive-looking. Surprise me.",
+    DisplayText = "I need something expensive-looking. Surprise me.",
     GoodResponse = "Okay definitely worth the Robux.",
     BadResponse = "I spent WHAT on this?!",
-    RequiredTags = { "Blue" },
+    RequiredTags = { "*" },
     BasePayout = 105,
     MinJumpTier = 0,
     NPCOnly = true,

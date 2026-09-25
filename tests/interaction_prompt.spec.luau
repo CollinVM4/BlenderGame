@@ -48,6 +48,9 @@ env.print = function(message)
     table.insert(logs, message)
 end
 services.Players.LocalPlayer = {
+    GetAttributeChangedSignal = function()
+        return signal()
+    end,
     WaitForChild = function()
         return playerGui
     end,
@@ -71,7 +74,8 @@ local function module(name, requires)
     return chunk()
 end
 local style = module("WorldBillboardStyle", {})
-local view = module("Presentation", { WorldBillboardStyle = style })
+local view =
+    module("Presentation", { WorldBillboardStyle = style, DialogueTextStyle = loadModule("DialogueTextStyle") })
 local controller = module("Controller", { Presentation = view })
 controller.Init()
 controller.Init()
@@ -103,6 +107,8 @@ end
 show()
 check(#playerGui:GetChildren() == 1, "one view after idempotent controller startup")
 check(gui().Adornee == origin, "sibling attachment is exact adornee")
+check(label().Font == "FredokaOne" and not label().TextWrapped, "dispenser uses fixed dialogue lettering")
+check(label():FindFirstChild("DialogueOutline").Thickness == 2.5, "dispenser has heavy NPC text outline")
 local originPart = uiInstance("Part", "MarkerPart", object)
 origin.Parent = originPart
 show()
