@@ -6,6 +6,7 @@ require(script.Controllers.WorldTextController).Init()
 local GameplayPresentationController = require(script.Controllers.GameplayPresentationController)
 GameplayPresentationController.Init()
 require(script.Controllers.BlenderStatusDistanceController).Init()
+require(script.Controllers.TurbineCameraController).Init()
 require(script.Controllers.RareIngredientPresentationController).Init()
 
 local SprintController = require(script.Controllers.SprintController)

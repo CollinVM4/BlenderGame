@@ -253,6 +253,15 @@ local Ingredients: { [string]: IngredientDefinition } = {
 		Rarity = "Rare",
 		JumpLocation = 3,
 	},
+	
+	Honey = {
+		Id = "Honey",
+		DisplayName = "Honey",
+		Tags = { "Sweet", "Yellow",},
+		BlendColor = Color3.fromRGB(255, 200, 100),
+		Rarity = "Rare",
+		JumpLocation = 1,
+	},
 
 	Shell = {
 		Id = "Shell",
