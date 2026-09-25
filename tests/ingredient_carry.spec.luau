@@ -22,9 +22,9 @@ end
 for tier, definition in upgrades.CarryCapacity do
     if tier > 1 then
         data.SetCash(player, definition.Cost - 1)
-        check(not data.PurchaseUpgrade(player, "CarryCapacity", tier), "insufficient cash rejected")
+        check(not buyTestUpgrade(data, player, "CarryCapacity", tier), "insufficient cash rejected")
         data.SetCash(player, definition.Cost)
-        check(data.PurchaseUpgrade(player, "CarryCapacity", tier), "capacity upgrade accepted")
+        check(buyTestUpgrade(data, player, "CarryCapacity", tier), "capacity upgrade accepted")
         check(data.GetCash(player) == 0, "upgrade charges configured cost")
     end
     check(inventory.GetCarryCapacity(player) == definition.Value, "configured capacity preserved")

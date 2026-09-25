@@ -152,3 +152,10 @@ current results, baseline failures, and required Studio checks.
 
 The standalone presentation suite is `python tests/run_blender_ready_tests.py --luau <luau.exe>`.
 See [setup and validation](../docs/BLENDER_READY_INDICATOR.md) for readiness, lifecycle coverage, and Studio checks.
+
+## Shared plot-session foundation
+
+Use repeated `--suite` selectors for `plot-session`, `plot-session-races`,
+`plot-session-progression`, and `plot-session-requests`. The separate
+`plot-session-feedback` suite covers shared warning deadlines and stale timers.
+See [architecture, validation, baseline failures, and Studio smoke steps](../docs/PLOT_SESSIONS.md).

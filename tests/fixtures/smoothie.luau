@@ -4,6 +4,9 @@ cache.StudioServices = {
         return service
     end,
 }
+workspaceFake.FindFirstChild = function()
+    return nil
+end
 local guid = 0
 services.HttpService.GenerateGUID = function()
     guid += 1
@@ -43,6 +46,11 @@ local dependency = {
     InventoryService = inventory,
     BlendService = blend,
     IngredientService = ingredients,
+    GameplayService = {
+        RegisterPlotInteraction = function(prompt, callback)
+            prompt.Triggered:Connect(callback)
+        end,
+    },
     PlayerDataService = {
         GetUpgrade = function(player, name)
             return if name == "CarryCapacity" then capacities[player] else 1
@@ -51,21 +59,15 @@ local dependency = {
         AddCash = dataService.AddCash,
         GetCash = dataService.GetCash,
     },
-    TycoonService = {
-        GetPlot = function(player)
-            return fixtures[player]
-        end,
-        GetFixtures = function(plot)
-            return { plot }
-        end,
-        GetOwner = function(object)
-            return object.Owner
-        end,
-        GetReference = function(player, name)
-            return references[player][name]
-        end,
-    },
+    TycoonService = loadModule("TycoonService"),
 }
+dependency.TycoonService.Init({
+    SessionEnded = function(id)
+        blend.CleanupSession(id)
+        customer.CleanupSession(id)
+    end,
+})
+dataService.BindRuntimeAuthority(dependency.TycoonService)
 inventory.Init(dependency)
 blend.Init(dependency)
 local completedServes = 0
@@ -97,8 +99,18 @@ local function player(capacity)
     local backpack = instance("Backpack")
     backpack.Parent = p
     capacities[p] = capacity or 3
+    for _, vacant in services.CollectionService:GetTagged("PlayerPlot") do
+        if not dependency.TycoonService.GetOwner(vacant) then
+            services.CollectionService:RemoveTag(vacant, "PlayerPlot")
+        end
+    end
+    local plot = instance("Model")
+    plot.Name, plot.Parent = "Plot" .. p.UserId, workspaceFake
+    services.CollectionService:AddTag(plot, "PlayerPlot")
     fixtures[p] = instance("Model")
     fixtures[p].Owner = p
+    fixtures[p].Name, fixtures[p].Parent = "PlayerStash", plot
+    services.CollectionService:AddTag(fixtures[p], "PlayerStash")
     for index = 1, 5 do
         part("Slot" .. index, fixtures[p]):SetAttribute("SlotIndex", index)
     end
@@ -114,12 +126,14 @@ local function player(capacity)
             "CustomerExit",
         }
     do
-        local object = part(name)
+        local object = part(name, plot)
+        services.CollectionService:AddTag(object, name)
         object.Owner = p
         references[p][name] = object
     end
     inventory.AddPlayer(p)
     dataService.AddPlayer(p)
+    dependency.TycoonService.AssignPlot(p)
     blend.Reset(p)
     return p, humanoid
 end

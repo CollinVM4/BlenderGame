@@ -24,7 +24,9 @@ function BlenderInput.Init(services: any)
                 local item = services.IngredientService.Resolve(part)
                 if item and not seen[item] then
                     seen[item] = true
-                    services.BlendService.TryInput(owner, item, object)
+                    local record = services.IngredientService.GetRecord(item)
+                    local actor = if record and record.Owner then record.Owner else owner
+                    services.BlendService.TryInput(actor, item, object)
                 end
             end
         end)

@@ -14,11 +14,11 @@ function DispenseButton.Init(services: any)
         prompt:SetAttribute("InteractionActionText", "DISPENSE")
         prompt.Style = Enum.ProximityPromptStyle.Custom
         local audio = AudioService.CreateBlendGroup(part)
-        local connection = prompt.Triggered:Connect(function(player)
-            if services.TycoonService.GetOwner(part) ~= player then
+        services.GameplayService.RegisterPlotInteraction(prompt, function(player, context)
+            if not services.TycoonService.IsMember(player, part) then
                 return
             end
-            local success = services.BlendService.Dispense(player, part)
+            local success = services.BlendService.Dispense(player, part, context)
             if success then
                 audio.pourSound:Play()
             else
@@ -26,7 +26,6 @@ function DispenseButton.Init(services: any)
             end
         end)
         return function()
-            connection:Disconnect()
             prompt:Destroy()
             for _, sound in audio do
                 sound:Destroy()

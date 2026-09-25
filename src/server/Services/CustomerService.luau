@@ -18,31 +18,32 @@ local Film = require(script.Parent.FilmingUtil)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade) -> ()
-local queues: { [Player]: any } = {}
+local queues: { [string]: any } = {}
+local function key(player: Player): string
+    return deps.TycoonService.GetSessionId(player) or ""
+end
 local queueMarkers = { "CustomerCounter", "CustomerWait1", "CustomerWait2" }
 local function front(player: Player): any
-    local queue = queues[player]
+    local queue = queues[key(player)]
     return if queue then queue.Customers[1] else nil
 end
-local function current(player: Player, queue: any): boolean
-    return queues[player] == queue
-        and deps.TycoonService.GetPlot(player) == queue.Plot
-        and deps.TycoonService.GetOwner(queue.Plot) == player
+local function current(_player: Player, queue: any): boolean
+    return queues[queue.SessionId] == queue and deps.TycoonService.GetSessionOwner(queue.SessionId) ~= nil
 end
-local ownedModels: { [Player]: { [Model]: boolean } } = {}
-local lastSpecialSpawn: { [Player]: number } = {}
-local lastTemplates: { [Player]: Model } = {}
+local ownedModels: { [string]: { [Model]: boolean } } = {}
+local lastSpecialSpawn: { [string]: number } = {}
+local lastTemplates: { [string]: Model } = {}
 -- Runtime-only regular selections survive flow restarts.
-local recentTemplates: { [Player]: { Model } } = {}
-local recentRequests: { [Player]: { string } } = {}
+local recentTemplates: { [string]: { Model } } = {}
+local recentRequests: { [string]: { string } } = {}
 
-local function remember<T>(histories: { [Player]: { T } }, player: Player, value: T, window: number)
-    local history = histories[player] or {}
+local function remember<T>(histories: { [string]: { T } }, player: Player, value: T, window: number)
+    local history = histories[key(player)] or {}
     table.insert(history, value)
     while #history > math.max(0, window) do
         table.remove(history, 1)
     end
-    histories[player] = history
+    histories[key(player)] = history
 end
 local warnedTemplates = setmetatable({} :: { [Instance]: boolean }, { __mode = "k" })
 local activeTypingTasks = setmetatable({}, { __mode = "k" })
@@ -203,8 +204,8 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
 end
 
 local function eligibleRequests(player: Player): { CustomerRequests.Request }
-    -- Server-owned effective tier, published by PlayerDataService/MovementService (0-3).
-    local playerJumpTier = player:GetAttribute("JumpLevel") or 0
+    -- Purchased session progression; personal Studio movement overrides are irrelevant.
+    local playerJumpTier = deps.TycoonService.GetJumpTier(player)
     local eligible: { CustomerRequests.Request } = {}
     for _, request in CustomerRequests.Definitions do
         if not request.NPCOnly and playerJumpTier >= request.MinJumpTier then
@@ -227,7 +228,7 @@ local function assignRequest(player: Player, record: any): boolean
     local selectedRequest = record.FixedRequest
     local forced = selectedRequest ~= nil
     local recentFiltered, recentFallback = false, false
-    if selectedRequest and (player:GetAttribute("JumpLevel") or 0) < selectedRequest.MinJumpTier then
+    if selectedRequest and (deps.TycoonService.GetJumpTier(player)) < selectedRequest.MinJumpTier then
         diagnostic("special became ineligible before assignment; removing customer owner=" .. player.Name)
         record.Model:Destroy()
         return false
@@ -242,7 +243,7 @@ local function assignRequest(player: Player, record: any): boolean
         if record.CustomerType == "Regular" then
             local fresh: { CustomerRequests.Request } = {}
             for _, request in eligible do
-                if not table.find(recentRequests[player] or {}, request.Id) then
+                if not table.find(recentRequests[key(player)] or {}, request.Id) then
                     table.insert(fresh, request)
                 end
             end
@@ -271,7 +272,7 @@ local function assignRequest(player: Player, record: any): boolean
             record.CustomerId or "<absent>",
             record.DisplayName or "<absent>",
             request.Id,
-            tostring(player:GetAttribute("JumpLevel") or 0),
+            tostring(deps.TycoonService.GetJumpTier(player)),
             tostring(forced),
             tostring(recentFiltered),
             tostring(recentFallback)
@@ -334,14 +335,14 @@ local function candidateFor(player: Player, template: Model): Candidate?
             rejectTemplate(template, reason)
             return nil
         end
-        if request and (player:GetAttribute("JumpLevel") or 0) < request.MinJumpTier then
+        if request and (deps.TycoonService.GetJumpTier(player)) < request.MinJumpTier then
             diagnostic(
                 string.format(
                     "special ineligible customerId=%s request=%s requiredJumpTier=%d playerJumpTier=%s",
                     id or "<absent>",
                     request.Id,
                     request.MinJumpTier,
-                    tostring(player:GetAttribute("JumpLevel") or 0)
+                    tostring(deps.TycoonService.GetJumpTier(player))
                 )
             )
             return nil
@@ -402,13 +403,13 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
     end
     if #regular > 0 then
         for index = #special, 1, -1 do
-            if special[index].Template == lastTemplates[player] then
+            if special[index].Template == lastTemplates[key(player)] then
                 table.remove(special, index)
             end
         end
     end
     local useSpecial = #special > 0
-        and (lastSpecialSpawn[player] == nil or os.clock() - lastSpecialSpawn[player] >= Economy.SpecialCustomerCooldownSeconds)
+        and (lastSpecialSpawn[key(player)] == nil or os.clock() - lastSpecialSpawn[key(player)] >= Economy.SpecialCustomerCooldownSeconds)
         and math.random() < CustomerRequests.SpecialCustomerChance
     local candidates = if useSpecial then special else regular
     -- Regulars use rolling recency; specials retain their existing immediate-repeat rule.
@@ -417,8 +418,8 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
         local alternatives: { number } = {}
         for index, candidate in pool do
             local recent = if candidate.CustomerType == "Regular"
-                then table.find(recentTemplates[player] or {}, candidate.Template) ~= nil
-                else candidate.Template == lastTemplates[player]
+                then table.find(recentTemplates[key(player)] or {}, candidate.Template) ~= nil
+                else candidate.Template == lastTemplates[key(player)]
             if not recent then
                 table.insert(alternatives, index)
             end
@@ -454,7 +455,7 @@ local function cloneNPC(player: Player): (Model?, Candidate?)
             cleanClone(clone)
         end
         if ok and clone and clone:FindFirstChildOfClass("Humanoid") and npcRoot(clone) then
-            lastTemplates[player] = template
+            lastTemplates[key(player)] = template
             if candidate.CustomerType == "Regular" then
                 remember(recentTemplates, player, template, CustomerRequests.RegularCustomerRecencyWindow)
                 diagnostic(
@@ -704,7 +705,7 @@ function CustomerService.SelectReaction(): string
     return Customers.Reactions[1].Id
 end
 function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): number
-    local upgrade = Upgrades.Payout[deps.PlayerDataService.GetUpgrade(player, "Payout")].Value
+    local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local multiplier = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
     return math.round(Economy.BasePayout * Economy.CashScale * Economy.GradeMultiplier[grade] * upgrade * multiplier)
 end
@@ -748,13 +749,13 @@ function CustomerService.CalculateOrderPayout(
             rarity = math.max(rarity, Economy.PayoutRarityMultiplier[definition.Rarity])
         end
     end
-    local upgrade = Upgrades.Payout[deps.PlayerDataService.GetUpgrade(player, "Payout")].Value
+    local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
     local amount = request.BasePayout * Economy.CashScale * Economy.GradeMultiplier.A * rarity * upgrade * entitlement
     return math.round(amount * (if success then 1 else Economy.MissedOrderFraction)), rarity
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
-    local queue = queues[player]
+    local queue = queues[key(player)]
     if not queue or not current(player, queue) then
         return false, "Plot flow inactive"
     end
@@ -808,7 +809,7 @@ local function move(record: any, destination: CFrame, finished: () -> (), via: {
 end
 -- One ordered queue owns both destinations and eligibility. Route tokens invalidate old arrivals.
 function CustomerService.RefreshQueue(player: Player)
-    local queue = queues[player]
+    local queue = queues[key(player)]
     if not queue then
         return
     end
@@ -860,26 +861,35 @@ end
 
 function CustomerService.ActivateForPlayer(player: Player): boolean
     local plot = deps.TycoonService.GetPlot(player)
-    if not plot or deps.TycoonService.GetOwner(plot) ~= player then
+    if not plot then
         CustomerService.DeactivateForPlayer(player)
         return false
     end
-    local existing = queues[player]
+    local existing = queues[key(player)]
     if existing and current(player, existing) then
         return true
     end
     CustomerService.DeactivateForPlayer(player)
-    local queue: any = { Customers = {}, Plot = plot, Full = false }
-    queues[player] = queue
+    local queue: any = { Customers = {}, Plot = plot, Full = false, SessionId = key(player) }
+    queues[key(player)] = queue
     queue.PlotConnection = plot.AncestryChanged:Connect(function()
-        if queues[player] == queue and not current(player, queue) then
-            CustomerService.DeactivateForPlayer(player)
+        if queues[queue.SessionId] == queue and not current(player, queue) then
+            CustomerService.CleanupSession(queue.SessionId)
         end
     end)
     player:SetAttribute("CustomerFlowState", "PLOT_ACTIVE")
     diagnostic("flow started owner=" .. player.Name)
     local function tick()
-        if queues[player] ~= queue then
+        if queues[queue.SessionId] ~= queue then
+            return
+        end
+        local activeOwner = deps.TycoonService.GetSessionOwner(queue.SessionId)
+        if not activeOwner then
+            CustomerService.CleanupSession(queue.SessionId)
+            return
+        end
+        player = activeOwner
+        if queues[queue.SessionId] ~= queue then
             return
         end
         if not current(player, queue) then
@@ -907,7 +917,7 @@ function CustomerService.ActivateForPlayer(player: Player): boolean
     return true
 end
 
-function CustomerService.SpawnForPlayer(player: Player): Model?
+local function spawnForPlayer(player: Player): Model?
     if not CustomerService.CanSpawn(player) then
         return nil
     end
@@ -992,8 +1002,8 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     model.Parent = workspace
     local pose = Walk.HoldRig(model, root)
     local walk = Walk.Create(model, templateName)
-    ownedModels[player] = ownedModels[player] or {}
-    ownedModels[player][model] = true
+    ownedModels[key(player)] = ownedModels[key(player)] or {}
+    ownedModels[key(player)][model] = true
     local bubble = Instance.new("BillboardGui")
     bubble.Name = "OrderBubble"
     bubble.Size = UDim2.fromOffset(CUSTOMER_ORDER_WIDTH, CUSTOMER_ORDER_TEXT_HEIGHT)
@@ -1055,12 +1065,13 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
     takeOrder:SetAttribute("InteractionActionText", "TAKE ORDER")
     for _, interaction in { takeOrder, prompt } do
         interaction:SetAttribute("InteractionOwnerUserId", player.UserId)
+        interaction:SetAttribute("PlotSessionId", key(player))
         interaction:SetAttribute("InteractionCustomerAction", if interaction == takeOrder then "TakeOrder" else "Serve")
     end
     local record: any = {
         OrderTaken = false,
         TakeOrderPrompt = takeOrder,
-        Owner = player,
+        SessionId = key(player),
         BottomOffset = bottomOffset,
         Pose = pose,
         CustomerType = if candidate then candidate.CustomerType else "Regular",
@@ -1083,52 +1094,66 @@ function CustomerService.SpawnForPlayer(player: Player): Model?
         Exit = exitAt,
         ForcedReaction = nil,
     }
-    local queue = queues[player]
+    local queue = queues[key(player)]
     if not queue or not current(player, queue) or not assignRequest(player, record) then
         walk.Destroy()
-        if ownedModels[player] then
-            ownedModels[player][model] = nil
+        if ownedModels[key(player)] then
+            ownedModels[key(player)][model] = nil
         end
         model:Destroy()
         return nil
     end
     table.insert(queue.Customers, record)
     if record.CustomerType == "Special" then
-        lastSpecialSpawn[player] = os.clock()
+        lastSpecialSpawn[key(player)] = os.clock()
     end
     model:SetAttribute("CustomerId", record.CustomerId)
     model:SetAttribute("OwnerUserId", player.UserId)
+    model:SetAttribute("PlotSessionId", key(player))
     model:SetAttribute("OrderRevealed", false)
     diagnostic(string.format("queued owner=%s position=%d request=%s", player.Name, #queue.Customers, record.RequestId))
-    takeOrder.Triggered:Connect(function(actor)
-        CustomerService.TakeOrder(actor, model)
+    deps.GameplayService.RegisterPlotInteraction(takeOrder, function(actor, context)
+        CustomerService.TakeOrder(actor, model, context)
     end)
-    prompt.Triggered:Connect(function(actor)
-        if actor == player then
-            CustomerService.Serve(actor, model)
-        end
+    deps.GameplayService.RegisterPlotInteraction(prompt, function(actor, context)
+        CustomerService.Serve(actor, model, context)
     end)
     model.Destroying:Connect(function()
         walk.Destroy()
         activeTypingTasks[text] = nil
-        if ownedModels[player] then
-            ownedModels[player][model] = nil
+        if ownedModels[queue.SessionId] then
+            ownedModels[queue.SessionId][model] = nil
         end
         record.MoveToken = (record.MoveToken or 0) + 1
-        if queues[player] == queue then
+        if queues[queue.SessionId] == queue then
             local index = table.find(queue.Customers, record)
             if index then
                 table.remove(queue.Customers, index)
-                CustomerService.RefreshQueue(player)
+                local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
+                if owner then
+                    CustomerService.RefreshQueue(owner)
+                end
             end
         end
     end)
     CustomerService.RefreshQueue(player)
     return model
 end
+function CustomerService.SpawnForPlayer(player: Player): Model?
+    local token = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
+    if not token then
+        return nil
+    end
+    local model = spawnForPlayer(player)
+    deps.TycoonService.EndTransaction(token)
+    return model
+end
 -- Reveal only the assigned request; waiting customers are eligible too.
-function CustomerService.TakeOrder(player: Player, model: Model): boolean
-    local queue = queues[player]
+function CustomerService.TakeOrder(player: Player, model: Model, context: any): boolean
+    if not deps.TycoonService.ValidateActor(player, context or deps.TycoonService.GetRequestContext(player)) then
+        return false
+    end
+    local queue = queues[key(player)]
     if not queue or not current(player, queue) then
         return false
     end
@@ -1143,6 +1168,11 @@ function CustomerService.TakeOrder(player: Player, model: Model): boolean
             then
                 return false
             end
+            local token =
+                deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
+            if not token then
+                return false
+            end
             record.OrderTaken = true
             record.TakeOrderPrompt.Enabled = false
             record.Prompt.Enabled = record.Ready
@@ -1153,6 +1183,7 @@ function CustomerService.TakeOrder(player: Player, model: Model): boolean
                 record.Audio.dialogueSound,
                 CustomerService.FormatRequestText(record.Request)
             )
+            deps.TycoonService.EndTransaction(token)
             return true
         end
     end
@@ -1177,8 +1208,12 @@ function CustomerService.GetSnapshot(player: Player): {
         Model = record.Model,
     }
 end
-function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean, string?)
-    local queue = queues[player]
+function CustomerService.Serve(player: Player, expectedModel: Model?, context: any): (boolean, string?)
+    context = context or deps.TycoonService.GetRequestContext(player)
+    if not deps.TycoonService.ValidateActor(player, context) then
+        return false, "StaleSession"
+    end
+    local queue = queues[key(player)]
     local record = front(player)
     if
         not record
@@ -1195,10 +1230,15 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     end
     -- Lock this customer before consuming the selected reservation: destroying
     -- its visual can synchronously emit signals under Immediate signal behavior.
+    local transaction = deps.TycoonService.BeginTransaction(player, context)
+    if not transaction then
+        return false, "StaleSession"
+    end
     record.Ready = false
     local result = deps.BlendService.ConsumeCup(player)
     if not result then
         record.Ready = true
+        deps.TycoonService.EndTransaction(transaction)
         diagnostic("serve rejected owner=" .. player.Name .. " reason=No valid cup")
         record.Audio.notReadySound:Play()
         return false, "No valid cup"
@@ -1215,7 +1255,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     local response = Presentation.Response(record.Request, grade)
     local reaction = record.ForcedReaction or (if success then "Smile" else "Disgust")
     local payout, rarity = CustomerService.CalculateOrderPayout(player, result, record.Request, success)
-    deps.PlayerDataService.AddCash(player, payout)
+    deps.TycoonService.CreditTransaction(transaction, payout)
     diagnostic(
         string.format(
             "served owner=%s request=%s blend=%s ingredients=[%s] success=%s reason=%s payout=%d cash=%d",
@@ -1226,12 +1266,14 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
             tostring(success),
             reason,
             payout,
-            deps.PlayerDataService.GetCash(player)
+            deps.TycoonService.GetCash(player)
         )
     )
     deps.PlayerDataService.IncrementStat(player, "CustomersServed")
-    player:SetAttribute("CustomerSatisfaction", grade)
-    player:SetAttribute("CustomerReaction", reaction)
+    for _, member in deps.TycoonService.GetMembers(transaction) do
+        member:SetAttribute("CustomerSatisfaction", grade)
+        member:SetAttribute("CustomerReaction", reaction)
+    end
     record.Model:SetAttribute("Reaction", reaction)
     record.Model:SetAttribute("Grade", grade)
     record.Model:SetAttribute("OrderSucceeded", success)
@@ -1239,11 +1281,15 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     record.Model:SetAttribute("RequestId", nil)
     record.Request = nil
     record.RequestId = nil
-    Film.Emit(
-        player,
-        "CustomerReaction",
-        { BlendId = result.BlendId, Customer = record.Model, ReactionId = reaction, Grade = grade, Payout = payout }
-    )
+    -- FilmingUtil broadcasts once to all clients; both members also receive attributes above.
+    Film.Emit(player, "CustomerReaction", {
+        BlendId = result.BlendId,
+        Customer = record.Model,
+        ReactionId = reaction,
+        Grade = grade,
+        Payout = payout,
+        PlotSessionId = transaction,
+    })
     Film.Log(
         "Customer",
         string.format(
@@ -1282,6 +1328,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?): (boolean,
     CustomerService.RefreshQueue(player)
     diagnostic(string.format("advanced owner=%s count=%d", player.Name, #queue.Customers))
     onServed(player, grade)
+    deps.TycoonService.EndTransaction(transaction)
     return true
 end
 -- Only DevContentService exposes this through its Studio gate; no remote.
@@ -1325,7 +1372,11 @@ function CustomerService:GetSatisfaction(player: Player, item: Instance?, prefer
     )
 end
 function CustomerService:RefreshOrder(model: Model)
-    for player, queue in queues do
+    for sessionId, queue in queues do
+        local player = deps.TycoonService.GetSessionOwner(sessionId)
+        if not player then
+            continue
+        end
         for _, record in queue.Customers do
             if record.Model == model then
                 if assignRequest(player, record) and record.OrderTaken then
@@ -1344,7 +1395,7 @@ end
 -- Snapshots expose presentation state, never mutable authoritative records.
 function CustomerService.GetQueueSnapshot(player: Player): { any }
     local result = {}
-    local queue = queues[player]
+    local queue = queues[key(player)]
     if queue then
         for index, record in queue.Customers do
             table.insert(
@@ -1355,29 +1406,43 @@ function CustomerService.GetQueueSnapshot(player: Player): { any }
     end
     return result
 end
-function CustomerService.DeactivateForPlayer(player: Player)
-    local queue = queues[player]
-    queues[player] = nil -- Invalidate scheduler and movement callbacks before destroying models.
+local function cleanupFlow(sessionId: string)
+    local queue = queues[sessionId]
+    queues[sessionId] = nil -- Invalidate scheduler/movement before destroying models.
     if queue and queue.PlotConnection then
         queue.PlotConnection:Disconnect()
     end
-    player:SetAttribute("CustomerFlowState", "PLOT_INACTIVE")
-    local models = ownedModels[player]
-    ownedModels[player] = nil
+    local models = ownedModels[sessionId]
+    ownedModels[sessionId] = nil
     if models then
         for model in models do
             model:Destroy()
         end
     end
+end
+function CustomerService.CleanupSession(sessionId: string)
+    cleanupFlow(sessionId)
+    lastSpecialSpawn[sessionId], lastTemplates[sessionId] = nil, nil
+    recentTemplates[sessionId], recentRequests[sessionId] = nil, nil
+end
+-- Explicit server flow reset, not a departing-player cleanup path.
+function CustomerService.DeactivateForPlayer(player: Player)
+    cleanupFlow(key(player))
+    player:SetAttribute("CustomerFlowState", "PLOT_INACTIVE")
+end
+function CustomerService.BindPlayer(player: Player)
+    local queue = queues[key(player)]
+    player:SetAttribute("CustomerFlowState", if queue then "PLOT_ACTIVE" else "PLOT_INACTIVE")
     if queue then
-        diagnostic("flow stopped owner=" .. player.Name)
+        local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
+        if owner then
+            for model in (ownedModels[queue.SessionId] or {}) :: { [Model]: boolean } do
+                model:SetAttribute("OwnerUserId", owner.UserId)
+            end
+        end
     end
 end
 function CustomerService.RemovePlayer(player: Player)
-    CustomerService.DeactivateForPlayer(player)
-    lastSpecialSpawn[player] = nil
-    lastTemplates[player] = nil
-    recentTemplates[player] = nil
-    recentRequests[player] = nil
+    player:SetAttribute("CustomerFlowState", "PLOT_INACTIVE")
 end
 return require(script.Parent.StudioServices).Wrap("CustomerService", CustomerService)

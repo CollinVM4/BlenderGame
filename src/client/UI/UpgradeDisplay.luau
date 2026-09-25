@@ -44,7 +44,7 @@ function Display.Row(
         Level = level,
         Stat = Display.Stat(id, current) .. (if nextTier
             then " → " .. Display.Stat(id, nextTier.Value)
-            else (if id == "CarryCapacity" then " / 3" else "")),
+            else (if id == "CarryCapacity" then " / " .. tostring(track[#track].Value) else "")),
         Price = if nextTier then nextTier.Cost else nil,
         Max = nextTier == nil,
     }

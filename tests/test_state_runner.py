@@ -53,6 +53,11 @@ class StateRunnerTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual({name for name, _ in calls}, {"throw", "carry", "stash", "smoothie-world", "smoothie", "customer-validation", "customer-compatibility", "customer-payout", "sprint"})
 
+    def test_named_session_suites_are_independently_selectable(self):
+        code, calls, _ = self.run_runner("--suite", "plot-session", "--suite", "plot-session-races", "--suite", "plot-session-progression", "--suite", "plot-session-requests")
+        self.assertEqual(code, 0)
+        self.assertEqual([name for name, _ in calls], ["plot-session", "plot-session-races", "plot-session-progression", "plot-session-requests"])
+
     def test_focused_smoothie_keeps_flow_and_geometry_coverage(self):
         code, calls, _ = self.run_runner("--smoothie-only")
         self.assertEqual(code, 0)

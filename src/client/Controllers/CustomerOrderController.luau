@@ -26,13 +26,18 @@ function Controller.Init()
             return
         end
         local function refresh()
-            object.Enabled = customer:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId
+            object.Enabled = customer:GetAttribute("PlotSessionId") ~= nil
+                and customer:GetAttribute("PlotSessionId") == Players.LocalPlayer:GetAttribute("PlotSessionId")
                 and (object.Name ~= "OrderBubble" or customer:GetAttribute("OrderRevealed") == true)
         end
         local ownership = customer:GetAttributeChangedSignal("OwnerUserId"):Connect(refresh)
+        local membership = Players.LocalPlayer:GetAttributeChangedSignal("PlotSessionId"):Connect(refresh)
+        local sessionChanged = customer:GetAttributeChangedSignal("PlotSessionId"):Connect(refresh)
         local reveal = customer:GetAttributeChangedSignal("OrderRevealed"):Connect(refresh)
         tracked[object] = function()
             ownership:Disconnect()
+            sessionChanged:Disconnect()
+            membership:Disconnect()
             reveal:Disconnect()
             object.Enabled = false
         end

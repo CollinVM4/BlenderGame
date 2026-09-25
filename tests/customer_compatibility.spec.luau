@@ -1,15 +1,17 @@
 -- Compatibility helpers, NOT the current CustomerService.Serve payout/reaction path.
 local data = loadModule("PlayerDataService")
+bindTestData(data)
 local customer = loadModule("CustomerService")
 local p = instance("Player")
 data.AddPlayer(p)
-customer.Init(
-    { PlayerDataService = data, IngredientService = loadModule("IngredientService") },
-    function() end,
-    function()
-        return true
-    end
-)
+assignTestSession(p)
+customer.Init({
+    PlayerDataService = data,
+    TycoonService = sessionTestAuthority,
+    IngredientService = loadModule("IngredientService"),
+}, function() end, function()
+    return true
+end)
 local bad = { Ingredients = { "Tire", "Tire", "Tire" } }
 local result = { Result = { Ingredients = { "Strawberry", "Banana", "Ice" } } }
 check(customer.CalculateGrade(bad, "Sweet") == "D", "bad match receives D")

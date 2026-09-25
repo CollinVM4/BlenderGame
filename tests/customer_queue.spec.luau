@@ -76,6 +76,11 @@ local cash, consumed, cup = 0, 0, nil
 local deps = {
     CustomerService = customer,
     TycoonService = tycoon,
+    GameplayService = {
+        RegisterPlotInteraction = function(prompt, callback)
+            prompt.Triggered:Connect(callback)
+        end,
+    },
     PlayerDataService = {
         GetUpgrade = function()
             return 1
@@ -107,11 +112,7 @@ customer.Init(deps, days.CustomerServed, function()
 end) -- Legacy day gate is irrelevant.
 days.Init(deps)
 days.AddPlayer(owner)
-tycoon.Init(deps.PlayerDataService, function(p)
-    customer.ActivateForPlayer(p)
-end, function(p)
-    customer.DeactivateForPlayer(p)
-end)
+tycoon.Init({ SessionStarted = customer.ActivateForPlayer, SessionEnded = customer.CleanupSession })
 tycoon.AutoTagLegacyPlot(plot)
 setup(tycoon.AssignPlot(owner) == plot, "assign real plot")
 check(owner:GetAttribute("CustomerFlowState") == "PLOT_ACTIVE", "plot claim activates without StartDay")
@@ -164,7 +165,10 @@ for index, entry in queue do
         "repeat reveal cannot restart dialogue"
     )
     check(
-        consumed == 0 and cash == 0 and cup == heldCup and entry.Model:GetAttribute("RequestId") == entry.RequestId,
+        consumed == 0
+            and tycoon.GetCash(owner) == 0
+            and cup == heldCup
+            and entry.Model:GetAttribute("RequestId") == entry.RequestId,
         "taking never consumes pays or rerolls"
     )
     check(
@@ -189,7 +193,10 @@ check(not customer.Serve(foreign, queue[1].Model), "foreign player cannot serve 
 owner.Near = false
 check(not customer.Serve(owner) and consumed == 0, "distance rejects without consuming")
 owner.Near = true
-check(customer.Serve(owner, queue[1].Model) and consumed == 1 and cash == 750, "front consumes and pays once")
+check(
+    customer.Serve(owner, queue[1].Model) and consumed == 1 and tycoon.GetCash(owner) == 750,
+    "front consumes and pays once"
+)
 check(not customer.Serve(owner, queue[1].Model), "served record rejects replay")
 check(not customer.TakeOrder(owner, queue[1].Model), "departed order cannot be revealed")
 local shifted = customer.GetQueueSnapshot(owner)
@@ -213,7 +220,7 @@ for turn = 2, 5 do
     advance(35)
 end
 check(
-    days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and cash == 3750,
+    days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and tycoon.GetCash(owner) == 3750,
     "serving and payouts continue beyond third customer"
 )
 -- Destroy an NPC while moving; old callbacks cannot re-enable or reinsert it.
@@ -281,11 +288,13 @@ now += 300
 customer.ActivateForPlayer(owner)
 local third = customer.SpawnForPlayer(owner)
 check(third:GetAttribute("CustomerId") == "queue_special", "special eligible after continuous cooldown")
+tycoon.RemovePlayer(owner)
 customer.RemovePlayer(owner)
 advance(100)
 check(#customer.GetQueueSnapshot(owner) == 0, "player removal invalidates timers")
 
 -- Unreachable arrivals use ordinary queue removal; no readiness or payout is fabricated.
+tycoon.AssignPlot(owner)
 customer.ActivateForPlayer(owner)
 local savedCreatePath = services.PathfindingService.CreatePath
 services.PathfindingService.CreatePath = function(...)
@@ -293,11 +302,11 @@ services.PathfindingService.CreatePath = function(...)
     path.Status = "NoPath"
     return path
 end
-local cashBeforeRouteFailure = cash
+local cashBeforeRouteFailure = tycoon.GetCash(owner)
 local unreachable = customer.SpawnForPlayer(owner)
 flush()
 check(unreachable.Destroyed and #customer.GetQueueSnapshot(owner) == 0, "exhausted route removes blocked queue entry")
-check(cash == cashBeforeRouteFailure, "route failure does not pay or serve a customer")
+check(tycoon.GetCash(owner) == cashBeforeRouteFailure, "route failure does not pay or serve a customer")
 services.PathfindingService.CreatePath = savedCreatePath
 local recovered = customer.SpawnForPlayer(owner)
 flush()
@@ -305,4 +314,5 @@ check(
     recovered and not recovered.Destroyed and #customer.GetQueueSnapshot(owner) == 1,
     "queue accepts a reachable arrival after route failure"
 )
+tycoon.RemovePlayer(owner)
 customer.RemovePlayer(owner)

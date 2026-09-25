@@ -20,15 +20,11 @@ local input = instance("Part")
 local blend = loadModule("BlendService")
 blend.Init({
     IngredientService = ingredients,
-    TycoonService = {
-        GetOwner = function()
-            return player
-        end,
-        GetReference = function()
-            return input
-        end,
-    },
+    TycoonService = sessionTestAuthority,
 })
+local plot = assignTestSession(player)
+input.Name, input.Parent = "BlenderInput", plot
+services.CollectionService:AddTag(input, "BlenderInput")
 blend.Reset(player)
 input.Overlaps = { thrown:FindFirstChild("Fruit"), thrown:FindFirstChild("Stem") }
 check(blend.TryInput(player, thrown, input), "blender accepts thrown ingredient before grace expires")

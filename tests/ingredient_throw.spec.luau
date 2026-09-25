@@ -2,7 +2,7 @@
 data.SetCash(player, 10000)
 local upgrades = loadModule("Upgrades")
 for tier = 2, #upgrades.CarryCapacity do
-    setup(data.PurchaseUpgrade(player, "CarryCapacity", tier), "unlock space for three ingredients")
+    setup(buyTestUpgrade(data, player, "CarryCapacity", tier), "unlock space for three ingredients")
 end
 local function fill()
     for _, id in { "Strawberry", "Banana", "Tire" } do

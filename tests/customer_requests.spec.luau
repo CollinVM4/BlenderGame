@@ -16,9 +16,11 @@ local function player(name)
     owner.UserId = #allInstances
     owner.Parent = services.Players
     owner.Near = true
+    assignTestSession(owner)
     return owner
 end
 local data = loadModule("PlayerDataService")
+bindTestData(data)
 local requestConfig = loadModule("CustomerRequests")
 local requests = requestConfig.Definitions
 local customer = loadModule("CustomerService")
@@ -29,14 +31,22 @@ for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerWait1", "CustomerW
 end
 local plots = {}
 local function getPlot(owner)
-    if not plots[owner] then
-        plots[owner] = instance("Model")
-        plots[owner].Owner = owner
-    end
-    return plots[owner]
+    return assignTestSession(owner)
 end
 local function getOwner(plot)
-    return plot.Owner
+    return sessionTestAuthority.GetOwner(plot)
+end
+local function requestAuthority(reference)
+    return setmetatable({ GetReference = reference }, { __index = sessionTestAuthority })
+end
+local function setTestJump(owner, tier)
+    customer.DeactivateForPlayer(owner)
+    sessionTestAuthority.RemovePlayer(owner)
+    assignTestSession(owner)
+    sessionTestAuthority.SetCash(owner, 200000)
+    for _ = 1, tier do
+        setup(buyTestUpgrade(data, owner, "Jump"), "set purchased test tier")
+    end
 end
 local function spawnFor(owner)
     local random = env.math.random
@@ -46,14 +56,15 @@ local function spawnFor(owner)
     return customer.SpawnForPlayer(owner)
 end
 customer.Init({
-    PlayerDataService = data,
-    TycoonService = {
-        GetPlot = getPlot,
-        GetOwner = getOwner,
-        GetReference = function(_, name)
-            return refs[name]
+    GameplayService = {
+        RegisterPlotInteraction = function(prompt, callback)
+            prompt.Triggered:Connect(callback)
         end,
     },
+    PlayerDataService = data,
+    TycoonService = requestAuthority(function(_, name)
+        return refs[name]
+    end),
 }, function() end, function()
     return true
 end)
@@ -76,6 +87,7 @@ end
 do
     local owner = player("RequestTiers")
     data.AddPlayer(owner)
+    assignTestSession(owner)
     data.SetCash(owner, 200000)
     local savedRequests = table.clone(requests)
     local savedWindow = requestConfig.RegularRequestRecencyWindow
@@ -98,7 +110,7 @@ do
     end
     for tier = 0, 3 do
         if tier > 0 then
-            check(data.PurchaseUpgrade(owner, "Jump"), "purchase authoritative jump upgrade")
+            check(buyTestUpgrade(data, owner, "Jump"), "purchase authoritative jump upgrade")
         end
         check(owner:GetAttribute("JumpLevel") == tier, "existing progression publishes zero-based tier")
         for roll = 1, tier + 1 do
@@ -114,7 +126,7 @@ do
             customer:RefreshOrder(model)
             flush()
             check(customer.GetSnapshot(owner).RequestId == "Tier" .. (roll - 1), "refresh selects eligible request")
-            customer.RemovePlayer(owner)
+            customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
         end
     end
     env.math.random = function()
@@ -123,7 +135,7 @@ do
     table.clear(requests)
     check(spawnFor(owner) == nil and customer.GetSnapshot(owner) == nil, "empty pool creates no customer")
     -- Only locked requests is also an empty eligible pool.
-    owner:SetAttribute("JumpLevel", 0)
+    setTestJump(owner, 0)
     requests[1] = savedRequests[1]
     local savedTier = requests[1].MinJumpTier
     requests[1].MinJumpTier = 1
@@ -163,9 +175,10 @@ end
 do
     local owner = player("AuthoredRequestTiers")
     data.AddPlayer(owner)
+    assignTestSession(owner)
     local savedRandom = env.math.random
     for tier = 0, 3 do
-        owner:SetAttribute("JumpLevel", tier)
+        setTestJump(owner, tier)
         local eligible = {}
         for _, request in requests do
             if not request.NPCOnly and request.MinJumpTier <= tier then
@@ -184,7 +197,7 @@ do
                 customer.GetSnapshot(owner).RequestId == expected.Id,
                 "authored request remains selectable: " .. expected.Id
             )
-            customer.RemovePlayer(owner)
+            customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
         end
     end
     env.math.random = savedRandom
@@ -195,7 +208,8 @@ end
 do
     local owner = player("AdvancedServing")
     data.AddPlayer(owner)
-    owner:SetAttribute("JumpLevel", 3)
+    assignTestSession(owner)
+    setTestJump(owner, 3)
     local selected, selectedIndex
     local index = 0
     for _, request in requests do
@@ -212,14 +226,15 @@ do
     end
     local cup
     customer.Init({
-        PlayerDataService = data,
-        TycoonService = {
-            GetPlot = getPlot,
-            GetOwner = getOwner,
-            GetReference = function(_, name)
-                return refs[name]
+        GameplayService = {
+            RegisterPlotInteraction = function(prompt, callback)
+                prompt.Triggered:Connect(callback)
             end,
         },
+        PlayerDataService = data,
+        TycoonService = requestAuthority(function(_, name)
+            return refs[name]
+        end),
         BlendService = {
             ConsumeCup = function()
                 local result = cup
@@ -254,7 +269,7 @@ do
             "advanced result uses authored response"
         )
         check(cup == nil and not customer.Serve(owner), "advanced cup consumed once and cannot be served twice")
-        customer.RemovePlayer(owner)
+        customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     end
     env.math.random = savedRandom
     data.RemovePlayer(owner)
@@ -370,7 +385,7 @@ do
         requestConfig.SpecialCustomerChance = 1
     end
     requestConfig.SpecialCustomerChance = 0
-    customer.RemovePlayer(a)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(a))
     modelA, idA = spawn(a)
     check(modelA:GetAttribute("SourceProbe") == 1 and idA == "Recent1", "player removal clears both histories")
     depart(modelA)
@@ -387,8 +402,8 @@ do
         check(modelA:GetAttribute("SourceProbe") == 1 and idA == "Recent1", "all-recent pools fall back safely")
         depart(modelA)
     end
-    customer.RemovePlayer(a)
-    customer.RemovePlayer(b)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(a))
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(b))
     folder:Destroy()
     table.clear(requests)
     for _, request in savedRequests do
@@ -402,7 +417,8 @@ end
 do
     local owner = player("ImportedAvatars")
     data.AddPlayer(owner)
-    owner:SetAttribute("JumpLevel", 3)
+    assignTestSession(owner)
+    setTestJump(owner, 3)
     local savedChance = requestConfig.SpecialCustomerChance
     local savedRandom = env.math.random
     requestConfig.SpecialCustomerChance = 1
@@ -480,12 +496,12 @@ do
         local config = requestConfig.NPCs[id]
         local fixed = requestConfig.GetForNPC(id)
         steak:SetAttribute("CustomerId", id)
-        owner:SetAttribute("JumpLevel", fixed.MinJumpTier - 1)
+        setTestJump(owner, fixed.MinJumpTier - 1)
         local locked, lockedSnapshot = spawn()
         check(lockedSnapshot.CustomerId == nil, "mapped special is excluded below its own tier: " .. id)
         check(locked:FindFirstChild("CustomerName", true).Text == "CustomerNPC", "generic fallback shows regular name")
-        customer.RemovePlayer(owner)
-        owner:SetAttribute("JumpLevel", fixed.MinJumpTier)
+        customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
+        setTestJump(owner, fixed.MinJumpTier)
         env.math.random = function(low, high)
             check(low ~= 1, "fixed special must never draw from random request pool")
             return low or 0
@@ -532,12 +548,12 @@ do
         flush()
         check(customer.GetSnapshot(owner).RequestId == config.RequestId, "refresh preserves private fixed request")
         check(nameText.Text == config.DisplayName, "typewriter refresh leaves name intact")
-        customer.RemovePlayer(owner)
+        customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
         local savedName = config.DisplayName
         config.DisplayName = nil
         selected = spawn()
         check(selected:FindFirstChild("CustomerName", true).Text == id, "absent display name falls back to ID")
-        customer.RemovePlayer(owner)
+        customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
         config.DisplayName = savedName
         env.math.random = function(low)
             return low or 0
@@ -552,17 +568,17 @@ do
         "authored name survives runtime model rename"
     )
     check(authoredHumanoid.DisplayName == "Authored Customer", "authored template name is unchanged")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     authoredHumanoid.DisplayName = nil
     steak:SetAttribute("CustomerId", "  steak  ")
-    owner:SetAttribute("JumpLevel", 0)
+    setTestJump(owner, 0)
     local model, snapshot = spawn()
     check(
         snapshot.CustomerId == nil and snapshot.RequestId ~= "Steak",
         "locked special excluded; no-special chance falls back to regular"
     )
-    customer.RemovePlayer(owner)
-    owner:SetAttribute("JumpLevel", 1)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
+    setTestJump(owner, 1)
     model, snapshot = spawn()
     check(
         snapshot.CustomerId == "steak" and snapshot.RequestId == "Steak",
@@ -591,34 +607,34 @@ do
     model:SetAttribute("CustomerId", "unknown")
     customer:RefreshOrder(model)
     check(customer.GetSnapshot(owner).RequestId == "Steak", "replicated ID cannot change private assignment")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     requestConfig.SpecialCustomerChance = 0
     model, snapshot = spawn()
     check(snapshot.CustomerId == nil, "zero chance uses regular fallback even with eligible special")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     requestConfig.SpecialCustomerChance = 1
     steak.Name = "RenamedNPC"
     model, snapshot = spawn()
     check(snapshot.RequestId == "Steak", "model rename does not change request")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     for _, id in { "random_avatar", "", "   ", "STEAK", 42 } do
         steak:SetAttribute("CustomerId", id)
         model, snapshot = spawn()
         check(snapshot.RequestId ~= "Steak", "unmapped/empty/invalid IDs use normal requests")
         check(not requestConfig.GetForNPC(snapshot.CustomerId), "no override for fallback customer")
         check(model:FindFirstChild("CustomerName", true).Text == "CustomerNPC", "regular customer shows CustomerNPC")
-        customer.RemovePlayer(owner)
+        customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     end
     steak:SetAttribute("CustomerId", nil)
     model, snapshot = spawn()
     check(snapshot.CustomerId == nil and snapshot.RequestId ~= "Steak", "missing ID works without name fallback")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     steak:SetAttribute("CustomerId", "steak")
     requestConfig.NPCs.steak.RequestId = "NotARequest"
     check(select(2, requestConfig.GetForNPC("steak")) ~= nil, "invalid mapping returns diagnostic")
     model, snapshot = spawn()
     check(snapshot.RequestId ~= "Steak", "invalid mapping safely falls back")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     requestConfig.NPCs.steak.RequestId = "Steak"
 
     -- A mapped avatar in Regular cannot impersonate a missing Special avatar.
@@ -640,7 +656,7 @@ do
         presentations[#presentations].Started and not presentations[#presentations].Moving,
         "travel starts walk and counter arrival stops it"
     )
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     check(presentations[#presentations].Destroyed, "removal cleans walking presentation")
     ordinary:Destroy()
     model, snapshot = spawn()
@@ -648,7 +664,7 @@ do
         model:FindFirstChild("Torso") ~= nil and snapshot.CustomerId == nil,
         "regular excludes Special and old flat folder models"
     )
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     model = spawnFor(owner)
     model:Destroy()
     flush()
@@ -666,6 +682,11 @@ do
     local days = loadModule("GameService")
     local cup = nil
     local dependency = {
+        GameplayService = {
+            RegisterPlotInteraction = function(prompt, callback)
+                prompt.Triggered:Connect(callback)
+            end,
+        },
         PlayerDataService = data,
         CustomerService = customer,
         TycoonService = {
@@ -759,7 +780,7 @@ do
     setup(spawnFor(owner) ~= nil, "flow continues after third serve")
     flush()
     check(customer.GetSnapshot(owner).CustomerId ~= "steak", "legacy start cannot reset special cooldown")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     local allCleaned = true
     for _, presentation in presentations do
         allCleaned = allCleaned and presentation.Destroyed and not presentation.Moving
@@ -779,11 +800,11 @@ do
     r6.PrimaryPart = child("Part", "Torso", r6)
     model, snapshot = spawn()
     check(model.PrimaryPart.Name == "Torso" and snapshot.RequestId == "Steak", "R6 PrimaryPart fallback works")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     r6.PrimaryPart = nil
     model = spawn()
     check(model.PrimaryPart ~= nil, "legacy BasePart root resolution works without PrimaryPart")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     r6:Destroy()
     -- Malformed/non-archivable templates cannot break the generic fallback.
     child("Part", "NotAModel", folder)
@@ -800,18 +821,18 @@ do
     noClonedRoot:FindFirstChild("HumanoidRootPart").Archivable = false
     model, snapshot = spawn()
     check(snapshot.CustomerId == nil and model:FindFirstChild("Torso"), "all malformed templates fall back")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     for _, item in folder:GetChildren() do
         item:Destroy()
     end
     model, snapshot = spawn()
     check(model:FindFirstChild("Torso") and snapshot.RequestId ~= "Steak", "empty folder keeps generic customer")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     local legacy = child("Model", "Customer", storage)
     child("Part", "Torso", legacy)
     model = spawn()
     check(model ~= legacy and legacy.Parent == storage, "empty custom folder retains legacy template cloning")
-    customer.RemovePlayer(owner)
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     legacy:Destroy()
     folder:Destroy()
     walkModule.Create = savedCreate

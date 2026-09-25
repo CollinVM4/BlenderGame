@@ -25,11 +25,29 @@ require(script.Services.FilmingUtil).Init()
 -- Inject dependencies once; service modules never require one another in cycles.
 services.MovementService.Init(services)
 services.SprintService.Init(services)
-services.TycoonService.Init(services.PlayerDataService, function(player)
-    services.CustomerService.ActivateForPlayer(player)
-end, function(player)
-    services.CustomerService.DeactivateForPlayer(player)
-end)
+services.PlayerDataService.BindRuntimeAuthority(services.TycoonService)
+services.TycoonService.Init({
+    SessionStarted = function(player)
+        services.BlendService.Reset(player)
+        services.CustomerService.ActivateForPlayer(player)
+    end,
+    MemberChanged = function(player)
+        services.MovementService.RefreshPlayer(player)
+        services.CombatService.RefreshPlayer(player)
+        services.BlendService.BindPlayer(player)
+        services.CustomerService.BindPlayer(player)
+    end,
+    MemberRemoved = function(player)
+        services.MovementService.RefreshPlayer(player)
+        services.CombatService.RefreshPlayer(player)
+        services.BlendService.RemovePlayer(player)
+        services.CustomerService.RemovePlayer(player)
+    end,
+    SessionEnded = function(id)
+        services.CustomerService.CleanupSession(id)
+        services.BlendService.CleanupSession(id)
+    end,
+})
 for _, name in
     { "InventoryService", "BlendService", "GameService", "MarketService", "CombatService", "DevContentService" }
 do
@@ -58,7 +76,6 @@ local function addPlayer(player: Player)
     services.PlayerDataService.AddPlayer(player)
     services.MovementService.RefreshPlayer(player)
     services.InventoryService.AddPlayer(player)
-    services.BlendService.Reset(player)
     services.GameService.AddPlayer(player)
     services.TycoonService.AssignPlot(player)
     local function onCharacterAdded(character: Model)
@@ -78,29 +95,30 @@ for _, player in Players:GetPlayers() do
     addPlayer(player)
 end
 Players.PlayerRemoving:Connect(function(player)
-    if characterConnections[player] then
-        characterConnections[player]:Disconnect()
-        characterConnections[player] = nil
-    end
-    for _, name in
-        {
-            "CustomerService",
-            "GameService",
-            "BlendService",
-            "CombatService",
-            "InventoryService",
-            "IngredientService",
-            "GameplayService",
-            "TycoonService",
-            "SprintService",
-            "MovementService",
-            "CharacterPhysicsService",
-            "PlayerDataService",
-        }
-    do
-        services[name].RemovePlayer(player)
-    end
-    initialized[player] = nil
+    services.TycoonService.RemovePlayer(player, function()
+        if characterConnections[player] then
+            characterConnections[player]:Disconnect()
+            characterConnections[player] = nil
+        end
+        for _, name in
+            {
+                "CustomerService",
+                "GameService",
+                "BlendService",
+                "CombatService",
+                "InventoryService",
+                "IngredientService",
+                "GameplayService",
+                "SprintService",
+                "MovementService",
+                "CharacterPhysicsService",
+                "PlayerDataService",
+            }
+        do
+            services[name].RemovePlayer(player)
+        end
+        initialized[player] = nil
+    end)
 end)
 
 services.GameplayService.Init(services)

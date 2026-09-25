@@ -23,8 +23,11 @@ local function player(name)
 end
 local p, other = player("Owner"), player("Visitor")
 local data = loadModule("PlayerDataService")
+bindTestData(data)
 data.AddPlayer(p)
+assignTestSession(p)
 data.AddPlayer(other)
+assignTestSession(other)
 -- Movement integration runs real data/resolver/sprint/purchase modules with signals and time.
 do
     local movementStartCount = count
@@ -32,6 +35,7 @@ do
     local savedGetPlayers = services.Players.GetPlayers
     local runner = player("MovementRunner")
     data.AddPlayer(runner)
+    assignTestSession(runner)
     local oldNew = env.Instance.new
     env.Instance.new = function(class)
         local object = oldNew(class)
@@ -62,7 +66,7 @@ do
     workspaceFake.Gravity = 196.2
     local movement = loadModule("MovementService")
     local sprint = loadModule("SprintService")
-    local movementDeps = { PlayerDataService = data, MovementService = movement }
+    local movementDeps = { PlayerDataService = data, MovementService = movement, TycoonService = sessionTestAuthority }
     movement.Init(movementDeps)
     sprint.Init(movementDeps)
     movement.RefreshPlayer(runner)
@@ -108,7 +112,7 @@ do
     tick(2)
     check(runner:GetAttribute("StaminaCurrent") == 70, "sprint drains 20 per second")
     data.AddCash(runner, 10000)
-    check(data.PurchaseUpgrade(runner, "SprintStamina"), "purchase next stamina tier")
+    check(buyTestUpgrade(data, runner, "SprintStamina"), "purchase next stamina tier")
     movement.RefreshPlayer(runner)
     check(
         runner:GetAttribute("StaminaMax") == 140 and runner:GetAttribute("StaminaCurrent") == 100,
@@ -122,7 +126,7 @@ do
     tick(100)
     check(runner:GetAttribute("StaminaCurrent") == 140, "regeneration clamps at maximum")
     for _, maximum in { 170, 230 } do
-        check(data.PurchaseUpgrade(runner, "SprintStamina"), "next stamina purchase succeeds")
+        check(buyTestUpgrade(data, runner, "SprintStamina"), "next stamina purchase succeeds")
         movement.RefreshPlayer(runner)
         check(
             movement.GetMaxStamina(runner) == maximum and runner:GetAttribute("StaminaCurrent") == maximum,
@@ -131,7 +135,7 @@ do
     end
     for index, base in { 27, 33, 40 } do
         requestSprint(true)
-        check(data.PurchaseUpgrade(runner, "MovementSpeed"), "next speed purchase succeeds")
+        check(buyTestUpgrade(data, runner, "MovementSpeed"), "next speed purchase succeeds")
         movement.RefreshPlayer(runner)
         check(humanoid.WalkSpeed == base * 1.5, "purchase while sprinting immediately uses upgraded speed")
         check(runner:GetAttribute("MovementSpeedLevel") == index, "speed display level is index minus one")
@@ -169,7 +173,7 @@ do
         "respawn fills current max, stops intent, and applies upgraded base"
     )
     for _, power in { 72, 94, 116 } do
-        check(data.PurchaseUpgrade(runner, "Jump"), "next jump purchase succeeds")
+        check(buyTestUpgrade(data, runner, "Jump"), "next jump purchase succeeds")
         movement.RefreshPlayer(runner)
         check(humanoid.JumpPower == power, "jump power upgrade applies")
     end
@@ -207,6 +211,7 @@ do
     -- Exercise the actual network adapter, including malicious extra arguments.
     data.RemovePlayer(runner)
     data.AddPlayer(runner)
+    assignTestSession(runner)
     movement.RefreshPlayer(runner)
     local gameplay = loadModule("GameplayService")
     gameplay.Init(movementDeps)
@@ -463,6 +468,7 @@ do
     gameplay.RemovePlayer(runner)
     data.RemovePlayer(runner)
     data.AddPlayer(runner)
+    assignTestSession(runner)
     movement.RefreshPlayer(runner)
     humanoid = spawnCharacter(true)
     check(

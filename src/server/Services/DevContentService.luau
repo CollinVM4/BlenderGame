@@ -298,7 +298,7 @@ function DevContentService.PrintMovement(player: Player): string?
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     local lines = { "[Movement] " .. player.Name }
     for _, track in { "MovementSpeed", "SprintStamina", "Jump" } do
-        local purchased = deps.PlayerDataService.GetUpgrade(player, track) - 1
+        local purchased = deps.TycoonService.GetUpgrade(player, track) - 1
         local override = overrides[track]
         local effective = if override ~= nil then override else purchased
         table.insert(

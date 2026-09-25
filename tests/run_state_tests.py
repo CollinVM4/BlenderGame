@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--luau", default="luau")
 selection = parser.add_mutually_exclusive_group()
+selection.add_argument("--suite", action="append", help="Run named suites (repeatable)")
 selection.add_argument("--group", choices=("state", "integration", "presentation"))
 selection.add_argument("--vfx-only", action="store_true", help="Run blender VFX presentation checks")
 selection.add_argument("--world-only", action="store_true", help="Run ingredient world integration checks")
@@ -36,6 +37,10 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "plot-session-races": ("integration", ("fixtures/smoothie.luau", "plot_session_races.spec.luau")),
+    "plot-session-progression": ("integration", ("fixtures/smoothie.luau", "plot_session_progression.spec.luau")),
+    "plot-session-requests": ("integration", ("fixtures/smoothie.luau", "plot_session_requests.spec.luau")),
+    "plot-session": ("integration", ("fixtures/smoothie.luau", "plot_session.spec.luau")),
     "throw": ("state", ("fixtures/carry.luau", "ingredient_throw.spec.luau")),
     "throw-blender": ("integration", ("fixtures/carry.luau", "ingredient_throw_blender.spec.luau")),
     "carry-selection": ("integration", ("fixtures/smoothie.luau", "carry_selection.spec.luau")),
@@ -67,6 +72,7 @@ SUITES = {
     "customer-routing": ("presentation", ("customer_routing.spec.luau",)),
     "customer-walk": ("presentation", ("customer_walk.spec.luau",)),
     "client-presentation": ("presentation", ("client_presentation.spec.luau",)),
+    "plot-session-feedback": ("presentation", ("fixtures/smoothie.luau", "plot_session_feedback.spec.luau")),
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
 }
@@ -88,7 +94,7 @@ focused = {
     "stash_only": ("stash", "stash-presentation"),
     "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
 }
-selected = next((names for flag, names in focused.items() if getattr(args, flag)), None)
+selected = args.suite or next((names for flag, names in focused.items() if getattr(args, flag)), None)
 if selected is None:
     selected = tuple(name for name, (group, _) in SUITES.items() if not args.group or group == args.group)
 if args.list:
@@ -113,6 +119,7 @@ sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/Game
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
 sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")
+sources["SessionInteractionController"] = (ROOT / "src/client/Controllers/SessionInteractionController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (
     "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"
@@ -120,6 +127,7 @@ source_bundle = (
     + "\n}\n"
 )
 fixture = (ROOT / "tests/fixtures/roblox.luau").read_text(encoding="utf-8")
+fixture += "\n" + (ROOT / "tests/fixtures/session.luau").read_text(encoding="utf-8")
 results = []
 with tempfile.TemporaryDirectory(prefix="blender-state-tests-") as directory:
     for name in selected:

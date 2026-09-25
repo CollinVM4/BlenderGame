@@ -12,7 +12,7 @@ local changed = Instance.new("BindableEvent")
 MovementService.Changed = changed.Event
 
 function MovementService.Init(dependencies)
-    data = dependencies.PlayerDataService
+    data = dependencies.TycoonService
 end
 
 function MovementService.GetBaseWalkSpeed(player: Player): number

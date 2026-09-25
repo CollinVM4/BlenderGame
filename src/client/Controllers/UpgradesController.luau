@@ -27,7 +27,11 @@ function Controller.Init()
             return if typeof(value) == "number" then value else nil
         end
         local function rowState(track: { Id: string, Name: string, Attribute: string })
-            return Display.Row(track.Id, numberAttribute(track.Id .. "Level"), numberAttribute(track.Attribute))
+            return Display.Row(
+                track.Id,
+                numberAttribute(track.Id .. (if track.Id == "CarryCapacity" then "Level" else "PurchasedLevel")),
+                numberAttribute(track.Attribute)
+            )
         end
         local function refresh()
             local cash = numberAttribute("playerCash")
@@ -66,11 +70,24 @@ function Controller.Init()
             end)
         end
         player:GetAttributeChangedSignal("playerCash"):Connect(refresh)
+        local function membershipChanged()
+            generation += 1
+            pending = nil
+            table.clear(serverMax)
+            table.clear(feedback)
+            refresh()
+        end
+        player:GetAttributeChangedSignal("PlotSessionId"):Connect(membershipChanged)
+        player:GetAttributeChangedSignal("PlotMembershipRevision"):Connect(membershipChanged)
         for _, track in Display.Tracks do
-            player:GetAttributeChangedSignal(track.Id .. "Level"):Connect(function()
-                serverMax[track.Id] = nil
-                refresh()
-            end)
+            player
+                :GetAttributeChangedSignal(
+                    track.Id .. (if track.Id == "CarryCapacity" then "Level" else "PurchasedLevel")
+                )
+                :Connect(function()
+                    serverMax[track.Id] = nil
+                    refresh()
+                end)
             if track.Attribute ~= track.Id .. "Level" then
                 player:GetAttributeChangedSignal(track.Attribute):Connect(refresh)
             end
@@ -84,7 +101,10 @@ function Controller.Init()
                 generation += 1
                 local token = generation
                 refresh()
-                request:FireServer("PurchaseUpgrade", track.Id, state.Level + 2)
+                request:FireServer("PurchaseUpgrade", track.Id, state.Level + 2, {
+                    PlotSessionId = player:GetAttribute("PlotSessionId"),
+                    MembershipRevision = player:GetAttribute("PlotMembershipRevision"),
+                })
                 -- The shared server throttle can drop a request without a response.
                 task.delay(5, function()
                     if generation == token and pending == track.Id then
@@ -101,6 +121,12 @@ function Controller.Init()
         assert(request:IsA("RemoteEvent"), "GameplayRequest must be a RemoteEvent")
         request.OnClientEvent:Connect(function(action: any, result: any)
             if action ~= "PurchaseUpgradeResult" or type(result) ~= "table" then
+                return
+            end
+            if
+                result.PlotSessionId ~= player:GetAttribute("PlotSessionId")
+                or result.MembershipRevision ~= player:GetAttribute("PlotMembershipRevision")
+            then
                 return
             end
             if result.reason == "InvalidUpgrade" then

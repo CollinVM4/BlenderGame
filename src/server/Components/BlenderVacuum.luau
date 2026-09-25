@@ -82,7 +82,7 @@ function BlenderVacuum.Init(services: any)
                 local record = services.IngredientService.GetRecord(item)
                 if
                     not record
-                    or (record.Owner ~= nil and record.Owner ~= owner)
+                    or (record.Owner ~= nil and not services.TycoonService.IsMember(record.Owner, zone))
                     or (record.Owner == nil and not record.Claimable)
                 then
                     continue

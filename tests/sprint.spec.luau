@@ -52,11 +52,13 @@ cache.SprintEvents = function()
     return remote
 end
 local data = loadModule("PlayerDataService")
+bindTestData(data)
 local movement = loadModule("MovementService")
 local sprint = loadModule("SprintService")
 local config = loadModule("SprintConfig")
 data.AddPlayer(runner)
-local deps = { PlayerDataService = data, MovementService = movement }
+assignTestSession(runner)
+local deps = { PlayerDataService = data, MovementService = movement, TycoonService = sessionTestAuthority }
 movement.Init(deps)
 sprint.Init(deps)
 -- A repeated bootstrap must neither duplicate callbacks nor replace live dependencies.
@@ -99,8 +101,8 @@ check(
     "forged attributes cannot upgrade movement"
 )
 data.AddCash(runner, 10000)
-check(data.PurchaseUpgrade(runner, "MovementSpeed"), "speed purchase succeeds")
-check(data.PurchaseUpgrade(runner, "SprintStamina"), "stamina purchase succeeds")
+check(buyTestUpgrade(data, runner, "MovementSpeed"), "speed purchase succeeds")
+check(buyTestUpgrade(data, runner, "SprintStamina"), "stamina purchase succeeds")
 movement.RefreshPlayer(runner)
 maximum = movement.GetMaxStamina(runner)
 check(runner:GetAttribute("StaminaCurrent") == maximum - config.STAMINA_DRAIN_RATE, "upgrade adds only capacity delta")

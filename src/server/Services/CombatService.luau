@@ -13,6 +13,13 @@ local hands: { [Player]: Tool } = {}
 function CombatService.Init(services)
     deps = services
 end
+function CombatService.RefreshPlayer(player: Player)
+    local hand = hands[player]
+    local handle = hand and hand:FindFirstChild("Handle")
+    if handle and handle:IsA("BasePart") then
+        handle.Size = Vector3.new(2, 2, 0.5) * Upgrades.Hand[deps.TycoonService.GetUpgrade(player, "Hand")].Size
+    end
+end
 function CombatService.Slap(player: Player, victim: Player): boolean
     local now = os.clock()
     local hand = hands[player]
@@ -48,7 +55,7 @@ function CombatService.Slap(player: Player, victim: Player): boolean
         return false
     end
     attackAt[player] = now + Economy.SlapCooldown
-    local level = Upgrades.Hand[deps.PlayerDataService.GetUpgrade(player, "Hand")]
+    local level = Upgrades.Hand[deps.TycoonService.GetUpgrade(player, "Hand")]
     local handle = hand:FindFirstChild("Handle")
     if handle and handle:IsA("BasePart") then
         handle.Size = Vector3.new(2, 2, 0.5) * level.Size
@@ -86,6 +93,7 @@ function CombatService.GrantHand(player: Player): Tool?
     handle.Massless = true
     handle.Parent = tool
     hands[player] = tool
+    CombatService.RefreshPlayer(player)
     tool.Activated:Connect(function()
         local closest: Player? = nil
         local distance = Economy.SlapRange

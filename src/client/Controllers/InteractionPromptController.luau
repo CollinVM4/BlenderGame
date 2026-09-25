@@ -148,7 +148,13 @@ function Controller.Init()
             reason = "Style is not Custom"
         end
         local customerAction = prompt:GetAttribute("InteractionCustomerAction")
-        if customerAction and prompt:GetAttribute("InteractionOwnerUserId") ~= Players.LocalPlayer.UserId then
+        if
+            customerAction
+            and (
+                prompt:GetAttribute("PlotSessionId") == nil
+                or prompt:GetAttribute("PlotSessionId") ~= Players.LocalPlayer:GetAttribute("PlotSessionId")
+            )
+        then
             origin = nil
             reason = "Customer prompt belongs to another player"
         end
@@ -181,6 +187,11 @@ function Controller.Init()
             log(prompt, "BillboardGui created=" .. gui:GetFullName() .. " | Adornee=" .. origin:GetFullName())
         end
     end
+    Players.LocalPlayer:GetAttributeChangedSignal("PlotSessionId"):Connect(function()
+        for prompt, entry in visible do
+            refresh(prompt, entry)
+        end
+    end)
     ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
         shownCounts[prompt] = (shownCounts[prompt] or 0) + 1
         log(prompt, "PromptShown received by controller | InputType=" .. tostring(inputType))
@@ -205,7 +216,7 @@ function Controller.Init()
         table.insert(
             entry.Connections,
             prompt.AttributeChanged:Connect(function(attribute)
-                if string.sub(attribute, 1, 11) == "Interaction" then
+                if string.sub(attribute, 1, 11) == "Interaction" or attribute == "PlotSessionId" then
                     clearView(entry)
                     refresh(prompt, entry)
                 end

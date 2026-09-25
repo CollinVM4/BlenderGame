@@ -312,12 +312,14 @@ local workspaceFake = {
     end,
 }
 local tags = {}
+local nextGuid = 0
 local services = {
     ReplicatedStorage = { Shared = shared },
     ServerStorage = storage,
     HttpService = {
         GenerateGUID = function()
-            return "test-cup-id"
+            nextGuid += 1
+            return "test-id-" .. nextGuid
         end,
     },
     RunService = {

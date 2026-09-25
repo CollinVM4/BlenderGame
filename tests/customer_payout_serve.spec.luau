@@ -3,9 +3,11 @@ env.Enum.HumanoidDisplayDistanceType = { None = "None" }
 env.Enum.HumanoidHealthDisplayType = { AlwaysOff = "AlwaysOff" }
 local customer = loadModule("CustomerService")
 local data = loadModule("PlayerDataService")
+bindTestData(data)
 local owner = instance("Player")
 owner.Name, owner.UserId, owner.Near = "PayoutOwner", 42, true
 data.AddPlayer(owner)
+assignTestSession(owner)
 local plot = instance("Model")
 local refs = {}
 for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerWait1", "CustomerWait2", "CustomerExit" } do
@@ -27,18 +29,17 @@ config.Definitions[1] = {
 local cup, completed, consumed = nil, 0, 0
 local nestedServe = false
 customer.Init({
+    GameplayService = {
+        RegisterPlotInteraction = function(prompt, callback)
+            prompt.Triggered:Connect(callback)
+        end,
+    },
     PlayerDataService = data,
-    TycoonService = {
-        GetPlot = function()
-            return plot
-        end,
-        GetOwner = function()
-            return owner
-        end,
+    TycoonService = setmetatable({
         GetReference = function(_, name)
             return refs[name]
         end,
-    },
+    }, { __index = sessionTestAuthority }),
     BlendService = {
         ConsumeCup = function()
             local result = cup

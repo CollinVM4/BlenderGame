@@ -48,16 +48,24 @@ type Batch = {
     Result: Types.Smoothie?,
     NextProgressPresentationAt: number,
     NextRejectionAt: number,
+    NeedsItemsUntil: number,
     Dispensing: boolean,
 }
-local batches: { [Player]: Batch } = {}
+local batches: { [string]: Batch } = {}
+local function key(player: Player): string
+    return deps.TycoonService.GetSessionId(player) or ""
+end
+local function authorized(player: Player, context: any): boolean
+    return deps.TycoonService.ValidateActor(player, context or deps.TycoonService.GetRequestContext(player))
+end
 
 function BlendService.ObserveIngredientAccepted(callback: (Player, string, CFrame, number) -> ()): RBXScriptConnection
-    local connection = ingredientAccepted.Event:Connect(function(player, id, at, index, token)
+    local connection = ingredientAccepted.Event:Connect(function(sessionId, id, at, index, token)
         -- BindableEvents COPY tables. Compare a scalar token, never table identity.
-        local batch = batches[player]
-        if batch and batch.NotificationToken == token then
-            callback(player, id, at, index)
+        local batch = batches[sessionId]
+        local owner = deps.TycoonService.GetSessionOwner(sessionId)
+        if owner and batch and batch.NotificationToken == token then
+            callback(owner, id, at, index)
         else
             diagnostic("accepted notify skipped stale batch ingredient=" .. id)
         end
@@ -68,14 +76,24 @@ function BlendService.ObserveIngredientAccepted(callback: (Player, string, CFram
 end
 
 local function publish(player: Player)
-    local batch = batches[player]
-    player:SetAttribute("BlendColor", if batch.Result then batch.Result.Color else batchColor(batch.Ingredients))
-    player:SetAttribute("BlendState", batch.State)
-    player:SetAttribute("BlendProgress", batch.Progress)
-    player:SetAttribute("BlendIngredientCount", #batch.Ingredients)
-    if batch.State == "EMPTY" or #batch.Ingredients >= Economy.MaxIngredients then
-        player:SetAttribute("BlendNeedsItems", false)
+    local id = key(player)
+    local batch = batches[id]
+    if not batch then
+        return
     end
+    for _, member in deps.TycoonService.GetMembers(id) do
+        member:SetAttribute("BlendColor", if batch.Result then batch.Result.Color else batchColor(batch.Ingredients))
+        member:SetAttribute("BlendState", batch.State)
+        member:SetAttribute("BlendProgress", batch.Progress)
+        member:SetAttribute("BlendIngredientCount", #batch.Ingredients)
+        member:SetAttribute(
+            "BlendNeedsItems",
+            #batch.Ingredients < Economy.MaxIngredients and os.clock() < batch.NeedsItemsUntil
+        )
+    end
+end
+function BlendService.BindPlayer(player: Player)
+    publish(player)
 end
 local function copyResult(result: Types.Smoothie): Types.Smoothie
     return {
@@ -90,8 +108,11 @@ function BlendService.Init(services)
     deps = services
 end
 function BlendService.Reset(player: Player)
+    if key(player) == "" then
+        return
+    end
     nextNotificationToken += 1
-    batches[player] = {
+    batches[key(player)] = {
         NotificationToken = nextNotificationToken,
         State = "EMPTY",
         Ingredients = {},
@@ -99,6 +120,7 @@ function BlendService.Reset(player: Player)
         Result = nil,
         NextProgressPresentationAt = 0,
         NextRejectionAt = 0,
+        NeedsItemsUntil = 0,
         Dispensing = false,
     }
     publish(player)
@@ -110,7 +132,7 @@ function BlendService.GetSnapshot(player: Player): {
     Progress: number,
     Result: Types.Smoothie?,
 }?
-    local batch = batches[player]
+    local batch = batches[key(player)]
     if not batch then
         return nil
     end
@@ -121,12 +143,13 @@ function BlendService.GetSnapshot(player: Player): {
         Result = if batch.Result then copyResult(batch.Result) else nil,
     }
 end
-function BlendService.TryInput(player: Player, object: Instance, input: BasePart): boolean
-    local batch = batches[player]
+function BlendService.TryInput(player: Player, object: Instance, input: BasePart, context: any): boolean
+    local batch = batches[key(player)]
     local record = deps.IngredientService.GetRecord(object)
     local part = WorldUtil.Part(object)
     if
         not batch
+        or not authorized(player, nil)
         or (batch.State ~= "EMPTY" and batch.State ~= "LOADING" and batch.State ~= "READY")
         or #batch.Ingredients >= Economy.MaxIngredients
         or not record
@@ -134,7 +157,8 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
         or (record.Owner ~= nil and record.Owner ~= player)
         or (record.Owner == nil and not record.Claimable)
         or not part
-        or deps.TycoonService.GetOwner(input) ~= player
+        or not deps.TycoonService.IsMember(player, input)
+        or not authorized(player, context)
         or deps.TycoonService.GetReference(player, "BlenderInput") ~= input
     then
         return false
@@ -151,8 +175,13 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
         return false
     end
     local acceptedAt = part.CFrame
+    local token = deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
+    if not token then
+        return false
+    end
     local id = deps.IngredientService.Consume(object)
     if not id then
+        deps.TycoonService.EndTransaction(token)
         return false
     end
     table.insert(batch.Ingredients, id)
@@ -161,13 +190,15 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
     publish(player)
     Film.Log("Blend", batch.State)
     diagnostic("accepted notify ingredient=" .. id .. " observers=" .. tostring(observerCount()))
-    ingredientAccepted:Fire(player, id, acceptedAt, #batch.Ingredients, batch.NotificationToken)
+    ingredientAccepted:Fire(token, id, acceptedAt, #batch.Ingredients, batch.NotificationToken)
+    deps.TycoonService.EndTransaction(token)
     return true
 end
 function BlendService.Ready(player: Player): boolean
-    local batch = batches[player]
+    local batch = batches[key(player)]
     if
         not batch
+        or not authorized(player, nil)
         or #batch.Ingredients < Economy.MaxIngredients
         or (batch.State ~= "LOADING" and batch.State ~= "READY")
     then
@@ -198,11 +229,13 @@ local function makeResult(ids: { string }): Types.Smoothie
     }
 end
 -- Server Heartbeat reports measured physical spin. No progress remote exists.
-function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number): boolean
-    local batch = batches[player]
+local function addProgress(player: Player, wheel: BasePart, delta: number, context: any): boolean
+    local batch = batches[key(player)]
     if
         not batch
-        or deps.TycoonService.GetOwner(wheel) ~= player
+        or not authorized(player, nil)
+        or not deps.TycoonService.IsMember(player, wheel)
+        or not authorized(player, context)
         or delta ~= delta
         or delta <= 0
         or delta == math.huge
@@ -218,11 +251,18 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
         then
             -- Heartbeat must not continually extend the transient feedback.
             batch.NextRejectionAt = os.clock() + 2.5
+            batch.NeedsItemsUntil = os.clock() + 1.75
             local rejectionAt = batch.NextRejectionAt
-            player:SetAttribute("BlendNeedsItems", true)
+            local sessionId = key(player)
+            for _, member in deps.TycoonService.GetMembers(sessionId) do
+                member:SetAttribute("BlendNeedsItems", true)
+            end
             task.delay(1.75, function()
-                if batches[player] == batch and batch.NextRejectionAt == rejectionAt then
-                    player:SetAttribute("BlendNeedsItems", false)
+                if batches[sessionId] == batch and batch.NextRejectionAt == rejectionAt then
+                    batch.NeedsItemsUntil = 0
+                    for _, member in deps.TycoonService.GetMembers(sessionId) do
+                        member:SetAttribute("BlendNeedsItems", false)
+                    end
                 end
             end)
         end
@@ -272,6 +312,15 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     publish(player)
     return true
 end
+function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number, context: any): boolean
+    local token = deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
+    if not token then
+        return false
+    end
+    local result = addProgress(player, wheel, delta, context)
+    deps.TycoonService.EndTransaction(token)
+    return result
+end
 function BlendService.GetCup(player: Player, requested: Instance?): Types.Smoothie?
     local data = deps.InventoryService.GetHeldSmoothie(player, requested)
     return if data then SmoothieItem.Result(data) else nil
@@ -280,13 +329,14 @@ function BlendService.ConsumeCup(player: Player): Types.Smoothie?
     local data = deps.InventoryService.ConsumeHeldSmoothie(player)
     return if data then SmoothieItem.Result(data) else nil
 end
-function BlendService.Dispense(player: Player, button: BasePart): (boolean, string?)
-    local batch = batches[player]
+function BlendService.Dispense(player: Player, button: BasePart, context: any): (boolean, string?)
+    local batch = batches[key(player)]
     if not batch or batch.State ~= "COMPLETE" or not batch.Result or batch.Dispensing then
         return false, "Not ready"
     end
     if
-        deps.TycoonService.GetOwner(button) ~= player
+        not deps.TycoonService.IsMember(player, button)
+        or not authorized(player, context)
         or not WorldUtil.Near(player, button, Economy.InteractionDistance)
     then
         return false, "Not your blender or too far"
@@ -300,24 +350,39 @@ function BlendService.Dispense(player: Player, button: BasePart): (boolean, stri
     }
     -- Grant is synchronous. Guard signals from equip/presentation against a
     -- reentrant dispense of this same batch, including while it is still COMPLETE.
+    local sessionId =
+        deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
+    if not sessionId then
+        return false, "StaleSession"
+    end
     batch.Dispensing = true
     local granted = deps.InventoryService.GrantSmoothie(player, data)
     batch.Dispensing = false
     if not granted then
+        deps.TycoonService.EndTransaction(sessionId)
         return false, "Cannot carry smoothie"
     end
     batch.State = "DISPENSED"
     publish(player)
     task.defer(function()
-        if batches[player] == batch then
-            BlendService.Reset(player)
+        local owner = deps.TycoonService.GetSessionOwner(sessionId)
+        if owner and batches[sessionId] == batch then
+            BlendService.Reset(owner)
         end
     end)
     Film.Emit(player, "SmoothieDispensed", { BlendId = data.BlendId, Color = batch.Result.Color })
     Film.Log("Blend", "DISPENSED blend=" .. data.BlendId)
+    deps.TycoonService.EndTransaction(sessionId)
     return true
 end
+function BlendService.CleanupSession(sessionId: string)
+    batches[sessionId] = nil
+end
 function BlendService.RemovePlayer(player: Player)
-    batches[player] = nil
+    player:SetAttribute("BlendState", "EMPTY")
+    player:SetAttribute("BlendProgress", 0)
+    player:SetAttribute("BlendIngredientCount", 0)
+    player:SetAttribute("BlendColor", nil)
+    player:SetAttribute("BlendNeedsItems", false)
 end
 return require(script.Parent.StudioServices).Wrap("BlendService", BlendService)
