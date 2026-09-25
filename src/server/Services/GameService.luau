@@ -33,7 +33,9 @@ function GameService.GetSnapshot(player: Player): Session?
 end
 -- Legacy remote/Studio entry point. Idempotently activates flow; never spawns a day batch.
 function GameService.StartDay(player: Player): (boolean, string?)
-    deps.TycoonService.AssignPlot(player)
+    if not deps.TycoonService.GetPlot(player) then
+        return false, "No active plot"
+    end
     local ok = deps.CustomerService.ActivateForPlayer(player)
     return ok, if ok then nil else "No active plot"
 end

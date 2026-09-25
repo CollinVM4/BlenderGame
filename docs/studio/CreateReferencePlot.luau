@@ -33,6 +33,9 @@ local function part(name, position, size, tag, color)
     return object
 end
 part("Floor", Vector3.new(0, -0.5, 0), Vector3.new(50, 1, 50))
+local identity = part("PlotIdentityOrigin", Vector3.new(0, 12, 14), Vector3.new(1, 1, 1))
+identity.Transparency = 1
+identity.CanCollide, identity.CanTouch, identity.CanQuery = false, false, false
 part("BlenderBase", Vector3.new(0, 0.5, -6), Vector3.new(10, 1, 8))
 local input = part("BlenderInput", Vector3.new(0, 4, -6), Vector3.new(9, 7, 7), "BlenderInput")
 input.CanCollide = false

@@ -58,6 +58,11 @@ services.CustomerService.Init(services, services.GameService.CustomerServed, ser
 -- Migrate existing named plot fixtures to tags without yielding for absent assets.
 local folder = workspace:FindFirstChild("Plots")
 local roots = if folder then folder:GetChildren() else {}
+for _, plot in game:GetService("CollectionService"):GetTagged("PlayerPlot") do
+    if not table.find(roots, plot) then
+        table.insert(roots, plot)
+    end
+end
 local direct = workspace:FindFirstChild("Blender")
 if direct then
     table.insert(roots, direct)
@@ -77,7 +82,6 @@ local function addPlayer(player: Player)
     services.MovementService.RefreshPlayer(player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
-    services.TycoonService.AssignPlot(player)
     local function onCharacterAdded(character: Model)
         services.CharacterPhysicsService.ApplyCharacter(player, character)
         services.InventoryService.CleanupCharacter(player)

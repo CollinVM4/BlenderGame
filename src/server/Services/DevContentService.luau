@@ -213,7 +213,9 @@ function DevContentService.SpawnCustomer(player: Player): Model?
     if existing then
         return existing.Model
     end
-    deps.TycoonService.AssignPlot(player)
+    if not deps.TycoonService.GetPlot(player) then
+        return nil
+    end
     if not deps.CustomerService.ActivateForPlayer(player) then
         return nil
     end

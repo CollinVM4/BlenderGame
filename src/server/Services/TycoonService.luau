@@ -114,9 +114,19 @@ function TycoonService.EndTransaction(id: string)
         operation()
     end
 end
+local function publishIdentity(plot: Instance, session: Session?)
+    plot:SetAttribute("PlotOwnerName", if session then session.Owner.Name else nil)
+    plot:SetAttribute("PlotTeammateName", if session and session.Teammate then session.Teammate.Name else nil)
+    plot:SetAttribute("TeammateUserId", if session then session.TeammateUserId else nil)
+    plot:SetAttribute("JoinMode", if session then session.JoinMode else nil)
+    plot:SetAttribute("PlotMembershipRevision", if session then session.MembershipRevision else nil)
+    plot:SetAttribute("PlotOccupancy", if session then (if session.Teammate then 2 else 1) else 0)
+    plot:SetAttribute("PlotCapacity", 2)
+end
 local function publish(session: Session)
     session.Plot:SetAttribute("OwnerUserId", session.OwnerUserId)
     session.Plot:SetAttribute("PlotSessionId", session.PlotSessionId)
+    publishIdentity(session.Plot, session)
     for _, player in TycoonService.GetMembers(session.PlotSessionId) do
         player:SetAttribute("PlotSessionId", session.PlotSessionId)
         player:SetAttribute("PlotMembershipRevision", session.MembershipRevision)
@@ -231,7 +241,7 @@ function TycoonService.PurchasePersonalUpgrade(
     TycoonService.EndTransaction(token)
     return true
 end
--- Server-only membership foundation. No join/kick remote is exposed in this pass.
+-- Trusted server-only membership primitive; public joins must pass RequestJoin policy.
 function TycoonService.JoinSession(player: Player, owner: Player, context: any): boolean
     local session = sessionFor(owner)
     if
@@ -298,6 +308,11 @@ function TycoonService.RemovePlayer(player: Player, afterTransition: (() -> ())?
         sessions[session.Plot], byId[session.PlotSessionId] = nil, nil
         session.Plot:SetAttribute("OwnerUserId", nil)
         session.Plot:SetAttribute("PlotSessionId", nil)
+        publishIdentity(session.Plot, nil)
+        session.Plot:SetAttribute(
+            "PlotClaimRevision",
+            ((session.Plot:GetAttribute("PlotClaimRevision") or 0) :: number) + 1
+        )
     end
     if afterTransition then
         afterTransition()
@@ -335,6 +350,17 @@ end
 -- Compatibility runs before binding. An explicitly tagged role always wins over old names.
 function TycoonService.AutoTagLegacyPlot(plot: Instance)
     CollectionService:AddTag(plot, "PlayerPlot")
+    if plot:GetAttribute("PlotClaimRevision") == nil then
+        plot:SetAttribute("PlotClaimRevision", 0)
+    end
+    if plot:GetAttribute("PlotId") == nil then
+        plot:SetAttribute("PlotId", HttpService:GenerateGUID(false))
+    end
+    if not sessions[plot] then
+        plot:SetAttribute("OwnerUserId", nil)
+        plot:SetAttribute("PlotSessionId", nil)
+        publishIdentity(plot, nil)
+    end
     for _, role in
         {
             "BlenderInput",
@@ -451,7 +477,8 @@ function TycoonService.GetReference(player: Player, name: string): (BasePart?, s
     end
     return nil
 end
-function TycoonService.AssignPlot(player: Player): Instance?
+-- Trusted compatibility API. Runtime arrivals never call this; claims select an exact plot.
+function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Instance?
     if TycoonService.GetPlot(player) then
         return plots[player]
     end
@@ -475,7 +502,7 @@ function TycoonService.AssignPlot(player: Player): Instance?
         return a.Name < b.Name
     end)
     for _, plot in candidates do
-        if plot:IsDescendantOf(workspace) and not sessions[plot] then
+        if plot:IsDescendantOf(workspace) and not sessions[plot] and (not requestedPlot or plot == requestedPlot) then
             plots[player] = plot
             local id = HttpService:GenerateGUID(false)
             if type(plot:GetAttribute("PlotId")) ~= "string" then
@@ -493,7 +520,7 @@ function TycoonService.AssignPlot(player: Player): Instance?
                 OwnerUserId = player.UserId,
                 Teammate = nil,
                 TeammateUserId = nil,
-                JoinMode = "Closed",
+                JoinMode = "FriendsOnly",
                 SharedCash = 0,
                 SharedUpgrades = upgrades,
                 Status = "Active",
@@ -512,5 +539,80 @@ function TycoonService.AssignPlot(player: Player): Instance?
     end
     warn("[TycoonService] No free PlayerPlot / workspace.Plots child for " .. player.Name)
     return nil
+end
+-- Requests retain the submitted context across any yielding friendship lookup.
+function TycoonService.ClaimPlot(player: Player, plot: Instance, context: any): boolean
+    if
+        plots[player]
+        or not CollectionService:HasTag(plot, "PlayerPlot")
+        or not plot:IsDescendantOf(workspace)
+        or sessions[plot]
+        or type(context) ~= "table"
+        or context.PlotSessionId ~= nil
+        or context.ClaimRevision ~= (plot:GetAttribute("PlotClaimRevision") or 0)
+    then
+        return false
+    end
+    return TycoonService.AssignPlot(player, plot) == plot
+end
+function TycoonService.RequestJoin(player: Player, plot: Instance, context: any): boolean
+    local session = sessions[plot]
+    if
+        not session
+        or session.Status ~= "Active"
+        or session.Busy
+        or plots[player]
+        or session.Teammate
+        or not TycoonService.ValidateActor(session.Owner, context)
+    then
+        return false
+    end
+    local owner = session.Owner
+    if session.JoinMode == "Closed" then
+        return false
+    elseif session.JoinMode == "FriendsOnly" then
+        local ok, friend = pcall(function()
+            return player:IsFriendsWithAsync(owner.UserId)
+        end)
+        if not ok or not friend then
+            return false
+        end
+    end
+    -- Joining can yield above: never substitute a newer session, owner, or revision.
+    if sessions[plot] ~= session or session.Owner ~= owner or player.Parent == nil then
+        return false
+    end
+    return TycoonService.JoinSession(player, owner, context)
+end
+function TycoonService.SetJoinMode(player: Player, mode: any, context: any): boolean
+    local session = sessionFor(player)
+    if
+        not session
+        or session.Owner ~= player
+        or session.Busy
+        or not TycoonService.ValidateActor(player, context)
+        or (mode ~= "Open" and mode ~= "FriendsOnly" and mode ~= "Closed")
+    then
+        return false
+    end
+    session.Busy = true
+    session.JoinMode = mode
+    session.MembershipRevision += 1
+    publish(session)
+    TycoonService.EndTransaction(session.PlotSessionId)
+    return true
+end
+function TycoonService.LeaveTeam(player: Player, context: any): boolean
+    local session = sessionFor(player)
+    if
+        not session
+        or session.Teammate ~= player
+        or session.Busy
+        or not TycoonService.ValidateActor(player, context)
+    then
+        return false
+    end
+    TycoonService.RemovePlayer(player)
+    return true
 end
 return require(script.Parent.StudioServices).Wrap("TycoonService", TycoonService)

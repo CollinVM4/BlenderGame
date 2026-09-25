@@ -37,6 +37,7 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "plot-player-flow": ("integration", ("fixtures/smoothie.luau", "plot_player_flow.spec.luau")),
     "plot-session-races": ("integration", ("fixtures/smoothie.luau", "plot_session_races.spec.luau")),
     "plot-session-progression": ("integration", ("fixtures/smoothie.luau", "plot_session_progression.spec.luau")),
     "plot-session-requests": ("integration", ("fixtures/smoothie.luau", "plot_session_requests.spec.luau")),
@@ -72,6 +73,7 @@ SUITES = {
     "customer-routing": ("presentation", ("customer_routing.spec.luau",)),
     "customer-walk": ("presentation", ("customer_walk.spec.luau",)),
     "client-presentation": ("presentation", ("client_presentation.spec.luau",)),
+    "plot-identity": ("presentation", ("fixtures/smoothie.luau", "plot_identity.spec.luau")),
     "plot-session-feedback": ("presentation", ("fixtures/smoothie.luau", "plot_session_feedback.spec.luau")),
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
@@ -120,6 +122,7 @@ sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(en
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
 sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")
 sources["SessionInteractionController"] = (ROOT / "src/client/Controllers/SessionInteractionController.luau").read_text(encoding="utf-8")
+sources["PlotIdentityController"] = (ROOT / "src/client/Controllers/PlotIdentityController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (
     "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"

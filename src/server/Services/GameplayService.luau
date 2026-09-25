@@ -8,6 +8,49 @@ function GameplayService.RegisterPlotInteraction(prompt: ProximityPrompt, callba
     prompt:SetAttribute("SessionInteraction", true)
 end
 local nextRequest: { [Player]: number } = {}
+-- All world/team operations enter here; submitted contexts are never repaired.
+function GameplayService.HandlePlotRequest(
+    services: any,
+    player: Player,
+    action: string,
+    plot: any,
+    value: any,
+    context: any
+): boolean
+    if typeof(plot) ~= "Instance" or not plot:IsDescendantOf(workspace) then
+        return false
+    end
+    local origin = plot:FindFirstChild("PlotIdentityOrigin", true)
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local position = if origin and origin:IsA("Attachment")
+        then origin.WorldPosition
+        elseif origin and origin:IsA("BasePart") then origin.Position
+        else nil
+    if not position or not root or not root:IsA("BasePart") or (root.Position - position).Magnitude > 32 then
+        return false
+    end
+    local authority = services.TycoonService
+    if action == "ClaimPlot" then
+        return authority.ClaimPlot(player, plot, context)
+    elseif action == "JoinTeam" then
+        return authority.RequestJoin(player, plot, context)
+    end
+    if authority.GetPlot(player) ~= plot or not authority.ValidateActor(player, context) then
+        return false
+    end
+    if action == "LeaveTeam" then
+        return authority.LeaveTeam(player, context)
+    elseif action == "SetJoinMode" then
+        return authority.SetJoinMode(player, value, context)
+    elseif action == "KickTeammate" then
+        for _, member in authority.GetMembers(context.PlotSessionId) do
+            if member.UserId == value then
+                return authority.Kick(player, member, context)
+            end
+        end
+    end
+    return false
+end
 function GameplayService.Init(services: any)
     local remote = Instance.new("RemoteEvent")
     remote.Name = "GameplayRequest"
@@ -19,6 +62,17 @@ function GameplayService.Init(services: any)
         end
         nextRequest[player] = now + 0.15
         if type(action) ~= "string" or #action > 32 then
+            return
+        end
+        if
+            action == "ClaimPlot"
+            or action == "JoinTeam"
+            or action == "LeaveTeam"
+            or action == "SetJoinMode"
+            or action == "KickTeammate"
+        then
+            local success = GameplayService.HandlePlotRequest(services, player, action, id, slot, context)
+            remote:FireClient(player, "PlotRequestResult", { success = success, action = action })
             return
         end
         if action == "PlotInteraction" then

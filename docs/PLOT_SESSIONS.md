@@ -86,20 +86,56 @@ python tests/run_upgrade_ui_tests.py --luau <luau.exe>
 python -B tests/test_state_runner.py
 ```
 
-## Studio and remaining enablement
+## Player-facing plot flow (current)
 
-No authored model, tag, asset or Rojo mapping changes are required. Sync both server and client changes together and start a fresh Play session. No real Studio two-client session was run; CLI engine doubles do not verify actual replication, prompt input, streaming, physics or NPC pathfinding.
+Players now enter unassigned. Player bootstrap no longer calls AssignPlot. Legacy GameService.StartDay and the Studio SpawnCustomer helper require an existing plot instead of allocating one. PlayerData/inventory/character initialization stays personal; no shared cash/upgrades or blender/customer runtime is created until a successful claim. The trusted AssignPlot API remains for compatibility and test setup; there are no automatic runtime callers. ClaimPlot selects an exact physical plot through that existing creation path and invokes SessionStarted exactly once. Joining only publishes/binds the existing session.
 
-Single-player auto-assignment remains the default. There is no TeamService, team-selection UI, public join/kick remote, invitation flow or portrait/name presentation. `JoinMode` defaults to Closed; low-level server-only JoinSession/Kick APIs are the foundation for a later validated social layer, not an invitation policy. JoinSession expects an unassigned player and a current owner context.
+Walk within 32 studs of a plot's identity marker and click CLAIM PLOT or JOIN TEAM on its world billboard. Newly claimed sessions default to FriendsOnly. An owner gets MANAGE PLOT, with Open / Friends Only / Closed and Kick Teammate; the teammate gets LEAVE TEAM. Departing/kicked teammates become unassigned and may claim or join again. No lobby, invitation UI, TeamService, or new persistence system was added.
 
-For a fresh two-client Studio smoke test, use the Server Command Bar after bootstrap:
+### Runtime files changed in this pass
 
-```luau
-local t = require(game.ServerScriptService.Server.Services.TycoonService)
-local p = game.Players:GetPlayers()
-local owner, teammate = p[1], p[2]
-t.RemovePlayer(teammate)
-assert(t.JoinSession(teammate, owner, t.GetRequestContext(owner)))
-```
+- `src/server/Services/TycoonService.luau`: claim and policy validation, leave, join mode, identity projection.
+- `src/server/Services/GameplayService.luau`: rate-limited request dispatch and physical proximity validation.
+- `src/server/Services/GameService.luau`: StartDay cannot implicitly allocate a plot.
+- `src/server/Services/DevContentService.luau`: SpawnCustomer cannot implicitly allocate a plot.
+- `src/server/init.server.luau`: removes arrival assignment and initializes identities for existing tagged/legacy plots.
+- `src/client/Controllers/PlotIdentityController.luau`: world portraits/actions, unassigned status and small management panel.
+- `src/client/init.client.luau`: starts the identity controller.
 
-Verify both clients see the same cash/batch/orders, can purchase/serve/dispense, receive only their own cups, and retain the same session and queue when the owner disconnects. Then verify final departure cleanup and plot reuse. Later work includes deliberate join/invitation/consent policy and UI, management controls, persistence/recovery rules, and the unresolved CarryCapacity/StackSize/stash ownership policy. No final team UI is included here.
+Studio tooling: `docs/studio/CreateReferencePlot.luau` now authors the identity marker. Tests: `tests/plot_player_flow.spec.luau`, `tests/plot_identity.spec.luau`, and registration in `tests/run_state_tests.py`.
+
+### Authorization and races
+
+GameplayRequest handles ClaimPlot, JoinTeam, LeaveTeam, SetJoinMode and KickTeammate. It validates the live target and character distance to the authored marker (32 studs, including vertical distance), then delegates to TycoonService. It never replaces submitted contexts. Claims require an unassigned actor, tagged live empty plot and the expected ClaimRevision. PlotClaimRevision advances on release so a delayed empty-plot request cannot claim a replacement occupancy lifetime.
+
+Join requires the expected PlotSessionId and MembershipRevision, active session, no current actor mapping, available teammate slot and permitted JoinMode. FriendsOnly uses a server IsFriendsWithAsync lookup under pcall. After yielding, it rechecks the original owner/session and player presence; JoinSession rechecks current active membership, revision, busy state and capacity before committing synchronously. Policy changes advance the same revision, invalidating pending joins and old management requests. Two claims/joins can only commit one winner.
+
+Leave is teammate-only. Management and kick require the current owner and revision; kick targets only the current teammate user ID. Existing lifecycle guards revoke access before personal projection cleanup. Personal inventory/stash remain personally owned and are retained; existing MemberRemoved hooks clear departed blender/customer presentation and refresh movement/combat. Shared cash, upgrades, batch, queue, history and cooldowns remain in the original session. Disconnect promotion keeps that session and republishes the owner identity. Final departure closes/cleans once, clears identity and makes the plot claimable.
+
+### Replicated identity
+
+TycoonService projects attributes on each plot: stable PlotId, optional PlotSessionId, OwnerUserId / PlotOwnerName, optional TeammateUserId / PlotTeammateName, JoinMode, PlotMembershipRevision, PlotOccupancy and PlotCapacity (2). Empty plots also carry PlotClaimRevision. Player session/revision attributes remain the foundation's existing membership projection.
+
+The client derives viewer actions from these attributes and its player identity; this grants no authority. Billboard updates are throttled to four per second and rebuilt only on presentation changes. Roblox headshots are cached by user ID, with an empty-image fallback after fetch failure. A separate client friendship cache controls FriendsOnly action visibility; the server independently verifies every join. Friendship visibility refreshes every 30 seconds, including after lookup failure. No owner-specific Studio objects are needed. Missing, removed or streamed-out identity markers hide presentation without changing membership/gameplay. Attribute replication can briefly be partial; any stale submitted action fails server validation.
+
+### Exact Studio setup
+
+1. Keep the existing six physical plot models under workspace.Plots, or tag each root PlayerPlot. Do not nest plot roots.
+2. Inside each root, add exactly one BasePart named PlotIdentityOrigin. Set Anchored=true, Transparency=1, CanCollide=false, CanTouch=false and CanQuery=false. A 1x1x1 part is sufficient.
+3. Place it above the front approach, roughly 10-12 studs above the ground, within 32 studs of where players will stand to click. An Attachment named PlotIdentityOrigin under an anchored plot part is also supported; its WorldPosition is used.
+4. Preserve existing blender/customer fixture tags. No identity tag, owner wiring, GUI creation or remote creation is required. The updated reference-plot command-bar script includes the marker for newly created reference plots.
+5. Sync server and client together with Rojo and start a fresh test session. Existing model geometry and plot count are not generated or redesigned by runtime code.
+
+### Validation for this pass
+
+PASS: new plot-player-flow integration suite and separate plot-identity client suite. Covers unassigned legacy startup, protected access, claim/reclaim/races, policy and lookup failure, yielding lookup vs policy/capacity/owner departure, network proximity/context validation, leave/kick, promotion, identity and portrait cache, and management request submission.
+
+PASS: plot-session, plot-session-races, plot-session-progression, plot-session-requests, plot-session-feedback; customer-queue, customer-payout-serve, throw-blender, smoothie-survivors, sprint, client-presentation; upgrade UI and carry upgrade integration; all five runner contract tests.
+
+PASS: full-src Roblox-aware Luau LSP typecheck (only the existing CharacterPhysicsService LoadCharacterAppearance deprecation warning), StyLua check of changed Luau files, Rojo build and git diff --check.
+
+Legacy-movement still fails at "comfortable movement baseline applies". Reproduced on a temporary copy with the unchanged HEAD source. No unrelated production tuning was changed. The other previously documented baseline failures above remain untouched and were not rerun in this pass.
+
+### Still requires Studio verification
+
+No real two-client Studio playtest was run. Verify two unassigned arrivals, simultaneous physical claim, Open joins, FriendsOnly with actual friend/nonfriend accounts, Closed visibility, shared upgrades/batch/customer state immediately after joining, leave/rejoin, kick during interaction, owner disconnect promotion, final cleanup/reclaim, and stale request rejection. Check real replication/streaming, thumbnail failures, mouse/touch billboard input, label readability at all six authored markers, and customer scheduler/NPC behavior. CLI tests use engine doubles and cannot establish those engine-level results.

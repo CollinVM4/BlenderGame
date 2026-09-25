@@ -20,3 +20,5 @@ require(script.Controllers.UpgradesController).Init()
 require(script.Controllers.CarryInputController).Init()
 
 require(script.Controllers.SessionInteractionController).Init()
+
+require(script.Controllers.PlotIdentityController).Init()
