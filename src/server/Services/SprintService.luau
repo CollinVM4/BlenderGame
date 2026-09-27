@@ -38,9 +38,12 @@ local function getHumanoid(player: Player): Humanoid?
 end
 
 local function setSprinting(player: Player, wantsToSprint: boolean)
+    if not movement.IsInitialized(player) then
+        return
+    end
     ensurePlayer(player)
 
-    if wantsToSprint and staminaCurrent[player] <= 0 then
+    if wantsToSprint and (staminaCurrent[player] <= 0 or not movement.CanPerformGameplayAction(player)) then
         wantsToSprint = false
     end
 
@@ -50,8 +53,12 @@ end
 
 function SprintService.ApplySpeed(player: Player)
     local humanoid = getHumanoid(player)
+    if movement.IsStunned(player) then
+        isSprinting[player] = false
+        player:SetAttribute("IsSprinting", false)
+    end
     if humanoid then
-        humanoid.WalkSpeed = if os.clock() < (tonumber(player:GetAttribute("StunnedUntil")) or 0)
+        humanoid.WalkSpeed = if movement.IsStunned(player)
             then 0
             elseif isSprinting[player] then movement.GetSprintWalkSpeed(player)
             else movement.GetBaseWalkSpeed(player)
@@ -93,6 +100,10 @@ function SprintService.Init(dependencies)
     movement = dependencies.MovementService
     local sprintEvent = getSprintEvent()
     movement.Changed:Connect(function(player: Player)
+        -- Deferred character/stun notifications can arrive after player cleanup.
+        if not movement.IsInitialized(player) then
+            return
+        end
         SprintService.SetStaminaMax(player, movement.GetMaxStamina(player))
         SprintService.ApplySpeed(player)
     end)
@@ -106,10 +117,13 @@ function SprintService.Init(dependencies)
 
     RunService.Heartbeat:Connect(function(deltaTime: number)
         for _, player in Players:GetPlayers() do
+            if not movement.IsInitialized(player) then
+                continue
+            end
             ensurePlayer(player)
 
             local humanoid = getHumanoid(player)
-            if not humanoid or humanoid.Health <= 0 then
+            if not humanoid or humanoid.Health <= 0 or movement.IsStunned(player) then
                 isSprinting[player] = false
             end
             if isSprinting[player] then

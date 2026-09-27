@@ -88,7 +88,7 @@ function Controller.Init()
                     serverMax[track.Id] = nil
                     refresh()
                 end)
-            if track.Attribute ~= track.Id .. "Level" then
+            if track.Attribute ~= track.Id .. (if track.Id == "CarryCapacity" then "Level" else "PurchasedLevel") then
                 player:GetAttributeChangedSignal(track.Attribute):Connect(refresh)
             end
             view.Rows[track.Id].Purchase.Activated:Connect(function()

@@ -2,6 +2,7 @@
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Economy = require(Shared.Constants.Economy)
 local Upgrades = require(Shared.Constants.Upgrades)
+local BatConfig = require(Shared.Constants.BatConfig)
 local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local CarryPresentation = require(script.Parent.IngredientCarryPresentation)
@@ -9,6 +10,7 @@ local IngredientThrow = require(script.Parent.IngredientThrow)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local SmoothieGeometry = require(script.Parent.SmoothieGeometry)
 local InventoryService = {}
+local MovementService = require(script.Parent.MovementService)
 local deps: any
 local carried: { [Player]: { [string]: number? } } = {}
 local stashes: { [Player]: { [number]: Types.StashSlot } } = {}
@@ -187,7 +189,13 @@ end
 
 -- Spawn is synchronous. Keep reservations through fallible geometry preparation;
 -- ingredient throws clear/reflow carry before publishing the new physical object.
-local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?, itemIndex: number?): Instance?
+local function releaseHeld(
+    player: Player,
+    throwing: boolean,
+    dropIndex: number?,
+    itemIndex: number?,
+    scatter: Vector3?
+): Instance?
     local record = if itemIndex then (held[player] or {})[itemIndex] else topItem(player)
     if not record or record.Releasing then
         return nil
@@ -222,9 +230,14 @@ local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?
     -- The held[player] reservation is exclusive only while carried. Both drop
     -- and throw release ownership so anyone can claim the loose world unit.
     local offset = if throwing then CFrame.new(0, 1, -3) else CFrame.new(((dropIndex or 1) - 1) * 2, 2, -3)
+    local spawnAt = if scatter
+        then CFrame.new(
+            at.Position + scatter * BatConfig.Scatter.SpawnRadius + Vector3.new(0, BatConfig.Scatter.SpawnHeight, 0)
+        )
+        else at * offset
     local object = if record.Smoothie
         then deps.SmoothieWorldItemService.Spawn(record.Smoothie, at * offset)
-        else deps.IngredientService.Spawn(record.Id :: string, at * offset, nil, true)
+        else deps.IngredientService.Spawn(record.Id :: string, spawnAt, nil, true)
     if not object then
         record.Releasing = false
         return nil
@@ -233,8 +246,46 @@ local function releaseHeld(player: Player, throwing: boolean, dropIndex: number?
     local part = WorldUtil.Part(object)
     if part and throwing then
         part.AssemblyLinearVelocity = at.LookVector * 25 + Vector3.new(0, 18, 0)
+    elseif part and scatter then
+        local tuning = BatConfig.Scatter
+        part.AssemblyLinearVelocity = scatter
+                * (tuning.HorizontalMin + math.random() * (tuning.HorizontalMax - tuning.HorizontalMin))
+            + Vector3.new(0, tuning.UpwardMin + math.random() * (tuning.UpwardMax - tuning.UpwardMin), 0)
+        if player.Character then
+            IngredientThrow.IgnoreCharacter(object, player.Character)
+        end
     end
     return object
+end
+
+-- Forced drops use held records, never Backpack contents; smoothies remain reserved.
+function InventoryService.DropCarriedIngredients(player: Player, reason: string?, away: Vector3?): number
+    local dropped = 0
+    local count = 0
+    local stack: { HeldItem } = held[player] or {}
+    for _, record in stack do
+        if record.ItemType == "Ingredient" then
+            count += 1
+        end
+    end
+    local flat = if away then Vector3.new(away.X, 0, away.Z) else Vector3.new(0, 0, -1)
+    local direction: Vector3 = if flat.Magnitude > 0.001 then flat.Unit else Vector3.new(0, 0, -1)
+    for index = #(held[player] or {}), 1, -1 do
+        local record = (held[player] or {})[index]
+        if record and record.ItemType == "Ingredient" then
+            local scatter: Vector3? = nil
+            if reason == "BatStun" then
+                -- Stratified random fan prevents a multi-item burst sharing one trajectory.
+                local angle = ((dropped + 0.2 + math.random() * 0.6) / math.max(count, 1) - 0.5)
+                    * math.rad(BatConfig.Scatter.FanAngle)
+                scatter = direction * math.cos(angle) + Vector3.new(-direction.Z, 0, direction.X) * math.sin(angle)
+            end
+            if releaseHeld(player, false, dropped + 1, index, scatter) then
+                dropped += 1
+            end
+        end
+    end
+    return dropped
 end
 
 function InventoryService.DropHeld(player: Player): Instance?
@@ -262,6 +313,9 @@ end
 
 -- Exact selected identity takes priority; unselected/invalid ingredient hints use newest-first.
 function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?): Instance?
+    if not MovementService.CanPerformGameplayAction(player) then
+        return nil
+    end
     local record = resolveActionItem(player, requestedCarryItemId)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -388,7 +442,8 @@ end
 
 function InventoryService.GrantSmoothie(player: Player, data: Types.SmoothieData): boolean
     if
-        not carried[player]
+        not MovementService.CanPerformGameplayAction(player)
+        or not carried[player]
         or not SmoothieItem.Valid(data)
         or InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
     then
@@ -400,6 +455,9 @@ end
 
 -- Separate loose smoothie path; replicated contents never enter this transaction.
 function InventoryService.CarryWorldSmoothie(player: Player, object: Instance): boolean
+    if not MovementService.CanPerformGameplayAction(player) then
+        return false
+    end
     if not WorldUtil.Near(player, object, Economy.InteractionDistance) then
         return false
     end
@@ -410,6 +468,9 @@ end
 
 -- The equipped Tool selects its server-owned reservation; attributes never authorize contents.
 function InventoryService.GetHeldSmoothie(player: Player, requested: Instance?): Types.SmoothieData?
+    if not MovementService.CanPerformGameplayAction(player) then
+        return nil
+    end
     local record = selectedItem(player)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
@@ -438,6 +499,9 @@ function InventoryService.ConsumeHeldSmoothie(player: Player): Types.SmoothieDat
 end
 
 function InventoryService.CarryWorldItem(player: Player, object: Instance): boolean
+    if not MovementService.CanPerformGameplayAction(player) then
+        return false
+    end
     local record = getLoosePickupRecord(player, object)
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -525,6 +589,9 @@ function InventoryService.RemoveUnit(player: Player, id: string): boolean
     return true
 end
 function InventoryService.ClaimWorldItem(player: Player, object: Instance): boolean
+    if not MovementService.CanPerformGameplayAction(player) then
+        return false
+    end
     local record = getLoosePickupRecord(player, object)
     if not record then
         return false
@@ -540,6 +607,9 @@ function InventoryService.ClaimWorldItem(player: Player, object: Instance): bool
 end
 -- Materialize ONE reserved unit. Caller cannot supply a spawn position or contents.
 function InventoryService.ReleaseUnit(player: Player, id: string): Instance?
+    if not MovementService.CanPerformGameplayAction(player) then
+        return nil
+    end
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     local now = os.clock()
@@ -608,6 +678,9 @@ local function getSlotPart(owner: Player, index: number): BasePart?
     return found
 end
 local function accessible(player: Player, owner: Player, index: number): boolean
+    if not MovementService.CanPerformGameplayAction(player) then
+        return false
+    end
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     return humanoid ~= nil
         and humanoid.Health > 0
@@ -722,6 +795,9 @@ end
 -- Direction follows the player across slots/items; failed transfers preserve it
 -- until the idle timeout after the last successful transfer.
 function InventoryService.InteractStash(player: Player, index: number, owner: Player?): boolean
+    if not MovementService.CanPerformGameplayAction(player) then
+        return false
+    end
     local now = os.clock()
     local part = if owner then getSlotPart(owner, index) else nil
     local intent: StashIntent? = stashIntents[player]

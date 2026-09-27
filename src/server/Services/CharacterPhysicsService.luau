@@ -50,7 +50,7 @@ end
 
 -- Called by bootstrap's existing CharacterAdded path; appearance loading must finish
 -- before reading its description, otherwise Roblox can overwrite the scales later.
-function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model)
+function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model, onReady: ((Model) -> ())?)
     if states[player] and states[player].Character == character then
         return
     end
@@ -176,6 +176,9 @@ function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model
                 return
             end
             scan() -- Description application can resize the root and replace body parts.
+            if onReady then
+                onReady(character)
+            end
             -- Read back after the yielding application and a simulation step, not
             -- from the requested description. Never reapply in response to this check.
             RunService.Heartbeat:Wait()

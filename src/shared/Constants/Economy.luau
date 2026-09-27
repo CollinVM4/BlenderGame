@@ -16,7 +16,7 @@ return {
     GradeMultiplier = { A = 1.5, B = 1, C = 0.7, D = 0.4 },
     GradeScore = { A = 4, B = 3, C = 2, D = 1 },
     MaxIngredients = 3,
-    RequiredProgress = 85,
+    RequiredProgress = 65,
     BlendProgressScale = 3, -- Progress per radian of physical blade rotation.
     InteractionDistance = 12,
     NormalStash = { Slots = 5, Protected = 2 },
@@ -28,6 +28,6 @@ return {
     SlapRange = 8,
     StunSeconds = 0.5,
     MarketRespawnSeconds = 12,
-    WorldItemLifetime = 120,
+    WorldItemLifetime = 240,
     RarityWeights = rarityWeights,
 }

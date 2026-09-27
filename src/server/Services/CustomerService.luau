@@ -36,6 +36,8 @@ local lastTemplates: { [string]: Model } = {}
 -- Runtime-only regular selections survive flow restarts.
 local recentTemplates: { [string]: { Model } } = {}
 local recentRequests: { [string]: { string } } = {}
+local recentRequestGroups: { [string]: { string } } = {}
+local recentRequestSimilarity: { [string]: { { string } } } = {}
 
 local function remember<T>(histories: { [string]: { T } }, player: Player, value: T, window: number)
     local history = histories[key(player)] or {}
@@ -224,6 +226,51 @@ local function eligibleRequests(player: Player): { CustomerRequests.Request }
     return eligible
 end
 
+-- Group choice is uniform, so large groups do not dominate the request queue.
+-- Missing metadata shares a legacy bucket; it never makes a request ineligible.
+local function variedRequestPool(player: Player, pool: { CustomerRequests.Request }): { CustomerRequests.Request }
+    local groups: { [string]: { CustomerRequests.Request } } = {}
+    local groupNames: { string } = {}
+    local freshGroups: { string } = {}
+    local history = recentRequestGroups[key(player)] or {}
+    for _, request in pool do
+        local group = request.RequestGroup or "Ungrouped"
+        if not groups[group] then
+            groups[group] = {}
+            table.insert(groupNames, group)
+            if not table.find(history, group) then
+                table.insert(freshGroups, group)
+            end
+        end
+        table.insert(groups[group], request)
+    end
+    local choices = if #freshGroups > 0 then freshGroups else groupNames
+    local group = choices[if #choices == 1 then 1 else math.random(1, #choices)]
+    local candidates = groups[group]
+    local recentKeys: { [string]: boolean } = {}
+    local similarityHistory: { { string } } = recentRequestSimilarity[key(player)] or {}
+    for _, keys in similarityHistory do
+        for _, concept in keys do
+            recentKeys[concept] = true
+        end
+    end
+    local fresh: { CustomerRequests.Request } = {}
+    for _, request in candidates do
+        local overlaps = false
+        local similarityKeys: { string } = request.SimilarityKeys or {}
+        for _, concept in similarityKeys do
+            if recentKeys[concept] then
+                overlaps = true
+                break
+            end
+        end
+        if not overlaps then
+            table.insert(fresh, request)
+        end
+    end
+    return if #fresh > 0 then fresh else candidates
+end
+
 local function assignRequest(player: Player, record: any): boolean
     local selectedRequest = record.FixedRequest
     local forced = selectedRequest ~= nil
@@ -252,17 +299,40 @@ local function assignRequest(player: Player, record: any): boolean
             if #fresh > 0 then
                 pool = fresh
             end
+            pool = variedRequestPool(player, pool)
         end
         selectedRequest = pool[math.random(1, #pool)]
     end
     local request = selectedRequest :: CustomerRequests.Request
     record.Request = request
     record.RequestId = request.Id
+    -- RefreshOrder can replace a gameplay request; revisiting an ID on this
+    -- customer keeps its original line. UI refreshes never draw dialogue again.
+    record.RequestTexts = record.RequestTexts or {}
+    if not record.RequestTexts[request.Id] then
+        local variants = request.DisplayTexts
+        record.RequestTexts[request.Id] = if variants and #variants > 0
+            then variants[math.random(1, #variants)]
+            else request.DisplayText
+    end
+    record.RequestText = record.RequestTexts[request.Id]
     record.Preference = request.RequiredTags[1] or "Surprise Me"
     record.Model:SetAttribute("Preference", record.Preference)
     record.Model:SetAttribute("RequestId", request.Id)
     if not forced and record.CustomerType == "Regular" then
         remember(recentRequests, player, request.Id, CustomerRequests.RegularRequestRecencyWindow)
+        remember(
+            recentRequestGroups,
+            player,
+            request.RequestGroup or "Ungrouped",
+            CustomerRequests.RegularRequestGroupRecencyWindow
+        )
+        remember(
+            recentRequestSimilarity,
+            player,
+            table.clone(request.SimilarityKeys or {}),
+            CustomerRequests.RegularRequestSimilarityRecencyWindow
+        )
     end
     diagnostic(
         string.format(
@@ -517,7 +587,7 @@ local function escapeRichText(message: string): string
     return escaped
 end
 
-function CustomerService.FormatRequestText(request: CustomerRequests.Request): string
+function CustomerService.FormatRequestText(request: CustomerRequests.Request, displayText: string?): string
     local names: { { Name: string, Color: Color3 } } = {}
     local seen: { [string]: boolean } = {}
     local requiredIngredients: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
@@ -565,7 +635,7 @@ function CustomerService.FormatRequestText(request: CustomerRequests.Request): s
     table.sort(names, function(a, b)
         return #a.Name > #b.Name
     end)
-    local message = request.DisplayText
+    local message = displayText or request.DisplayText
     local lower = string.lower(message)
     local output: { string } = {}
     local index = 1
@@ -1179,9 +1249,9 @@ function CustomerService.TakeOrder(player: Player, model: Model, context: any): 
             model:SetAttribute("OrderRevealed", true)
             typewriterText(
                 record.Text,
-                record.Request.DisplayText,
+                record.RequestText,
                 record.Audio.dialogueSound,
-                CustomerService.FormatRequestText(record.Request)
+                CustomerService.FormatRequestText(record.Request, record.RequestText)
             )
             deps.TycoonService.EndTransaction(token)
             return true
@@ -1382,9 +1452,9 @@ function CustomerService:RefreshOrder(model: Model)
                 if assignRequest(player, record) and record.OrderTaken then
                     typewriterText(
                         record.Text,
-                        record.Request.DisplayText,
+                        record.RequestText,
                         record.Audio.dialogueSound,
-                        CustomerService.FormatRequestText(record.Request)
+                        CustomerService.FormatRequestText(record.Request, record.RequestText)
                     )
                 end
                 return
@@ -1424,6 +1494,7 @@ function CustomerService.CleanupSession(sessionId: string)
     cleanupFlow(sessionId)
     lastSpecialSpawn[sessionId], lastTemplates[sessionId] = nil, nil
     recentTemplates[sessionId], recentRequests[sessionId] = nil, nil
+    recentRequestGroups[sessionId], recentRequestSimilarity[sessionId] = nil, nil
 end
 -- Explicit server flow reset, not a departing-player cleanup path.
 function CustomerService.DeactivateForPlayer(player: Player)

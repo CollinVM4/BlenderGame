@@ -9,8 +9,10 @@ Display.Tracks = {
     { Id = "MovementSpeed", Name = "MOVEMENT SPEED", Attribute = "BaseWalkSpeed" },
     { Id = "SprintStamina", Name = "SPRINT STAMINA", Attribute = "StaminaMax" },
     { Id = "Jump", Name = "JUMP", Attribute = "JumpLevel" },
+    { Id = "Bat", Name = "BAT", Attribute = "BatLevel" },
 }
 local tiers: { [string]: { { Cost: number, Value: number } } } = {
+    Bat = Upgrades.Bat,
     CarryCapacity = Upgrades.CarryCapacity,
     MovementSpeed = Upgrades.MovementSpeed,
     SprintStamina = Upgrades.SprintStamina,

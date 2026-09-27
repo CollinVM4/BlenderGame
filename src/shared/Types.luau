@@ -24,6 +24,7 @@ export type PersonalPlayerData = {
 export type PlayerData = {
     Cash: number,
     Upgrades: {
+        Bat: number,
         Hand: number,
         CarryCapacity: number,
         StackSize: number,

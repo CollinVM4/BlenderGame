@@ -1,7 +1,9 @@
 --!strict
 -- Narrow request adapter for future inventory UI. No client-supplied state, positions, or awards.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local GameplayService = {}
+local MovementService = require(script.Parent.MovementService)
 local plotInteractions = setmetatable({} :: { [ProximityPrompt]: (Player, any) -> () }, { __mode = "k" })
 function GameplayService.RegisterPlotInteraction(prompt: ProximityPrompt, callback: (Player, any) -> ())
     plotInteractions[prompt] = callback
@@ -17,6 +19,9 @@ function GameplayService.HandlePlotRequest(
     value: any,
     context: any
 ): boolean
+    if not MovementService.CanPerformGameplayAction(player) then
+        return false
+    end
     if typeof(plot) ~= "Instance" or not plot:IsDescendantOf(workspace) then
         return false
     end
@@ -56,8 +61,33 @@ function GameplayService.Init(services: any)
     remote.Name = "GameplayRequest"
     remote.Parent = ReplicatedStorage.Shared.Events
     remote.OnServerEvent:Connect(function(player, action, id, slot, context)
+        -- Observe receipt before *any* adapter gate. Do not consume the one-shot
+        -- CombatService flag here; it must survive through rejection or dispatch.
+        local tracing = RunService:IsStudio() and action == "SwingBat"
+        local function trace(message: string)
+            if tracing then
+                print("[BatServer] " .. message)
+            end
+        end
+        if tracing then
+            trace(
+                "GameplayRequest received: SwingBat from "
+                    .. player.Name
+                    .. " debugArmed="
+                    .. tostring(player:GetAttribute("BatDebugNextSwing"))
+            )
+        end
         local now = os.clock()
         if now < (nextRequest[player] or 0) then
+            trace(
+                string.format(
+                    "request adapter rejected: gameplay throttle (%.3fs remaining)",
+                    (nextRequest[player] or 0) - now
+                )
+            )
+            if action == "SwingBat" then
+                services.CombatService.TraceRejectedSwing(player, "GameplayRequest throttle")
+            end
             return
         end
         nextRequest[player] = now + 0.15
@@ -73,6 +103,20 @@ function GameplayService.Init(services: any)
         then
             local success = GameplayService.HandlePlotRequest(services, player, action, id, slot, context)
             remote:FireClient(player, "PlotRequestResult", { success = success, action = action })
+            return
+        end
+        if not MovementService.CanPerformGameplayAction(player) then
+            trace("request adapter rejected: MovementService.IsStunned(attacker)")
+            if action == "SwingBat" then
+                services.CombatService.TraceRejectedSwing(player, "GameplayRequest attacker stunned")
+            end
+            return
+        end
+        if action == "SwingBat" then
+            trace("request adapter accepted: SwingBat (no plot/context gate in adapter)")
+            trace("calling CombatService SwingBat")
+            local accepted = services.CombatService.SwingBat(player)
+            trace("CombatService SwingBat returned: " .. tostring(accepted))
             return
         end
         if action == "PlotInteraction" then
@@ -123,6 +167,21 @@ function GameplayService.Init(services: any)
             })
         end
     end)
+    if RunService:IsStudio() then
+        remote:SetAttribute("BatRequestTraceVersion", "input-v1")
+        local named = 0
+        for _, event in ReplicatedStorage.Shared.Events:GetChildren() do
+            if event.Name == "GameplayRequest" then
+                named += 1
+            end
+        end
+        print(
+            "[BatServer] GameplayRequest adapter ready trace=input-v1 remote="
+                .. remote:GetFullName()
+                .. " namedRemotes="
+                .. tostring(named)
+        )
+    end
 end
 function GameplayService.RemovePlayer(player: Player)
     nextRequest[player] = nil

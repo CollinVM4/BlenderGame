@@ -18,6 +18,8 @@ local function signal()
 end
 local attributes = {
     playerCash = 425,
+    BatLevel = 0,
+    BatPurchasedLevel = 0,
     CarryCapacity = 3,
     PlotSessionId = "test-session",
     PlotMembershipRevision = 1,
@@ -83,7 +85,7 @@ local creates = 0
 modules.UpgradesGui = {
     Create = function()
         creates += 1
-        for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity" } do
+        for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity", "Bat" } do
             view.Rows[id] = { Level = {}, Stat = {}, Purchase = { Activated = signal() } }
         end
         return view
@@ -171,7 +173,7 @@ local function result(id, success, reason)
         MembershipRevision = attributes.PlotMembershipRevision,
     })
 end
-for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity" } do
+for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity", "Bat" } do
     local before = #sent
     click(id)
     check(
@@ -248,3 +250,14 @@ remote.OnClientEvent:Fire("PurchaseUpgradeResult", {
 check(view.Rows.MovementSpeed.Purchase.Text ~= "MAX", "stale response cannot lock new membership UI")
 set("JumpLevel", 0)
 check(view.Rows.Jump.Stat.Text == "116", "personal debug projection does not change purchased upgrade display")
+
+set("BatLevel", nil)
+set("BatPurchasedLevel", 2)
+check(view.Rows.Bat.Purchase.Text == "LOADING\u{2026}", "wait for separately replicated Bat value")
+set("BatLevel", 2)
+check(
+    view.Rows.Bat.Level.Text == "Level 2" and view.Rows.Bat.Purchase.Text == "$9000 UPGRADE",
+    "late BatLevel replication refreshes row"
+)
+
+print(string.format("PASS: %d total upgrade UI assertions including replication order.", count))

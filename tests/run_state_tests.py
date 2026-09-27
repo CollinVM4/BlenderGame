@@ -37,6 +37,8 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "upgrade-sync": ("integration", ("fixtures/smoothie.luau", "upgrade_sync.spec.luau")),
+    "combat": ("integration", ("fixtures/smoothie.luau", "combat.spec.luau")),
     "plot-player-flow": ("integration", ("fixtures/smoothie.luau", "plot_player_flow.spec.luau")),
     "plot-session-races": ("integration", ("fixtures/smoothie.luau", "plot_session_races.spec.luau")),
     "plot-session-progression": ("integration", ("fixtures/smoothie.luau", "plot_session_progression.spec.luau")),
@@ -60,10 +62,13 @@ SUITES = {
     "sprint": ("state", ("sprint.spec.luau",)),
     "legacy-state": ("integration", ("server_state.spec.luau",)),
     "legacy-movement": ("integration", ("legacy_movement.spec.luau",)),
-    "requests": ("integration", ("customer_requests.spec.luau",)),
+    "request-selection": ("integration", ("fixtures/customer_requests.luau", "customer_request_selection.spec.luau")),
+    "requests": ("integration", ("fixtures/customer_requests.luau", "customer_requests.spec.luau")),
     "world": ("integration", ("ingredient_world.spec.luau",)),
     "smoothie-roundtrip": ("integration", ("fixtures/smoothie.luau", "smoothie_roundtrip.spec.luau")),
     "smoothie-survivors": ("integration", ("fixtures/smoothie.luau", "smoothie_survivors.spec.luau")),
+    "bat-controller": ("presentation", ("bat_controller.spec.luau",)),
+    "ragdoll": ("presentation", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "ragdoll.spec.luau")),
     "vfx": ("presentation", ("vfx_runner.spec.luau",)),
     "carry-presentation": ("presentation", ("fixtures/carry.luau", "carry_presentation.spec.luau")),
     "smoothie-geometry": ("presentation", ("fixtures/smoothie.luau", "smoothie_geometry.spec.luau")),
@@ -88,8 +93,8 @@ focused = {
     "customer_result_only": ("customer-result",),
     "customer_queue_only": ("customer-queue",),
     "customer_only": ("legacy-state",),
-    "request_validation_only": ("customer-validation", "customer-compatibility", "requests"),
-    "requests_only": ("requests", "customer-placement", "customer-walk"),
+    "request_validation_only": ("customer-validation", "customer-compatibility", "request-selection", "requests"),
+    "requests_only": ("request-selection", "requests", "customer-placement", "customer-walk"),
     "customer_order_text_only": ("customer-order-text",),
     "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
     "customer_walk_only": ("customer-walk", "customer-routing"),
@@ -107,6 +112,8 @@ sources = {}
 for directory in ("src/shared/Constants", "src/server/Services"):
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
+sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
+sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
 sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")
 sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")

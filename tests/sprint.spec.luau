@@ -107,11 +107,13 @@ movement.RefreshPlayer(runner)
 maximum = movement.GetMaxStamina(runner)
 check(runner:GetAttribute("StaminaCurrent") == maximum - config.STAMINA_DRAIN_RATE, "upgrade adds only capacity delta")
 check(humanoid.WalkSpeed == movement.GetSprintWalkSpeed(runner), "upgrade applies during sprint")
-runner:SetAttribute("StunnedUntil", now + 2)
+movement.SetStunned(runner, true)
 tick(0)
 check(humanoid.WalkSpeed == 0, "stun retains speed precedence")
+movement.SetStunned(runner, false)
 tick(2)
-check(humanoid.WalkSpeed == movement.GetSprintWalkSpeed(runner), "stun expiry restores resolved speed")
+check(humanoid.WalkSpeed == movement.GetBaseWalkSpeed(runner), "unstun restores resolved base speed")
+remote.OnServerEvent:Fire(runner, true)
 tick(100)
 check(
     not sprint.GetSnapshot(runner).IsSprinting and runner:GetAttribute("StaminaCurrent") == 0,
@@ -138,6 +140,11 @@ check(
 local input = { InputBegan = countedSignal(), InputEnded = countedSignal(), WindowFocusReleased = countedSignal() }
 services.UserInputService = input
 env.Enum.KeyCode = { LeftShift = "LeftShift", RightShift = "RightShift", A = "A" }
+services.Players.LocalPlayer = runner
+local stunChanged = signal()
+function runner:GetAttributeChangedSignal()
+    return stunChanged
+end
 local controller = loadModule("SprintController")
 controller.Init()
 controller.Init()
@@ -179,8 +186,24 @@ check(
     "focus loss stops once and clears held keys"
 )
 check(humanoid.WalkSpeed == movement.GetBaseWalkSpeed(runner), "stop restores upgraded base speed")
+movement.SetStunned(runner, true)
+stunChanged:Fire()
+local requestsBeforeStunned = #requests
+services.UserInputService.InputBegan:Fire({ KeyCode = env.Enum.KeyCode.LeftShift }, false)
+check(#requests == requestsBeforeStunned and humanoid.WalkSpeed == 0, "local sprint input cannot bypass stun")
+movement.SetStunned(runner, false)
+stunChanged:Fire()
 check(serverSends == 0, "server never sends SprintRequest during any lifecycle")
 sprint.RemovePlayer(runner)
+movement.RemovePlayer(runner)
+local beforeCleanupTick = runner:GetAttribute("StaminaCurrent")
+movement.Changed:Fire(runner)
+remote.OnServerEvent:Fire(runner, true)
+tick(1)
+check(
+    runner:GetAttribute("StaminaCurrent") == beforeCleanupTick,
+    "late notifications and heartbeat cannot recreate removed movement state"
+)
 services.Players.GetPlayers = function()
     return {}
 end

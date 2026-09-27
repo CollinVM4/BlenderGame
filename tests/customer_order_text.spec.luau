@@ -53,8 +53,17 @@ end
 local owner = instance("Player")
 owner.Name, owner.UserId, owner.Parent = "OrderTextOwner", 52, services.Players
 owner.Near = true
-owner:SetAttribute("JumpLevel", 3)
-local plot = instance("Model")
+owner.GetAttributeChangedSignal = function()
+    return signal()
+end
+assignTestSession(owner)
+local data = loadModule("PlayerDataService")
+bindTestData(data)
+data.AddPlayer(owner)
+sessionTestAuthority.SetCash(owner, 200000)
+for _ = 1, 3 do
+    setup(buyTestUpgrade(data, owner, "Jump"), "unlock dialogue recipes")
+end
 local markers = {}
 for _, name in { "CustomerSpawn", "CustomerCounter", "CustomerWait1", "CustomerWait2", "CustomerExit" } do
     markers[name] = instance("Part")
@@ -77,17 +86,16 @@ local function visibleLabel(model)
     return bubble:FindFirstChildOfClass("TextLabel")
 end
 customer.Init({
-    TycoonService = {
-        GetPlot = function()
-            return plot
+    GameplayService = {
+        RegisterPlotInteraction = function(prompt, callback)
+            prompt.Triggered:Connect(callback)
         end,
-        GetOwner = function()
-            return owner
-        end,
+    },
+    TycoonService = setmetatable({
         GetReference = function(_, name)
             return markers[name]
         end,
-    },
+    }, { __index = sessionTestAuthority }),
 }, function() end, function()
     return true
 end)
@@ -118,14 +126,14 @@ local cases = {
         "I need an " .. colored("Apple", "APPLE") .. " and something " .. tagColored("Sour", "SOUR") .. "!",
     },
     { "Yellow", "I'll have you know my favorite color is " .. tagColored("Yellow", "YELLOW") .. "!" },
-    { "Red", "can you make a " .. tagColored("Red", "RED") .. " smoothie!" },
+    { "Red", "can you make me a " .. tagColored("Red", "RED") .. " smoothie!" },
     { "Cold", "make it ice " .. tagColored("Cold", "COLD") .. "!" },
     {
         "SweetCold",
         "gimmie something " .. tagColored("Sweet", "SWEET") .. " and ICE " .. tagColored("Cold", "COLD") .. "!",
     },
     { "RedNoFruit", "something " .. tagColored("Red", "RED") .. "... but NO " .. tagColored("Fruit", "FRUIT") .. "!" },
-    { "FruitNoMilk", "I want " .. tagColored("Fruit", "FRUIT") .. " but NO " .. tagColored("Milk", "MILK") .. "!" },
+    { "MilkNoFruit", "I want " .. tagColored("Milk", "MILK") .. " but NO " .. tagColored("Fruit", "FRUIT") .. "!" },
     {
         "SweetColdNoSpicy",
         tagColored("Sweet", "SWEET") .. " and " .. tagColored("Cold", "COLD") .. "... absolutely NO " .. tagColored(
@@ -247,6 +255,49 @@ check(
 )
 model:Destroy()
 finish()
+
+-- Dialogue variants resolve once per customer/request, including explicit order refreshes.
+local variant = table.clone(recipes.AppleBananaIce)
+variant.DisplayTexts = { "APPLE, BANANA, ICE please!", "ICE with APPLE and BANANA!" }
+local originalMath = env.math
+local variantDraw = 0
+env.math = table.clone(math)
+env.math.random = function(low, high)
+    if low == 1 and high == 2 then
+        variantDraw += 1
+        return if variantDraw % 2 == 1 then 1 else 2
+    end
+    return originalMath.random(low, high)
+end
+selectRequest(variant)
+local variantModel = customer.SpawnForPlayer(owner)
+local variantLabel = visibleLabel(variantModel)
+finish()
+local chosen = variantLabel.Text
+local allowed = {}
+for _, text in variant.DisplayTexts do
+    allowed[customer.FormatRequestText(variant, text)] = true
+end
+check(allowed[chosen], "variant renders one allowed line with ingredient highlighting")
+for _ = 1, 4 do
+    customer.RefreshQueue(owner)
+    customer:RefreshOrder(variantModel)
+    finish()
+    check(variantLabel.Text == chosen, "chosen dialogue remains stable through queue and order refresh")
+    check(variantModel:GetAttribute("RequestId") == variant.Id, "alternate dialogue keeps gameplay identity")
+end
+variantModel:Destroy()
+finish()
+variant.DisplayTexts = {}
+selectRequest(variant)
+variantModel = customer.SpawnForPlayer(owner)
+variantLabel = visibleLabel(variantModel)
+finish()
+check(variantLabel.Text == customer.FormatRequestText(variant), "empty variants fall back to legacy DisplayText")
+variantModel:Destroy()
+finish()
+
+env.math = originalMath
 
 -- Tag-only special orders intentionally have no ingredient-name markup.
 local tagOnly = table.clone(recipes.Nathan)

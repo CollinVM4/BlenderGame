@@ -19,6 +19,12 @@ return {
         { Cost = 5000, Value = 100 },
         { Cost = 8000, Value = 130 },
     },
+    Bat = {
+        { Cost = 0, Value = 0 },
+        { Cost = 1500, Value = 1 },
+        { Cost = 4500, Value = 2 },
+        { Cost = 9000, Value = 3 },
+    },
     Hand = {
         { Cost = 0, Damage = 10, Knockback = 22, Size = 1 },
         { Cost = 3000, Damage = 15, Knockback = 30, Size = 1.3 },

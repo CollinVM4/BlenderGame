@@ -22,3 +22,5 @@ require(script.Controllers.CarryInputController).Init()
 require(script.Controllers.SessionInteractionController).Init()
 
 require(script.Controllers.PlotIdentityController).Init()
+
+require(script.Controllers.BatController).Init()

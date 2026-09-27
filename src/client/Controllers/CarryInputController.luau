@@ -14,6 +14,9 @@ function Controller.Init()
     local player = Players.LocalPlayer
     local remote = ReplicatedStorage.Shared.Events:WaitForChild("GameplayRequest") :: RemoteEvent
     local function throw(_action: string, state: Enum.UserInputState): Enum.ContextActionResult
+        if player:GetAttribute("Stunned") == true then
+            return Enum.ContextActionResult.Sink
+        end
         if (player:GetAttribute("CarryCount") or 0) <= 0 or UserInputService:GetFocusedTextBox() then
             return Enum.ContextActionResult.Pass
         end

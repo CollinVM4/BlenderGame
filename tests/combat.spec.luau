@@ -1,0 +1,573 @@
+-- Real combat, inventory, movement, shared purchases and request adapter; engine query/timers doubled.
+env.OverlapParams = {
+    new = function()
+        return {}
+    end,
+}
+local combat = loadModule("CombatService")
+local movement = loadModule("MovementService")
+local tycoon = dependency.TycoonService
+local config = loadModule("BatConfig")
+dependency.MovementService = movement
+dependency.CombatService = combat
+movement.Init(dependency)
+combat.Init(dependency)
+workspaceFake.Gravity = 196.2
+local timers = {}
+env.task.delay = function(seconds, callback)
+    table.insert(timers, { At = now + seconds, Callback = callback })
+end
+local function advance(seconds)
+    now += seconds
+    local pending = timers
+    timers = {}
+    for _, timer in pending do
+        if timer.At <= now then
+            timer.Callback()
+        else
+            table.insert(timers, timer)
+        end
+    end
+end
+local template = instance("Tool")
+template.Name, template.Parent = "Bat", storage
+template.Grip = frame(0.1, -0.3, 0.2)
+local handle = part("Handle", template)
+handle.Size = vec(1, 2, 1)
+local mesh = part("BatMesh", template)
+mesh.Size = vec(1, 4, 1)
+local hitbox = part("Hitbox", template)
+hitbox.Size = vec(0.867, 0.597, 4.703)
+hitbox.CFrame = frame(0.25, 0.1, -2.35)
+local roster = {}
+services.Players.GetPlayers = function()
+    return roster
+end
+services.Players.GetPlayerFromCharacter = function(_, character)
+    for _, p in roster do
+        if p.Character == character then
+            return p
+        end
+    end
+    return nil
+end
+local function fighter(z)
+    local p, humanoid = player()
+    p.Name = "Fighter" .. tostring(#roster + 1)
+    p.Character.Name = p.Name
+    p.Parent, p.Neutral, p.ChildAdded = services.Players, true, signal()
+    humanoid.UseJumpPower = true
+    local root = p.Character:FindFirstChild("HumanoidRootPart")
+    root.Position, root.CFrame = vec(0, 0, z or 0), frame(0, 0, z or 0)
+    p.Character.Parent = workspaceFake
+    table.insert(roster, p)
+    movement.ApplyCharacter(p, p.Character)
+    combat.ApplyCharacter(p, p.Character)
+    flush()
+    return p, humanoid
+end
+local function bats(p)
+    local result = {}
+    for _, container in { p.Character, p:FindFirstChildOfClass("Backpack") } do
+        for _, object in container:GetChildren() do
+            if object:IsA("Tool") and object.Name == "Bat" then
+                table.insert(result, object)
+            end
+        end
+    end
+    return result
+end
+tycoon.Init({
+    MemberChanged = function(p)
+        movement.RefreshPlayer(p)
+        combat.RefreshPlayer(p)
+    end,
+    MemberRemoved = function(p)
+        combat.RefreshPlayer(p)
+    end,
+})
+local attacker, attackerHumanoid = fighter(0)
+local victim, victimHumanoid = fighter(-3)
+local teammate = fighter(-2)
+tycoon.RemovePlayer(teammate)
+setup(tycoon.JoinSession(teammate, attacker, tycoon.GetRequestContext(attacker)), "join teammate")
+check(#bats(attacker) == 0, "level zero grants no bat")
+attacker:SetAttribute("BatLevel", 3)
+combat.RefreshPlayer(attacker)
+check(#bats(attacker) == 0 and not combat.SwingBat(attacker), "replicated level cannot spoof ownership")
+tycoon.SetCash(attacker, 20000)
+setup(tycoon.PurchaseUpgrade(attacker, "Bat", 2, tycoon.GetRequestContext(attacker)), "purchase bat one")
+check(#bats(attacker) == 1 and #bats(teammate) == 1, "shared unlock grants exactly one bat per member immediately")
+local bat = bats(attacker)[1]
+check(bat.Grip == template.Grip, "grant preserves authored Tool grip")
+combat.RefreshPlayer(attacker)
+check(#bats(attacker) == 1 and bats(attacker)[1] == bat, "refresh is idempotent")
+local querySize, queryFrame, queryParams, queryCount = nil, nil, nil, 0
+local overlaps = {}
+workspaceFake.GetPartBoundsInBox = function(_, at, size, params)
+    querySize, queryCount = size, queryCount + 1
+    queryFrame, queryParams = at, params
+    return overlaps
+end
+local function equip(p)
+    p.Character:FindFirstChildOfClass("Humanoid"):EquipTool(bats(p)[1])
+end
+check(not combat.SwingBat(attacker), "unequipped bat rejects request")
+equip(attacker)
+overlaps =
+    { attacker.Character:FindFirstChild("HumanoidRootPart"), teammate.Character:FindFirstChild("HumanoidRootPart") }
+check(combat.SwingBat(attacker), "owned equipped bat starts swing")
+check(not combat.SwingBat(attacker), "swing cooldown rejects repeated request")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(attacker) and not movement.IsStunned(teammate), "self and shared teammate are rejected")
+local levelOneSize = querySize
+advance(config.SwingCooldown)
+carry(victim, "Banana")
+carry(victim, "Strawberry")
+grant(victim, "bat-preserved-smoothie")
+local health = victimHumanoid.Health
+overlaps = { victim.Character:FindFirstChild("HumanoidRootPart"), victim.Character:FindFirstChild("Head") }
+local actualSpawn = ingredients.Spawn
+local dropped = {}
+ingredients.Spawn = function(...)
+    local object = actualSpawn(...)
+    if object then
+        table.insert(dropped, object)
+    end
+    return object
+end
+local traceLines = {}
+local previousPrint = env.print
+env.print = function(message)
+    table.insert(traceLines, message)
+end
+studio = true
+attacker:SetAttribute("BatDebugNextSwing", true)
+setup(combat.SwingBat(attacker), "enemy swing")
+-- The impact pose can differ from the handle/template reconstruction (authored joints).
+local liveHitbox = bat:FindFirstChild("Hitbox")
+liveHitbox.CFrame = frame(0, 0, -1)
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+studio = false
+env.print = previousPrint
+check(attacker:GetAttribute("BatDebugNextSwing") == nil, "one-swing diagnostic automatically disarms")
+check(
+    string.find(table.concat(traceLines, "\n"), "SetStunned result=true", 1, true) ~= nil,
+    "one-swing trace observes final authoritative stun"
+)
+check(queryFrame == liveHitbox.CFrame, "query samples actual equipped Hitbox at impact")
+check(
+    queryParams.FilterDescendantsInstances[1] == attacker.Character
+        and #queryParams.FilterDescendantsInstances == 1
+        and queryParams.RespectCanCollide == false
+        and queryParams.MaxParts == 0,
+    "query excludes only attacker descendants and includes noncollidable queryable bodies"
+)
+check(movement.IsStunned(victim) and victimHumanoid.Health == health, "enemy is stunned without damage")
+check(victim:GetAttribute("StunnedUntil") == now + 1.5, "level one controls stun duration")
+check(victimHumanoid.WalkSpeed == 0 and victimHumanoid.JumpPower == 0, "stun disables movement and jumping")
+check(#dropped == 2 and inventory.GetCarryCount(victim) == 1, "successful hit drops every ingredient once")
+for _, object in dropped do
+    local velocity = cache.WorldUtil.Part(object).AssemblyLinearVelocity
+    local horizontal = vec(velocity.X, 0, velocity.Z).Magnitude
+    check(
+        horizontal >= config.Scatter.HorizontalMin
+            and horizontal <= config.Scatter.HorizontalMax
+            and velocity.Y >= config.Scatter.UpwardMin
+            and velocity.Y <= config.Scatter.UpwardMax
+            and velocity.Z < 0,
+        "Bat ingredients scatter upward and away within configured speed bounds"
+    )
+end
+check(
+    (cache.WorldUtil.Part(dropped[1]).Position - cache.WorldUtil.Part(dropped[2]).Position).Magnitude > 0.5,
+    "Bat burst starts at separated world positions"
+)
+check(not victimHumanoid.PlatformStand, "Bat stun does not activate physical ragdoll in the isolated test phase")
+check(victim:GetAttribute("HasSmoothie") == true, "stun preserves smoothie state")
+check(inventory.DropCarriedIngredients(victim, "repeat") == 0, "repeated forced drop cannot duplicate ingredients")
+local droppedParent = dropped[1].Parent
+local carryBefore = inventory.GetCarryCount(victim)
+check(not inventory.CarryWorldItem(victim, dropped[1]), "stunned victim cannot pick up")
+check(not inventory.ClaimWorldItem(victim, dropped[1]), "direct ownership grant also rejects stunned pickup")
+check(
+    dropped[1].Parent == droppedParent
+        and ingredients.GetRecord(dropped[1]) ~= nil
+        and inventory.GetCarryCount(victim) == carryBefore,
+    "rejected pickup preserves world identity and carry inventory"
+)
+check(
+    not movement.CanPerformGameplayAction(victim) and movement.CanPerformGameplayAction(attacker),
+    "authoritative gate isolates the stunned player"
+)
+check(not blend.Dispense(victim), "stunned victim cannot dispense")
+check(
+    inventory.ThrowHeld(victim) == nil and not inventory.InteractStash(victim, 3),
+    "stunned victim cannot throw or stash"
+)
+check(not blend.AddProgress(victim, references[victim].TurbineWheel, 1), "stunned victim cannot operate blender")
+check(inventory.GetHeldSmoothie(victim) == nil, "stunned victim cannot serve smoothie")
+check(inventory.CarryWorldItem(attacker, dropped[1]), "attacker can pick up a dropped ingredient")
+check(not inventory.CarryWorldItem(attacker, dropped[1]), "world drop can only be claimed once")
+check(
+    inventory.Deposit(attacker, "Strawberry", 3) or inventory.Deposit(attacker, "Banana", 3),
+    "stolen ingredient can be stashed"
+)
+ingredients.Spawn = actualSpawn
+advance(0.65)
+check(
+    movement.IsStunned(victim) and victimHumanoid.WalkSpeed == 0,
+    "authoritative stun remains active throughout its duration"
+)
+advance(1.5 - 0.65)
+check(
+    not movement.IsStunned(victim) and victimHumanoid.JumpPower == movement.GetJumpPower(victim),
+    "expiry restores upgraded jump state"
+)
+equip(attacker)
+setup(combat.SwingBat(attacker), "immune swing")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(victim), "post-stun immunity rejects chain stun")
+advance(config.ImmunitySeconds)
+-- Studio regression: authored contact can occur beyond gameplay Reach at level one.
+local firstSample = config.ImpactDelay - config.ImpactWindow / 2
+local sampleStep = config.ImpactWindow / 2
+local windowRoot = victim.Character:FindFirstChild("HumanoidRootPart")
+local secondVictim = fighter(-4)
+local secondRoot = secondVictim.Character:FindFirstChild("HumanoidRootPart")
+overlaps = {}
+setup(combat.SwingBat(attacker), "contact enters window on second sample")
+advance(firstSample)
+check(not movement.IsStunned(victim), "empty first sample does not hit")
+liveHitbox.CFrame = frame(0, 0, -2)
+overlaps = { windowRoot }
+advance(sampleStep + 0.000001)
+check(
+    movement.IsStunned(victim) and queryFrame == liveHitbox.CFrame,
+    "second sample uses live pose and hits new contact"
+)
+local queriesAfterHit = queryCount
+overlaps = { secondRoot }
+advance(sampleStep)
+check(
+    not movement.IsStunned(secondVictim) and queryCount == queriesAfterHit,
+    "second-sample hit stops remaining queries and victims"
+)
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+overlaps = { windowRoot }
+setup(combat.SwingBat(attacker), "first sample contact")
+advance(firstSample + 0.000001)
+check(movement.IsStunned(victim), "first sample can select a target")
+local stunDeadline = victim:GetAttribute("StunnedUntil")
+queriesAfterHit = queryCount
+overlaps = { secondRoot }
+advance(config.ImpactWindow)
+check(
+    not movement.IsStunned(secondVictim)
+        and victim:GetAttribute("StunnedUntil") == stunDeadline
+        and queryCount == queriesAfterHit,
+    "first sample hit cannot hit again or select a second victim"
+)
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+overlaps = {}
+local queriesBeforeMiss = queryCount
+setup(combat.SwingBat(attacker), "entire window misses")
+advance(firstSample + 0.000001)
+advance(sampleStep)
+advance(sampleStep)
+check(queryCount == queriesBeforeMiss + 3 and not movement.IsStunned(victim), "three empty samples remain a miss")
+advance(config.SwingCooldown)
+for _, cancellation in { "unequip", "death", "membership" } do
+    overlaps = {}
+    setup(combat.SwingBat(attacker), "window cancellation: " .. cancellation)
+    advance(firstSample + 0.000001)
+    if cancellation == "unequip" then
+        bat.Parent = attacker:FindFirstChildOfClass("Backpack")
+        bat.Unequipped:Fire()
+        equip(attacker) -- re-equipping must not revive the old swing
+    elseif cancellation == "death" then
+        attackerHumanoid.Health = 0
+        attackerHumanoid.Died:Fire()
+    else
+        tycoon.RemovePlayer(teammate)
+    end
+    overlaps = { windowRoot }
+    advance(config.ImpactWindow)
+    check(not movement.IsStunned(victim), "remaining samples cancelled by " .. cancellation)
+    if cancellation == "death" then
+        attackerHumanoid.Health = 100
+        combat.ApplyCharacter(attacker, attacker.Character)
+        flush()
+        bat = bats(attacker)[1]
+        liveHitbox = bat:FindFirstChild("Hitbox")
+        equip(attacker)
+    elseif cancellation == "membership" then
+        setup(tycoon.JoinSession(teammate, attacker, tycoon.GetRequestContext(attacker)), "restore teammate")
+    end
+    advance(config.SwingCooldown)
+end
+local contactRoot = victim.Character:FindFirstChild("HumanoidRootPart")
+contactRoot.Position = vec(0, 0, -5.807)
+overlaps = { contactRoot }
+setup(combat.SwingBat(attacker), "level one authored contact at 5.807 studs")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(movement.IsStunned(victim), "level one overlap at 5.807 stuns across separate plot sessions")
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+contactRoot.Position = vec(0, 0, -2)
+overlaps = {}
+setup(combat.SwingBat(attacker), "close target outside authored volume")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(victim), "close root distance never substitutes for Hitbox overlap")
+advance(config.SwingCooldown)
+overlaps = { contactRoot }
+local validPose = liveHitbox.CFrame
+liveHitbox.CFrame = frame(0, 0, -100)
+setup(combat.SwingBat(attacker), "spoofed distant observed Tool pose")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(victim), "excessively distant Hitbox pose rejects even a reported nearby overlap")
+liveHitbox.CFrame = validPose
+advance(config.SwingCooldown)
+-- Each kind of overlapping descendant resolves through nested Models to the real owner.
+for _, name in { "HumanoidRootPart", "Torso", "Left Arm", "Accessory" } do
+    local contact
+    if name == "Accessory" then
+        local accessory = instance("Accessory")
+        accessory.Parent = victim.Character
+        local nested = instance("Model")
+        nested.Parent = accessory
+        contact = part("Handle", nested)
+    else
+        contact = victim.Character:FindFirstChild(name) or part(name, victim.Character)
+    end
+    overlaps = { contact }
+    victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -1)
+    setup(combat.SwingBat(attacker), "point blank descendant " .. name)
+    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    check(movement.IsStunned(victim), "point blank overlap resolves owner: " .. name)
+    advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+end
+victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -3)
+for level = 2, 3 do
+    setup(tycoon.PurchaseUpgrade(attacker, "Bat", level + 1, tycoon.GetRequestContext(attacker)), "upgrade bat")
+    check(#bats(attacker) == 1 and bats(attacker)[1] == bat, "upgrade keeps one existing bat")
+    check(
+        math.abs(bat:FindFirstChild("Handle").Size.Y - 2 * config.Levels[level].Scale) < 0.0001,
+        "visible size follows level"
+    )
+    equip(attacker)
+    victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -7.9 * config.Levels[level].Scale)
+    setup(combat.SwingBat(attacker), "upgraded swing")
+    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    check(victim:GetAttribute("StunnedUntil") == now + config.Levels[level].StunDuration, "upgraded stun duration")
+    check(
+        querySize.X > levelOneSize.X and math.abs(querySize.Z - hitbox.Size.Z * config.Levels[level].Scale) < 0.0001,
+        "upgraded query grows modestly"
+    )
+    advance(config.Levels[level].StunDuration)
+    advance(config.ImmunitySeconds)
+end
+victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -3)
+check(handle.Size.Y == 2 and hitbox.Size.Z == 4.703, "stored template is unchanged")
+check(bat.Grip == template.Grip, "upgrades preserve authored Tool grip")
+-- A client-provided target is ignored by the real adapter.
+local remoteService = loadModule("GameplayService")
+local requestRemote
+local originalNew = env.Instance.new
+env.Instance.new = function(class)
+    local object = originalNew(class)
+    if class == "RemoteEvent" then
+        object.OnServerEvent = signal()
+        requestRemote = object
+    end
+    return object
+end
+remoteService.Init(dependency)
+local remote = requestRemote
+remote.FireClient = function() end
+local far = fighter(-100)
+overlaps = {}
+local adapterTrace = {}
+env.print = function(message)
+    table.insert(adapterTrace, message)
+end
+local function adapterLogged(message)
+    return string.find(table.concat(adapterTrace, "\n"), message, 1, true) ~= nil
+end
+studio = true
+attacker:SetAttribute("BatDebugNextSwing", true)
+remote.OnServerEvent:Fire(attacker, "SwingBat", far, 3, { StunDuration = 999 })
+check(
+    adapterLogged("GameplayRequest received: SwingBat from " .. attacker.Name)
+        and adapterLogged("request adapter accepted: SwingBat")
+        and adapterLogged("calling CombatService SwingBat")
+        and adapterLogged("[Bat] " .. attacker.Name .. " SwingBat accepted"),
+    "request trace crosses adapter dispatch into the real combat handler"
+)
+check(attacker:GetAttribute("BatDebugNextSwing") == nil, "dispatch preserves the flag until combat consumes it")
+table.clear(adapterTrace)
+attacker:SetAttribute("BatDebugNextSwing", true)
+remote.OnServerEvent:Fire(attacker, "SwingBat")
+check(
+    adapterLogged("GameplayRequest received: SwingBat")
+        and adapterLogged("request adapter rejected: gameplay throttle")
+        and not adapterLogged("calling CombatService SwingBat")
+        and attacker:GetAttribute("BatDebugNextSwing") == nil,
+    "throttle rejection is visible before dispatch and consumes the one-shot rejection trace"
+)
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(far), "client cannot choose a target outside server query")
+table.clear(adapterTrace)
+movement.SetStunned(attacker, true)
+attacker:SetAttribute("BatDebugNextSwing", true)
+remote.OnServerEvent:Fire(attacker, "SwingBat")
+check(
+    adapterLogged("GameplayRequest received: SwingBat")
+        and adapterLogged("request adapter rejected: MovementService.IsStunned(attacker)")
+        and not adapterLogged("calling CombatService SwingBat")
+        and attacker:GetAttribute("BatDebugNextSwing") == nil,
+    "stun rejection is visible before dispatch and consumes the one-shot rejection trace"
+)
+movement.SetStunned(attacker, false)
+studio = false
+env.print = previousPrint
+advance(config.SwingCooldown)
+local farther = fighter(-4)
+overlaps = { farther.Character:FindFirstChild("HumanoidRootPart"), victim.Character:FindFirstChild("HumanoidRootPart") }
+setup(combat.SwingBat(attacker), "nearest enemy swing")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(movement.IsStunned(victim) and not movement.IsStunned(farther), "one swing hits closest valid enemy only")
+-- Stunned ownership does not permit swinging; stale timers cannot clear a new character's stun.
+tycoon.SetCash(victim, 2000)
+setup(tycoon.PurchaseUpgrade(victim, "Bat", 2, tycoon.GetRequestContext(victim)), "victim owns bat")
+equip(victim)
+check(not combat.SwingBat(victim), "stunned bat owner cannot swing")
+victimHumanoid.Health = 0
+victimHumanoid.Died:Fire()
+check(not movement.IsStunned(victim), "death clears stun")
+local oldCharacter = victim.Character
+local newCharacter = instance("Model")
+newCharacter.Name = victim.Name
+newCharacter.Parent = workspaceFake
+local newRoot = part("HumanoidRootPart", newCharacter)
+newRoot.CFrame, newRoot.Position = frame(0, 0, -3), vec(0, 0, -3)
+part("Head", newCharacter)
+local newHumanoid = instance("Humanoid")
+newHumanoid.Parent, newHumanoid.Health, newHumanoid.UseJumpPower, newHumanoid.Died = newCharacter, 100, true, signal()
+newHumanoid.EquipTool = victimHumanoid.EquipTool
+victim.Character, victimHumanoid = newCharacter, newHumanoid
+combat.ApplyCharacter(victim, newCharacter)
+movement.ApplyCharacter(victim, newCharacter)
+overlaps = { newRoot }
+oldCharacter.Parent = nil
+flush()
+check(#bats(victim) == 1 and not movement.IsStunned(victim), "respawn restores owned bat and clears stun")
+advance(config.SwingCooldown)
+setup(combat.SwingBat(attacker), "new stun after lifecycle reset")
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(1.8) -- old timer is due before the newer stun's deadline
+check(movement.IsStunned(victim), "old unstun token cannot clear newer stun")
+advance(1.2)
+check(not movement.IsStunned(victim), "new stun expires normally")
+advance(config.ImmunitySeconds)
+-- Engine query candidates still require living enemies, reach, and unobstructed sight.
+for _, policy in { "wall", "team", "dead", "behind", "reach", "unequipped" } do
+    overlaps = { victim.Character:FindFirstChild("HumanoidRootPart") }
+    local root = victim.Character:FindFirstChild("HumanoidRootPart")
+    if policy == "wall" then
+        workspaceFake.Raycast = function()
+            return { Instance = instance("Part") }
+        end
+    end
+    if policy == "team" then
+        attacker.Neutral, victim.Neutral, attacker.Team, victim.Team = false, false, "same", "same"
+    end
+    if policy == "dead" then
+        victimHumanoid.Health = 0
+    end
+    if policy == "behind" then
+        root.Position = vec(0, 0, 3)
+    end
+    if policy == "reach" then
+        root.Position = vec(0, 0, -100)
+    end
+    setup(combat.SwingBat(attacker), "policy swing " .. policy)
+    if policy == "unequipped" then
+        bats(attacker)[1].Parent = attacker:FindFirstChildOfClass("Backpack")
+    end
+    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    check(not movement.IsStunned(victim), "reject invalid target/impact: " .. policy)
+    workspaceFake.Raycast = function()
+        return nil
+    end
+    attacker.Neutral, victim.Neutral, victimHumanoid.Health, root.Position = true, true, 100, vec(0, 0, -3)
+    equip(attacker)
+    advance(config.SwingCooldown)
+end
+-- Death and membership changes invalidate a pending impact.
+setup(combat.SwingBat(attacker), "pending swing before death")
+attackerHumanoid.Health = 0
+attackerHumanoid.Died:Fire()
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(victim), "attacker death cancels pending impact")
+attackerHumanoid.Health = 100
+combat.ApplyCharacter(attacker, attacker.Character)
+flush()
+equip(attacker)
+setup(combat.SwingBat(attacker), "pending membership swing")
+tycoon.RemovePlayer(teammate)
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(not movement.IsStunned(victim), "membership revision change cancels pending swing")
+advance(config.SwingCooldown)
+local lost = bats(attacker)[1]
+lost:Destroy()
+flush()
+check(#bats(attacker) == 1 and bats(attacker)[1] ~= lost, "unexpected destruction restores one authorized bat")
+equip(attacker)
+setup(combat.SwingBat(attacker), "leave during pending swing")
+combat.RemovePlayer(attacker)
+advance(config.ImpactDelay + config.ImpactWindow / 2)
+check(
+    not combat.SwingBat(attacker) and not movement.IsStunned(victim),
+    "leaving cancels combat state and pending impact"
+)
+combat.RemovePlayer(victim)
+check(not movement.IsStunned(victim), "leaving clears victim stun state")
+tycoon.RemovePlayer(attacker)
+check(#bats(attacker) == 0, "session removal revokes bat access")
+
+-- A deferred replacement cannot resurrect tools after removal.
+local departing = fighter(0)
+tycoon.SetCash(departing, 2000)
+setup(tycoon.PurchaseUpgrade(departing, "Bat", 2, tycoon.GetRequestContext(departing)), "departing bat")
+bats(departing)[1]:Destroy()
+combat.RemovePlayer(departing)
+flush()
+check(#bats(departing) == 0, "leaving cancels deferred weapon recovery")
+local utility = cache.WorldUtil
+cache.WorldUtil = nil
+local realWorldUtil = loadModule("WorldUtil")
+local nearby = part("Interaction", workspaceFake)
+movement.SetStunned(departing, true)
+check(not realWorldUtil.Near(departing, nearby, 10), "real proximity gate blocks stunned interactions")
+movement.SetStunned(departing, false)
+check(realWorldUtil.Near(departing, nearby, 10), "proximity gate works again after unstun")
+cache.WorldUtil = utility
+
+-- A fresh grant reads widened Studio geometry as its baseline at every level.
+local originalSize = hitbox.Size
+hitbox.Size = vec(originalSize.X * 2, originalSize.Y, originalSize.Z)
+local widened = fighter(0)
+tycoon.SetCash(widened, 20000)
+overlaps = {}
+for level = 1, 3 do
+    setup(tycoon.PurchaseUpgrade(widened, "Bat", level + 1, tycoon.GetRequestContext(widened)), "widened bat upgrade")
+    equip(widened)
+    setup(combat.SwingBat(widened), "widened bat swing")
+    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    check(
+        math.abs(querySize.X - hitbox.Size.X * config.Levels[level].Scale) < 0.0001,
+        "authored widened Hitbox remains the scaled query baseline"
+    )
+    advance(config.SwingCooldown)
+end
+hitbox.Size = originalSize

@@ -12,8 +12,15 @@ local sessions: { [Instance]: Session } = {}
 local byId: { [string]: Session } = {}
 local plots: { [Player]: Instance } = {}
 local hooks: any = {}
-local shared: { [string]: boolean } =
-    { Jump = true, Payout = true, MovementSpeed = true, SprintStamina = true, Hand = true, BlendSpeed = true }
+local shared: { [string]: boolean } = {
+    Bat = true,
+    Jump = true,
+    Payout = true,
+    MovementSpeed = true,
+    SprintStamina = true,
+    Hand = true,
+    BlendSpeed = true,
+}
 
 function TycoonService.Init(callbacks: any)
     hooks = callbacks or {}
@@ -123,6 +130,15 @@ local function publishIdentity(plot: Instance, session: Session?)
     plot:SetAttribute("PlotOccupancy", if session then (if session.Teammate then 2 else 1) else 0)
     plot:SetAttribute("PlotCapacity", 2)
 end
+-- Publish the authoritative tier projection even before a player claims a plot.
+-- UI readiness must not depend on membership or optional Tool assets.
+function TycoonService.RefreshUpgradeAttributes(player: Player)
+    for id in shared do
+        local tier = TycoonService.GetUpgrade(player, id)
+        player:SetAttribute(id .. "PurchasedLevel", tier - 1)
+        player:SetAttribute(id .. "Level", tier - 1)
+    end
+end
 local function publish(session: Session)
     session.Plot:SetAttribute("OwnerUserId", session.OwnerUserId)
     session.Plot:SetAttribute("PlotSessionId", session.PlotSessionId)
@@ -131,10 +147,7 @@ local function publish(session: Session)
         player:SetAttribute("PlotSessionId", session.PlotSessionId)
         player:SetAttribute("PlotMembershipRevision", session.MembershipRevision)
         player:SetAttribute("playerCash", session.SharedCash)
-        for id, tier in session.SharedUpgrades do
-            player:SetAttribute(id .. "PurchasedLevel", tier - 1)
-            player:SetAttribute(id .. "Level", tier - 1)
-        end
+        TycoonService.RefreshUpgradeAttributes(player)
         if hooks.MemberChanged then
             hooks.MemberChanged(player)
         end

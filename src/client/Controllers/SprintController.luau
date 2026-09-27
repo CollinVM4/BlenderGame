@@ -5,12 +5,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local getSprintEvent = require(ReplicatedStorage.Shared.Events.SprintEvents)
 
+local player = game:GetService("Players").LocalPlayer
 local SprintController = {}
 local started = false
 local requested = false
 local heldShift: { [Enum.KeyCode]: boolean } = {}
 
 local function requestSprint(sprintEvent: RemoteEvent, wantsToSprint: boolean)
+    wantsToSprint = wantsToSprint and player:GetAttribute("Stunned") ~= true
     if requested == wantsToSprint then
         return
     end
@@ -24,6 +26,12 @@ function SprintController.Init()
     end
     started = true
     local sprintEvent = getSprintEvent()
+    player:GetAttributeChangedSignal("Stunned"):Connect(function()
+        if player:GetAttribute("Stunned") == true then
+            table.clear(heldShift)
+            requestSprint(sprintEvent, false)
+        end
+    end)
 
     UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
         if gameProcessedEvent then

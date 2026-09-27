@@ -267,59 +267,7 @@ check(not dev.IsEnabled(), "Studio content opt-in required")
 storage:SetAttribute("EnableDevContent", true)
 check(dev.ResetBlender(p), "explicit Studio opt-in works")
 
--- Combat boundary: real slap validation/cooldowns, mocked character physics and drop output.
-local function character(position)
-    local model = instance("Model")
-    local root = instance("Part")
-    root.Position = position
-    root.CFrame = frame(position)
-    root.AssemblyMass = 1
-    function root:ApplyImpulse(impulse)
-        self.LastImpulse = impulse
-    end
-    local humanoid = { Health = 100, Died = signal() }
-    function humanoid:TakeDamage(damage)
-        self.Health -= damage
-    end
-    model.Children.HumanoidRootPart = root
-    model.Children.Humanoid = humanoid
-    return model
-end
-p.Character = character(vec(0, 0, 0))
-other.Character = character(vec(0, 0, -4))
-local drops = 0
-local realDrop = inventory.DropOne
-inventory.DropOne = function()
-    drops += 1
-    return {}
-end
-local combat = loadModule("CombatService")
-combat.Init(deps)
-check(not combat.Slap(p, other), "slap requires registered hand")
-local hand = combat.GrantHand(p)
-hand.Parent = p.Character
-check(combat.Slap(p, other), "equipped hand can slap")
-check(other.Character.Children.Humanoid.Health == 85, "earned hand level sets damage")
-check(other:GetAttribute("StunnedUntil") == now + 0.5, "short stun recorded")
-check(not combat.Slap(p, other), "attack cooldown enforced")
-now += 1
-check(combat.Slap(p, other) and drops == 1, "repeat hit cannot chain-drop")
-now += 4
-check(combat.Slap(p, other) and drops == 2, "drop allowed after protection")
-now += 1
-p.Near = false
-check(not combat.Slap(p, other), "slap distance gate enforced")
-p.Near = true
-workspaceFake.Raycast = function()
-    return { Instance = instance("Part") }
-end
-check(not combat.Slap(p, other), "slap obstruction rejected")
-workspaceFake.Raycast = function()
-    return nil
-end
-combat.RemovePlayer(p)
-check(not combat.Slap(p, other), "removed hand cannot attack")
-inventory.DropOne = realDrop
+-- Bat combat contracts live in combat.spec.luau.
 
 -- Market lifecycle: real stock state and claim transaction, mocked spawned physical asset.
 local cf = setmetatable({}, {

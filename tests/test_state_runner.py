@@ -31,7 +31,7 @@ class StateRunnerTests(unittest.TestCase):
         code, calls, output = self.run_runner()
         self.assertEqual(code, 0)
         names = [name for name, _ in calls]
-        for name in ("carry", "stash", "smoothie", "requests", "customer-queue", "customer-orders", "customer-payout", "customer-payout-serve", "customer-result", "world", "vfx", "smoothie-roundtrip"):
+        for name in ("carry", "stash", "smoothie", "request-selection", "requests", "customer-queue", "customer-orders", "customer-payout", "customer-payout-serve", "customer-result", "world", "vfx", "smoothie-roundtrip"):
             self.assertIn(name, names)
         self.assertEqual(len(names), len(set(names)))
         for group in ("state", "integration", "presentation"):

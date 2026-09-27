@@ -5,6 +5,7 @@ StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
     MovementService = require(script.Services.MovementService),
+    RagdollService = require(script.Services.RagdollService),
     CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
@@ -72,6 +73,7 @@ for _, plot in roots do
 end
 
 local characterConnections: { [Player]: RBXScriptConnection } = {}
+local removingConnections: { [Player]: RBXScriptConnection } = {}
 local initialized: { [Player]: boolean } = {}
 local function addPlayer(player: Player)
     if initialized[player] then
@@ -79,16 +81,18 @@ local function addPlayer(player: Player)
     end
     initialized[player] = true
     services.PlayerDataService.AddPlayer(player)
+    services.TycoonService.RefreshUpgradeAttributes(player)
     services.MovementService.RefreshPlayer(player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
     local function onCharacterAdded(character: Model)
-        services.CharacterPhysicsService.ApplyCharacter(player, character)
+        services.CharacterPhysicsService.ApplyCharacter(player, character, services.RagdollService.PrepareCharacter)
         services.InventoryService.CleanupCharacter(player)
-        player:SetAttribute("StunnedUntil", 0)
+        services.CombatService.ApplyCharacter(player, character)
         services.MovementService.ApplyCharacter(player, character)
         services.SprintService.ResetCharacter(player)
     end
+    removingConnections[player] = player.CharacterRemoving:Connect(services.RagdollService.CleanupCharacter)
     characterConnections[player] = player.CharacterAdded:Connect(onCharacterAdded)
     if player.Character then
         onCharacterAdded(player.Character)
@@ -103,6 +107,13 @@ Players.PlayerRemoving:Connect(function(player)
         if characterConnections[player] then
             characterConnections[player]:Disconnect()
             characterConnections[player] = nil
+        end
+        if removingConnections[player] then
+            removingConnections[player]:Disconnect()
+            removingConnections[player] = nil
+        end
+        if player.Character then
+            services.RagdollService.CleanupCharacter(player.Character)
         end
         for _, name in
             {

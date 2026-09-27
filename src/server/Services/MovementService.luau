@@ -5,6 +5,7 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local SprintConfig = require(Shared.Constants.SprintConfig)
 local MovementService = {}
 local data: any
+local stunned: { [Player]: boolean? } = {}
 type Stats = { BaseWalkSpeed: number, SprintWalkSpeed: number, MaxStamina: number, JumpPower: number }
 local resolved: { [Player]: Stats } = {}
 local overrides: { [Player]: { [string]: number? } } = {}
@@ -13,6 +14,10 @@ MovementService.Changed = changed.Event
 
 function MovementService.Init(dependencies)
     data = dependencies.TycoonService
+end
+
+function MovementService.IsInitialized(player: Player): boolean
+    return resolved[player] ~= nil
 end
 
 function MovementService.GetBaseWalkSpeed(player: Player): number
@@ -29,11 +34,35 @@ function MovementService.GetJumpPower(player: Player): number
 end
 
 local function applyJump(player: Player, humanoid: Humanoid)
-    local power = MovementService.GetJumpPower(player)
+    local power = if MovementService.IsStunned(player) then 0 else MovementService.GetJumpPower(player)
     if humanoid.UseJumpPower then
         humanoid.JumpPower = power
     else
         humanoid.JumpHeight = power * power / (2 * workspace.Gravity)
+    end
+end
+
+function MovementService.IsStunned(player: Player): boolean
+    return stunned[player] == true
+end
+
+function MovementService.CanPerformGameplayAction(player: Player): boolean
+    return not MovementService.IsStunned(player)
+end
+
+function MovementService.SetStunned(player: Player, value: boolean)
+    stunned[player] = if value then true else nil
+    player:SetAttribute("Stunned", value)
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid and resolved[player] then
+        applyJump(player, humanoid)
+        if value then
+            humanoid.Jump = false
+            humanoid.WalkSpeed = 0
+        end
+    end
+    if resolved[player] then
+        changed:Fire(player)
     end
 end
 
@@ -112,6 +141,7 @@ function MovementService.GetStudioSnapshot(player: Player)
 end
 
 function MovementService.RemovePlayer(player: Player)
+    stunned[player] = nil
     resolved[player] = nil
     overrides[player] = nil
 end

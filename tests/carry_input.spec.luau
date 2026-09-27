@@ -60,6 +60,11 @@ textFocused = true
 action("ThrowHeld", "Begin")
 check(inventory.GetCarryCount(player) == 3, "typing does not throw")
 textFocused = false
+player:SetAttribute("Stunned", true)
+local beforeStun = #requestedIds
+action("ThrowHeld", "Begin")
+check(#requestedIds == beforeStun and inventory.GetCarryCount(player) == 3, "client stun suppresses throw request")
+player:SetAttribute("Stunned", false)
 action("ThrowHeld", "End")
 check(inventory.GetCarryCount(player) == 3, "release edge does not throw")
 action("ThrowHeld", "Begin")

@@ -7,6 +7,7 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local BlendService = {}
+local MovementService = require(script.Parent.MovementService)
 local deps: any
 local ingredientAccepted = Instance.new("BindableEvent")
 local RunService = game:GetService("RunService")
@@ -56,7 +57,8 @@ local function key(player: Player): string
     return deps.TycoonService.GetSessionId(player) or ""
 end
 local function authorized(player: Player, context: any): boolean
-    return deps.TycoonService.ValidateActor(player, context or deps.TycoonService.GetRequestContext(player))
+    return MovementService.CanPerformGameplayAction(player)
+        and deps.TycoonService.ValidateActor(player, context or deps.TycoonService.GetRequestContext(player))
 end
 
 function BlendService.ObserveIngredientAccepted(callback: (Player, string, CFrame, number) -> ()): RBXScriptConnection

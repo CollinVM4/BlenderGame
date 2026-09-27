@@ -159,3 +159,40 @@ Use repeated `--suite` selectors for `plot-session`, `plot-session-races`,
 `plot-session-progression`, and `plot-session-requests`. The separate
 `plot-session-feedback` suite covers shared warning deadlines and stale timers.
 See [architecture, validation, baseline failures, and Studio smoke steps](../docs/PLOT_SESSIONS.md).
+
+## Request variety
+
+`--suite request-selection` owns request catalog uniqueness, tier eligibility,
+exact ID recency, group/similarity preferences and fallbacks, special history
+isolation, and advanced serving contracts. It shares setup in
+`fixtures/customer_requests.luau` with the older `requests` template/serving suite,
+but runs independently so legacy presentation assertions cannot block selection.
+`--suite customer-order-text` covers stable alternate dialogue, empty/legacy
+fallback, and formatted label refreshes. Both are included in the default manifest.
+
+
+## Bat combat
+
+`--suite combat` runs the Bat PvP integration contracts with real CombatService,
+InventoryService, MovementService, shared upgrade transactions and request adapter.
+It covers ownership, target authority, cooldown, stun/immunity, theft and lifecycle
+cleanup. Engine overlap/physics remain Studio smoke checks; see
+[`docs/BAT_PVP.md`](../docs/BAT_PVP.md). Sprint stun contracts use the server
+MovementService API. Retired damage-slap assertions were removed from legacy-state.
+
+`--suite upgrade-sync` verifies initial shared-upgrade attribute publication for
+unclaimed players, real Sprint/Jump/Bat purchase receipts, and nonblocking Bat
+asset failures. The upgrade UI runner also tests independently delayed BatLevel
+replication. Sprint covers callbacks delivered after movement state removal.
+
+`--suite bat-controller` is a separate presentation suite for local swing playback,
+shared cooldown, intent-only requests, missing assets and track cleanup. It is
+not a prerequisite for authoritative combat tests.
+
+
+Isolated R15 ragdoll: `--suite ragdoll` validates preparation, all fourteen joint
+toggles, property restoration, repeated calls, and death/removal cleanup using
+engine doubles. It is a separate presentation suite and cannot prove physical
+collapse or getting up. The obsolete bat-reaction/stun-controller suites were
+removed with those modules. `combat` verifies authoritative stun/drop/immunity
+without physical ragdoll. See `docs/RAGDOLL.md` for manual Studio acceptance.

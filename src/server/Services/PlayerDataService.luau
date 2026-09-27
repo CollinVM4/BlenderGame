@@ -27,7 +27,7 @@ function PlayerDataService.AddPlayer(player: Player)
     player:SetAttribute("HasSmoothie", false)
     player:SetAttribute("CarryCapacity", Upgrades.CarryCapacity[1].Value)
     player:SetAttribute("CarryCapacityLevel", 0)
-    for _, id in { "MovementSpeed", "Jump", "SprintStamina" } do
+    for _, id in { "Bat", "MovementSpeed", "Jump", "SprintStamina" } do
         player:SetAttribute(id .. "Level", 0)
     end
 end
@@ -36,6 +36,7 @@ function PlayerDataService.GetSnapshot(player: Player): Types.PlayerData
     return {
         Cash = PlayerDataService.GetCash(player),
         Upgrades = {
+            Bat = PlayerDataService.GetUpgrade(player, "Bat"),
             Hand = PlayerDataService.GetUpgrade(player, "Hand"),
             CarryCapacity = PlayerDataService.GetUpgrade(player, "CarryCapacity"),
             StackSize = PlayerDataService.GetUpgrade(player, "StackSize"),
