@@ -14,7 +14,7 @@ without executing. No presentation suite is a prerequisite for gameplay tests.
 `--throw-only` runs ingredient throw contracts and multipart blender acceptance during collision grace.
 
 Focused flags remain: `--carry-only` includes carry presentation; `--stash-only`
-includes stash geometry; `--requests-only` includes customer placement;
+includes stash session/smoothie integration, geometry, and prompts; `--requests-only` includes customer placement;
 `--smoothie-only` includes foundation state, round-trip, mixed survivors and
 geometry. These sub-suites still report in separate groups. `--vfx-only`,
 `--world-only`, and `--sprint-only` select one suite. `--customer-only` retains the

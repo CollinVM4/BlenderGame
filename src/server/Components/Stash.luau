@@ -1,6 +1,7 @@
 --!strict
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local Presentation = require(script.Parent.StashPresentation)
+local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy).NormalStash
 local Stash = {}
 function Stash.Init(services: any)
     WorldUtil.BindTag("PlayerStash", function(object)
@@ -8,7 +9,13 @@ function Stash.Init(services: any)
         local counts: { [number]: number } = {}
         for _, part in object:GetDescendants() do
             local index = part:GetAttribute("SlotIndex")
-            if part:IsA("BasePart") and type(index) == "number" and index % 1 == 0 and index >= 1 and index <= 5 then
+            if
+                part:IsA("BasePart")
+                and type(index) == "number"
+                and index % 1 == 0
+                and index >= 1
+                and index <= Config.Slots
+            then
                 counts[index] = (counts[index] or 0) + 1
                 slots[index] = part
             end
@@ -28,22 +35,32 @@ function Stash.Init(services: any)
                 connections,
                 prompt.Triggered:Connect(function(player)
                     local owner = services.TycoonService.GetOwner(object)
-                    services.InventoryService.InteractStash(player, index, owner)
+                    services.InventoryService.InteractStash(player, index, owner, object)
                 end)
             )
         end
         local function refresh()
             local owner = services.TycoonService.GetOwner(object)
             local snapshot = owner and services.InventoryService.GetSnapshot(owner)
+            local raid = owner and services.InventoryService.GetStashRaidState(owner)
             for index, slot in slots do
+                slot:SetAttribute("StashSessionId", raid and raid.SessionId)
+                slot:SetAttribute("StashRaidEndsAt", raid and raid.RaidEndsAt or 0)
+                slot:SetAttribute("StashProtectionEndsAt", raid and raid.ProtectionEndsAt or 0)
                 local state = snapshot and snapshot.Stash[index]
                 slot:SetAttribute("StashOwnerUserId", owner and owner.UserId or 0)
                 Presentation.Refresh(slot, state, services.IngredientService)
-                prompts[index].ObjectText = (if index <= 2 then "Protected slot " else "Slot ") .. index
+                prompts[index].ObjectText = (if index <= Config.Protected then "Protected slot " else "Slot ") .. index
                 prompts[index].ActionText = if state and state.Count > 0
                     then (if state.ItemType == "Smoothie"
                         then "Take smoothie"
-                        else "Take " .. state.IngredientId .. " (" .. state.Count .. "/5)")
+                        else "Take "
+                            .. state.IngredientId
+                            .. " ("
+                            .. state.Count
+                            .. "/"
+                            .. Config.IngredientCapacity
+                            .. ")")
                     else "Store ingredient"
             end
         end
@@ -72,6 +89,9 @@ function Stash.Init(services: any)
                 for _, name in
                     {
                         "StashOwnerUserId",
+                        "StashSessionId",
+                        "StashRaidEndsAt",
+                        "StashProtectionEndsAt",
                         "StashIngredientId",
                         "StashItemType",
                         "StashCapacity",

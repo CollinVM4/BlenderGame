@@ -14,8 +14,26 @@ do
     for _, sign in { 1, -1 } do
         pad.CFrame.RightVector = vec(0, sign, 0)
         pad.CFrame.UpVector = vec(-sign, 0, 0)
-        for n = 1, 5 do
-            display.Refresh(pad, { IngredientId = "Strawberry", Count = n, Protected = false }, realIngredients)
+        for n = 1, 3 do
+            local items = {}
+            for i = 1, n do
+                items[i] = { IngredientId = ({ "Strawberry", "Banana", "Milk" })[i] }
+            end
+            local rendered = {}
+            local visuals = {
+                CreateVisual = function(id)
+                    table.insert(rendered, id)
+                    return realIngredients.CreateVisual(id)
+                end,
+            }
+            display.Refresh(
+                pad,
+                { IngredientId = "Strawberry", Ingredients = items, Count = n, Protected = false },
+                visuals
+            )
+            for i, item in items do
+                check(rendered[i] == item.IngredientId, "each displayed proxy uses its own stored ingredient")
+            end
             local total = vec(0, 0, 0)
             local copies = pad:FindFirstChild("StashDisplay"):GetChildren()
             check(#copies == n, "rotated pad count")

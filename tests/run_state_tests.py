@@ -51,6 +51,7 @@ SUITES = {
     "ingredient-slots": ("integration", ("fixtures/smoothie.luau", "ingredient_slots.spec.luau")),
     "carry": ("state", ("fixtures/carry.luau", "ingredient_carry.spec.luau")),
     "stash": ("state", ("stash_interaction.spec.luau",)),
+    "stash-integration": ("integration", ("fixtures/smoothie.luau", "stash_integration.spec.luau")),
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
     "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
     "customer-payout": ("state", ("customer_payout.spec.luau",)),
@@ -82,6 +83,7 @@ SUITES = {
     "plot-session-feedback": ("presentation", ("fixtures/smoothie.luau", "plot_session_feedback.spec.luau")),
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
+    "stash-prompts": ("presentation", ("stash_prompt.spec.luau",)),
 }
 focused = {
     "vfx_only": ("vfx",),
@@ -98,7 +100,7 @@ focused = {
     "customer_order_text_only": ("customer-order-text",),
     "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
     "customer_walk_only": ("customer-walk", "customer-routing"),
-    "stash_only": ("stash", "stash-presentation"),
+    "stash_only": ("stash", "stash-integration", "stash-presentation", "stash-prompts"),
     "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
 }
 selected = args.suite or next((names for flag, names in focused.items() if getattr(args, flag)), None)
@@ -115,6 +117,7 @@ for directory in ("src/shared/Constants", "src/server/Services"):
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["StashPromptController"] = (ROOT / "src/client/Controllers/StashPromptController.luau").read_text(encoding="utf-8")
 sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")
 sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")
 sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encoding="utf-8")

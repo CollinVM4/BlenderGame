@@ -3,6 +3,7 @@
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local SmoothieGeometry = require(script.Parent.Parent.Services.SmoothieGeometry)
+local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy).NormalStash
 local Presentation = {}
 
 -- Footprint and height are relative to the display plane's smaller dimension.
@@ -75,9 +76,9 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     Presentation.Clear(slot)
     slot:SetAttribute("StashIngredientId", state and state.IngredientId)
     slot:SetAttribute("StashItemType", state and state.ItemType)
-    slot:SetAttribute("StashCapacity", state and state.Capacity or 5)
+    slot:SetAttribute("StashCapacity", state and state.Capacity or Config.IngredientCapacity)
     slot:SetAttribute("StashCount", state and state.Count or 0)
-    slot:SetAttribute("StashProtected", state and state.Protected or slot:GetAttribute("SlotIndex") <= 2)
+    slot:SetAttribute("StashProtected", state and state.Protected or slot:GetAttribute("SlotIndex") <= Config.Protected)
     if not state or state.Count == 0 or (not state.IngredientId and not state.Smoothie) then
         return
     end
@@ -97,7 +98,7 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     for i = 1, state.Count do
         local proxy = if state.ItemType == "Smoothie"
             then SmoothieGeometry.CreateVisual(state.Smoothie)
-            else ingredients.CreateVisual(state.IngredientId)
+            else ingredients.CreateVisual(state.Ingredients[i].IngredientId)
         if not proxy then
             continue
         end

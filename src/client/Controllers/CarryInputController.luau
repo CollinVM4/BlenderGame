@@ -14,6 +14,15 @@ function Controller.Init()
     local player = Players.LocalPlayer
     local remote = ReplicatedStorage.Shared.Events:WaitForChild("GameplayRequest") :: RemoteEvent
     local function throw(_action: string, state: Enum.UserInputState): Enum.ContextActionResult
+        local character = player.Character
+        if character then
+            for _, child in character:GetChildren() do
+                if child:IsA("Tool") and typeof(child:GetAttribute("BatLevel")) == "number" then
+                    -- Leave primary input available to Tool.Activated, including on touch.
+                    return Enum.ContextActionResult.Pass
+                end
+            end
+        end
         if player:GetAttribute("Stunned") == true then
             return Enum.ContextActionResult.Sink
         end
@@ -21,7 +30,6 @@ function Controller.Init()
             return Enum.ContextActionResult.Pass
         end
         if state == Enum.UserInputState.Begin then
-            local character = player.Character
             local tool = character and character:FindFirstChildOfClass("Tool")
             local selectedCarryItemId = nil
             if tool and tool:GetAttribute("IngredientId") ~= nil then

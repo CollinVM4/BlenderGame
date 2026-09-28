@@ -14,7 +14,7 @@ Contact requires overlap with the equipped server-configured Hitbox. `Reach` is
 not a strict root-distance gate. `MaxRootDistance = 8`, multiplied by level Scale,
 bounds both victim root distance and observed Hitbox center distance from the
 attacker (8 / 8.96 / 10 studs). This is an anti-exploit sanity bound, not a larger
-query volume. Authored geometry and `ImpactDelay = 0.21` remain unchanged.
+query volume. Authored Hitbox geometry remains unchanged.
 
 | Level | Visible scale | Reach (studs) | Stun (seconds) |
 |---|---:|---:|---:|
@@ -22,20 +22,19 @@ query volume. Authored geometry and `ImpactDelay = 0.21` remain unchanged.
 | 2 | 1.12 | 5.75 | 2.25 |
 | 3 | 1.25 | 6.5 | 3.0 |
 
-Cooldown is 1.1 seconds, impact delay 0.21 seconds, and immunity after stun is
+Cooldown is 1.1 seconds, and immunity after stun is
 2.5 seconds. Misses consume the swing cooldown. The gameplay request adapter
 also retains its 0.15-second per-player request throttle.
 
-`ImpactWindow = 0.08` centers three discrete server samples on ImpactDelay:
-0.17, 0.21 and 0.25 seconds after acceptance (subject to server scheduling).
-Each samples the equipped clone's live Hitbox CFrame and Size. The first valid
-target consumes the swing, making later callbacks inert. Eligibility and captured
-membership context are revalidated on each sample; unequipping also invalidates
-the swing even if the same Tool is re-equipped before the next sample.
-This preserves authored geometry rather than constructing an interpolated swept
-volume. Discrete samples improve temporal coverage but are not continuous collision
-detection. Temporary diagnostics include the sample number and remain enabled for
-multiplayer confirmation of this window.
+`HitActiveStart = 0.08`, `HitActiveEnd = 0.50`, and `HitSampleInterval = 0.04`
+control a repeated server sampling window. One delayed callback waits for startup;
+after each miss it schedules only the next sample. Sampling stops at the deadline,
+without replaying contacts missed during server delays. Each sample reads the
+live equipped Hitbox CFrame and Size. The first valid victim consumes the swing.
+Eligibility and captured membership context are revalidated on every sample;
+unequipping invalidates the swing even if the same Tool is immediately re-equipped.
+All spatial checks remain unchanged; this is discrete sampling, not a swept volume.
+The obsolete ImpactDelay/ImpactWindow settings and three-sample scheduler were removed.
 
 ## Studio setup
 
@@ -76,7 +75,7 @@ configuration. Existing plot/session tags and attributes continue unchanged.
   The server requires a living active plot member, authoritative purchased level,
   the exact issued equipped Tool, no stun, and an elapsed cooldown.
 - After the impact delay, the server rechecks character, Tool, membership revision
-  and eligibility. It calls `GetPartBoundsInBox` up to three times across the impact window. Each query follows
+  and eligibility. It calls `GetPartBoundsInBox` repeatedly across the active window. Each query follows
   the server-observed issued Tool's actual Hitbox CFrame and Size at impact.
   The server configures the clone's scale; request payloads cannot supply geometry.
   The independent root-distance, forward-facing and
@@ -265,14 +264,14 @@ all other tracks and plays the optional outro. Outro completion releases all
 tracks; re-equip, another Tool, death, destruction, respawn or Controller.Destroy
 can cancel it immediately. Missing optional animations do not block combat.
 
-The authored **bat hit2** contacts at **0.21 seconds**. BatConfig.ImpactDelay is
-set to **0.21** to match it. The controller never changes the authored Tool.Grip,
+The authored **bat hit2** animation is unchanged. Server hit authorization uses
+the broader active window above. The controller never changes the authored Tool.Grip,
 including its **-78, 0, 0 degree orientation**, or the mesh/hitbox relationship.
 Animation markers do not authorize hits.
 
 Local input immediately predicts playback, then sends the existing SwingBat
-request. The server independently validates the swing and schedules its query
-with ImpactDelay. Network latency can offset the server contact from local
+request. The server independently validates the swing and samples its live Hitbox
+throughout the active window. Network latency can offset the server contact from local
 playback; there is no client-reported timing or hit authority. The controller
 shares the existing 1.1-second cooldown and retains it across unequip/re-equip.
 A single set of tracks is reused; completed unequip, death, tool destruction and
@@ -283,16 +282,46 @@ and `--suite combat` (56 authoritative integration assertions, including authore
 Grip preservation). Studio still needs visual verification of the published
 animation, grip alignment, contact timestamp, avatar rig and multiplayer latency.
 
-## Physical ragdoll is currently isolated from Bat
+## Native AJU ragdoll integration
 
-The controlled BatReaction/StunController direction failed Studio acceptance:
-gameplay restrictions worked, but the character stayed rigid and recovery failed.
-Both modules and their dedicated tests have been removed. Combat no longer calls
-any physics reaction or ragdoll service. Bat still applies authoritative stun,
-drops/scatters ingredients, and recovers with the existing token and immunity.
-MovementService.Stunned and CanPerformGameplayAction remain unchanged.
+After the user verified isolated native AJU ragdoll/recovery in Studio, CombatService
+now calls RagdollService through its existing injected dependencies. No bootstrap,
+client input, spatial hit detection, level, cooldown, immunity, protection,
+MovementService authorization or ingredient scatter rules changed.
 
-The standalone RagdollService is intentionally not connected to combat.
-See [RAGDOLL.md](RAGDOLL.md) for APIs, exact Server Command Bar ON/OFF commands,
-structural test results, diagnostics and the required physical acceptance test.
-Bat integration must wait until that manual test succeeds.
+A valid hit starts authoritative stun, drops/scatters ingredients, then calls
+SetRagdolled(character, true). On success, a one-shot Heartbeat callback checks the
+original stun token, character and root identity, living/present player, stun deadline,
+MovementService.IsStunned and RagdollService.IsRagdolled before applying knockback.
+
+BatConfig.Knockback holds HorizontalSpeed=7 and UpwardSpeed=4 (studs/sec).
+Impulse = (horizontalAway * HorizontalSpeed + Vector3.new(0, UpwardSpeed, 0))
+* root.AssemblyMass. Horizontal direction uses victim minus attacker position, falls
+back to attacker forward for coincident roots, then world -Z if forward is vertical.
+It is captured at impact, independent of Bat level. Anchored or nonfinite-mass
+assemblies receive no impulse. Ingredient scatter remains stronger.
+
+The existing duration callback validates the stun token and character, calls ragdoll
+OFF, then releases MovementService stun and clears StunnedUntil. Existing immunity
+is retained. Lifecycle cleanup invalidates the token and attempts OFF on the stored
+original character before clearing stun. Ragdoll false returns and errors are caught
+and warned; they cannot abort normal authoritative recovery. Knockback errors are
+also contained. RagdollService has no added timer or combat state.
+
+The Studio ON/OFF bridge remains available; see [RAGDOLL.md](RAGDOLL.md).
+The floor-collision follow-up enables only UpperTorso/LowerTorso CanCollide during
+ragdoll and restores their captured values on OFF/cleanup. AJU joints, native sockets,
+exclusions, other body collisions and CharacterPhysicsService remain unchanged.
+No recovery teleport, nudge, collision proxy or full-body collision was added.
+
+Validation: Combat integration contracts cover ordering, one-shot mass-aware impulse,
+coincident-root fallback, ON/OFF failures, stale token/life callbacks, and existing Bat
+rules. The separate AJU contracts still cover physical property restoration. Studio
+should verify two-player Bat impact, restrained knockback, normal recovery, immunity,
+and reset during stun; automated tests do not simulate physical motion.
+
+Follow-up checks pass: combat (125 assertions), ragdoll (45), bat-controller (49),
+Roblox-aware typecheck of changed modules, StyLua and Rojo build. Tests cover late
+contact, no hits before startup/after expiry, one victim per swing, missed-swing
+cooldown, stale callbacks, and torso collision restoration through lifecycle cleanup.
+Studio still needs floor-penetration/recovery and broader-window gameplay verification.

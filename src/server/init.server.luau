@@ -45,6 +45,7 @@ services.TycoonService.Init({
         services.CustomerService.RemovePlayer(player)
     end,
     SessionEnded = function(id)
+        services.InventoryService.CleanupSession(id)
         services.CustomerService.CleanupSession(id)
         services.BlendService.CleanupSession(id)
     end,

@@ -4,6 +4,7 @@ export type DayState = "PREP" | "SERVING" | "FINISHED"
 export type Grade = "A" | "B" | "C" | "D"
 export type SmoothieData = { BlendId: string, Ingredients: { string } }
 export type StashSlot = {
+    Ingredients: { { IngredientId: string } },
     SlotIndex: number,
     ItemType: ("Ingredient" | "Smoothie")?,
     IngredientId: string?,

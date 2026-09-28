@@ -1,13 +1,15 @@
 --!strict
 return {
     SwingCooldown = 1.1,
-    -- Contact timestamp (seconds) in Bat.SwingAnimation at 1x playback speed.
-    -- Authored "bat hit2" contact frame at normal playback speed.
-    -- The server uses this delay; client animation markers never authorize hits.
-    ImpactDelay = 0.21,
-    -- Three discrete server samples: contact minus half-window, contact, contact plus half-window.
-    ImpactWindow = 0.08,
+    -- Server samples the live equipped Hitbox throughout this active swing window.
+    HitActiveStart = 0.08,
+    HitActiveEnd = 0.50,
+    HitSampleInterval = 0.04,
     ImmunitySeconds = 2.5,
+    Knockback = {
+        HorizontalSpeed = 7, -- Velocity change in studs/sec; independent of Bat level.
+        UpwardSpeed = 4,
+    },
     Scatter = {
         HorizontalMin = 8,
         HorizontalMax = 14,

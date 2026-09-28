@@ -45,8 +45,23 @@ end
 local function levelFor(player: Player): number
     return deps.TycoonService.GetUpgrade(player, "Bat") - 1
 end
+-- Physical failures must never strand authoritative gameplay stun.
+local function setRagdolled(character: Model, enabled: boolean): boolean
+    local ok, result = pcall(function()
+        return deps.RagdollService.SetRagdolled(character, enabled)
+    end)
+    if not ok or result ~= true then
+        warn("[Bat] Ragdoll " .. (if enabled then "ON" else "OFF") .. " failed: " .. tostring(result))
+        return false
+    end
+    return true
+end
 local function clearStun(player: Player)
+    local state = stuns[player]
     stuns[player] = nil
+    if state then
+        setRagdolled(state.Character, false)
+    end
     deps.MovementService.SetStunned(player, false)
     player:SetAttribute("StunnedUntil", 0)
 end
@@ -195,6 +210,11 @@ function CombatService.RefreshPlayer(player: Player)
         end
     end
 end
+function CombatService.IsBatEquipped(player: Player): boolean
+    local weapon = weapons[player]
+    return weapon ~= nil and player.Character ~= nil and weapon.Tool.Parent == player.Character
+end
+
 local function swingRejection(player: Player): string?
     local character = alive(player)
     local weapon: Weapon? = weapons[player]
@@ -268,8 +288,39 @@ local function hit(attacker: Player, victim: Player, duration: number)
     end
     away = if away.Magnitude > 0.001 then away.Unit else Vector3.new(0, 0, -1)
     deps.InventoryService.DropCarriedIngredients(victim, "BatStun", away)
+    if setRagdolled(character, true) then
+        RunService.Heartbeat:Once(function()
+            local currentCharacter, currentRoot = alive(victim)
+            if
+                stuns[victim] ~= state
+                or currentCharacter ~= character
+                or currentRoot ~= root
+                or not character:IsDescendantOf(workspace)
+                or os.clock() >= state.Until
+                or not deps.MovementService.IsStunned(victim)
+            then
+                return
+            end
+            local ok, problem = pcall(function(): boolean
+                if not deps.RagdollService.IsRagdolled(character) or root.Anchored then
+                    return false
+                end
+                local mass = root.AssemblyMass
+                if mass > 0 and mass < math.huge then
+                    local velocity = away * Config.Knockback.HorizontalSpeed
+                        + Vector3.new(0, Config.Knockback.UpwardSpeed, 0)
+                    root:ApplyImpulse(velocity * mass)
+                end
+                return true
+            end)
+            if not ok then
+                warn("[Bat] Knockback failed: " .. tostring(problem))
+            end
+        end)
+    end
     task.delay(duration, function()
         if stuns[victim] == state and victim.Character == character then
+            setRagdolled(character, false)
             deps.MovementService.SetStunned(victim, false)
             victim:SetAttribute("StunnedUntil", 0)
         end
@@ -422,16 +473,25 @@ function CombatService.SwingBat(player: Player): boolean
             )
         end
     end
-    -- Schedule from the request time, avoiding accumulated delay between samples.
-    -- Token invalidation makes later callbacks inert after a hit or cancellation.
-    for sample = 1, 3 do
-        task.delay(Config.ImpactDelay + (sample - 2) * Config.ImpactWindow / 2, function()
-            sampleImpact(sample)
-            if sample == 3 and swings[player] == token then
-                swings[player] = nil
-            end
-        end)
+    -- Keep only one pending sample. Late callbacks expire instead of replaying
+    -- missed contacts, and each live sample reads the current Tool geometry.
+    local deadline = os.clock() + Config.HitActiveEnd
+    local sample = 0
+    local function sampleNext()
+        if swings[player] ~= token then
+            return
+        end
+        if os.clock() >= deadline then
+            swings[player] = nil
+            return
+        end
+        sample += 1
+        sampleImpact(sample)
+        if swings[player] == token then
+            task.delay(math.min(Config.HitSampleInterval, math.max(0, deadline - os.clock())), sampleNext)
+        end
     end
+    task.delay(Config.HitActiveStart, sampleNext)
     return true
 end
 function CombatService.ApplyCharacter(player: Player, character: Model)

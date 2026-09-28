@@ -19,7 +19,13 @@ return {
     RequiredProgress = 65,
     BlendProgressScale = 3, -- Progress per radian of physical blade rotation.
     InteractionDistance = 12,
-    NormalStash = { Slots = 5, Protected = 2 },
+    NormalStash = {
+        Slots = 5,
+        Protected = 2,
+        IngredientCapacity = 3,
+        RaidWindowSeconds = 6,
+        RaidProtectionSeconds = 30,
+    },
     VIPStash = { Slots = 10, Protected = 5 },
     StealCooldown = 3,
     VictimProtection = 5,

@@ -11,7 +11,7 @@ env.Instance.new = function(class)
     return object
 end
 local gameplay = loadModule("GameplayService")
-gameplay.Init({ InventoryService = inventory })
+gameplay.Init({ InventoryService = inventory, CombatService = loadModule("CombatService") })
 local remote = shared.Events:FindFirstChild("GameplayRequest")
 local requestedIds = {}
 local send = remote.FireServer
@@ -22,7 +22,7 @@ end
 function shared.Events:WaitForChild(name)
     return self:FindFirstChild(name)
 end
-local action, bindings = nil, 0
+local action, bindings, touchEnabled = nil, 0, false
 services.Players.LocalPlayer = player
 local textFocused = false
 services.UserInputService = {
@@ -31,10 +31,11 @@ services.UserInputService = {
     end,
 }
 services.ContextActionService = {
-    BindAction = function(_, name, callback)
+    BindAction = function(_, name, callback, createTouchButton)
         setup(name == "ThrowHeld", "central action bound")
         action = callback
         bindings += 1
+        touchEnabled = createTouchButton
     end,
     SetTitle = function() end,
 }
@@ -76,6 +77,20 @@ now += 0.2
 local equipped = character:FindFirstChildOfClass("Tool")
 equipped.Parent = player:FindFirstChildOfClass("Backpack")
 equipped.Unequipped:Fire()
+local bat = instance("Tool")
+bat.Name = "RenamedBat"
+bat:SetAttribute("BatLevel", 1)
+bat.Parent = character
+local beforeBat = #requestedIds
+check(touchEnabled, "mobile Throw button shares the primary action callback")
+for _, edge in { "Begin", "End" } do
+    check(action("ThrowHeld", edge) == "Pass", "equipped Bat leaves primary input available to Tool activation")
+end
+check(
+    #requestedIds == beforeBat and inventory.GetCarryCount(player) == 2,
+    "Bat suppresses mouse/touch throw without changing carry"
+)
+bat.Parent = player:FindFirstChildOfClass("Backpack")
 action("ThrowHeld", "Begin")
 check(requestedIds[#requestedIds] == false, "deselect sends no carry identity")
 check(

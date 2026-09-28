@@ -59,12 +59,42 @@ controller.Init()
 controller.Init()
 check(#tracks == 1 and not tracks[1].IsPlaying, "equipping prepares a single track without autoplay")
 local inputTrace = {}
+-- Model the input boundary: a passing carry action allows Roblox Tool activation.
+local carryAction
+services.ContextActionService = {
+    BindAction = function(_, _, callback)
+        carryAction = callback
+    end,
+    SetTitle = function() end,
+}
+services.UserInputService = {
+    GetFocusedTextBox = function()
+        return nil
+    end,
+}
+env.Enum.ContextActionResult = { Pass = "Pass", Sink = "Sink" }
+env.Enum.UserInputState = { Begin = "Begin" }
+env.Enum.UserInputType = { MouseButton1 = "MouseButton1" }
+env.Enum.KeyCode = { ButtonR2 = "ButtonR2" }
+function shared.Events:WaitForChild(name)
+    return self:FindFirstChild(name)
+end
+p:SetAttribute("CarryCount", 3)
+loadModule("CarryInputController").Init()
 local previousPrint = env.print
 env.print = function(message)
     table.insert(inputTrace, message)
 end
 studio = true
-tool.Activated:Fire()
+local carryResult = carryAction("ThrowHeld", "Begin")
+check(carryResult == "Pass", "Bat plus overhead ingredients passes primary input to Tool")
+if carryResult == "Pass" then
+    tool.Activated:Fire()
+end
+check(
+    #requests == 1 and requests[1][1] == "SwingBat" and p:GetAttribute("CarryCount") == 3,
+    "shared primary input swings Bat without a throw request or carry change"
+)
 local inputLog = table.concat(inputTrace, "\n")
 check(
     string.find(inputLog, "[BatInput] Tool.Activated", 1, true) ~= nil
@@ -295,4 +325,3 @@ fullHumanoid.Health = 100
 controller.Init()
 check(tracks[#tracks - 2].IsPlaying, "controller can initialize again after teardown")
 controller.Destroy()
-check(config.ImpactDelay == 0.21, "authored hit2 contact is configured at 0.21 seconds")

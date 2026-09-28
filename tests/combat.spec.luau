@@ -12,6 +12,50 @@ dependency.MovementService = movement
 dependency.CombatService = combat
 movement.Init(dependency)
 combat.Init(dependency)
+-- Physical engine boundary; AJU joint restoration is covered in ragdoll.spec.
+local physical = {}
+local ragdollCalls = {}
+local ragdollFailure = nil
+local heartbeatCallbacks = {}
+services.RunService.Heartbeat.Once = function(_, callback)
+    table.insert(heartbeatCallbacks, callback)
+end
+local function heartbeat()
+    local pending = heartbeatCallbacks
+    heartbeatCallbacks = {}
+    for _, callback in pending do
+        callback()
+    end
+end
+dependency.RagdollService = {
+    SetRagdolled = function(character, enabled)
+        local owner = services.Players:GetPlayerFromCharacter(character)
+        table.insert(ragdollCalls, {
+            Character = character,
+            Enabled = enabled,
+            Stunned = owner and movement.IsStunned(owner),
+            CarryCount = owner and inventory.GetCarryCount(owner),
+        })
+        if ragdollFailure == (if enabled then "on-error" else "off-error") then
+            error("injected ragdoll failure")
+        elseif ragdollFailure == (if enabled then "on-false" else "off-false") then
+            return false
+        end
+        physical[character] = enabled
+        character:FindFirstChildOfClass("Humanoid").PlatformStand = enabled
+        return true
+    end,
+    IsRagdolled = function(character)
+        return physical[character] == true
+    end,
+}
+local function impulseRoot(root)
+    root.AssemblyMass = 12
+    function root:ApplyImpulse(impulse)
+        self.Impulse = impulse
+        self.ImpulseCount = (self.ImpulseCount or 0) + 1
+    end
+end
 workspaceFake.Gravity = 196.2
 local timers = {}
 env.task.delay = function(seconds, callback)
@@ -58,6 +102,7 @@ local function fighter(z)
     p.Parent, p.Neutral, p.ChildAdded = services.Players, true, signal()
     humanoid.UseJumpPower = true
     local root = p.Character:FindFirstChild("HumanoidRootPart")
+    impulseRoot(root)
     root.Position, root.CFrame = vec(0, 0, z or 0), frame(0, 0, z or 0)
     p.Character.Parent = workspaceFake
     table.insert(roster, p)
@@ -118,7 +163,7 @@ overlaps =
     { attacker.Character:FindFirstChild("HumanoidRootPart"), teammate.Character:FindFirstChild("HumanoidRootPart") }
 check(combat.SwingBat(attacker), "owned equipped bat starts swing")
 check(not combat.SwingBat(attacker), "swing cooldown rejects repeated request")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(attacker) and not movement.IsStunned(teammate), "self and shared teammate are rejected")
 local levelOneSize = querySize
 advance(config.SwingCooldown)
@@ -147,7 +192,7 @@ setup(combat.SwingBat(attacker), "enemy swing")
 -- The impact pose can differ from the handle/template reconstruction (authored joints).
 local liveHitbox = bat:FindFirstChild("Hitbox")
 liveHitbox.CFrame = frame(0, 0, -1)
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 studio = false
 env.print = previousPrint
 check(attacker:GetAttribute("BatDebugNextSwing") == nil, "one-swing diagnostic automatically disarms")
@@ -183,7 +228,23 @@ check(
     (cache.WorldUtil.Part(dropped[1]).Position - cache.WorldUtil.Part(dropped[2]).Position).Magnitude > 0.5,
     "Bat burst starts at separated world positions"
 )
-check(not victimHumanoid.PlatformStand, "Bat stun does not activate physical ragdoll in the isolated test phase")
+check(victimHumanoid.PlatformStand and physical[victim.Character], "valid Bat hit activates ragdoll")
+local activation = ragdollCalls[#ragdollCalls]
+check(
+    activation.Enabled and activation.Stunned and activation.CarryCount == 1,
+    "ragdoll begins after authoritative stun and ingredient drops"
+)
+local victimRoot = victim.Character:FindFirstChild("HumanoidRootPart")
+check(victimRoot.Impulse == nil, "knockback waits for the next Heartbeat")
+heartbeat()
+check(
+    victimRoot.ImpulseCount == 1
+        and victimRoot.Impulse.Z == -config.Knockback.HorizontalSpeed * victimRoot.AssemblyMass
+        and victimRoot.Impulse.Y == config.Knockback.UpwardSpeed * victimRoot.AssemblyMass,
+    "one mass-aware impulse moves victim away with modest lift"
+)
+heartbeat()
+check(victimRoot.ImpulseCount == 1, "knockback is a one-shot impulse")
 check(victim:GetAttribute("HasSmoothie") == true, "stun preserves smoothie state")
 check(inventory.DropCarriedIngredients(victim, "repeat") == 0, "repeated forced drop cannot duplicate ingredients")
 local droppedParent = dropped[1].Parent
@@ -224,14 +285,22 @@ check(
     not movement.IsStunned(victim) and victimHumanoid.JumpPower == movement.GetJumpPower(victim),
     "expiry restores upgraded jump state"
 )
+local recovery = ragdollCalls[#ragdollCalls]
+check(
+    not recovery.Enabled
+        and recovery.Character == victim.Character
+        and recovery.Stunned
+        and not physical[victim.Character],
+    "ragdoll recovery precedes authoritative stun release"
+)
 equip(attacker)
 setup(combat.SwingBat(attacker), "immune swing")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(victim), "post-stun immunity rejects chain stun")
 advance(config.ImmunitySeconds)
 -- Studio regression: authored contact can occur beyond gameplay Reach at level one.
-local firstSample = config.ImpactDelay - config.ImpactWindow / 2
-local sampleStep = config.ImpactWindow / 2
+local firstSample = config.HitActiveStart
+local sampleStep = config.HitSampleInterval
 local windowRoot = victim.Character:FindFirstChild("HumanoidRootPart")
 local secondVictim = fighter(-4)
 local secondRoot = secondVictim.Character:FindFirstChild("HumanoidRootPart")
@@ -261,7 +330,7 @@ check(movement.IsStunned(victim), "first sample can select a target")
 local stunDeadline = victim:GetAttribute("StunnedUntil")
 queriesAfterHit = queryCount
 overlaps = { secondRoot }
-advance(config.ImpactWindow)
+advance(config.HitSampleInterval)
 check(
     not movement.IsStunned(secondVictim)
         and victim:GetAttribute("StunnedUntil") == stunDeadline
@@ -273,9 +342,47 @@ overlaps = {}
 local queriesBeforeMiss = queryCount
 setup(combat.SwingBat(attacker), "entire window misses")
 advance(firstSample + 0.000001)
+for _ = 1, math.ceil((config.HitActiveEnd - config.HitActiveStart) / sampleStep) do
+    advance(sampleStep + 0.000001)
+end
+check(queryCount > queriesBeforeMiss + 3 and not movement.IsStunned(victim), "miss samples throughout broader window")
+local queriesAtExpiry = queryCount
+overlaps = { windowRoot }
 advance(sampleStep)
-advance(sampleStep)
-check(queryCount == queriesBeforeMiss + 3 and not movement.IsStunned(victim), "three empty samples remain a miss")
+check(
+    queryCount == queriesAtExpiry and not movement.IsStunned(victim),
+    "expired window cannot hit newly overlapping target"
+)
+check(not combat.SwingBat(attacker), "miss still consumes full cooldown")
+advance(config.SwingCooldown)
+-- Early and late contacts are active; startup and callbacks after the deadline are not.
+overlaps = { windowRoot }
+local beforeWindow = queryCount
+setup(combat.SwingBat(attacker), "window startup")
+advance(config.HitActiveStart / 2)
+check(queryCount == beforeWindow and not movement.IsStunned(victim), "startup has no damaging query")
+overlaps = {}
+advance(config.HitActiveStart / 2 + 0.000001)
+for _ = 1, 7 do
+    advance(sampleStep + 0.000001)
+end
+liveHitbox.CFrame = frame(0, 0, -1.7)
+overlaps = { windowRoot }
+advance(sampleStep + 0.000001)
+check(
+    movement.IsStunned(victim) and queryFrame == liveHitbox.CFrame,
+    "late contact at roughly 0.40 seconds uses live Hitbox and hits"
+)
+local afterLateHit = queryCount
+overlaps = { secondRoot }
+advance(config.HitActiveEnd)
+check(queryCount == afterLateHit and not movement.IsStunned(secondVictim), "late hit consumes entire swing")
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+setup(combat.SwingBat(attacker), "scheduler resumes after deadline")
+local beforeDelayed = queryCount
+overlaps = { windowRoot }
+advance(config.HitActiveEnd + 0.01)
+check(queryCount == beforeDelayed and not movement.IsStunned(victim), "late callback never replays expired contacts")
 advance(config.SwingCooldown)
 for _, cancellation in { "unequip", "death", "membership" } do
     overlaps = {}
@@ -292,7 +399,7 @@ for _, cancellation in { "unequip", "death", "membership" } do
         tycoon.RemovePlayer(teammate)
     end
     overlaps = { windowRoot }
-    advance(config.ImpactWindow)
+    advance(config.HitSampleInterval)
     check(not movement.IsStunned(victim), "remaining samples cancelled by " .. cancellation)
     if cancellation == "death" then
         attackerHumanoid.Health = 100
@@ -310,20 +417,20 @@ local contactRoot = victim.Character:FindFirstChild("HumanoidRootPart")
 contactRoot.Position = vec(0, 0, -5.807)
 overlaps = { contactRoot }
 setup(combat.SwingBat(attacker), "level one authored contact at 5.807 studs")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(movement.IsStunned(victim), "level one overlap at 5.807 stuns across separate plot sessions")
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
 contactRoot.Position = vec(0, 0, -2)
 overlaps = {}
 setup(combat.SwingBat(attacker), "close target outside authored volume")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(victim), "close root distance never substitutes for Hitbox overlap")
 advance(config.SwingCooldown)
 overlaps = { contactRoot }
 local validPose = liveHitbox.CFrame
 liveHitbox.CFrame = frame(0, 0, -100)
 setup(combat.SwingBat(attacker), "spoofed distant observed Tool pose")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(victim), "excessively distant Hitbox pose rejects even a reported nearby overlap")
 liveHitbox.CFrame = validPose
 advance(config.SwingCooldown)
@@ -342,7 +449,7 @@ for _, name in { "HumanoidRootPart", "Torso", "Left Arm", "Accessory" } do
     overlaps = { contact }
     victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -1)
     setup(combat.SwingBat(attacker), "point blank descendant " .. name)
-    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    advance(config.HitActiveStart + 0.000001)
     check(movement.IsStunned(victim), "point blank overlap resolves owner: " .. name)
     advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
 end
@@ -357,7 +464,7 @@ for level = 2, 3 do
     equip(attacker)
     victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -7.9 * config.Levels[level].Scale)
     setup(combat.SwingBat(attacker), "upgraded swing")
-    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    advance(config.HitActiveStart + 0.000001)
     check(victim:GetAttribute("StunnedUntil") == now + config.Levels[level].StunDuration, "upgraded stun duration")
     check(
         querySize.X > levelOneSize.X and math.abs(querySize.Z - hitbox.Size.Z * config.Levels[level].Scale) < 0.0001,
@@ -384,6 +491,31 @@ end
 remoteService.Init(dependency)
 local remote = requestRemote
 remote.FireClient = function() end
+-- Reject a manually submitted throw using the issued Bat, then restore newest-first throwing.
+inventory.ClearHeld(attacker)
+for _, id in { "Banana", "Ice" } do
+    carry(attacker, id)
+end
+equip(attacker)
+advance(0.2)
+remote.OnServerEvent:Fire(attacker, "ThrowHeld")
+check(inventory.GetCarryCount(attacker) == 2, "server rejects throw while authoritative Bat is equipped")
+bat.Parent = attacker:FindFirstChildOfClass("Backpack")
+bat.Unequipped:Fire()
+-- A lookalike does not count as the authoritative issued Bat.
+local lookalike = instance("Tool")
+lookalike.Name, lookalike.Parent = "Bat", attacker.Character
+lookalike:SetAttribute("BatLevel", 1)
+advance(0.2)
+remote.OnServerEvent:Fire(attacker, "ThrowHeld")
+check(
+    inventory.GetCarryCount(attacker) == 1 and inventory.GetHeldIngredientId(attacker) == "Banana",
+    "unequipping issued Bat restores newest-first throw even with an unissued lookalike"
+)
+lookalike:Destroy()
+inventory.ClearHeld(attacker)
+equip(attacker)
+advance(0.2)
 local far = fighter(-100)
 overlaps = {}
 local adapterTrace = {}
@@ -414,8 +546,9 @@ check(
         and attacker:GetAttribute("BatDebugNextSwing") == nil,
     "throttle rejection is visible before dispatch and consumes the one-shot rejection trace"
 )
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(far), "client cannot choose a target outside server query")
+advance(0.2) -- Move beyond the request throttle before testing the independent stun gate.
 table.clear(adapterTrace)
 movement.SetStunned(attacker, true)
 attacker:SetAttribute("BatDebugNextSwing", true)
@@ -434,7 +567,7 @@ advance(config.SwingCooldown)
 local farther = fighter(-4)
 overlaps = { farther.Character:FindFirstChild("HumanoidRootPart"), victim.Character:FindFirstChild("HumanoidRootPart") }
 setup(combat.SwingBat(attacker), "nearest enemy swing")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(movement.IsStunned(victim) and not movement.IsStunned(farther), "one swing hits closest valid enemy only")
 -- Stunned ownership does not permit swinging; stale timers cannot clear a new character's stun.
 tycoon.SetCash(victim, 2000)
@@ -449,6 +582,7 @@ local newCharacter = instance("Model")
 newCharacter.Name = victim.Name
 newCharacter.Parent = workspaceFake
 local newRoot = part("HumanoidRootPart", newCharacter)
+impulseRoot(newRoot)
 newRoot.CFrame, newRoot.Position = frame(0, 0, -3), vec(0, 0, -3)
 part("Head", newCharacter)
 local newHumanoid = instance("Humanoid")
@@ -463,7 +597,7 @@ flush()
 check(#bats(victim) == 1 and not movement.IsStunned(victim), "respawn restores owned bat and clears stun")
 advance(config.SwingCooldown)
 setup(combat.SwingBat(attacker), "new stun after lifecycle reset")
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 advance(1.8) -- old timer is due before the newer stun's deadline
 check(movement.IsStunned(victim), "old unstun token cannot clear newer stun")
 advance(1.2)
@@ -494,7 +628,7 @@ for _, policy in { "wall", "team", "dead", "behind", "reach", "unequipped" } do
     if policy == "unequipped" then
         bats(attacker)[1].Parent = attacker:FindFirstChildOfClass("Backpack")
     end
-    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    advance(config.HitActiveStart + 0.000001)
     check(not movement.IsStunned(victim), "reject invalid target/impact: " .. policy)
     workspaceFake.Raycast = function()
         return nil
@@ -507,7 +641,7 @@ end
 setup(combat.SwingBat(attacker), "pending swing before death")
 attackerHumanoid.Health = 0
 attackerHumanoid.Died:Fire()
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(victim), "attacker death cancels pending impact")
 attackerHumanoid.Health = 100
 combat.ApplyCharacter(attacker, attacker.Character)
@@ -515,7 +649,7 @@ flush()
 equip(attacker)
 setup(combat.SwingBat(attacker), "pending membership swing")
 tycoon.RemovePlayer(teammate)
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(victim), "membership revision change cancels pending swing")
 advance(config.SwingCooldown)
 local lost = bats(attacker)[1]
@@ -525,7 +659,7 @@ check(#bats(attacker) == 1 and bats(attacker)[1] ~= lost, "unexpected destructio
 equip(attacker)
 setup(combat.SwingBat(attacker), "leave during pending swing")
 combat.RemovePlayer(attacker)
-advance(config.ImpactDelay + config.ImpactWindow / 2)
+advance(config.HitActiveStart + 0.000001)
 check(
     not combat.SwingBat(attacker) and not movement.IsStunned(victim),
     "leaving cancels combat state and pending impact"
@@ -563,7 +697,7 @@ for level = 1, 3 do
     setup(tycoon.PurchaseUpgrade(widened, "Bat", level + 1, tycoon.GetRequestContext(widened)), "widened bat upgrade")
     equip(widened)
     setup(combat.SwingBat(widened), "widened bat swing")
-    advance(config.ImpactDelay + config.ImpactWindow / 2)
+    advance(config.HitActiveStart + 0.000001)
     check(
         math.abs(querySize.X - hitbox.Size.X * config.Levels[level].Scale) < 0.0001,
         "authored widened Hitbox remains the scaled query baseline"
@@ -571,3 +705,102 @@ for level = 1, 3 do
     advance(config.SwingCooldown)
 end
 hitbox.Size = originalSize
+
+-- Integration-specific failure and deferred callback contracts.
+local hitter = fighter(0)
+tycoon.SetCash(hitter, 2000)
+setup(tycoon.PurchaseUpgrade(hitter, "Bat", 2, tycoon.GetRequestContext(hitter)), "integration hitter owns bat")
+equip(hitter)
+local function hitTarget(target)
+    overlaps = { target.Character:FindFirstChild("HumanoidRootPart") }
+    setup(combat.SwingBat(hitter), "integration hit")
+    advance(config.HitActiveStart + 0.000001)
+    setup(movement.IsStunned(target), "integration target stunned")
+end
+for _, failure in { "on-false", "on-error", "off-false", "off-error" } do
+    local target = fighter(-3)
+    carry(target, "Banana")
+    ragdollFailure = failure
+    hitTarget(target)
+    check(inventory.GetCarryCount(target) == 0, failure .. " preserves ingredient drop")
+    heartbeat()
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    if string.sub(failure, 1, 2) == "on" then
+        check(root.Impulse == nil, failure .. " skips knockback")
+    end
+    advance(config.Levels[1].StunDuration)
+    check(
+        not movement.IsStunned(target) and target:GetAttribute("StunnedUntil") == 0,
+        failure .. " cannot strand authoritative stun"
+    )
+    ragdollFailure = nil
+    combat.RemovePlayer(target)
+end
+for _, invalidation in
+    { "death", "removed", "character-removed", "replacement", "unstunned", "unragdolled", "expired", "new-token" }
+do
+    local target, humanoid = fighter(-3)
+    hitTarget(target)
+    local original = target.Character
+    local originalRoot = original:FindFirstChild("HumanoidRootPart")
+    if invalidation == "death" then
+        humanoid.Health = 0
+        humanoid.Died:Fire()
+    elseif invalidation == "removed" then
+        target.Parent = nil
+        combat.RemovePlayer(target)
+    elseif invalidation == "character-removed" then
+        original.Parent = nil
+    elseif invalidation == "expired" then
+        advance(config.Levels[1].StunDuration)
+    elseif invalidation == "replacement" then
+        local replacement = fighter(-3)
+        target.Character = replacement.Character
+    elseif invalidation == "unstunned" then
+        movement.SetStunned(target, false)
+    elseif invalidation == "unragdolled" then
+        physical[original] = false
+    else
+        -- Same character, new stun token before the old recovery deadline.
+        combat.ApplyCharacter(target, original)
+        flush()
+        advance(config.SwingCooldown)
+        hitTarget(target)
+    end
+    heartbeat()
+    if invalidation == "new-token" then
+        check(originalRoot.ImpulseCount == 1, "old token cannot add an impulse to a newer stun on the same character")
+        advance(0.4) -- First stun expires; newer one remains active.
+        check(
+            movement.IsStunned(target) and physical[original],
+            "old recovery cannot clear a newer same-character stun"
+        )
+    else
+        check(originalRoot.Impulse == nil, invalidation .. " cancels deferred knockback")
+    end
+    local callsBeforeRecovery = #ragdollCalls
+    advance(config.Levels[1].StunDuration)
+    if invalidation == "replacement" then
+        check(
+            #ragdollCalls == callsBeforeRecovery and target.Character:FindFirstChild("HumanoidRootPart").Impulse == nil,
+            "old callbacks cannot impulse or unragdoll a replaced character"
+        )
+    end
+    combat.RemovePlayer(target)
+end
+-- Coincident roots use attacker forward, including a safe fallback for vertical forward.
+for _, forward in { vec(1, 0, 0), vec(0, 1, 0) } do
+    local target = fighter(0)
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    root.AssemblyMass = 25
+    hitter.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector = forward
+    hitTarget(target)
+    heartbeat()
+    local expected = if forward.X == 1 then vec(7, 4, 0) else vec(0, 4, -7)
+    check(
+        (root.Impulse / root.AssemblyMass - expected).Magnitude < 0.0001,
+        "coincident roots normalize safely and mass preserves configured velocity change"
+    )
+    advance(config.Levels[1].StunDuration)
+    combat.RemovePlayer(target)
+end

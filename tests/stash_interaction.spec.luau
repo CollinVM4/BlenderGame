@@ -15,10 +15,12 @@ do
     local inventory = loadModule("InventoryService")
     local records = {}
     local fixtures = {}
+    local sessions = {}
+    local failVisual = false
     inventory.Init({
         PlayerDataService = {
             GetUpgrade = function(_, name)
-                return if name == "CarryCapacity" then 2 else 1
+                return 1
             end,
         },
         IngredientService = {
@@ -34,13 +36,16 @@ do
                 return record ~= nil
             end,
             CreateVisual = function()
-                return instance("Part")
+                return if failVisual then nil else instance("Part")
             end,
             Spawn = function()
                 return instance("Part")
             end,
         },
         TycoonService = {
+            GetSessionId = function(p)
+                return sessions[p]
+            end,
             GetPlot = function(owner)
                 return fixtures[owner]
             end,
@@ -55,6 +60,7 @@ do
     local function player()
         local p = instance("Player")
         p.Near = true
+        p.CharacterRemoving = signal()
         p.Character = instance("Model")
         local root = instance("Part")
         root.Name, root.Parent = "HumanoidRootPart", p.Character
@@ -75,6 +81,7 @@ do
         local fixture = instance("Model")
         fixture.Owner = p
         fixtures[p] = fixture
+        sessions[p] = tostring(#allInstances)
         for index = 1, 5 do
             local slot = instance("Part")
             slot.Parent = fixture
@@ -112,7 +119,7 @@ do
     end
     check(not press(p) and stored(p) == 3 and inventory.GetCarryCount(p) == 0, "C: exhausted store never reverses")
     check(not press(p) and stored(p) == 3, "C: repeated failed STORE preserves direction")
-    now += 0.91
+    now += 1.11
     check(press(p) and stored(p) == 2, "C: later press can establish TAKE")
     for _ = 1, 2 do
         check(press(p), "take continuation")
@@ -120,19 +127,19 @@ do
     check(not press(p) and stored(p) == 0 and inventory.GetCarryCount(p) == 3, "D: full take never reverses")
 
     p = player()
-    seed(p, 3, 5)
+    seed(p, 3, 3)
     for n = 1, 3 do
         check(press(p), "B: rapid take succeeds")
-        check(stored(p) == 5 - n and inventory.GetCarryCount(p) == n, "B: one unit taken each press")
+        check(stored(p) == 3 - n and inventory.GetCarryCount(p) == n, "B: one unit taken each press")
     end
-    check(not press(p) and stored(p) == 2 and inventory.GetCarryCount(p) == 3, "H: carry capacity remains three")
+    check(not press(p) and stored(p) == 0 and inventory.GetCarryCount(p) == 3, "H: carry capacity remains three")
 
     p = player()
     seed(p, 3, 2)
     check(press(p), "E: establish TAKE")
-    now += 0.91
+    now += 1.11
     check(press(p) and stored(p) == 2 and inventory.GetCarryCount(p) == 0, "E: timeout reselects STORE")
-    now += 0.91
+    now += 1.11
     check(press(p) and stored(p) == 1, "E: timeout reselects TAKE")
     -- The idle window slides after each successful press, rather than starting once.
     now += 0.6
@@ -162,24 +169,24 @@ do
         check(press(b, index) and stored(b, index) == 1, "G: player B keeps TAKE across slots")
     end
     check(inventory.GetCarryCount(a) == 0 and inventory.GetCarryCount(b) == 3, "G: independent player directions")
-    check(not press(a, 3, b), "G: foreign stash rejects theft")
+    check(not press(a, 1, b), "G: foreign protected stash rejects theft")
     check(not press(a, 4) and not press(a, 5), "G: exhausted STORE survives foreign and own slot switches")
 
     p = player()
-    seed(p, 3, 4)
+    seed(p, 3, 2)
     carry(p)
     carry(p)
-    check(press(p) and stored(p) == 5, "H: store reaches stash capacity")
+    check(press(p) and stored(p) == 3, "H: store reaches stash capacity")
     check(
-        not press(p) and stored(p) == 5 and inventory.GetCarryCount(p) == 1,
+        not press(p) and stored(p) == 3 and inventory.GetCarryCount(p) == 1,
         "H: full stash rejects without reversing"
     )
     inventory.ClearHeld(p)
     carry(p, "Banana")
-    check(not press(p) and stored(p) == 5, "H: incompatible ingredient rejected")
+    check(not press(p) and stored(p) == 3, "H: full mixed ingredient slot rejected")
     inventory.ClearHeld(p)
     p.Near = false
-    check(not press(p) and stored(p) == 5, "H: distance validation retained")
+    check(not press(p) and stored(p) == 3, "H: distance validation retained")
     p.Near = true
     p.Character:FindFirstChildOfClass("Humanoid").Health = 0
     check(not press(p), "H: dead character rejected")
@@ -187,7 +194,7 @@ do
     local stranger = player()
     seed(p, 1, 1)
     check(not press(stranger, 1, p), "H: protected withdrawal rejected")
-    check(not press(stranger, 3, p), "H: unprotected theft remains disabled")
+    check(press(stranger, 3, p), "H: unprotected theft succeeds")
     carry(stranger)
     check(not press(stranger, 4, p) and stored(p, 4) == 0, "H: foreign deposit rejected")
     check(not press(p, 6), "H: invalid slot rejected")
@@ -197,29 +204,91 @@ do
     carry(p)
     carry(p)
     check(press(p) and press(p), "selected ingredient stores repeatedly")
+    check(press(p) and stored(p) == 3, "STORE accepts a different ingredient into the same slot")
+    local mixed = inventory.GetSnapshot(p).Stash[3]
     check(
-        not press(p) and inventory.GetHeldIngredientId(p) == "Banana" and stored(p) == 2,
-        "STORE rejects incompatible carried ingredient without taking"
+        mixed.Ingredients[1].IngredientId == "Strawberry" and mixed.Ingredients[3].IngredientId == "Banana",
+        "mixed ingredients retain individual records"
     )
-    check(not press(p) and stored(p) == 2, "incompatible STORE failure retains direction")
+    mixed.Ingredients[3].IngredientId = "Milk"
+    now += 1.2
+    check(press(p) and inventory.GetHeldIngredientId(p) == "Banana", "snapshot mutation cannot alter stored record")
+
+    local owner, enemy, secondEnemy, teammate = player(), player(), player(), player()
+    fixtures[teammate], sessions[teammate] = fixtures[owner], sessions[owner]
+    carry(teammate, "Milk")
+    check(press(teammate, 1, owner), "teammate stores into owner's permanent slot")
+    now += 1.2
+    check(press(teammate, 1, owner), "teammate withdraws from owner's permanent slot")
+    inventory.ClearHeld(teammate)
+    seed(owner, 1, 1)
+    seed(owner, 3, 2)
+    seed(owner, 4, 1, "Banana")
+    seed(owner, 4, 1, "Milk")
+    seed(owner, 5, 1, "Milk")
+    enemy.Near = false
+    check(not press(enemy, 3, owner), "enemy must be near actual slot")
+    enemy.Near = true
+    enemy.Character:FindFirstChildOfClass("Humanoid").Health = 0
+    check(not press(enemy, 3, owner), "dead enemy cannot steal")
+    enemy.Character:FindFirstChildOfClass("Humanoid").Health = 100
+    loadModule("MovementService").SetStunned(enemy, true)
+    check(not press(enemy, 3, owner), "stunned enemy cannot steal")
+    loadModule("MovementService").SetStunned(enemy, false)
     check(
-        press(p, 4) and inventory.GetSnapshot(p).Stash[4].IngredientId == "Banana",
-        "STORE follows current item into compatible slot"
+        not inventory.InteractStash(enemy, 3, owner, fixtures[enemy]),
+        "wrong source fixture cannot redirect interaction"
     )
-    inventory.ClearHeld(p)
-    now += 1
-    check(press(p), "establish TAKE before replacing slot contents")
-    inventory.ClearHeld(p)
-    check(inventory.Withdraw(p, 3), "external withdrawal empties slot")
-    inventory.ClearHeld(p)
-    seed(p, 3, 1, "Banana")
+    local duplicate = instance("Part")
+    duplicate:SetAttribute("SlotIndex", 3)
+    duplicate.Parent = fixtures[owner]
+    check(not press(enemy, 3, owner), "duplicate authored slot fails closed")
+    duplicate:Destroy()
+    failVisual = true
+    check(not press(enemy, 3, owner) and stored(owner, 3) == 2, "failed visual creation preserves stash")
+    check(inventory.GetStashRaidState(owner).State == "Normal", "failed theft does not start raid")
+    failVisual = false
+    local backpack = enemy:FindFirstChildOfClass("Backpack")
+    backpack.Parent = nil
+    check(not press(enemy, 4, owner) and stored(owner, 4) == 2, "failed equip restores exact slot")
+    check(inventory.GetStashRaidState(owner).State == "Normal", "failed equip does not start raid")
+    local restored = inventory.GetSnapshot(owner).Stash[4].Ingredients
     check(
-        press(p) and inventory.GetHeldIngredientId(p) == "Banana" and stored(p) == 0,
-        "TAKE uses current contents when slot ingredient changes"
+        restored[1].IngredientId == "Banana" and restored[2].IngredientId == "Milk",
+        "failed equip preserves mixed records and order in exact slot"
     )
+    backpack.Parent = enemy
+    check(press(enemy, 3, owner), "first successful theft starts raid")
+    local deadline = inventory.GetStashRaidState(owner).RaidEndsAt
+    check(
+        press(enemy, 4, owner) and press(enemy, 5, owner),
+        "enemy keeps TAKE across mixed slots while carrying stolen items"
+    )
+    check(not press(enemy, 4, owner), "enemy carry capacity enforced")
+    check(press(secondEnemy, 4, owner), "other enemies share the raid window")
+    check(inventory.GetStashRaidState(owner).RaidEndsAt == deadline, "later theft never extends deadline")
+    check(not press(secondEnemy, 1, owner), "permanent protection also holds during raid")
+    now = deadline
+    check(not inventory.Withdraw(secondEnemy, 3, owner), "protection begins exactly at raid deadline")
+    check(inventory.GetStashRaidState(owner).State == "Protected", "stash reports temporary protection")
+    carry(teammate, "Milk")
+    check(press(teammate, 5, owner), "team can store during protection")
+    now += 1.2
+    check(press(teammate, 5, owner), "team can take during protection")
+    fixtures[teammate], sessions[teammate] = nil, nil
+    check(not inventory.Withdraw(teammate, 1, owner), "departed teammate has no friendly access")
+    now = deadline + 30
+    check(inventory.Withdraw(secondEnemy, 3, owner), "exposed slot reopens exactly at protection expiry")
+    check(not inventory.Withdraw(secondEnemy, 1, owner), "permanent slots stay protected after expiry")
+    local oldSession = sessions[owner]
+    inventory.CleanupSession(oldSession)
+    sessions[owner] = oldSession .. "-new"
+    check(inventory.GetStashRaidState(owner).State == "Normal", "new plot session cannot inherit raid state")
+    now += 100
+    check(inventory.GetStashRaidState(owner).State == "Normal", "old deadlines cannot mutate new session")
     -- Exercise the actual prompt callback, not just the service entry point.
     p = player()
-    seed(p, 3, 5)
+    seed(p, 3, 3)
     local fixture = fixtures[p]
     fixture.Parent = workspaceFake
     local cleanup
@@ -254,7 +323,7 @@ do
         now += 0.1
         prompt.Triggered:Fire(p)
     end
-    check(inventory.GetCarryCount(p) == 3 and stored(p) == 2, "actual prompt preserves TAKE for three presses")
+    check(inventory.GetCarryCount(p) == 3 and stored(p) == 0, "actual prompt preserves TAKE for three presses")
     cleanup()
     print("PASS stash interaction: " .. (count - before) .. " checks")
 end

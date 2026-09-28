@@ -143,6 +143,10 @@ function GameplayService.Init(services: any)
         if action == "StartDay" then
             services.GameService.StartDay(player)
         elseif action == "ThrowHeld" then
+            -- Use the issued Tool identity, without coupling inventory back to combat.
+            if services.CombatService.IsBatEquipped(player) then
+                return
+            end
             services.InventoryService.ThrowHeld(player, id)
         elseif action == "ReleaseIngredient" and validId then
             services.InventoryService.ReleaseUnit(player, id)

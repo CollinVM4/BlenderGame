@@ -301,6 +301,9 @@ local studio = false
 local now = 100
 local storage = instance("Folder")
 local workspaceFake = {
+    GetServerTimeNow = function()
+        return now
+    end,
     Blockcast = function()
         return nil
     end,

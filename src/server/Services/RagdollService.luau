@@ -1,26 +1,30 @@
 --!strict
--- Standard R15 physics only. No combat, input, inventory or gameplay stun dependencies.
+-- Native Avatar Joint Upgrade R15 physics only. No combat, input, inventory or gameplay stun dependencies.
 local RunService = game:GetService("RunService")
 local RagdollService = {}
-type Joint = { Motor: Motor6D, Socket: BallSocketConstraint, Enabled: boolean }
-type Body = { CanCollide: boolean, Massless: boolean }
+type JointState = {
+    IsKinematic: boolean,
+    MaxForce: number,
+    MaxTorque: number,
+    LinearStrength: number,
+    LinearDamping: number,
+    AngularStrength: number,
+    AngularDamping: number,
+}
+type Joint = { Constraint: AnimationConstraint, Saved: JointState }
 type Rig = {
     Humanoid: Humanoid,
-    Root: BasePart,
+    Root: AnimationConstraint,
     Joints: { Joint },
-    Bodies: { [BasePart]: Body },
-    Objects: { Instance },
+    Sockets: { BallSocketConstraint },
+    TorsoCollision: { [BasePart]: boolean },
     Connections: { RBXScriptConnection },
     Active: boolean,
-    Revision: number,
     PlatformStand: boolean,
     AutoRotate: boolean,
-    RequiresNeck: boolean,
-    AutomaticOwner: boolean,
-    Owner: Player?,
 }
 local rigs: { [Model]: Rig } = {}
--- Expected Part0 / Part1 pairs. Root/RootJoint and Tool grips are deliberately excluded.
+-- Expected avatar body pairs. Root is validated separately and never modified.
 local joints: { [string]: { string } } = {
     Neck = { "UpperTorso", "Head" },
     Waist = { "LowerTorso", "UpperTorso" },
@@ -38,30 +42,163 @@ local joints: { [string]: { string } } = {
     RightAnkle = { "RightLowerLeg", "RightFoot" },
 }
 
-local function trace(character: Model, rig: Rig, phase: string)
-    if not RunService:IsStudio() then
-        return
+-- Optional read-only Studio inventory, retained for inspecting runtime failures.
+function RagdollService.InspectCharacter(character: Model)
+    assert(RunService:IsStudio() and RunService:IsServer(), "Use the Studio Server Command Bar")
+    local function path(object: Instance?): string
+        return if object then object:GetFullName() else "nil"
     end
-    local disabled, enabled = 0, 0
-    for _, joint in rig.Joints do
-        if joint.Motor.Parent and not joint.Motor.Enabled then
-            disabled += 1
-        end
-        if joint.Socket.Parent and joint.Socket.Enabled then
-            enabled += 1
-        end
+    local function property(object: Instance, name: string): string
+        local ok, value = pcall(function()
+            return (object :: any)[name]
+        end)
+        return if ok then tostring(value) else "unavailable"
     end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
     print(
         string.format(
-            "[Ragdoll] %s %s motorsOff=%d/14 socketsOn=%d/14 PlatformStand=%s state=%s",
-            character.Name,
-            phase,
-            disabled,
-            enabled,
-            tostring(rig.Humanoid.PlatformStand),
-            tostring(rig.Humanoid:GetState())
+            "[Ragdoll] inspect character=%s rig=%s StarterPlayer.AvatarJointUpgrade=%s",
+            path(character),
+            if humanoid then tostring(humanoid.RigType) else "missing Humanoid",
+            property(game:GetService("StarterPlayer"), "AvatarJointUpgrade")
         )
     )
+    local counts: { [string]: number } = {
+        AnimationConstraint = 0,
+        Motor6D = 0,
+        BallSocketConstraint = 0,
+        NoCollisionConstraint = 0,
+    }
+    local discovered: { [string]: { string } } = {}
+    local descendants = character:GetDescendants()
+    table.sort(descendants, function(a, b)
+        return a:GetFullName() < b:GetFullName()
+    end)
+    for _, object in descendants do
+        local class = object.ClassName
+        if counts[class] ~= nil then
+            counts[class] += 1
+        end
+        local a: Instance? = nil
+        local b: Instance? = nil
+        if object:IsA("Motor6D") or object:IsA("NoCollisionConstraint") then
+            a, b = object.Part0, object.Part1
+            print(
+                string.format(
+                    "[Ragdoll] %s %s Part0=%s Part1=%s Enabled=%s",
+                    class,
+                    path(object),
+                    path(a),
+                    path(b),
+                    tostring(object.Enabled)
+                )
+            )
+        elseif object:IsA("Constraint") then
+            local first, second = object.Attachment0, object.Attachment1
+            a, b = if first then first.Parent else nil, if second then second.Parent else nil
+            print(
+                string.format(
+                    "[Ragdoll] %s %s Attachment0=%s parent0=%s Attachment1=%s parent1=%s Enabled=%s",
+                    class,
+                    path(object),
+                    path(first),
+                    path(a),
+                    path(second),
+                    path(b),
+                    tostring(object.Enabled)
+                )
+            )
+            if class == "AnimationConstraint" then
+                for _, name in
+                    {
+                        "IsKinematic",
+                        "MaxForce",
+                        "MaxTorque",
+                        "LinearStrength",
+                        "LinearDamping",
+                        "AngularStrength",
+                        "AngularDamping",
+                    }
+                do
+                    print("[Ragdoll]   " .. name .. "=" .. property(object, name))
+                end
+            elseif object:IsA("BallSocketConstraint") then
+                print(
+                    string.format(
+                        "[Ragdoll]   LimitsEnabled=%s UpperAngle=%s TwistLimitsEnabled=%s TwistLowerAngle=%s TwistUpperAngle=%s",
+                        tostring(object.LimitsEnabled),
+                        tostring(object.UpperAngle),
+                        tostring(object.TwistLimitsEnabled),
+                        tostring(object.TwistLowerAngle),
+                        tostring(object.TwistUpperAngle)
+                    )
+                )
+            end
+        end
+        if a and b and a.Parent == character and b.Parent == character then
+            local key = a.Name .. "/" .. b.Name
+            discovered[key] = discovered[key] or {}
+            table.insert(discovered[key], class .. ":" .. object.Name)
+        end
+    end
+    for class, count in counts do
+        print(string.format("[Ragdoll] %s count=%d", class, count))
+    end
+    local expected = table.clone(joints)
+    expected.Root = { "HumanoidRootPart", "LowerTorso" }
+    for name, pair in expected do
+        local forward = discovered[pair[1] .. "/" .. pair[2]] or {}
+        local reverse = discovered[pair[2] .. "/" .. pair[1]] or {}
+        print(
+            string.format(
+                "[Ragdoll] expected=%s pair=%s/%s forward=[%s] reverse=[%s]",
+                name,
+                pair[1],
+                pair[2],
+                table.concat(forward, ", "),
+                table.concat(reverse, ", ")
+            )
+        )
+    end
+    print("[Ragdoll] inspection complete; no character properties changed")
+end
+
+local function capture(joint: AnimationConstraint): JointState
+    return {
+        IsKinematic = joint.IsKinematic,
+        MaxForce = joint.MaxForce,
+        MaxTorque = joint.MaxTorque,
+        LinearStrength = joint.LinearStrength,
+        LinearDamping = joint.LinearDamping,
+        AngularStrength = joint.AngularStrength,
+        AngularDamping = joint.AngularDamping,
+    }
+end
+
+local function reject(reason: string): boolean
+    warn("[Ragdoll] rejected jointSystem=AnimationConstraint: " .. reason)
+    return false
+end
+
+-- Resolve the owning body part, including Roblox's nested JointRotation attachments.
+local function bodyOf(attachment: Attachment?): BasePart?
+    local object: Instance? = attachment
+    while object do
+        if object:IsA("BasePart") then
+            return object
+        end
+        object = object.Parent
+    end
+    return nil
+end
+
+local function matches(character: Model, constraint: AnimationConstraint, pair: { string }): boolean
+    local a, b = bodyOf(constraint.Attachment0), bodyOf(constraint.Attachment1)
+    return a ~= nil
+        and b ~= nil
+        and a.Parent == character
+        and b.Parent == character
+        and ((a.Name == pair[1] and b.Name == pair[2]) or (a.Name == pair[2] and b.Name == pair[1]))
 end
 
 function RagdollService.IsRagdolled(character: Model): boolean
@@ -75,92 +212,60 @@ function RagdollService.PrepareCharacter(character: Model): boolean
         return true
     end
     local h = character:FindFirstChildOfClass("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not h or h.Health <= 0 or h.RigType ~= Enum.HumanoidRigType.R15 or not root or not root:IsA("BasePart") then
-        return false
+    if not h or h.Health <= 0 or h.RigType ~= Enum.HumanoidRigType.R15 then
+        return reject("a living R15 Humanoid is required")
     end
-    local found: { [string]: Motor6D } = {}
-    local rootMotor: Motor6D? = nil
+    local found: { [string]: AnimationConstraint } = {}
+    local sockets: { [string]: BallSocketConstraint } = {}
     for _, object in character:GetDescendants() do
-        if not object:IsA("Motor6D") then
-            continue
-        end
-        local a, b = object.Part0, object.Part1
-        if not a or not b or a.Parent ~= character or b.Parent ~= character then
-            continue
-        end
-        if a == root and b.Name == "LowerTorso" then
-            rootMotor = object
-        end
-        local pair = joints[object.Name]
-        if pair and a.Name == pair[1] and b.Name == pair[2] then
-            found[object.Name] = object
-        end
-    end
-    for name in joints do
-        if not found[name] then
-            if RunService:IsStudio() then
-                warn("[Ragdoll] prepare rejected: missing R15 joint " .. name)
+        if object:IsA("AnimationConstraint") and (object.Name == "Root" or joints[object.Name]) then
+            local pair = if object.Name == "Root" then { "HumanoidRootPart", "LowerTorso" } else joints[object.Name]
+            if not matches(character, object, pair) or not object.Enabled then
+                return reject("invalid/disabled avatar AnimationConstraint " .. object.Name)
             end
-            return false
+            if found[object.Name] then
+                return reject("duplicate avatar AnimationConstraint " .. object.Name)
+            end
+            found[object.Name] = object
+        elseif object:IsA("BallSocketConstraint") then
+            -- Validate the built-in named sockets without demanding identical attachments
+            -- or rebuilding their articulation. Shoulders can use nested JointRotation.
+            sockets[object.Name] = object
         end
     end
-    if not rootMotor or not rootMotor.Enabled then
-        if RunService:IsStudio() then
-            warn("[Ragdoll] prepare rejected: missing/enabled root connection required")
-        end
-        return false
+    local root = found.Root
+    if not root or not root.IsKinematic then
+        return reject("enabled kinematic Root AnimationConstraint required")
     end
     local rig: Rig = {
         Humanoid = h,
         Root = root,
         Joints = {},
-        Bodies = {},
-        Objects = {},
+        Sockets = {},
+        TorsoCollision = {},
         Connections = {},
         Active = false,
-        Revision = 0,
         PlatformStand = h.PlatformStand,
         AutoRotate = h.AutoRotate,
-        RequiresNeck = h.RequiresNeck,
-        AutomaticOwner = true,
-        Owner = nil,
     }
-    for name, motor in found do
-        local first, second = Instance.new("Attachment"), Instance.new("Attachment")
-        first.Name, second.Name = "Ragdoll_" .. name, "Ragdoll_" .. name
-        first.CFrame, second.CFrame = motor.C0, motor.C1
-        first.Parent, second.Parent = motor.Part0, motor.Part1
-        local socket = Instance.new("BallSocketConstraint")
-        socket.Name = "Ragdoll_" .. name
-        socket.Attachment0, socket.Attachment1 = first, second
-        socket.LimitsEnabled, socket.UpperAngle = true, if name == "Neck" then 45 else 90
-        socket.Enabled = false
-        socket.Parent = character
-        table.insert(rig.Objects, first)
-        table.insert(rig.Objects, second)
-        table.insert(rig.Objects, socket)
-        table.insert(rig.Joints, { Motor = motor, Socket = socket, Enabled = motor.Enabled })
-        for _, body in { motor.Part0, motor.Part1 } do
-            if body then
-                rig.Bodies[body] = { CanCollide = body.CanCollide, Massless = body.Massless }
-            end
+    for name in joints do
+        local joint, socket = found[name], sockets[name .. "BallSocket"]
+        if not joint then
+            return reject("missing body AnimationConstraint " .. name)
         end
-    end
-    -- Body parts collide with the floor, not one another. Prepared once, toggled with the rig.
-    local bodies: { BasePart } = {}
-    for body in rig.Bodies do
-        for _, other in bodies do
-            local exclusion = Instance.new("NoCollisionConstraint")
-            exclusion.Name = "RagdollSelfCollision"
-            exclusion.Part0, exclusion.Part1 = body, other
-            exclusion.Enabled = false
-            exclusion.Parent = character
-            table.insert(rig.Objects, exclusion)
+        if
+            not socket
+            or not socket.Enabled
+            or not socket.Attachment0
+            or not socket.Attachment1
+            or not socket.Attachment0:IsDescendantOf(character)
+            or not socket.Attachment1:IsDescendantOf(character)
+        then
+            return reject("missing/disabled built-in " .. name .. "BallSocket or its attachments")
         end
-        table.insert(bodies, body)
+        table.insert(rig.Joints, { Constraint = joint, Saved = capture(joint) })
+        table.insert(rig.Sockets, socket)
     end
-    rig.Bodies[root] = { CanCollide = root.CanCollide, Massless = root.Massless }
     rigs[character] = rig
     table.insert(
         rig.Connections,
@@ -182,7 +287,9 @@ function RagdollService.PrepareCharacter(character: Model): boolean
             end
         end)
     )
-    trace(character, rig, "prepared")
+    if RunService:IsStudio() then
+        print("[Ragdoll] prepared rig=R15 jointSystem=AnimationConstraint bodyJoints=14 root=Root")
+    end
     return true
 end
 
@@ -195,72 +302,80 @@ function RagdollService.SetRagdolled(character: Model, enabled: boolean): boolea
     if not rig or rig.Active == enabled then
         return true
     end
-    local h, root = rig.Humanoid, rig.Root
-    if enabled and (h.Health <= 0 or not root:CanSetNetworkOwnership()) then
-        return false
-    end
-    trace(character, rig, if enabled then "ON before" else "OFF before")
-    rig.Active = enabled
-    rig.Revision += 1
+    local h = rig.Humanoid
+    local changed = 0
     if enabled then
-        rig.PlatformStand, rig.AutoRotate, rig.RequiresNeck = h.PlatformStand, h.AutoRotate, h.RequiresNeck
-        rig.AutomaticOwner, rig.Owner = root:GetNetworkOwnershipAuto(), root:GetNetworkOwner()
-        root:SetNetworkOwner(nil)
-        h.RequiresNeck, h.AutoRotate, h.PlatformStand = false, false, true
-        for _, joint in rig.Joints do
-            joint.Enabled = joint.Motor.Enabled
-            joint.Socket.Enabled = true
-            joint.Motor.Enabled = false
+        -- Reject a rig changed since preparation before altering any physical state.
+        if
+            h.Health <= 0
+            or not rig.Root:IsDescendantOf(character)
+            or not rig.Root.Enabled
+            or not rig.Root.IsKinematic
+        then
+            return reject("rig no longer has a living Humanoid and kinematic Root")
         end
-        for body, saved in rig.Bodies do
-            saved.CanCollide, saved.Massless = body.CanCollide, body.Massless
-            body.CanCollide = body ~= root
-            body.Massless = false
-            if body:CanSetNetworkOwnership() then
-                body:SetNetworkOwner(nil)
+        for _, joint in rig.Joints do
+            if not joint.Constraint:IsDescendantOf(character) or not joint.Constraint.Enabled then
+                return reject("body AnimationConstraint removed/disabled since preparation")
             end
+        end
+        for _, socket in rig.Sockets do
+            if not socket:IsDescendantOf(character) or not socket.Enabled then
+                return reject("built-in BallSocket removed/disabled since preparation")
+            end
+        end
+        -- Refresh snapshots at each OFF -> ON edge; repeated ON cannot overwrite them.
+        local upper, lower = character:FindFirstChild("UpperTorso"), character:FindFirstChild("LowerTorso")
+        if not upper or not upper:IsA("BasePart") or not lower or not lower:IsA("BasePart") then
+            return reject("UpperTorso and LowerTorso required for core world collision")
+        end
+        rig.TorsoCollision = { [upper] = upper.CanCollide, [lower] = lower.CanCollide }
+        rig.PlatformStand, rig.AutoRotate = h.PlatformStand, h.AutoRotate
+        for _, joint in rig.Joints do
+            joint.Saved = capture(joint.Constraint)
+        end
+        rig.Active = true
+        h.AutoRotate, h.PlatformStand = false, true
+        for torso in rig.TorsoCollision do
+            torso.CanCollide = true
+        end
+        for _, joint in rig.Joints do
+            local constraint = joint.Constraint
+            constraint.MaxForce, constraint.MaxTorque = 0, 0
+            constraint.IsKinematic = false
+            changed += 1
         end
         h:ChangeState(Enum.HumanoidStateType.Physics)
     else
         for _, joint in rig.Joints do
-            joint.Socket.Enabled = false
-            if joint.Motor.Parent then
-                joint.Motor.Enabled = joint.Enabled
+            local constraint, saved = joint.Constraint, joint.Saved
+            if constraint.Parent then
+                constraint.MaxForce, constraint.MaxTorque = saved.MaxForce, saved.MaxTorque
+                constraint.LinearStrength, constraint.LinearDamping = saved.LinearStrength, saved.LinearDamping
+                constraint.AngularStrength, constraint.AngularDamping = saved.AngularStrength, saved.AngularDamping
+                constraint.IsKinematic = saved.IsKinematic
+                changed += 1
             end
         end
-        for body, saved in rig.Bodies do
-            if body.Parent then
-                body.CanCollide, body.Massless = saved.CanCollide, saved.Massless
+        for torso, canCollide in rig.TorsoCollision do
+            if torso.Parent then
+                torso.CanCollide = canCollide
             end
         end
         if h.Parent then
-            h.RequiresNeck, h.AutoRotate, h.PlatformStand = rig.RequiresNeck, rig.AutoRotate, rig.PlatformStand
+            h.PlatformStand, h.AutoRotate = rig.PlatformStand, rig.AutoRotate
             if h.Health > 0 and not rig.PlatformStand then
                 h:ChangeState(Enum.HumanoidStateType.GettingUp)
             end
         end
-        -- Request recovery while the server still owns the character, then return ownership.
-        if root.Parent and root:CanSetNetworkOwnership() then
-            if rig.AutomaticOwner then
-                root:SetNetworkOwnershipAuto()
-            else
-                root:SetNetworkOwner(rig.Owner)
-            end
-        end
+        rig.Active = false
     end
-    for _, object in rig.Objects do
-        if object:IsA("NoCollisionConstraint") then
-            object.Enabled = enabled
-        end
-    end
-    trace(character, rig, if enabled then "ON after" else "OFF after")
     if RunService:IsStudio() then
-        local revision = rig.Revision
-        task.delay(0.25, function()
-            if rigs[character] == rig and rig.Revision == revision then
-                trace(character, rig, "settled check")
-            end
-        end)
+        if enabled then
+            print(string.format("[Ragdoll] ON changed=%d RootKinematic=%s", changed, tostring(rig.Root.IsKinematic)))
+        else
+            print(string.format("[Ragdoll] OFF restored=%d", changed))
+        end
     end
     return true
 end
@@ -274,9 +389,6 @@ function RagdollService.CleanupCharacter(character: Model)
     rigs[character] = nil
     for _, connection in rig.Connections do
         connection:Disconnect()
-    end
-    for _, object in rig.Objects do
-        object:Destroy()
     end
 end
 
