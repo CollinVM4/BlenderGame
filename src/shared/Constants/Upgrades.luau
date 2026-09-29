@@ -1,5 +1,6 @@
 --!strict
 return {
+    SecondStorage = { { Cost = 0, Value = 5 }, { Cost = 8000, Value = 10 } },
     -- Demo prices; index 1 is displayed level 0 for movement tracks.
     MovementSpeed = {
         { Cost = 0, Value = 26 },

@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
 local WorldUtil = require(script.Parent.WorldUtil)
-local FarmAudio = require(script.Parent.FarmAudio)
+local GameplaySfx = require(script.Parent.GameplaySfxService)
 local FarmService = {}
 local deps: any
 local farms: { [Instance]: any } = {}
@@ -190,9 +190,6 @@ local function grow(farm: any, row: any, session: string, generation: number, id
     end
     if live(farm, session) and row.Generation == generation then
         row.Spawning = false
-        if next(row.Products) ~= nil then
-            FarmAudio.Play(Config.ReadySoundId, row.Plant.WorldPosition)
-        end
         emptyWhenHarvestGone(farm, row, session, generation)
     end
 end
@@ -230,7 +227,7 @@ local function plant(farm: any, row: any, player: Player)
         row.IngredientId = id
         row.Object:SetAttribute("FarmGrowEnd", workspace:GetServerTimeNow() + duration)
         setState(row, "GROWING")
-        FarmAudio.Play(Config.PlantSoundId, row.Plant.WorldPosition)
+        GameplaySfx.Emit("IngredientPlant", row.Plant.WorldPosition)
         local generation = row.Generation
         task.delay(duration, function()
             grow(farm, row, token, generation, id)

@@ -80,12 +80,24 @@ Clients animate fresh harvest pivots up from `HarvestPopDepth` over
 the Grow attachment plus `HarvestVerticalOffset` (default zero, world Y).
 Old streamed harvests do not replay the pop.
 
-Configure `PlantSoundId`, `ReadySoundId`, `PluckSoundId` in FarmConfig. Blank IDs
-are silent. `SoundVolume` defaults to 0.7; `SoundRollOffMaxDistance` to 50 studs.
-FarmAudio reuses AudioService.ConstructAudioCue with independent inert emitters,
-Ended cleanup and a 30-second Debris fallback. Successful plants and harvest
-batches play once; only successful farm pickup consumption plucks. Expiry,
-session destruction and normal ingredient pickups do not pluck.
+`GameplayAudio` centralizes the PLIP/PLOP assets and positional volume/rolloff.
+Successful world pickup (`InventoryService.CarryWorldItem`) and committed planting
+(`FarmService.plant`) emit `IngredientPickup` and `IngredientPlant`; intentional
+ingredient throws (`InventoryService.ThrowHeld`) emit `IngredientThrow`.
+`GameplaySfxService` broadcasts semantic names and world positions through the
+server-output-only `Shared.Events.GameplaySfx` remote. Growth completion is silent.
+Generic consumption, cleanup, forced drops, stash transfers and rejected actions
+emit no SFX. Farm products use the normal world pickup path.
+
+`GameplayAudioController` preloads the two reusable templates once and renders
+known events locally with independent positional emitters, Ended cleanup and a
+15-second Debris fallback. Early events wait for preload (up to 32 queued);
+events beyond 50 studs from the camera are culled. No authored Sound instances
+are needed. Check asset permissions and actual audibility in Studio.
+
+Focused checks: `python tests/run_state_tests.py --suite gameplay-sfx --suite farm
+--suite gameplay-audio --luau <luau.exe>`. Client rendering checks are reported
+separately from authoritative/integration checks.
 
 Run `python tests/run_farm_presentation_tests.py --luau <luau.exe>` separately
 from gameplay. It covers displayed selection, invalid ingredients, native input

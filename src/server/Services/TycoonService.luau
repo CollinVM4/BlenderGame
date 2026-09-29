@@ -15,6 +15,7 @@ local plots: { [Player]: Instance } = {}
 local hooks: any = {}
 local shared: { [string]: boolean } = {
     FarmRows = true,
+    SecondStorage = true,
     Bat = true,
     Jump = true,
     Payout = true,
@@ -144,6 +145,7 @@ end
 local function publish(session: Session)
     session.Plot:SetAttribute("OwnerUserId", session.OwnerUserId)
     session.Plot:SetAttribute("PlotSessionId", session.PlotSessionId)
+    session.Plot:SetAttribute("SecondStoragePurchased", session.SharedUpgrades.SecondStorage == 2)
     publishIdentity(session.Plot, session)
     for _, player in TycoonService.GetMembers(session.PlotSessionId) do
         player:SetAttribute("PlotSessionId", session.PlotSessionId)
@@ -206,7 +208,7 @@ function TycoonService.PurchaseUpgrade(
     expectedTier: number,
     context: any
 ): (boolean, string?)
-    if not TycoonService.IsSharedUpgrade(id) or id == "FarmRows" then
+    if not TycoonService.IsSharedUpgrade(id) or id == "FarmRows" or id == "SecondStorage" then
         return false, "InvalidUpgrade"
     end
     local token = TycoonService.BeginTransaction(player, context)
@@ -250,6 +252,28 @@ function TycoonService.PurchaseFarmRow(player: Player, row: number, context: any
     session.SharedCash -= cost
     session.SharedUpgrades.FarmRows = row + 1
     commit()
+    publish(session)
+    TycoonService.EndTransaction(token)
+    return true
+end
+
+-- Server-only physical stash pad transaction; membership is checked against the target plot.
+function TycoonService.PurchaseSecondStorage(player: Player, plot: Instance, context: any): boolean
+    if not TycoonService.IsMember(player, plot) then
+        return false
+    end
+    local token = TycoonService.BeginTransaction(player, context)
+    if not token then
+        return false
+    end
+    local session = byId[token]
+    local cost = Upgrades.SecondStorage[2].Cost
+    if session.SharedUpgrades.SecondStorage ~= 1 or session.SharedCash < cost then
+        TycoonService.EndTransaction(token)
+        return false
+    end
+    session.SharedCash -= cost
+    session.SharedUpgrades.SecondStorage = 2
     publish(session)
     TycoonService.EndTransaction(token)
     return true
@@ -345,6 +369,7 @@ function TycoonService.RemovePlayer(player: Player, afterTransition: (() -> ())?
         end
         session.Status = "Closed"
         sessions[session.Plot], byId[session.PlotSessionId] = nil, nil
+        session.Plot:SetAttribute("SecondStoragePurchased", false)
         session.Plot:SetAttribute("OwnerUserId", nil)
         session.Plot:SetAttribute("PlotSessionId", nil)
         publishIdentity(session.Plot, nil)
@@ -396,6 +421,7 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
         plot:SetAttribute("PlotId", HttpService:GenerateGUID(false))
     end
     if not sessions[plot] then
+        plot:SetAttribute("SecondStoragePurchased", false)
         plot:SetAttribute("OwnerUserId", nil)
         plot:SetAttribute("PlotSessionId", nil)
         publishIdentity(plot, nil)
@@ -418,6 +444,9 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
     do
         if #TycoonService.GetFixtures(plot, role) == 0 then
             local object = plot:FindFirstChild(role, true)
+            if not object and role == "PlayerStash" then
+                object = plot:FindFirstChild("Stash")
+            end
             if not object and role == "TurbineWheel" then
                 local turbine = plot:FindFirstChild("Turbine", true)
                 object = turbine

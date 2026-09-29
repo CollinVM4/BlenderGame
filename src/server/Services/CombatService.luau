@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.BatConfig)
+local GameplaySfx = require(script.Parent.GameplaySfxService)
 local CombatService = {}
 local deps: any
 type Weapon = { Tool: Tool, Scale: number }
@@ -346,8 +347,12 @@ function CombatService.SwingBat(player: Player): boolean
     attackAt[player] = os.clock() + Config.SwingCooldown
     local token = {}
     swings[player] = token
-    local character = player.Character
+    local character = player.Character :: Model
     local weapon = weapons[player] :: Weapon
+    local hitbox = weapon.Tool:FindFirstChild("Hitbox")
+    local _, root = alive(player)
+    local position = if hitbox and hitbox:IsA("BasePart") then hitbox.Position else root.Position
+    GameplaySfx.Emit("BatSwing", position)
     local context = deps.TycoonService.GetRequestContext(player)
     local function sampleImpact(sample: number)
         if swings[player] ~= token then

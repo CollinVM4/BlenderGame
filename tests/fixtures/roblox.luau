@@ -126,6 +126,12 @@ local function instance(class)
     object.CFrame = frame()
     object.Size = vec(4, 1.2, 2) -- Roblox Part default, also used by character-root doubles.
     object.Position = vec(0, 0, 0)
+    object.MoveToFinished = signal()
+    function object:MoveTo(position)
+        self.WalkTarget = position
+        self.MoveToFinished:Fire(true)
+    end
+    function object:Move() end
     function object:GetChildren()
         local found = {}
         for _, child in allInstances do
@@ -486,6 +492,11 @@ local cache = {
         end,
     },
     AudioService = {
+        PlayCustomerDialogue = function(sound)
+            if sound and sound.Parent and not sound.IsPlaying then
+                sound:Play()
+            end
+        end,
         CreateBlendGroup = function()
             local audio = {}
             for _, name in { "dialogueSound", "notReadySound", "customerServeSound" } do

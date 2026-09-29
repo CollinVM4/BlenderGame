@@ -8,6 +8,13 @@ local combat = loadModule("CombatService")
 local movement = loadModule("MovementService")
 local tycoon = dependency.TycoonService
 local config = loadModule("BatConfig")
+local gameplaySfx = loadModule("GameplaySfxService")
+gameplaySfx.Init()
+local sfxRemote = shared.Events:FindFirstChild("GameplaySfx")
+local swingSounds = {}
+sfxRemote.FireAllClients = function(_, name, position)
+    table.insert(swingSounds, { Name = name, Position = position })
+end
 dependency.MovementService = movement
 dependency.CombatService = combat
 movement.Init(dependency)
@@ -158,11 +165,20 @@ local function equip(p)
     p.Character:FindFirstChildOfClass("Humanoid"):EquipTool(bats(p)[1])
 end
 check(not combat.SwingBat(attacker), "unequipped bat rejects request")
+check(#swingSounds == 0, "unequipped bat rejection is silent")
 equip(attacker)
 overlaps =
     { attacker.Character:FindFirstChild("HumanoidRootPart"), teammate.Character:FindFirstChild("HumanoidRootPart") }
 check(combat.SwingBat(attacker), "owned equipped bat starts swing")
+local swingHitbox = bat:FindFirstChild("Hitbox")
+check(
+    #swingSounds == 1
+        and swingSounds[1].Name == "BatSwing"
+        and swingSounds[1].Position == swingHitbox.Position,
+    "accepted swing emits once at the bat Hitbox even when no target is hit"
+)
 check(not combat.SwingBat(attacker), "swing cooldown rejects repeated request")
+check(#swingSounds == 1, "cooldown rejection does not emit another swing sound")
 advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(attacker) and not movement.IsStunned(teammate), "self and shared teammate are rejected")
 local levelOneSize = querySize

@@ -3,7 +3,6 @@
 local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
 local Movement = require(game:GetService("ReplicatedStorage").Shared.Constants.CustomerMovement)
-local Placement = require(script.Parent.CustomerPlacement)
 local CustomerWalk = {}
 local DEFAULT_WALK = {
     R15 = "rbxassetid://507777826",
@@ -85,44 +84,41 @@ function CustomerWalk.PrepareRig(model: Model, root: BasePart)
     end
 end
 
--- Retain the existing non-colliding, controlled PivotTo locomotion style. These
--- constraints hold the unanchored assembly between steps and while idle, without
--- adding colliders or changing imported animation joints.
-function CustomerWalk.HoldRig(model: Model, root: BasePart): (CFrame) -> ()
+local function removeLegacyHoldRig(model: Model, root: BasePart)
+    local attachment = root:FindFirstChild("CustomerRouteAttachment")
+    if not attachment or not attachment:IsA("Attachment") then
+        return
+    end
+    for _, object in model:GetDescendants() do
+        if
+            (object:IsA("AlignPosition") or object:IsA("AlignOrientation"))
+            and (object.Attachment0 == attachment or object.Attachment1 == attachment)
+        then
+            object:Destroy()
+        end
+    end
+    attachment:Destroy()
+end
+
+-- Hand the spawned clone to native Humanoid locomotion and normal character physics.
+function CustomerWalk.Prepare(model: Model, root: BasePart)
+    removeLegacyHoldRig(model, root)
+    for _, descendant in model:GetDescendants() do
+        if descendant:IsA("BasePart") then
+            descendant.Anchored = false
+        end
+    end
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     if humanoid then
-        -- This route owns forces and orientation, as the old anchored route did.
-        -- Keep the engine from enabling body collisions or fighting the pose hold.
-        -- Animator playback remains explicitly owned by Create below.
-        humanoid.EvaluateStateMachine = false
+        humanoid.EvaluateStateMachine = true
+        humanoid.PlatformStand = false
+        humanoid.Sit = false
+        humanoid.AutoRotate = true
+        humanoid.WalkSpeed = Movement.Speed
     end
-    local attachment = Instance.new("Attachment")
-    attachment.Name = "CustomerRouteAttachment"
-    attachment.Parent = root
-    local position = Instance.new("AlignPosition")
-    position.Mode = Enum.PositionAlignmentMode.OneAttachment
-    position.Attachment0 = attachment
-    position.ApplyAtCenterOfMass = true
-    position.RigidityEnabled = true
-    position.Parent = root
-    local orientation = Instance.new("AlignOrientation")
-    orientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    orientation.Attachment0 = attachment
-    orientation.RigidityEnabled = true
-    orientation.Parent = root
-    local function pose(at: CFrame)
-        model:PivotTo(at)
-        position.Position = root.Position
-        orientation.CFrame = root.CFrame
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end
-    pose(model:GetPivot())
-    root.Anchored = false
     if root:CanSetNetworkOwnership() then
         root:SetNetworkOwner(nil)
     end
-    return pose
 end
 
 function CustomerWalk.Cancel(record: any)
@@ -131,17 +127,16 @@ function CustomerWalk.Cancel(record: any)
     local humanoid = record.Model:FindFirstChildOfClass("Humanoid")
     if humanoid then
         humanoid.AutoRotate = false
+        -- Halt in-flight autonomous movement without going through MoveTo/MoveToFinished.
+        humanoid:Move(Vector3.zero)
     end
 end
 
--- Path factory and step clock are injectable engine boundaries for deterministic tests.
-function CustomerWalk.Move(
-    record: any,
-    targets: { CFrame },
-    finished: (boolean) -> (),
-    adapter: any?,
-    arrived: ((number) -> ())?
-)
+-- Path factory is the only injectable engine boundary; Humanoid:MoveTo/MoveToFinished
+-- drive the actual walk so slopes and minor terrain variation are handled natively.
+-- A model without a Humanoid (e.g. the no-template placeholder) has no rig to drive
+-- and glides directly between waypoints instead.
+function CustomerWalk.Move(record: any, destination: CFrame, finished: (boolean) -> (), adapter: any?)
     CustomerWalk.Cancel(record)
     local token = record.MoveToken
     local model: Model = record.Model
@@ -156,130 +151,21 @@ function CustomerWalk.Move(
         else function()
             return RunService.Heartbeat:Wait()
         end
+    local didLogFirstMoveTo = false
     local function valid(): boolean
         return model.Parent ~= nil and record.MoveToken == token
     end
-    local function pose(at: CFrame)
-        record.Pose(at)
+    local function groundPosition(): Vector3
+        return model:GetPivot().Position - Vector3.new(0, record.BottomOffset, 0)
     end
-    local function clearApproach(destination: Vector3): boolean
-        local start = model:GetPivot().Position
-        local delta = destination - start
-        if delta.Magnitude < 0.0001 then
-            return true
-        end
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { model }
-        params.RespectCanCollide = true
-        local height = Movement.Agent.AgentHeight
-        local radius = Movement.Agent.AgentRadius
-        local center = start + Vector3.new(0, height / 2 - record.BottomOffset + 0.1, 0)
-        return workspace:Blockcast(CFrame.new(center), Vector3.new(radius * 2, height, radius * 2), delta, params)
-            == nil
-    end
-    local function travel(destination: CFrame, blocked: () -> boolean): boolean
-        local current = model:GetPivot()
-        local start = Placement.Face(current.Position, destination.Position, current)
-        local goal = Placement.Face(destination.Position, destination.Position + start.LookVector, start)
-        local duration = (start.Position - goal.Position).Magnitude / Movement.Speed
-        local elapsed = 0
-        while elapsed < duration do
-            local dt = step()
-            if not valid() or blocked() then
-                return false
-            end
-            elapsed += dt
-            pose(start:Lerp(goal, math.min(1, elapsed / duration)))
-        end
-        return valid() and not blocked()
-    end
+    local goalGround = destination.Position - Vector3.new(0, record.BottomOffset, 0)
     if humanoid then
         humanoid.AutoRotate = true
+        humanoid.WalkSpeed = Movement.Speed
     end
     record.Walk.SetMoving(true)
-    task.spawn(function()
-        if not valid() then
-            return
-        end
-        local success = true
-        for leg, destination in targets do
-            local reached = false
-            for _ = 1, Movement.MaxPathAttempts do
-                if not valid() then
-                    return
-                end
-                local path: any = nil
-                local ok = pcall(function()
-                    path = createPath()
-                    path:ComputeAsync(
-                        model:GetPivot().Position - Vector3.new(0, record.BottomOffset, 0),
-                        destination.Position - Vector3.new(0, record.BottomOffset, 0)
-                    )
-                end)
-                if not valid() then
-                    if path then
-                        path:Destroy()
-                    end
-                    return
-                end
-                if ok and path.Status == Enum.PathStatus.Success then
-                    local blocked, index = false, 1
-                    local connection = path.Blocked:Connect(function(at: number)
-                        if at >= index then
-                            blocked = true
-                        end
-                    end)
-                    local function isBlocked(): boolean
-                        return blocked
-                    end
-                    local points = path:GetWaypoints()
-                    reached = #points > 0
-                    for i, waypoint in points do
-                        index = i
-                        if waypoint.Action == Enum.PathWaypointAction.Jump then
-                            reached = false
-                            break
-                        end
-                        local at = waypoint.Position + Vector3.new(0, record.BottomOffset, 0)
-                        -- Only shorten the final segment; never cut a corner just because
-                        -- an earlier waypoint happens to be close to the marker.
-                        if
-                            i == #points
-                            and (model:GetPivot().Position - destination.Position).Magnitude
-                                <= Movement.FinalApproachDistance
-                        then
-                            break
-                        end
-                        if not travel(CFrame.new(at), isBlocked) then
-                            reached = false
-                            break
-                        end
-                    end
-                    if reached then
-                        -- Path endpoints can be projected far from an unreachable marker.
-                        reached = (model:GetPivot().Position - destination.Position).Magnitude
-                                <= Movement.FinalApproachDistance
-                            and clearApproach(destination.Position)
-                            and travel(destination, isBlocked)
-                    end
-                    connection:Disconnect()
-                end
-                if path then
-                    path:Destroy()
-                end
-                if reached then
-                    break
-                end
-            end
-            if not reached then
-                success = false
-                break
-            end
-            if arrived and valid() then
-                arrived(leg)
-            end
-        end
+
+    local function settle(reached: boolean)
         if not valid() then
             return
         end
@@ -287,21 +173,196 @@ function CustomerWalk.Move(
         if humanoid then
             humanoid.AutoRotate = false
         end
-        if success then
-            local start = model:GetPivot()
-            local target = targets[#targets]
-            local goal = Placement.Face(start.Position, start.Position + target.LookVector, target)
-            local elapsed = 0
-            while elapsed < Movement.TurnSeconds do
-                elapsed += step()
+        if reached then
+            model:PivotTo(destination)
+        end
+        finished(reached)
+    end
+
+    -- Drive one waypoint to completion; onDone reports whether it was actually reached.
+    local function driveTo(at: Vector3, onDone: (boolean) -> ())
+        if humanoid then
+            local moveConnection: any
+            moveConnection = humanoid.MoveToFinished:Connect(function(reached: boolean)
+                moveConnection:Disconnect()
+                onDone(reached)
+            end)
+            if not didLogFirstMoveTo and RunService:IsStudio() then
+                didLogFirstMoveTo = true
+                local root = model:FindFirstChild("HumanoidRootPart")
+                local anchoredBodyParts = {}
+                local bodyPartStates = {}
+                local staleMovementObjects = {}
+                for _, descendant in model:GetDescendants() do
+                    if descendant:IsA("BasePart") then
+                        if descendant.Anchored then
+                            table.insert(anchoredBodyParts, descendant:GetFullName())
+                        end
+                        table.insert(
+                            bodyPartStates,
+                            descendant:GetFullName()
+                                .. "(Anchored="
+                                .. tostring(descendant.Anchored)
+                                .. ",CanCollide="
+                                .. tostring(descendant.CanCollide)
+                                .. ")"
+                        )
+                    end
+                    if
+                        descendant:IsA("AlignPosition")
+                        or descendant:IsA("AlignOrientation")
+                        or descendant:IsA("BodyPosition")
+                        or descendant:IsA("BodyVelocity")
+                        or descendant:IsA("BodyGyro")
+                        or descendant:IsA("LinearVelocity")
+                        or descendant:IsA("VectorForce")
+                    then
+                        table.insert(staleMovementObjects, descendant.ClassName .. ":" .. descendant:GetFullName())
+                    end
+                end
+                local rootAnchored = if root and root:IsA("BasePart") then tostring(root.Anchored) else "<missing>"
+                local distance =
+                    if root and root:IsA("BasePart") then (root.Position - destination.Position).Magnitude else 0
+                print(
+                    "[CustomerWalk] rootAnchored="
+                        .. rootAnchored
+                        .. " anchoredBodyParts="
+                        .. table.concat(anchoredBodyParts, ",")
+                        .. " evaluateStateMachine="
+                        .. tostring(humanoid.EvaluateStateMachine)
+                        .. " platformStand="
+                        .. tostring(humanoid.PlatformStand)
+                        .. " sit="
+                        .. tostring(humanoid.Sit)
+                        .. " walkSpeed="
+                        .. tostring(humanoid.WalkSpeed)
+                        .. " humanoidState="
+                        .. tostring(humanoid:GetState())
+                        .. " destination="
+                        .. tostring(destination.Position)
+                        .. " distance="
+                        .. tostring(distance)
+                        .. " moveToWaypoint="
+                        .. tostring(at)
+                        .. " bodyParts="
+                        .. table.concat(bodyPartStates, ",")
+                        .. " staleMovementObjects="
+                        .. table.concat(staleMovementObjects, ",")
+                )
+            end
+            humanoid:MoveTo(at)
+            return
+        end
+        local start = model:GetPivot()
+        local duration = (start.Position - at).Magnitude / Movement.Speed
+        local elapsed = 0
+        while elapsed < duration do
+            if not valid() then
+                return
+            end
+            elapsed += step()
+            model:PivotTo(start:Lerp(CFrame.new(at), math.min(1, elapsed / math.max(duration, 0.0001))))
+        end
+        onDone(valid())
+    end
+
+    -- Walk one computed path to completion; reports success/failure of this attempt only.
+    local function walkPath(onDone: (boolean) -> ())
+        local path: any = nil
+        local ok = pcall(function()
+            path = createPath()
+            path:ComputeAsync(groundPosition(), goalGround)
+        end)
+        if not valid() then
+            if path then
+                path:Destroy()
+            end
+            return
+        end
+        if not ok or path.Status ~= Enum.PathStatus.Success then
+            if path then
+                path:Destroy()
+            end
+            onDone(false)
+            return
+        end
+        local points = path:GetWaypoints()
+        if #points == 0 then
+            path:Destroy()
+            onDone(false)
+            return
+        end
+        local blocked = false
+        local connection = path.Blocked:Connect(function()
+            blocked = true
+        end)
+        local function cleanup()
+            connection:Disconnect()
+            path:Destroy()
+        end
+        local index = 1
+        local function advance()
+            if not valid() then
+                cleanup()
+                return
+            end
+            if blocked then
+                cleanup()
+                onDone(false)
+                return
+            end
+            local waypoint = points[index]
+            if waypoint.Action == Enum.PathWaypointAction.Jump then
+                cleanup()
+                onDone(false)
+                return
+            end
+            local at = waypoint.Position + Vector3.new(0, record.BottomOffset, 0)
+            driveTo(at, function(reached: boolean)
                 if not valid() then
+                    cleanup()
                     return
                 end
-                pose(start:Lerp(goal, math.min(1, elapsed / Movement.TurnSeconds)))
-            end
+                if blocked or not reached then
+                    cleanup()
+                    onDone(false)
+                    return
+                end
+                index += 1
+                if index > #points then
+                    cleanup()
+                    onDone(true)
+                else
+                    advance()
+                end
+            end)
         end
+        advance()
+    end
+
+    local attempts = 0
+    local function attempt()
+        attempts += 1
+        walkPath(function(reached)
+            if not valid() then
+                return
+            end
+            if reached then
+                settle(true)
+                return
+            end
+            if attempts < Movement.MaxPathAttempts then
+                attempt()
+                return
+            end
+            -- Bounded retries exhausted: only recover if we already ended up close
+            -- to the marker; genuinely unreachable destinations still fail.
+            settle((groundPosition() - goalGround).Magnitude <= Movement.FinalApproachDistance)
+        end)
+    end
+    task.spawn(function()
         if valid() then
-            finished(success)
+            attempt()
         end
     end)
 end

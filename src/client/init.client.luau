@@ -1,3 +1,4 @@
+require(script.Controllers.GameplayAudioController).Init()
 require(script.Controllers.SmoothiePickupPromptController).Init()
 require(script.Controllers.InteractionPromptController).Init()
 require(script.Controllers.CustomerOrderController).Init()
@@ -25,3 +26,5 @@ require(script.Controllers.SessionInteractionController).Init()
 require(script.Controllers.PlotIdentityController).Init()
 
 require(script.Controllers.BatController).Init()
+
+require(script.Controllers.StashExpansionController).Init()

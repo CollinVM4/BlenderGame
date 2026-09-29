@@ -2,12 +2,11 @@
 -- Engine signals, authored geometry and elapsed time are controlled at the boundary.
 local tycoon = dependency.TycoonService
 local config = loadModule("FarmConfig")
-local farmAudio = loadModule("FarmAudio")
+local audio = loadModule("GameplaySfxService")
 local sounds = {}
-farmAudio.Play = function(id, position)
+audio.Emit = function(id, position)
     table.insert(sounds, { Id = id, Position = position })
 end
-config.PlantSoundId, config.ReadySoundId, config.PluckSoundId = "plant", "ready", "pluck"
 local owner, humanoid = player()
 local peer = player()
 local outsider = player()
@@ -138,7 +137,9 @@ local selected = tool(owner)
 carry(owner, "Banana")
 humanoid:EquipTool(selected)
 owner:SetAttribute("HeldIngredientId", "Crab")
+table.clear(sounds) -- Start planting observations after the successful setup pickups.
 plantRow(1, outsider)
+check(#sounds == 0, "rejected planting emits nothing")
 check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 2, "outsider cannot plant")
 plantRow(1, owner)
 check(
@@ -147,7 +148,10 @@ check(
 )
 check(timers[#timers].Seconds == 30, "common duration")
 check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 30, "client receives synchronized growth deadline")
-check(#sounds == 1 and sounds[1].Id == "plant", "plant sound only follows successful consumption")
+check(
+    #sounds == 1 and sounds[1].Id == "IngredientPlant" and sounds[1].Position == rows[1].Plant.WorldPosition,
+    "plant sound only follows successful consumption"
+)
 farm.StartSession(peer)
 check(state(1) == "GROWING", "repeated session binding preserves live crop")
 plantRow(1, owner)
@@ -162,7 +166,7 @@ end
 timers[1].Run()
 check(#spawned == 3 and state(1) == "READY", "growth creates exactly three normal world ingredients")
 check(rows[1].Object:GetAttribute("FarmGrowEnd") == nil, "ready clears countdown deadline")
-check(#sounds == 2 and sounds[2].Id == "ready", "one ready sound for the whole harvest")
+check(#sounds == 1, "growth and rejected growing-row plant emit nothing")
 for n, object in spawned do
     check(
         object:GetAttribute("SpawnSource") == "Farm" and object:GetAttribute("FarmSpawnTime") == now,
@@ -180,14 +184,10 @@ setup(inventory.CarryWorldItem(outsider, spawned[2]), "harvest uses normal publi
 check(state(1) == "READY", "remaining harvest blocks replanting")
 spawned[3]:Destroy()
 check(
-    #sounds == 4 and sounds[3].Id == "pluck" and sounds[4].Id == "pluck",
+    #sounds == 3 and sounds[2].Id == "IngredientPickup" and sounds[3].Id == "IngredientPickup",
     "only successful pickups pluck; expiry is silent"
 )
 check(state(1) == "EMPTY", "last legitimate removal empties row")
-local normal = realSpawn("Apple", frame(), nil, true)
-local beforeNormal = #sounds
-ingredients.Consume(normal, true)
-check(#sounds == beforeNormal, "ordinary ingredient pickup does not pluck")
 ingredients.Spawn = realSpawn
 inventory.ClearHeld(owner)
 local definition = ingredients.GetDefinition("Apple")
@@ -246,7 +246,9 @@ ingredients.Spawn = function(...)
     spawnCount += 1
     return realSpawn(...)
 end
+local beforeStale = #sounds
 stale.Run()
+check(#sounds == beforeStale, "stale growth callback is silent")
 check(spawnCount == 0 and state(1) == "LOCKED", "stale timer cannot spawn into replacement session")
 check(tycoon.GetUpgrade(owner, "FarmRows") == 1, "new session clears row upgrades")
 tycoon.SetCash(owner, 1000)

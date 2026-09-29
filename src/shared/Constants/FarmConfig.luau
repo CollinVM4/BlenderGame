@@ -8,9 +8,4 @@ return {
     HarvestVerticalOffset = 0,
     HarvestPopDepth = 0.65,
     HarvestPopSeconds = 0.32,
-    PlantSoundId = "",
-    ReadySoundId = "",
-    PluckSoundId = "",
-    SoundVolume = 0.7,
-    SoundRollOffMaxDistance = 50,
 }

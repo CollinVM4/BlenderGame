@@ -1,7 +1,6 @@
 --!strict
 return {
     Speed = 8,
-    TurnSeconds = 0.2,
     MaxPathAttempts = 3,
     FinalApproachDistance = 3,
     Agent = {

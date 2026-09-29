@@ -184,3 +184,44 @@ do
     )
     check(decoration.Anchored, "unrelated decoration retains anchoring")
 end
+
+-- Spawn preparation releases the full clone and restores native Humanoid locomotion.
+do
+    local model = instance("Model")
+    local humanoid = instance("Humanoid")
+    humanoid.Parent, humanoid.RigType = model, { Name = "R15" }
+    addLocomotionRig(model, "R15")
+    local decoration = instance("Part")
+    decoration.Name, decoration.Parent, decoration.Anchored = "Decoration", model, true
+    local root = model:FindFirstChild("HumanoidRootPart")
+    local routeAttachment = instance("Attachment")
+    routeAttachment.Name, routeAttachment.Parent = "CustomerRouteAttachment", root
+    local routePosition = instance("AlignPosition")
+    routePosition.Attachment0, routePosition.Parent = routeAttachment, root
+    local routeOrientation = instance("AlignOrientation")
+    routeOrientation.Attachment0, routeOrientation.Parent = routeAttachment, root
+    local unrelatedAttachment = instance("Attachment")
+    unrelatedAttachment.Name, unrelatedAttachment.Parent = "RigAttachment", root
+    local unrelatedConstraint = instance("AlignPosition")
+    unrelatedConstraint.Attachment0, unrelatedConstraint.Parent = unrelatedAttachment, root
+    humanoid.EvaluateStateMachine = false
+    humanoid.PlatformStand, humanoid.Sit, humanoid.AutoRotate, humanoid.WalkSpeed = true, true, false, 0
+
+    loadModule("CustomerWalk").Prepare(model, root)
+
+    local allPartsUnanchored = true
+    for _, descendant in model:GetDescendants() do
+        if descendant:IsA("BasePart") and descendant.Anchored then
+            allPartsUnanchored = false
+        end
+    end
+    check(allPartsUnanchored, "preparation unanchors every BasePart in the customer clone")
+    check(
+        humanoid.EvaluateStateMachine and not humanoid.PlatformStand and not humanoid.Sit and humanoid.AutoRotate,
+        "preparation restores normal Humanoid state"
+    )
+    check(humanoid.WalkSpeed == 8, "preparation restores configured customer walk speed")
+    check(routeAttachment.Destroyed and routePosition.Destroyed and routeOrientation.Destroyed, "old route holder is removed")
+    check(not unrelatedAttachment.Destroyed and not unrelatedConstraint.Destroyed, "unrelated rig constraints are preserved")
+    check(root.NetworkOwner == nil, "customer assembly remains server-owned")
+end

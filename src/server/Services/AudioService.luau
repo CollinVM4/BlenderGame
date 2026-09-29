@@ -1,11 +1,7 @@
 --!strict
 local AudioService = {}
 
-local DIALOGUE_SOUND_IDS = {
-    "rbxassetid://218057428",
-    "rbxassetid://218057436",
-    "rbxassetid://218057416",
-}
+local CUSTOMER_DIALOGUE_SOUND_ID = "rbxassetid://130763160561998"
 
 function AudioService.ConstructAudioCue(parent: Instance, soundId: string, volume: number, looped: boolean?): Sound
     local sound = Instance.new("Sound")
@@ -18,15 +14,20 @@ function AudioService.ConstructAudioCue(parent: Instance, soundId: string, volum
     return sound
 end
 
+function AudioService.PlayCustomerDialogue(sound: Sound?)
+    if sound and sound.Parent and not sound.IsPlaying then
+        sound:Play()
+    end
+end
+
 function AudioService.CreateBlendGroup(parent: Instance): { [string]: Sound }
     local blendSound = AudioService.ConstructAudioCue(parent, "rbxassetid://365965609", 0, true)
     local dingSound = AudioService.ConstructAudioCue(parent, "rbxassetid://110253665387820", 1, false)
     local pourSound = AudioService.ConstructAudioCue(parent, "rbxassetid://9114612188", 1, false)
     local notReadySound = AudioService.ConstructAudioCue(parent, "rbxassetid://90524619811521", 1, false)
     local customerServeSound = AudioService.ConstructAudioCue(parent, "rbxassetid://135165335432475", 1, false)
-    -- randomize dialogue chirp
-    local dialogueSoundId = DIALOGUE_SOUND_IDS[math.random(1, #DIALOGUE_SOUND_IDS)]
-    local dialogueSound = AudioService.ConstructAudioCue(parent, dialogueSoundId, 1, false)
+    local dialogueSound = AudioService.ConstructAudioCue(parent, CUSTOMER_DIALOGUE_SOUND_ID, 1, false)
+    dialogueSound.PlaybackSpeed = 1
 
     return {
         blendSound = blendSound,

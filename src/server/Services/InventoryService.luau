@@ -7,6 +7,7 @@ local Types = require(Shared.Types)
 local WorldUtil = require(script.Parent.WorldUtil)
 local CarryPresentation = require(script.Parent.IngredientCarryPresentation)
 local IngredientThrow = require(script.Parent.IngredientThrow)
+local GameplaySfx = require(script.Parent.GameplaySfxService)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local SmoothieGeometry = require(script.Parent.SmoothieGeometry)
 local InventoryService = {}
@@ -18,6 +19,7 @@ local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
 local StashConfig = Economy.NormalStash
+local StashSlots = require(script.Parent.StashSlots)
 local STASH_BURST_TIMEOUT = 0.6
 local raids: { [string]: { RaidEndsAt: number, ProtectionEndsAt: number } } = {}
 type StashIntent = {
@@ -325,11 +327,24 @@ function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?):
     if not record or not root or not root:IsA("BasePart") or not humanoid or humanoid.Health <= 0 then
         return nil
     end
-    return releaseHeld(player, true, nil, table.find(held[player], record))
+    local origin = IngredientThrow.Origin(root).Position
+    local object = releaseHeld(player, true, nil, table.find(held[player], record))
+    if object and record.ItemType == "Ingredient" then
+        GameplaySfx.Emit("IngredientThrow", origin)
+    end
+    return object
 end
 
 -- Private synchronous equip path shared by loose pickup and stash withdrawal.
-local function equipVisual(player: Player, id: string?, visual: Instance, smoothie: Types.SmoothieData?): boolean
+-- onCommitted fires the instant the reservation enters the authoritative held
+-- stack, before Tool parenting/EquipTool presentation work runs.
+local function equipVisual(
+    player: Player,
+    id: string?,
+    visual: Instance,
+    smoothie: Types.SmoothieData?,
+    onCommitted: (() -> ())?
+): boolean
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -393,6 +408,9 @@ local function equipVisual(player: Player, id: string?, visual: Instance, smooth
     table.insert(stack, reservation)
     held[player] = stack
     syncHeld(player)
+    if onCommitted then
+        onCommitted()
+    end
     local function ownsTool(): boolean
         local current: { HeldItem } = held[player] or {}
         for _, item in current do
@@ -532,13 +550,20 @@ function InventoryService.CarryWorldItem(player: Player, object: Instance): bool
     end
     -- This claim-to-reservation transaction must not yield. Consume removes the server
     -- identity before another request can claim it; only the visual is cloned for carry.
+    local pickupPart = WorldUtil.Part(object)
+    local pickupPosition = if pickupPart then pickupPart.Position else nil
     local visual = object:Clone()
     if not InventoryService.ClaimWorldItem(player, object) then
         visual:Destroy()
         return false
     end
     InventoryService.RemoveUnit(player, record.Id)
-    return equipVisual(player, record.Id, visual)
+    local equipped = equipVisual(player, record.Id, visual, nil, function()
+        if pickupPosition then
+            GameplaySfx.Emit("IngredientPickup", pickupPosition)
+        end
+    end)
+    return equipped
 end
 
 function InventoryService.Init(services)
@@ -549,7 +574,7 @@ function InventoryService.AddPlayer(player: Player)
     carried[player] = {}
     syncHeld(player)
     stashes[player] = {}
-    for index = 1, StashConfig.Slots do
+    for index = 1, Upgrades.SecondStorage[2].Value do
         stashes[player][index] = {
             SlotIndex = index,
             Ingredients = {},
@@ -563,8 +588,9 @@ end
 function InventoryService.GetStackCap(player: Player): number
     return Upgrades.StackSize[deps.PlayerDataService.GetUpgrade(player, "StackSize")].Value
 end
-function InventoryService.GetStashLayout(_player: Player)
-    return { Slots = StashConfig.Slots, Protected = StashConfig.Protected }
+function InventoryService.GetStashLayout(player: Player)
+    local tier = if deps.TycoonService.GetUpgrade then deps.TycoonService.GetUpgrade(player, "SecondStorage") else 1
+    return { Slots = Upgrades.SecondStorage[tier].Value, Protected = StashConfig.Protected }
 end
 function InventoryService.GetHeldIngredientId(player: Player): string?
     local record = resolveActionItem(player)
@@ -624,6 +650,9 @@ function InventoryService.GetSnapshot(player: Player)
     local source = stashes[player]
     if source then
         for index, stack in source do
+            if index > InventoryService.GetStashLayout(player).Slots then
+                continue
+            end
             stash[index] = table.clone(stack)
             stash[index].Ingredients = {}
             for _, item in stack.Ingredients do
@@ -726,7 +755,13 @@ function InventoryService.DropOne(player: Player): Instance?
 end
 -- Resolve the unique server-tagged fixture and actual slot, never a client position.
 local function getSlotPart(owner: Player, index: number): BasePart?
-    if type(index) ~= "number" or index ~= index or index % 1 ~= 0 or index < 1 or index > StashConfig.Slots then
+    if
+        type(index) ~= "number"
+        or index ~= index
+        or index % 1 ~= 0
+        or index < 1
+        or index > InventoryService.GetStashLayout(owner).Slots
+    then
         return nil
     end
     local plot = deps.TycoonService.GetPlot(owner)
@@ -737,16 +772,11 @@ local function getSlotPart(owner: Player, index: number): BasePart?
     if #fixtures ~= 1 or deps.TycoonService.GetOwner(fixtures[1]) ~= owner then
         return nil
     end
-    local found: BasePart? = nil
-    for _, part in fixtures[1]:GetDescendants() do
-        if part:IsA("BasePart") and part:GetAttribute("SlotIndex") == index then
-            if found then
-                return nil
-            end
-            found = part
-        end
+    local expansion = StashSlots.Expansion(plot)
+    if index > StashConfig.Slots and (not expansion or expansion:GetAttribute("StashExpansionReady") ~= true) then
+        return nil
     end
-    return found
+    return StashSlots.Resolve(fixtures[1], expansion)[index]
 end
 local function accessible(player: Player, owner: Player, index: number): boolean
     if not MovementService.CanPerformGameplayAction(player) then
@@ -893,7 +923,7 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
         intent = nil
         stashIntents[player] = nil
     end
-    if not owner or not part or not sessionId or (fixture and not part:IsDescendantOf(fixture)) then
+    if not owner or not part or not sessionId or (fixture and part ~= fixture and not part:IsDescendantOf(fixture)) then
         return false
     end
     local slot = stashes[owner] and stashes[owner][index]

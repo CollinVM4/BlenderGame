@@ -22,12 +22,21 @@ type View = {
     Normal: CFrame,
     NormalFocus: CFrame,
     RootPosition: Vector3,
+    VisibilityReset: boolean,
 }
 
 local function inside(zone: BasePart, position: Vector3): boolean
     local point = zone.CFrame:PointToObjectSpace(position)
     local half = zone.Size * 0.5
     return math.abs(point.X) <= half.X and math.abs(point.Y) <= half.Y and math.abs(point.Z) <= half.Z
+end
+
+local function makeCharacterLocallyVisible(character: Model)
+    for _, descendant in character:GetDescendants() do
+        if descendant:IsA("BasePart") then
+            descendant.LocalTransparencyModifier = 0
+        end
+    end
 end
 
 function Controller.Destroy()
@@ -201,6 +210,7 @@ function Controller.Init()
                     Normal = camera.CFrame,
                     NormalFocus = camera.Focus,
                     RootPosition = root.Position,
+                    VisibilityReset = false,
                 }
                 view = current
             elseif current.Leaving then
@@ -209,6 +219,7 @@ function Controller.Init()
                 current.From = camera.CFrame
                 current.FromFocus = camera.Focus
                 current.RootPosition = root.Position
+                current.VisibilityReset = false
             end
             camera.CameraType = Enum.CameraType.Scriptable
         elseif current and not current.Leaving then
@@ -253,6 +264,18 @@ function Controller.Init()
         else
             camera.CFrame = current.From:Lerp(current.Target.CFrame, alpha)
             camera.Focus = current.FromFocus:Lerp(CFrame.new(current.Root.Position), alpha)
+            if not current.VisibilityReset then
+                current.VisibilityReset = true
+                local character = player.Character
+                if character then
+                    makeCharacterLocallyVisible(character)
+                    task.defer(function()
+                        if view == current and not current.Leaving and player.Character == character then
+                            makeCharacterLocallyVisible(character)
+                        end
+                    end)
+                end
+            end
         end
     end)
 

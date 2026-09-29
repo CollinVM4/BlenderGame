@@ -63,7 +63,8 @@ cache.AudioService.CreateBlendGroup = function(root)
         local sound = instance("Sound")
         sound.Parent = root
         sound.Stop = function() end
-        sound.Play = function()
+        sound.Play = function(self)
+            self.IsPlaying = true
             if name == "dialogueSound" then
                 dialoguePlays += 1
             end
@@ -131,7 +132,7 @@ services.PathfindingService.CreatePath = function(...)
 end
 advance(2)
 services.PathfindingService.CreatePath = originalPathFactory
-check(table.concat(entranceTargets, ",") == "30,20,10", "entrance traverses Wait2 then Wait1 then Counter")
+check(table.concat(entranceTargets, ",") == "10", "first arrival routes directly to the counter")
 check(#customer.GetQueueSnapshot(owner) == 1, "one initial arrival despite duplicate activation")
 advance(35)
 advance(35)
@@ -155,7 +156,7 @@ for index, entry in queue do
     local beforeSound = dialoguePlays
     take.Triggered:Fire(owner)
     flush()
-    check(dialoguePlays > beforeSound, "taking each queued order plays dialogue")
+    check(dialoguePlays == beforeSound + 1, "taking each queued order plays dialogue once")
     check(not take.Enabled and entry.Model:GetAttribute("OrderRevealed"), "order reveals once and disables take prompt")
     beforeSound = dialoguePlays
     take.Triggered:Fire(owner)

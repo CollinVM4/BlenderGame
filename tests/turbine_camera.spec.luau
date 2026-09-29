@@ -70,6 +70,11 @@ local function newCharacter()
     character.Parent = workspaceFake
     local root = instance("Part")
     root.Name, root.Parent = "HumanoidRootPart", character
+    root.LocalTransparencyModifier = 1
+    local body = instance("Part")
+    body.Name, body.Parent = "Body", character
+    body.LocalTransparencyModifier = 1
+    character.BodyPart = body
     local human = instance("Humanoid")
     human.Parent, human.Health = character, 100
     player.Character = character
@@ -144,8 +149,17 @@ step(0.3)
 check(camera.CameraType == "Custom", "foreign plot cannot activate")
 root.Position = zone.CFrame.Position
 local start = camera.CFrame
-step(0)
+step(0, function()
+    root.LocalTransparencyModifier = 1
+    character.BodyPart.LocalTransparencyModifier = 1
+end)
 check(camera.CameraType == "Scriptable" and near(camera.CFrame, start), "enter starts without snapping")
+check(
+    root.LocalTransparencyModifier == 0 and character.BodyPart.LocalTransparencyModifier == 0,
+    "turbine view clears first-person local transparency after applying its camera frame"
+)
+flush()
+check(character.BodyPart.LocalTransparencyModifier == 0, "active turbine view retries visibility after deferred camera updates")
 step(0.15)
 check(near(camera.CFrame, start:Lerp(target.CFrame, 0.5)), "enter has a smooth midpoint")
 step(0.15)
@@ -159,6 +173,8 @@ local function defaultCamera()
     if camera.CameraType == "Custom" then
         camera.CFrame = normal
         camera.Focus = cameraFrame(root.Position)
+        root.LocalTransparencyModifier = 1
+        character.BodyPart.LocalTransparencyModifier = 1
     end
 end
 step(0, defaultCamera)
@@ -172,7 +188,10 @@ step(0.15, function()
     check(near(camera.CFrame, normal), "default camera receives its unblended prior frame")
     defaultCamera()
 end)
-check(near(camera.CFrame, normal), "exit finishes on default view")
+check(
+    near(camera.CFrame, normal) and character.BodyPart.LocalTransparencyModifier == 1,
+    "exit finishes on default view without forcing local transparency"
+)
 camera.CFrame = cameraFrame(vec(80, 5, 1))
 local inactive = camera.CFrame
 step(0.1)

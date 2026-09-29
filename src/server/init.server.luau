@@ -23,6 +23,7 @@ local services: { [string]: any } = {
 }
 
 require(script.Services.FilmingUtil).Init()
+require(script.Services.GameplaySfxService).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
 services.MovementService.Init(services)
@@ -76,6 +77,7 @@ for _, plot in roots do
     services.TycoonService.AutoTagLegacyPlot(plot)
 end
 services.FarmService.Init(services)
+require(script.Services.StashExpansionService).Init(services)
 
 local characterConnections: { [Player]: RBXScriptConnection } = {}
 local removingConnections: { [Player]: RBXScriptConnection } = {}

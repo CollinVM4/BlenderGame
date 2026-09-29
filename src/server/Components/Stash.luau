@@ -2,32 +2,21 @@
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local Presentation = require(script.Parent.StashPresentation)
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy).NormalStash
+local Slots = require(script.Parent.Parent.Services.StashSlots)
+local CollectionService = game:GetService("CollectionService")
 local Stash = {}
 function Stash.Init(services: any)
     WorldUtil.BindTag("PlayerStash", function(object)
-        local slots: { [number]: BasePart } = {}
-        local counts: { [number]: number } = {}
-        for _, part in object:GetDescendants() do
-            local index = part:GetAttribute("SlotIndex")
-            if
-                part:IsA("BasePart")
-                and type(index) == "number"
-                and index % 1 == 0
-                and index >= 1
-                and index <= Config.Slots
-            then
-                counts[index] = (counts[index] or 0) + 1
-                slots[index] = part
-            end
+        local plot = object.Parent
+        while plot and not CollectionService:HasTag(plot, "PlayerPlot") do
+            plot = plot.Parent
         end
+        local expansion = plot and Slots.Expansion(plot)
+        local slots = Slots.Resolve(object, expansion)
         local prompts = {}
         local connections = {}
         for index, slot in slots do
-            if counts[index] ~= 1 then
-                warn("[Stash] Duplicate SlotIndex: " .. index)
-                slots[index] = nil
-                continue
-            end
+            slot:SetAttribute("StashLogicalSlotIndex", index)
             local prompt = WorldUtil.Prompt(slot, "StashPrompt", "Store ingredient")
             prompt:SetAttribute("PlayerStashPrompt", true)
             prompts[index] = prompt
@@ -35,7 +24,12 @@ function Stash.Init(services: any)
                 connections,
                 prompt.Triggered:Connect(function(player)
                     local owner = services.TycoonService.GetOwner(object)
-                    services.InventoryService.InteractStash(player, index, owner, object)
+                    services.InventoryService.InteractStash(
+                        player,
+                        index,
+                        owner,
+                        if index > Config.Slots then expansion else object
+                    )
                 end)
             )
         end
@@ -47,7 +41,10 @@ function Stash.Init(services: any)
                 slot:SetAttribute("StashSessionId", raid and raid.SessionId)
                 slot:SetAttribute("StashRaidEndsAt", raid and raid.RaidEndsAt or 0)
                 slot:SetAttribute("StashProtectionEndsAt", raid and raid.ProtectionEndsAt or 0)
-                local state = snapshot and snapshot.Stash[index]
+                local enabled = index <= Config.Slots
+                    or (expansion ~= nil and expansion:GetAttribute("StashExpansionReady") == true)
+                prompts[index].Enabled = enabled
+                local state = enabled and snapshot and snapshot.Stash[index]
                 slot:SetAttribute("StashOwnerUserId", owner and owner.UserId or 0)
                 Presentation.Refresh(slot, state, services.IngredientService)
                 prompts[index].ObjectText = (if index <= Config.Protected then "Protected slot " else "Slot ") .. index
@@ -76,6 +73,9 @@ function Stash.Init(services: any)
             table.insert(connections, ancestor:GetAttributeChangedSignal("OwnerUserId"):Connect(refresh))
             ancestor = ancestor.Parent
         end
+        if expansion then
+            table.insert(connections, expansion:GetAttributeChangedSignal("StashExpansionReady"):Connect(refresh))
+        end
         refresh()
         return function()
             for _, connection in connections do
@@ -88,6 +88,7 @@ function Stash.Init(services: any)
                 Presentation.Clear(slot)
                 for _, name in
                     {
+                        "StashLogicalSlotIndex",
                         "StashOwnerUserId",
                         "StashSessionId",
                         "StashRaidEndsAt",

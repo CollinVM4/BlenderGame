@@ -1,26 +1,19 @@
--- Locomotion contracts: deterministic path service and heartbeat boundaries.
+-- Locomotion contracts: deterministic path service and native Humanoid MoveTo boundary.
 local walk = loadModule("CustomerWalk")
 local config = loadModule("CustomerMovement")
 local function rig()
     local model, humanoid = instance("Model"), instance("Humanoid")
     model.Parent, humanoid.Parent = workspaceFake, model
-    local record = { Model = model, BottomOffset = 0, Moving = false, Frames = {} }
+    local record = { Model = model, BottomOffset = 0, Moving = false }
     record.Walk = {
         SetMoving = function(value)
             record.Moving = value
         end,
     }
-    record.Pose = function(at)
-        model:PivotTo(at)
-        table.insert(record.Frames, at)
-    end
     return record, humanoid
 end
 local function adapter(points, status)
     local state = { Attempts = 0 }
-    state.Step = function()
-        return 0.05
-    end
     state.CreatePath = function()
         state.Attempts += 1
         local path = { Status = status or "Success", Blocked = signal() }
@@ -38,53 +31,37 @@ local function adapter(points, status)
     return state
 end
 local destination = env.CFrame.lookAt(vec(12, 0, 0), vec(13, 0, 0))
+
+-- A successful path walks every waypoint via MoveTo/MoveToFinished, then settles once.
 do
     local record, humanoid = rig()
-    local engine = adapter({ { Position = vec(0, 0, 5) }, { Position = vec(12, 0, 5) }, { Position = vec(12, 0, 0) } })
-    local arrived, wasWalking, turnedSmoothly = false, false, false
-    engine.Step = function()
-        wasWalking = wasWalking or (record.Moving and humanoid.AutoRotate)
-        if not record.Moving then
-            turnedSmoothly = true
-            check(not humanoid.AutoRotate, "automatic turning disabled during final settle")
-            check(record.Model:GetPivot().Position.Y == 0, "final turn preserves grounded height")
-        end
-        return 0.05
+    local engine = adapter({ { Position = vec(6, 0, 0) }, { Position = vec(12, 0, 0) } })
+    local sawAutoRotate, arrived = false, nil
+    humanoid.MoveTo = function(self, position)
+        sawAutoRotate = sawAutoRotate or self.AutoRotate
+        self.MoveToFinished:Fire(true)
     end
-    walk.Move(record, { destination }, function(ok)
+    walk.Move(record, destination, function(ok)
         arrived = ok
     end, engine)
     flush()
-    local detoured = false
-    for _, at in record.Frames do
-        detoured = detoured or at.Position.Z >= 5
-    end
-    check(arrived and detoured, "traverse the obstacle detour before arriving")
+    check(arrived == true and sawAutoRotate, "successful route walks and arrives")
     check(
         record.Model:GetPivot().Position.X == 12 and record.Model:GetPivot().Position.Z == 0,
         "final approach reaches exact marker XZ"
     )
     check(record.Model:GetPivot().LookVector.X > 0.999, "settles to marker horizontal facing")
-    check(
-        wasWalking and turnedSmoothly and not record.Moving and not humanoid.AutoRotate,
-        "walking transitions to stable idle"
-    )
-    local resumed = false
-    engine.Step = function()
-        resumed = resumed or humanoid.AutoRotate
-        return 0.05
-    end
-    walk.Move(record, { frame(20, 0, 0) }, function() end, engine)
-    flush()
-    check(resumed and not humanoid.AutoRotate, "walking resumes AutoRotate then disables it at next stop")
+    check(not record.Moving and not humanoid.AutoRotate, "walking transitions to stable idle")
 end
-for _, failure in { "NoPath", "error", "blocked", "jump", "projected" } do
-    local record = rig()
+
+-- Bounded, distinct failure modes never teleport toward the destination.
+for _, failure in { "NoPath", "computeError", "jump", "stuck" } do
+    local record, humanoid = rig()
     local engine = adapter(nil, if failure == "NoPath" then "NoPath" else "Success")
     local create = engine.CreatePath
     engine.CreatePath = function()
         local path = create()
-        if failure == "error" then
+        if failure == "computeError" then
             function path:ComputeAsync()
                 error("engine failure")
             end
@@ -92,21 +69,16 @@ for _, failure in { "NoPath", "error", "blocked", "jump", "projected" } do
             function path:GetWaypoints()
                 return { { Position = vec(1, 0, 0), Action = "Jump" } }
             end
-        elseif failure == "projected" then
-            function path:GetWaypoints()
-                return { { Position = vec(1, 0, 0) } }
-            end
         end
         return path
     end
-    if failure == "blocked" then
-        engine.Step = function()
-            engine.Path.Blocked:Fire(2)
-            return 0.05
+    if failure == "stuck" then
+        humanoid.MoveTo = function(self)
+            self.MoveToFinished:Fire(false)
         end
     end
     local result = nil
-    walk.Move(record, { destination }, function(ok)
+    walk.Move(record, destination, function(ok)
         result = ok
     end, engine)
     flush()
@@ -116,36 +88,54 @@ for _, failure in { "NoPath", "error", "blocked", "jump", "projected" } do
     )
     check(not record.Moving and record.Model:GetPivot().Position.X < 12, "failed route never teleports to destination")
 end
--- A single forward obstruction recomputes from the customer's actual position.
+
+-- Bounded retries exhausted but the customer already ended up close settles instead of failing.
 do
     local record = rig()
-    local engine = adapter()
-    local ticks = 0
-    engine.Step = function()
-        ticks += 1
-        if ticks == 4 then
+    record.Model:PivotTo(env.CFrame.new(vec(11, 0, 0)))
+    local engine = adapter(nil, "NoPath")
+    local result = nil
+    walk.Move(record, destination, function(ok)
+        result = ok
+    end, engine)
+    flush()
+    check(result == true and engine.Attempts == config.MaxPathAttempts, "close arrival recovers after bounded failures")
+    check(record.Model:GetPivot().Position.X == 12, "recovered arrival still settles at the exact marker")
+end
+
+-- A path obstruction recomputes from the customer's actual current position.
+do
+    local record, humanoid = rig()
+    local engine = adapter({ { Position = vec(6, 0, 0) }, { Position = vec(12, 0, 0) } })
+    local calls, arrived = 0, nil
+    humanoid.MoveTo = function(self, position)
+        calls += 1
+        record.Model:PivotTo(env.CFrame.new(position))
+        if calls == 1 then
             engine.Path.Blocked:Fire(2)
         end
-        return 0.05
+        self.MoveToFinished:Fire(true)
     end
-    local arrived = false
-    walk.Move(record, { destination }, function(ok)
+    walk.Move(record, destination, function(ok)
         arrived = ok
     end, engine)
     flush()
-    check(arrived and engine.Attempts == 2 and engine.LastStart.X > 0, "blocked route recomputes from current position")
+    check(arrived == true, "blocked leg recomputes and still arrives")
+    check(engine.Attempts == 2, "blocked route recomputes exactly once from current position")
+    check(engine.LastStart.X == 6, "recompute path starts from the customer's actual current position")
 end
-for _, phase in { "compute", "travel", "turn", "despawn" } do
-    local record = rig()
+
+-- Cancellation during compute, in-flight travel, or despawn prevents stale arrival.
+for _, phase in { "compute", "travel", "despawn" } do
+    local record, humanoid = rig()
     local engine = adapter()
-    local called, cancelledAt = false, nil
+    local called = false
     local function cancel()
         if phase == "despawn" then
             record.Model:Destroy()
         else
             walk.Cancel(record)
         end
-        cancelledAt = #record.Frames
     end
     if phase == "compute" then
         local create = engine.CreatePath
@@ -159,50 +149,14 @@ for _, phase in { "compute", "travel", "turn", "despawn" } do
             return path
         end
     else
-        engine.Step = function()
-            if not cancelledAt and (phase ~= "turn" or not record.Moving) then
-                cancel()
-            end
-            return 0.05
+        humanoid.MoveTo = function(self, position)
+            cancel()
+            self.MoveToFinished:Fire(true)
         end
     end
-    walk.Move(record, { destination }, function()
+    walk.Move(record, destination, function()
         called = true
     end, engine)
     flush()
-    check(
-        cancelledAt ~= nil and not called and #record.Frames == cancelledAt,
-        phase .. " cancellation prevents stale poses and arrival"
-    )
-end
--- Arrival from a projected path endpoint still makes a short precision approach.
-do
-    local record = rig()
-    local engine = adapter({ { Position = vec(10, 0, 0) } })
-    local result = false
-    walk.Move(record, { destination }, function(ok)
-        result = ok
-    end, engine)
-    flush()
-    check(result and record.Model:GetPivot().Position.X == 12, "short final direct approach corrects path endpoint")
-end
-
--- Precision approach cannot cut through an obstacle to reach an off-mesh marker.
-do
-    local record = rig()
-    local engine = adapter({ { Position = vec(10, 0, 0) } })
-    local savedCast = workspaceFake.Blockcast
-    workspaceFake.Blockcast = function()
-        return {}
-    end
-    local result = nil
-    walk.Move(record, { destination }, function(ok)
-        result = ok
-    end, engine)
-    flush()
-    check(
-        result == false and engine.Attempts == config.MaxPathAttempts,
-        "obstructed final approach fails safely within retry budget"
-    )
-    workspaceFake.Blockcast = savedCast
+    check(not called, phase .. " cancellation prevents stale arrival")
 end

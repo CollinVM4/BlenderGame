@@ -37,6 +37,8 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "gameplay-sfx": ("integration", ("fixtures/smoothie.luau", "gameplay_sfx.spec.luau")),
+    "stash-expansion": ("integration", ("fixtures/smoothie.luau", "stash_expansion.spec.luau")),
     "farm": ("integration", ("fixtures/smoothie.luau", "farm.spec.luau")),
     "upgrade-sync": ("integration", ("fixtures/smoothie.luau", "upgrade_sync.spec.luau")),
     "combat": ("integration", ("fixtures/smoothie.luau", "combat.spec.luau")),
@@ -85,6 +87,7 @@ SUITES = {
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
     "stash-prompts": ("presentation", ("stash_prompt.spec.luau",)),
+    "gameplay-audio": ("presentation", ("gameplay_audio.spec.luau",)),
 }
 focused = {
     "vfx_only": ("vfx",),
@@ -129,6 +132,7 @@ sources["AnnouncedIngredientSpawn"] = (ROOT / "src/server/Components/AnnouncedIn
 sources["IngredientPickupComponent"] = (ROOT / "src/server/Components/IngredientPickup.luau").read_text(encoding="utf-8")
 sources["DispenserComponent"] = (ROOT / "src/server/Components/Dispenser.luau").read_text(encoding="utf-8")
 sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/GameplayPresentationController.luau").read_text(encoding="utf-8")
+sources["GameplayAudioController"] = (ROOT / "src/client/Controllers/GameplayAudioController.luau").read_text(encoding="utf-8")
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
 sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")

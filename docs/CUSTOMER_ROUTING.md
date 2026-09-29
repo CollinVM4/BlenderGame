@@ -8,7 +8,7 @@ The implementation retains that controlled, non-colliding movement style and the
 
 ## Route and pose
 
-CustomerService chooses slots; CustomerWalk owns computation, traversal, retries, cancellation, final approach, and facing. New arrivals visit Spawn -> Wait2 -> Wait1 -> Counter, stopping at their assigned slot. Completed entrance legs are retained if a queue shift supersedes an in-progress route. Existing queued customers advance Wait2 -> Wait1 -> Counter, then served customers depart to Exit.
+CustomerService chooses slots; CustomerWalk owns computation, traversal, retries, cancellation, final approach, and facing. A single authoritative queue index -> marker mapping (1=Counter, 2=Wait1, 3=Wait2) drives both new arrivals and advancement: a customer is routed directly from Spawn (or its current position) to its assigned slot, never through the other queue markers. Existing queued customers advance the same way when the front customer leaves (Wait1 -> Counter, Wait2 -> Wait1), then served customers depart to Exit.
 
 Marker X/Z and horizontal CFrame.LookVector are authoritative. The existing vertical convention is preserved: marker top is ground level, with the measured avatar bottom offset added to the model pivot. This keeps feet grounded rather than putting the avatar pivot inside the floor. Pitch/roll do not tilt the avatar. A vertical LookVector falls back to world -Z.
 
@@ -26,14 +26,14 @@ Optional: create an anchored invisible Part covering the picnic-table area, set 
 
 ## Verification
 
-CLI doubles test routing decisions, detour traversal, exact final X/Z/facing, idle/walking transitions, bounded errors/blocks/jump rejection, precision-approach obstruction, cancellation during compute/travel/turn/despawn, entrance order, queue advancement and failed-entry recovery. They do not simulate the navigation mesh, physics constraints, animation assets, or replication.
+CLI doubles test routing decisions, detour traversal, exact final X/Z/facing, idle/walking transitions, bounded errors/blocks/jump rejection, precision-approach obstruction, cancellation during compute/travel/turn/despawn, direct arrival routing, queue advancement and failed-entry recovery. They do not simulate the navigation mesh, physics constraints, animation assets, or replication.
 
 Studio checklist:
 
 - Rotate CustomerWait1, CustomerWait2, and CustomerCounter separately; each stopped NPC adopts the new horizontal facing.
 - Place a solid picnic bench between Spawn and the queue; customers detour without jumping onto benches/tables. Repeat with CustomerAvoid around non-colliding decoration.
-- Fill all three slots, then serve repeatedly; Wait2 -> Wait1 -> Counter stays ordered and final turns stay smooth.
-- Serve while another customer is entering; its completed entrance legs are not retraced.
+- Fill all three slots, then serve repeatedly; each waiting NPC advances directly to its new slot and final turns stay smooth.
+- Serve while another customer is entering; its in-progress route is not retraced, only redirected to its current assigned slot.
 - Reset during path computation, walking, and turning; no orphan NPC, movement, or prompt remains. Reclaim the plot and verify new arrivals.
 - Test Regular and Special R6/R15/AnimationConstraint rigs: walk animation, idle stability, grounded feet, attachments, and existing push behavior.
 - Test with two clients for root jitter or replication drift; CLI validation cannot certify the new unanchored pose constraints.

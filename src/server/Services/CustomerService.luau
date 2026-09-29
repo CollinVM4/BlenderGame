@@ -675,10 +675,10 @@ end
 local function typewriterText(textLabel: TextLabel, message: string, dialogueSound: Sound?, richMessage: string?)
     local currentToken = {}
     activeTypingTasks[textLabel] = currentToken
-    local dialogueStep = 3
-
-    if dialogueSound and dialogueSound.Parent then
-        dialogueSound:Stop()
+    AudioService.PlayCustomerDialogue(dialogueSound)
+    local totalGraphemes = 0
+    for _ in utf8.graphemes(message) do
+        totalGraphemes += 1
     end
 
     textLabel.RichText = true
@@ -687,36 +687,39 @@ local function typewriterText(textLabel: TextLabel, message: string, dialogueSou
 
     task.spawn(function()
         local index = 0
-        for first, last in utf8.graphemes(message) do
+        local replayScheduled = false
+        for _ in utf8.graphemes(message) do
             index += 1
             if not textLabel.Parent or activeTypingTasks[textLabel] ~= currentToken then
                 return
             end
 
-            local character = string.sub(message, first, last)
             textLabel.MaxVisibleGraphemes = index
 
-            local shouldPlayDialogueSound = dialogueSound
-                and dialogueSound.Parent
-                and character ~= " "
-                and (index % dialogueStep == 0 or last == #message)
-
-            if shouldPlayDialogueSound and dialogueSound then
-                dialogueSound.TimePosition = 0
-                dialogueSound.PlaybackSpeed = math.random(90, 120) / 100
-
-                local pitchShift: PitchShiftSoundEffect? = dialogueSound:FindFirstChildOfClass("PitchShiftSoundEffect")
-                if not pitchShift then
-                    local created = Instance.new("PitchShiftSoundEffect")
-                    created.Parent = dialogueSound
-                    pitchShift = created
-                end
-
-                (pitchShift :: PitchShiftSoundEffect).Octave = math.random(92, 108) / 100
-                dialogueSound:Play()
-            end
-
             task.wait(0.04)
+
+            local remainingGraphemes = totalGraphemes - index
+            if
+                dialogueSound
+                and dialogueSound.Parent
+                and not dialogueSound.IsPlaying
+                and remainingGraphemes >= 4
+                and not replayScheduled
+                and textLabel.Parent
+                and activeTypingTasks[textLabel] == currentToken
+            then
+                replayScheduled = true
+                task.delay(0.08, function()
+                    replayScheduled = false
+                    if
+                        textLabel.Parent
+                        and activeTypingTasks[textLabel] == currentToken
+                        and totalGraphemes - index >= 4
+                    then
+                        AudioService.PlayCustomerDialogue(dialogueSound)
+                    end
+                end)
+            end
         end
 
         if textLabel.Parent and activeTypingTasks[textLabel] == currentToken then
@@ -853,31 +856,18 @@ function CustomerService.CanSpawn(player: Player): (boolean, string?)
     return true
 end
 -- Keep all low-level traversal and pose handling in the existing walking helper.
-local function move(record: any, destination: CFrame, finished: () -> (), via: { CFrame }?)
-    local targets = via or {}
-    local entryIndex = record.EntryIndex or 3
-    table.insert(targets, destination)
-    Walk.Move(
-        record,
-        targets,
-        function(reached)
-            if reached then
-                finished()
-            elseif record.Model.Parent then
-                -- Existing Destroying cleanup removes the failed entry and advances waiters.
-                warn("[CustomerWalk] route exhausted; removing unreachable customer")
-                record.Model:Destroy()
-            end
-        end,
-        nil,
-        function(leg)
-            if not record.EnteredQueue then
-                record.EntryIndex = entryIndex - leg
-            end
+local function move(record: any, destination: CFrame, finished: () -> ())
+    Walk.Move(record, destination, function(reached)
+        if reached then
+            finished()
+        elseif record.Model.Parent then
+            -- Existing Destroying cleanup removes the failed entry and advances waiters.
+            warn("[CustomerWalk] route exhausted; removing unreachable customer")
+            record.Model:Destroy()
         end
-    )
+    end)
 end
--- One ordered queue owns both destinations and eligibility. Route tokens invalidate old arrivals.
+-- Authoritative queue index maps directly to its destination marker; no intermediate entrance route.
 function CustomerService.RefreshQueue(player: Player)
     local queue = queues[key(player)]
     if not queue then
@@ -904,23 +894,12 @@ function CustomerService.RefreshQueue(player: Player)
                 record.QueueIndex = index
                 record.Ready = false
                 record.Prompt.Enabled = false
-                local via = {}
-                -- New arrivals visit the entrance slots before their assigned slot.
-                if not record.EnteredQueue then
-                    for entranceIndex = record.EntryIndex or 3, index + 1, -1 do
-                        local entrance = deps.TycoonService.GetReference(player, queueMarkers[entranceIndex])
-                        if entrance then
-                            table.insert(via, Placement.AtMarker(entrance, record.BottomOffset))
-                        end
-                    end
-                end
                 move(record, destination, function()
-                    record.EnteredQueue = true
                     if current(player, queue) and table.find(queue.Customers, record) then
                         record.Ready = queue.Customers[1] == record
                         record.Prompt.Enabled = record.Ready and record.OrderTaken
                     end
-                end, via)
+                end)
             else
                 record.Ready = index == 1 and record.Ready
                 record.Prompt.Enabled = record.Ready and record.OrderTaken
@@ -1070,7 +1049,7 @@ local function spawnForPlayer(player: Player): Model?
         Walk.PrepareRig(model, root)
     end
     model.Parent = workspace
-    local pose = Walk.HoldRig(model, root)
+    Walk.Prepare(model, root)
     local walk = Walk.Create(model, templateName)
     ownedModels[key(player)] = ownedModels[key(player)] or {}
     ownedModels[key(player)][model] = true
@@ -1143,7 +1122,6 @@ local function spawnForPlayer(player: Player): Model?
         TakeOrderPrompt = takeOrder,
         SessionId = key(player),
         BottomOffset = bottomOffset,
-        Pose = pose,
         CustomerType = if candidate then candidate.CustomerType else "Regular",
         FixedRequest = if candidate then candidate.Request else nil,
         DisplayName = displayName,
