@@ -37,6 +37,7 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "farm": ("integration", ("fixtures/smoothie.luau", "farm.spec.luau")),
     "upgrade-sync": ("integration", ("fixtures/smoothie.luau", "upgrade_sync.spec.luau")),
     "combat": ("integration", ("fixtures/smoothie.luau", "combat.spec.luau")),
     "plot-player-flow": ("integration", ("fixtures/smoothie.luau", "plot_player_flow.spec.luau")),

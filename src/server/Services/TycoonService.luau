@@ -4,6 +4,7 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local TycoonService = {}
 local HttpService = game:GetService("HttpService")
 local Upgrades = require(game:GetService("ReplicatedStorage").Shared.Constants.Upgrades)
+local FarmConfig = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
 local Types = require(game:GetService("ReplicatedStorage").Shared.Types)
 type Session =
     Types.PlotSessionState
@@ -13,6 +14,7 @@ local byId: { [string]: Session } = {}
 local plots: { [Player]: Instance } = {}
 local hooks: any = {}
 local shared: { [string]: boolean } = {
+    FarmRows = true,
     Bat = true,
     Jump = true,
     Payout = true,
@@ -204,7 +206,7 @@ function TycoonService.PurchaseUpgrade(
     expectedTier: number,
     context: any
 ): (boolean, string?)
-    if not TycoonService.IsSharedUpgrade(id) then
+    if not TycoonService.IsSharedUpgrade(id) or id == "FarmRows" then
         return false, "InvalidUpgrade"
     end
     local token = TycoonService.BeginTransaction(player, context)
@@ -229,6 +231,30 @@ function TycoonService.PurchaseUpgrade(
     TycoonService.EndTransaction(token)
     return true
 end
+-- Farm progression uses the same session cash/upgrade ledger, but only physical
+-- farm interactions may commit it. The callback must be synchronous.
+function TycoonService.PurchaseFarmRow(player: Player, row: number, context: any, commit: () -> ()): boolean
+    local cost = FarmConfig.RowPrices[row]
+    if not cost then
+        return false
+    end
+    local token = TycoonService.BeginTransaction(player, context)
+    if not token then
+        return false
+    end
+    local session = byId[token]
+    if session.SharedUpgrades.FarmRows ~= row or session.SharedCash < cost then
+        TycoonService.EndTransaction(token)
+        return false
+    end
+    session.SharedCash -= cost
+    session.SharedUpgrades.FarmRows = row + 1
+    commit()
+    publish(session)
+    TycoonService.EndTransaction(token)
+    return true
+end
+
 -- Isolated adapter for the still-personal CarryCapacity/StackSize policy.
 function TycoonService.PurchasePersonalUpgrade(
     player: Player,

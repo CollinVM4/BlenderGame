@@ -18,7 +18,7 @@ local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
 local StashConfig = Economy.NormalStash
-local STASH_BURST_TIMEOUT = 1.2
+local STASH_BURST_TIMEOUT = 0.6
 local raids: { [string]: { RaidEndsAt: number, ProtectionEndsAt: number } } = {}
 type StashIntent = {
     Direction: "STORE" | "TAKE",
@@ -569,6 +569,30 @@ end
 function InventoryService.GetHeldIngredientId(player: Player): string?
     local record = resolveActionItem(player)
     return if record and record.ItemType == "Ingredient" and not record.Releasing then record.Id else nil
+end
+-- Server-only consumption of the same selected/fallback carry record as throw.
+-- Remove the reservation before destroying its Tool so reentrant actions cannot
+-- consume it twice. Attributes and caller-provided ingredient IDs grant no rights.
+function InventoryService.ConsumeHeldIngredient(player: Player, expectedId: string): string?
+    local record = resolveActionItem(player)
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if
+        not MovementService.CanPerformGameplayAction(player)
+        or not humanoid
+        or humanoid.Health <= 0
+        or not record
+        or record.ItemType ~= "Ingredient"
+        or record.Id ~= expectedId
+        or not record.Tool.Parent
+        or (record.Tool.Parent ~= player.Character and record.Tool.Parent ~= backpack)
+        or not record.Root.Parent
+    then
+        return nil
+    end
+    record.Releasing = true
+    removeAt(player, table.find(held[player], record))
+    return record.Id
 end
 -- Deadlines are evaluated on demand; no delayed callback can reach a recycled plot.
 function InventoryService.GetStashRaidState(owner: Player)

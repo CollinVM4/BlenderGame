@@ -1,12 +1,13 @@
 --!strict
 
 export type IngredientDefinition = {
-	Id: string,
-	DisplayName: string?,
-	Tags: { string },
-	BlendColor: Color3,
-	Rarity: ("Common" | "Uncommon" | "Rare" | "Mystery")?,
-	JumpLocation: number
+    Farmable: boolean?,
+    Id: string,
+    DisplayName: string?,
+    Tags: { string },
+    BlendColor: Color3,
+    Rarity: ("Common" | "Uncommon" | "Rare" | "Mystery")?,
+    JumpLocation: number,
 }
 
 local Ingredients: { [string]: IngredientDefinition } = {

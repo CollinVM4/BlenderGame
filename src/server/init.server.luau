@@ -10,6 +10,7 @@ local services: { [string]: any } = {
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
     IngredientService = require(script.Services.IngredientService),
+    FarmService = require(script.Services.FarmService),
     SmoothieWorldItemService = require(script.Services.SmoothieWorldItemService),
     InventoryService = require(script.Services.InventoryService),
     BlendService = require(script.Services.BlendService),
@@ -29,6 +30,7 @@ services.SprintService.Init(services)
 services.PlayerDataService.BindRuntimeAuthority(services.TycoonService)
 services.TycoonService.Init({
     SessionStarted = function(player)
+        services.FarmService.StartSession(player)
         services.BlendService.Reset(player)
         services.CustomerService.ActivateForPlayer(player)
     end,
@@ -45,6 +47,7 @@ services.TycoonService.Init({
         services.CustomerService.RemovePlayer(player)
     end,
     SessionEnded = function(id)
+        services.FarmService.CleanupSession(id)
         services.InventoryService.CleanupSession(id)
         services.CustomerService.CleanupSession(id)
         services.BlendService.CleanupSession(id)
@@ -72,6 +75,7 @@ end
 for _, plot in roots do
     services.TycoonService.AutoTagLegacyPlot(plot)
 end
+services.FarmService.Init(services)
 
 local characterConnections: { [Player]: RBXScriptConnection } = {}
 local removingConnections: { [Player]: RBXScriptConnection } = {}
