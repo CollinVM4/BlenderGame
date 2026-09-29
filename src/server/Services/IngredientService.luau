@@ -7,6 +7,8 @@ local Definitions = require(Shared.Constants.Ingredients)
 local Economy = require(Shared.Constants.Economy)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Geometry = require(script.Parent.IngredientGeometry)
+local FarmAudio = require(script.Parent.FarmAudio)
+local FarmConfig = require(Shared.Constants.FarmConfig)
 local IngredientService = {}
 -- Tags/attributes are presentation metadata, never proof of ownership or validity.
 local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean } } = {}
@@ -86,6 +88,12 @@ function IngredientService.Consume(object: Instance, pickedUp: boolean?): string
         return nil
     end
     records[object] = nil
+    if pickedUp and object:GetAttribute("SpawnSource") == "Farm" then
+        local root = WorldUtil.Part(object)
+        if root then
+            FarmAudio.Play(FarmConfig.PluckSoundId, root.Position)
+        end
+    end
     if pickedUp and object:GetAttribute("FrozenUntilPickup") == true then
         local parts = object:GetDescendants()
         table.insert(parts, object)

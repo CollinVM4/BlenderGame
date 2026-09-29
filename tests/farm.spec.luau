@@ -1,6 +1,13 @@
 -- Real farm, shared cash/session, inventory consumption, and ingredient spawning.
 -- Engine signals, authored geometry and elapsed time are controlled at the boundary.
 local tycoon = dependency.TycoonService
+local config = loadModule("FarmConfig")
+local farmAudio = loadModule("FarmAudio")
+local sounds = {}
+farmAudio.Play = function(id, position)
+    table.insert(sounds, { Id = id, Position = position })
+end
+config.PlantSoundId, config.ReadySoundId, config.PluckSoundId = "plant", "ready", "pluck"
 local owner, humanoid = player()
 local peer = player()
 local outsider = player()
@@ -139,6 +146,8 @@ check(
     "plant consumes exactly the selected authoritative instance"
 )
 check(timers[#timers].Seconds == 30, "common duration")
+check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 30, "client receives synchronized growth deadline")
+check(#sounds == 1 and sounds[1].Id == "plant", "plant sound only follows successful consumption")
 farm.StartSession(peer)
 check(state(1) == "GROWING", "repeated session binding preserves live crop")
 plantRow(1, owner)
@@ -152,7 +161,13 @@ ingredients.Spawn = function(...)
 end
 timers[1].Run()
 check(#spawned == 3 and state(1) == "READY", "growth creates exactly three normal world ingredients")
+check(rows[1].Object:GetAttribute("FarmGrowEnd") == nil, "ready clears countdown deadline")
+check(#sounds == 2 and sounds[2].Id == "ready", "one ready sound for the whole harvest")
 for n, object in spawned do
+    check(
+        object:GetAttribute("SpawnSource") == "Farm" and object:GetAttribute("FarmSpawnTime") == now,
+        "harvest carries presentation context before publication"
+    )
     check(
         ingredients.GetRecord(object).Id == "Apple" and object.CFrame.Position.X == n,
         "exact planted identity at authored grow marker"
@@ -164,7 +179,15 @@ setup(inventory.CarryWorldItem(peer, spawned[1]), "teammate harvest pickup")
 setup(inventory.CarryWorldItem(outsider, spawned[2]), "harvest uses normal public pickup rules")
 check(state(1) == "READY", "remaining harvest blocks replanting")
 spawned[3]:Destroy()
+check(
+    #sounds == 4 and sounds[3].Id == "pluck" and sounds[4].Id == "pluck",
+    "only successful pickups pluck; expiry is silent"
+)
 check(state(1) == "EMPTY", "last legitimate removal empties row")
+local normal = realSpawn("Apple", frame(), nil, true)
+local beforeNormal = #sounds
+ingredients.Consume(normal, true)
+check(#sounds == beforeNormal, "ordinary ingredient pickup does not pluck")
 ingredients.Spawn = realSpawn
 inventory.ClearHeld(owner)
 local definition = ingredients.GetDefinition("Apple")
@@ -210,7 +233,9 @@ for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
         table.insert(harvest, object)
     end
 end
+local beforeCleanup = #sounds
 tycoon.RemovePlayer(peer)
+check(#sounds == beforeCleanup, "session destruction never plucks harvests")
 for _, object in harvest do
     check(object.Destroyed, "session cleanup removes surviving harvest")
 end

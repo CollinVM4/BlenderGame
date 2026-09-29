@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
 local WorldUtil = require(script.Parent.WorldUtil)
+local FarmAudio = require(script.Parent.FarmAudio)
 local FarmService = {}
 local deps: any
 local farms: { [Instance]: any } = {}
@@ -54,6 +55,9 @@ end
 
 local function setState(row: any, state: string)
     row.State = state
+    if state ~= "GROWING" then
+        row.Object:SetAttribute("FarmGrowEnd", nil)
+    end
     row.Object:SetAttribute("FarmState", state)
     row.Prompt.Enabled = state == "EMPTY"
 end
@@ -144,32 +148,40 @@ local function grow(farm: any, row: any, session: string, generation: number, id
         if not live(farm, session) or row.Generation ~= generation then
             break
         end
-        local product = deps.IngredientService.Spawn(id, marker.WorldCFrame, nil, true, {
-            FreezeUntilPickup = true,
-            BeforePublish = function(object: Instance)
-                local connections: { RBXScriptConnection } = {}
-                row.Products[object] = connections
-                local function removed()
-                    if row.Products[object] ~= connections then
-                        return
-                    end
-                    row.Products[object] = nil
-                    for _, connection in connections do
-                        connection:Disconnect()
-                    end
-                    emptyWhenHarvestGone(farm, row, session, generation)
-                end
-                table.insert(connections, object.Destroying:Connect(removed))
-                table.insert(
-                    connections,
-                    object.AncestryChanged:Connect(function()
-                        if not object:IsDescendantOf(workspace) then
-                            removed()
+        local product = deps.IngredientService.Spawn(
+            id,
+            CFrame.new(0, Config.HarvestVerticalOffset, 0) * marker.WorldCFrame,
+            nil,
+            true,
+            {
+                FreezeUntilPickup = true,
+                BeforePublish = function(object: Instance)
+                    object:SetAttribute("SpawnSource", "Farm")
+                    object:SetAttribute("FarmSpawnTime", workspace:GetServerTimeNow())
+                    local connections: { RBXScriptConnection } = {}
+                    row.Products[object] = connections
+                    local function removed()
+                        if row.Products[object] ~= connections then
+                            return
                         end
-                    end)
-                )
-            end,
-        })
+                        row.Products[object] = nil
+                        for _, connection in connections do
+                            connection:Disconnect()
+                        end
+                        emptyWhenHarvestGone(farm, row, session, generation)
+                    end
+                    table.insert(connections, object.Destroying:Connect(removed))
+                    table.insert(
+                        connections,
+                        object.AncestryChanged:Connect(function()
+                            if not object:IsDescendantOf(workspace) then
+                                removed()
+                            end
+                        end)
+                    )
+                end,
+            }
+        )
         if not product then
             warn("[FarmService] Failed to spawn " .. id)
         elseif not live(farm, session) or row.Generation ~= generation then
@@ -178,6 +190,9 @@ local function grow(farm: any, row: any, session: string, generation: number, id
     end
     if live(farm, session) and row.Generation == generation then
         row.Spawning = false
+        if next(row.Products) ~= nil then
+            FarmAudio.Play(Config.ReadySoundId, row.Plant.WorldPosition)
+        end
         emptyWhenHarvestGone(farm, row, session, generation)
     end
 end
@@ -213,7 +228,9 @@ local function plant(farm: any, row: any, player: Player)
     if deps.InventoryService.ConsumeHeldIngredient(player, id) then
         row.Generation += 1
         row.IngredientId = id
+        row.Object:SetAttribute("FarmGrowEnd", workspace:GetServerTimeNow() + duration)
         setState(row, "GROWING")
+        FarmAudio.Play(Config.PlantSoundId, row.Plant.WorldPosition)
         local generation = row.Generation
         task.delay(duration, function()
             grow(farm, row, token, generation, id)
@@ -327,6 +344,7 @@ local function bind(plot: Instance): (() -> ())?
         local prompt = Instance.new("ProximityPrompt")
         prompt.Name, prompt.ActionText, prompt.ObjectText = "FarmPlantPrompt", "Plant ingredient", "Farm row " .. index
         prompt.MaxActivationDistance, prompt.RequiresLineOfSight = Config.PlantDistance, false
+        prompt.Style = Enum.ProximityPromptStyle.Custom
         prompt.Parent = row.Plant
         row.Prompt = prompt
         table.insert(

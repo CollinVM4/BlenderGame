@@ -5,4 +5,12 @@ return {
     PlantDistance = 10,
     RevealSeconds = 0.5,
     RevealDepth = 3.5,
+    HarvestVerticalOffset = 0,
+    HarvestPopDepth = 0.65,
+    HarvestPopSeconds = 0.32,
+    PlantSoundId = "",
+    ReadySoundId = "",
+    PluckSoundId = "",
+    SoundVolume = 0.7,
+    SoundRollOffMaxDistance = 50,
 }

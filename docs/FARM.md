@@ -23,7 +23,7 @@ spawns warn; any successful products still block planting until removed.
 Membership promotion preserves crops and purchases. Final session release
 invalidates timers, destroys harvests, cancels reveals, restores authored
 transforms and resets the pads. Plot unbinding also cleans up. Timers capture both
-session identity and row generation. No persistence, remotes or new UI are added.
+session identity and row generation. No persistence or new remotes are added.
 
 ## Studio setup
 
@@ -49,17 +49,57 @@ welds to objects outside Visual. The server anchors their parts and rises them
 Author their normal visible transparency/collision properties. Locked rows hide
 parts, decals/textures and attached world GUIs and disable collision/touch/query.
 Purchase pads must be touchable BaseParts, positioned where players can walk over
-them. Author any desired pad price text yourself; runtime preserves/hides attached
-SurfaceGui/BillboardGui content. No purchase scripts or extra tags are required.
+them. Runtime creates price billboards from FarmConfig.RowPrices and hides them
+with the pad; remove old manually authored price text to avoid duplicates.
+No purchase scripts or extra tags are required.
 
 FarmMarkers is anchored, invisible and noncolliding; runtime enforces those
 properties. Position its Attachments relative to each row, with PlantPoint within
 10 studs of the intended player standing position. Place Grow attachments at
-ingredient pivot height so harvests clear the dirt. Runtime creates the default
-planting ProximityPrompt. Missing Farm is optional; an incomplete Farm warns and
+ingredient pivot height so harvests clear the dirt. Runtime creates a Custom-style
+planting ProximityPrompt and client world-space presentation.
+Missing Farm is optional; an incomplete Farm warns and
 does not bind. Restart play after repairing an incomplete hierarchy.
 
 ## Validation
+
+Presentation polish adds no required Studio objects to the hierarchy above.
+`FarmPresentationController` reuses `WorldBillboardStyle` for fixed pixel canvases,
+`DialogueTextStyle` for FredokaOne, charcoal outlines, white/gold/success colors,
+and `InteractionPromptPresentation` for native keyboard/gamepad/touch input.
+The planting name reads InventoryService's replicated `HeldIngredientId` action
+target, including selected ingredient/fallback and equipped-smoothie semantics.
+Server planting still resolves its own records independently.
+
+Existing row `FarmState` is supplemented by `FarmGrowEnd` (server time, present
+only while growing). Countdown and 0.4-second ellipsis run locally without remotes.
+Harvests receive `SpawnSource = "Farm"` and `FarmSpawnTime`; their normal models,
+rarity/name labels, public pickup prompts, anchoring and expiry remain unchanged.
+Clients animate fresh harvest pivots up from `HarvestPopDepth` over
+`HarvestPopSeconds` (defaults 0.65 studs / 0.32 seconds, Back/Out), finishing at
+the Grow attachment plus `HarvestVerticalOffset` (default zero, world Y).
+Old streamed harvests do not replay the pop.
+
+Configure `PlantSoundId`, `ReadySoundId`, `PluckSoundId` in FarmConfig. Blank IDs
+are silent. `SoundVolume` defaults to 0.7; `SoundRollOffMaxDistance` to 50 studs.
+FarmAudio reuses AudioService.ConstructAudioCue with independent inert emitters,
+Ended cleanup and a 30-second Debris fallback. Successful plants and harvest
+batches play once; only successful farm pickup consumption plucks. Expiry,
+session destruction and normal ingredient pickups do not pluck.
+
+Run `python tests/run_farm_presentation_tests.py --luau <luau.exe>` separately
+from gameplay. It covers displayed selection, invalid ingredients, native input
+hints/touch forwarding, countdown/ellipsis, pad reset, streaming cleanup, multipart
+pivot completion and unchanged ordinary spawns. Farm integration owns deadlines,
+harvest metadata and audio event eligibility alongside existing gameplay contracts.
+
+Studio smoke checks for this polish: keyboard/controller/mobile planting; change
+selected ingredients and equip a smoothie near an empty row; watch growing/ready
+states from two clients; pick up a harvest during its pop; verify multipart models
+sit naturally at Grow attachments; reset/reclaim and stream the plot out/in.
+Set valid permitted sound assets and verify positional plant/ready/pluck playback,
+including the pluck finishing after its ingredient disappears. CLI doubles do not
+establish real replication, rendered layout or audio playback quality.
 
 Run `python tests/run_state_tests.py --luau <luau.exe> --suite farm`.
 The integration suite uses real farm, inventory, ingredient and plot services
