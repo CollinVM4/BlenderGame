@@ -207,13 +207,11 @@ do
         flush()
         flush()
         cup = { Ingredients = example[1], Tags = { "Sweet", "Cold" }, BlendId = "advanced" }
+        local expected = customer.CalculateOrderPayout(owner, cup, selected, example[2])
         local cash = data.GetCash(owner)
         check(customer.Serve(owner), "advanced serving completes")
         flush()
-        check(
-            data.GetCash(owner) == cash + math.round(selected.BasePayout * 20 * 1.5 * (if example[2] then 1 else 0.15)),
-            "advanced validation controls payment"
-        )
+        check(data.GetCash(owner) == cash + expected, "advanced validation controls payment")
         check(
             model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text
                 == (if example[2] then selected.GoodResponse else selected.BadResponse),

@@ -1,7 +1,78 @@
 --!strict
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.IngredientCarry)
+local Ingredients = require(game:GetService("ReplicatedStorage").Shared.Constants.Ingredients)
+local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Presentation = {}
+
+local function headTop(characterRoot: BasePart): number
+    local head = characterRoot.Parent and characterRoot.Parent:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        local at = characterRoot.CFrame:ToObjectSpace(head.CFrame)
+        return at.Position.Y
+            + (
+                    math.abs(at.RightVector.Y) * head.Size.X
+                    + math.abs(at.UpVector.Y) * head.Size.Y
+                    + math.abs(at.LookVector.Y) * head.Size.Z
+                )
+                * 0.5
+    end
+    return characterRoot.Size.Y * 0.5 + 1.5
+end
+
+-- Called only by inventory synchronization, using its private held records.
+-- Height uses the same measured stack extents as Attach, without waiting for weld physics.
+function Presentation.RefreshValue(player: Player, stack: { any })
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root or not root:IsA("BasePart") then
+        return
+    end
+    local previous = root:FindFirstChild("CarryValue")
+    if #stack == 0 then
+        if previous then
+            previous:Destroy()
+        end
+        return
+    end
+    local total, height = 0, 0
+    for _, item in stack do
+        if item.Smoothie then
+            for _, id in item.Smoothie.Ingredients do
+                total += Ingredients[id].Value
+            end
+        else
+            total += Ingredients[item.Id].Value
+            height += item.Height
+        end
+    end
+    local gui = if previous then previous :: BillboardGui else Instance.new("BillboardGui")
+    if not previous then
+        gui.Name = "CarryValue"
+        gui.Adornee = root
+        gui.Size = UDim2.fromOffset(180, 44)
+        gui.AlwaysOnTop = true
+        gui.ResetOnSpawn = false
+        gui.MaxDistance = 100
+        local label = Instance.new("TextLabel")
+        label.Name = "Value"
+        label.Size = UDim2.fromScale(1, 1)
+        label.BackgroundTransparency = 1
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 28
+        label.TextColor3 = Color3.fromRGB(100, 235, 120)
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.new(0, 0, 0)
+        stroke.Thickness = 3
+        stroke.Parent = label
+        label.Parent = gui
+        gui.Parent = root
+    end
+    local top = headTop(root) + math.max(0, Config.HeightAboveHead) + math.max(0, height - Config.StackGap)
+    gui.StudsOffsetWorldSpace = Vector3.new(0, top + 1, -Config.ForwardOffset)
+    local label = gui:FindFirstChild("Value") :: TextLabel
+    label.Text = MoneyFormat.Compact(total)
+end
 
 -- Measure every oriented part in character-local space, including off-center
 -- PrimaryParts. The lowest corner, rather than the root center, clears the head.
@@ -25,18 +96,7 @@ function Presentation.Offset(visual: Instance, characterRoot: BasePart, stackHei
             highest = math.max(highest, at.Position.Y + radiusY)
         end
     end
-    local head = characterRoot.Parent and characterRoot.Parent:FindFirstChild("Head")
-    local top = characterRoot.Size.Y * 0.5 + 1.5
-    if head and head:IsA("BasePart") then
-        local at = characterRoot.CFrame:ToObjectSpace(head.CFrame)
-        top = at.Position.Y
-            + (
-                    math.abs(at.RightVector.Y) * head.Size.X
-                    + math.abs(at.UpVector.Y) * head.Size.Y
-                    + math.abs(at.LookVector.Y) * head.Size.Z
-                )
-                * 0.5
-    end
+    local top = headTop(characterRoot)
     return CFrame.new(0, top + math.max(0, Config.HeightAboveHead) - lowest + (stackHeight or 0), -Config.ForwardOffset)
         * rotation,
         highest - lowest + Config.StackGap

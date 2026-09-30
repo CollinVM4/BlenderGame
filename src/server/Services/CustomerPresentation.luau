@@ -1,5 +1,6 @@
 --!strict
 local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
+local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 local CustomerPresentation = {}
 
 local RESULT_DURATION = 4
@@ -57,7 +58,7 @@ function CustomerPresentation.ShowResult(
     order: BillboardGui,
     grade: string,
     payout: number,
-    rarity: number
+    ingredientValue: number
 ): BillboardGui
     -- Serving has disabled both action prompts. Lower the reaction and reward as
     -- one fixed-pixel stack, keeping their gap and special name row intact.
@@ -103,7 +104,13 @@ function CustomerPresentation.ShowResult(
             cash
         )
     )
-    row("Rarity", 34, 20, 18, string.format("Rarity Bonus x%s", tostring(rarity)))
+    row(
+        "Ingredients",
+        34,
+        20,
+        18,
+        'Ingredients: <font color="rgb(100,225,120)">' .. MoneyFormat.Compact(ingredientValue) .. "</font>"
+    )
     if grade == "D" then
         local retry = row("Retry", 56, 20, 16, "TRY AGAIN \u{00B7} 15% PAYOUT")
         retry.TextColor3 = Color3.fromRGB(255, 95, 95)

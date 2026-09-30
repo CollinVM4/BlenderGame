@@ -35,7 +35,12 @@ do
                 check(rendered[i] == item.IngredientId, "each displayed proxy uses its own stored ingredient")
             end
             local total = vec(0, 0, 0)
-            local copies = pad:FindFirstChild("StashDisplay"):GetChildren()
+            local copies = {}
+            for _, child in pad:FindFirstChild("StashDisplay"):GetChildren() do
+                if child:IsA("Model") then
+                    table.insert(copies, child)
+                end
+            end
             check(#copies == n, "rotated pad count")
             for _, copy in copies do
                 local part = copy:FindFirstChildWhichIsA("BasePart", true)
@@ -59,5 +64,49 @@ do
             )
         end
     end
+    pad:Destroy()
+end
+
+-- Monetary text follows slot snapshots, including duplicate smoothie ingredients.
+do
+    local pad = instance("Part")
+    local visuals = {
+        CreateVisual = function()
+            return nil
+        end,
+    }
+    local definitions = loadModule("Ingredients")
+    local formatter = loadModule("MoneyFormat")
+    local function textValue()
+        return pad:FindFirstChild("StashDisplay"):FindFirstChild("SlotValue"):FindFirstChild("Value").Text
+    end
+    for _, count in { 1, 5, 2 } do
+        display.Refresh(pad, {
+            ItemType = "Ingredient",
+            IngredientId = "Apple",
+            Count = count,
+            Ingredients = table.create(count, { IngredientId = "Apple" }),
+        }, visuals)
+        check(textValue() == formatter.Compact(definitions.Apple.Value * count), "slot value follows stack quantity")
+    end
+    display.Refresh(pad, { Count = 0 }, visuals)
+    check(not pad:FindFirstChild("StashDisplay"), "empty slot hides its value")
+    local geometry = loadModule("SmoothieGeometry")
+    local original = geometry.CreateVisual
+    geometry.CreateVisual = function()
+        return nil
+    end
+    display.Refresh(pad, {
+        ItemType = "Smoothie",
+        Count = 1,
+        Smoothie = { BlendId = "value-test", Ingredients = { "Apple", "Apple", "Banana" } },
+    }, visuals)
+    check(
+        textValue() == formatter.Compact(definitions.Apple.Value * 2 + definitions.Banana.Value),
+        "smoothie value derives from composition and counts repeated ingredients"
+    )
+    geometry.CreateVisual = original
+    display.Refresh(pad, nil, visuals)
+    check(not pad:FindFirstChild("StashDisplay"), "removed smoothie hides its value")
     pad:Destroy()
 end

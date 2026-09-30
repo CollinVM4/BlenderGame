@@ -114,6 +114,7 @@ local function syncHeld(player: Player)
     end
     player:SetAttribute("HasSmoothie", hasSmoothie)
     player:SetAttribute("CarryCount", InventoryService.GetCarryCount(player))
+    CarryPresentation.RefreshValue(player, stack or {})
 end
 local function removeAt(player: Player, index: number?)
     local stack = held[player]

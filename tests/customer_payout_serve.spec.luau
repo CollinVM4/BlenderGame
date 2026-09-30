@@ -56,9 +56,9 @@ customer.Init({
 end)
 for index, case in
     {
-        { "Blueberry", 750, "A", "Thanks!", "+$750" },
-        { "Fish", 1313, "A", "Thanks!", "+$1,313" },
-        { "Noob", 197, "D", "Not blue!", "+$197" },
+        { "Blueberry", 2288, "A", "Thanks!", "+$2,288", "$1.5K" },
+        { "Fish", 6038, "A", "Thanks!", "+$6,038", "$4K" },
+        { "Noob", 906, "D", "Not blue!", "+$906", "$4K" },
     }
 do
     customer.ActivateForPlayer(owner)
@@ -87,6 +87,11 @@ do
     check(
         graphic and string.find(graphic:FindFirstChild("Result").Text, case[5], 1, true) ~= nil,
         "serve graphic shows actual award"
+    )
+    check(
+        graphic:FindFirstChild("Ingredients").Text
+            == 'Ingredients: <font color="rgb(100,225,120)">' .. case[6] .. "</font>",
+        "serve shows authoritative ingredient subtotal"
     )
     flush()
     check(

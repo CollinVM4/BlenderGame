@@ -1,6 +1,9 @@
 --!strict
 local InputPresentation = require(script.Parent.InteractionPromptPresentation)
 local Style = require(script.Parent.IngredientPickupPromptStyle)
+local Shared = game:GetService("ReplicatedStorage").Shared
+local Ingredients = require(Shared.Constants.Ingredients)
+local MoneyFormat = require(Shared.MoneyFormat)
 local Presentation = {}
 
 -- Rotated-part extents keep the label above the actual visible geometry,
@@ -28,7 +31,7 @@ end
 function Presentation.Create(
     prompt: ProximityPrompt,
     object: BasePart | Model,
-    definition: { Id: string, DisplayName: string?, Rarity: string? },
+    definition: Ingredients.IngredientDefinition,
     parent: Instance,
     inputType: Enum.ProximityPromptInputType
 ): (() -> (), () -> ())
@@ -84,10 +87,15 @@ function Presentation.Create(
     local nameY = Style.TitleHeight + Style.RowSpacing
     formatText(label, nameY, Style.NameHeight, Style.NameTextSize, Style.NameColor, Style.StrokeColor)
     label.Parent = gui
+    local value = Instance.new("TextLabel")
+    value.Name, value.Text = "IngredientValue", MoneyFormat.Compact(definition.Value)
+    local valueY = nameY + Style.NameHeight + Style.RowSpacing
+    formatText(value, valueY, Style.ValueHeight, Style.ValueTextSize, Style.ValueColor, Style.StrokeColor)
+    value.Parent = gui
     local input = gui:FindFirstChild("Action") :: TextButton
     formatText(
         input,
-        nameY + Style.NameHeight + Style.InputSpacing,
+        valueY + Style.ValueHeight + Style.InputSpacing,
         Style.InputHeight,
         Style.InputTextSize,
         palette.TextColor,

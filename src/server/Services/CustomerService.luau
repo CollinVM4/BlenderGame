@@ -127,10 +127,10 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
     if #result.Ingredients == 0 then
         return false, "Empty smoothie"
     end
-    if #request.RequiredTags == 0 and #requiredIngredients == 0 then
+    if not request.Wildcard and #request.RequiredTags == 0 and #requiredIngredients == 0 then
         return false, "Empty request"
     end
-    if request.ExactIngredients and #requiredIngredients == 0 then
+    if not request.Wildcard and request.ExactIngredients and #requiredIngredients == 0 then
         return false, "ExactIngredients requires at least one RequiredIngredient"
     end
     local tags: { [string]: boolean } = {}
@@ -144,6 +144,12 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
         for _, tag in definition.Tags do
             tags[string.lower(tag)] = true
         end
+    end
+    if request.Wildcard then
+        if #result.Ingredients < Economy.MaxIngredients then
+            return false, "Not enough ingredients"
+        end
+        return true, "Wildcard fulfilled"
     end
     for _, tag in request.RequiredTags do
         local normalizedTag = string.lower(tag)
@@ -210,7 +216,7 @@ local function eligibleRequests(player: Player): { CustomerRequests.Request }
     local playerJumpTier = deps.TycoonService.GetJumpTier(player)
     local eligible: { CustomerRequests.Request } = {}
     for _, request in CustomerRequests.Definitions do
-        if not request.NPCOnly and playerJumpTier >= request.MinJumpTier then
+        if not request.NPCOnly and not request.Wildcard and playerJumpTier >= request.MinJumpTier then
             table.insert(eligible, request)
         end
     end
@@ -280,6 +286,16 @@ local function assignRequest(player: Player, record: any): boolean
         record.Model:Destroy()
         return false
     end
+    -- Identity is already selected. Keep this encounter's roll stable on RefreshOrder.
+    if record.Wildcard == nil then
+        local chance = if record.CustomerType == "Special"
+            then CustomerRequests.SpecialWildcardChance
+            else CustomerRequests.RegularWildcardChance
+        record.Wildcard = chance > 0 and math.random() < chance
+    end
+    if record.Wildcard then
+        selectedRequest = CustomerRequests.WildcardRequest
+    end
     if not selectedRequest then
         local eligible = eligibleRequests(player)
         if #eligible == 0 then
@@ -319,7 +335,7 @@ local function assignRequest(player: Player, record: any): boolean
     record.Preference = request.RequiredTags[1] or "Surprise Me"
     record.Model:SetAttribute("Preference", record.Preference)
     record.Model:SetAttribute("RequestId", request.Id)
-    if not forced and record.CustomerType == "Regular" then
+    if not forced and not request.Wildcard and record.CustomerType == "Regular" then
         remember(recentRequests, player, request.Id, CustomerRequests.RegularRequestRecencyWindow)
         remember(
             recentRequestGroups,
@@ -790,42 +806,23 @@ function CustomerService.CalculateOrderPayout(
     request: CustomerRequests.Request,
     success: boolean
 ): (number, number)
-    local rarity = 1
-    local requirements: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
+    local ingredientValue = 0
     for _, id in result.Ingredients do
         local definition = Ingredients[id]
-        if not definition then
-            continue
-        end
-        local qualifies = not success
-        for _, requestedTag in request.RequiredTags do
-            local normalized = string.lower(requestedTag)
-            local group = CustomerRequests.TagGroups[normalized]
-            for _, tag in definition.Tags do
-                local actual = string.lower(tag)
-                if actual == normalized or (group and group[actual]) then
-                    qualifies = true
-                end
-            end
-        end
-        -- On a validated order, an ingredient matching a slot can satisfy that
-        -- slot (including alternatives). Extras unrelated to any slot/tag cannot.
-        for _, requirement in requirements do
-            if
-                (type(requirement) == "string" and requirement == id)
-                or (type(requirement) == "table" and table.find(requirement, id) ~= nil)
-            then
-                qualifies = true
-            end
-        end
-        if qualifies then
-            rarity = math.max(rarity, Economy.PayoutRarityMultiplier[definition.Rarity])
+        if definition then
+            ingredientValue += definition.Value
         end
     end
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
-    local amount = request.BasePayout * Economy.CashScale * Economy.GradeMultiplier.A * rarity * upgrade * entitlement
-    return math.round(amount * (if success then 1 else Economy.MissedOrderFraction)), rarity
+    -- Wildcards earn neutral B; specific orders earn A. A miss pays 15% of
+    -- the full order value rather than also applying the D grade penalty.
+    local fulfilledGrade = if request.Wildcard then "B" else "A"
+    local amount = (ingredientValue + request.BasePayout)
+        * Economy.GradeMultiplier[fulfilledGrade]
+        * upgrade
+        * entitlement
+    return math.round(amount * (if success then 1 else Economy.MissedOrderFraction)), ingredientValue
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
     local queue = queues[key(player)]
@@ -1299,10 +1296,10 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     table.remove(queue.Customers, 1)
     record.Model:SetAttribute("QueuePosition", nil)
     local success, reason = CustomerService.ValidateRequest(result, record.Request)
-    local grade: Types.Grade = if success then "A" else "D"
+    local grade: Types.Grade = if success then (if record.Request.Wildcard then "B" else "A") else "D"
     local response = Presentation.Response(record.Request, grade)
     local reaction = record.ForcedReaction or (if success then "Smile" else "Disgust")
-    local payout, rarity = CustomerService.CalculateOrderPayout(player, result, record.Request, success)
+    local payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, success)
     deps.TycoonService.CreditTransaction(transaction, payout)
     diagnostic(
         string.format(
@@ -1325,7 +1322,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     record.Model:SetAttribute("Reaction", reaction)
     record.Model:SetAttribute("Grade", grade)
     record.Model:SetAttribute("OrderSucceeded", success)
-    local resultGui = Presentation.ShowResult(record.Bubble, grade, payout, rarity)
+    local resultGui = Presentation.ShowResult(record.Bubble, grade, payout, ingredientValue)
     record.Model:SetAttribute("RequestId", nil)
     record.Request = nil
     record.RequestId = nil
@@ -1336,6 +1333,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         ReactionId = reaction,
         Grade = grade,
         Payout = payout,
+        IngredientValue = ingredientValue,
         PlotSessionId = transaction,
     })
     Film.Log(

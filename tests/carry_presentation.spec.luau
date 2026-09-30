@@ -75,9 +75,20 @@ for index, position in positions do
         check(position.Y > positions[index - 1].Y, "pickup order increases overhead height")
     end
 end
+local definitions = loadModule("Ingredients")
+local money = loadModule("MoneyFormat")
+local valueGui = root:FindFirstChild("CarryValue")
+local fullValue = definitions.Strawberry.Value + definitions.Ice.Value + definitions.Cherries.Value
+check(
+    valueGui:FindFirstChild("Value").Text == money.Compact(fullValue),
+    "carried total includes every overhead ingredient"
+)
+local fullHeight = valueGui.StudsOffsetWorldSpace.Y
+check(fullHeight > positions[3].Y, "carried value clears the highest ingredient")
 humanoid:EquipTool(slots[1])
 slots[1].Parent = backpack
 slots[1].Unequipped:Fire()
+check(valueGui:FindFirstChild("Value").Text == money.Compact(fullValue), "hotbar selection preserves carried total")
 for index, host in hosts do
     check(host:IsDescendantOf(character), "unequipped ingredients remain visible on character")
     local position = host:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position
@@ -112,5 +123,21 @@ local lower = hosts[1]:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCar
 local upper = hosts[3]:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position
 check((lower - positions[1]).Magnitude < 1e-6, "middle removal preserves lower visual position")
 check(math.abs(upper.Y - positions[2].Y) < 1e-6, "middle removal closes exactly the removed stack gap")
+check(
+    valueGui:FindFirstChild("Value").Text == money.Compact(fullValue - definitions.Ice.Value)
+        and valueGui.StudsOffsetWorldSpace.Y < fullHeight,
+    "deposit reduces carried value and lowers its label with the stack"
+)
 inventory.ClearHeld(player)
 check(hosts[1].Destroyed and hosts[3].Destroyed, "clear retires remaining overhead visuals")
+check(not root:FindFirstChild("CarryValue"), "empty inventory hides carried value")
+
+carry.RefreshValue(player, {
+    { Smoothie = { BlendId = "carry-value", Ingredients = { "Strawberry", "Strawberry", "Banana" } } },
+})
+check(
+    root:FindFirstChild("CarryValue"):FindFirstChild("Value").Text
+        == money.Compact(definitions.Strawberry.Value * 2 + definitions.Banana.Value),
+    "held smoothie contributes composition subtotal including duplicates"
+)
+inventory.ClearHeld(player)

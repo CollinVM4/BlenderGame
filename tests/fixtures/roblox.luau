@@ -299,7 +299,7 @@ local function instance(class)
     end
     return object
 end
-local shared = { Constants = {}, Types = "Types", Events = instance("Folder") }
+local shared = { Constants = {}, Types = "Types", MoneyFormat = "MoneyFormat", Events = instance("Folder") }
 for name in sources do
     shared.Constants[name] = name
 end
@@ -512,6 +512,8 @@ local parent = setmetatable({}, {
     end,
 })
 parent.Parent = { Services = parent }
+-- Specific-order suites disable wildcard randomness; its suite restores authored defaults.
+local authoredWildcardChances
 local function loadModule(name)
     if cache[name] then
         return cache[name]
@@ -520,6 +522,10 @@ local function loadModule(name)
     local moduleEnv = setmetatable({ script = { Parent = parent } }, { __index = env })
     setfenv(chunk, moduleEnv)
     local result = chunk()
+    if name == "CustomerRequests" then
+        authoredWildcardChances = { result.RegularWildcardChance, result.SpecialWildcardChance }
+        result.RegularWildcardChance, result.SpecialWildcardChance = 0, 0
+    end
     cache[name] = result
     return result
 end

@@ -3,8 +3,49 @@
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local SmoothieGeometry = require(script.Parent.Parent.Services.SmoothieGeometry)
-local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy).NormalStash
+local Shared = game:GetService("ReplicatedStorage").Shared
+local Config = require(Shared.Constants.Economy).NormalStash
+local Ingredients = require(Shared.Constants.Ingredients)
+local MoneyFormat = require(Shared.MoneyFormat)
 local Presentation = {}
+
+-- Derived only for presentation from the authoritative slot snapshot.
+local function slotValue(state: any): number
+    if state.ItemType == "Smoothie" and state.Smoothie then
+        local total = 0
+        for _, id in state.Smoothie.Ingredients do
+            total += Ingredients[id].Value
+        end
+        return total
+    end
+    return Ingredients[state.IngredientId].Value * state.Count
+end
+
+local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value: number)
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "SlotValue"
+    gui.Adornee = slot
+    gui.Size = UDim2.fromOffset(180, 44)
+    gui.StudsOffsetWorldSpace = surface.Position - slot.Position + Vector3.new(0, 5, 0)
+    gui.AlwaysOnTop = true
+    gui.ResetOnSpawn = false
+    gui.MaxDistance = 100
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Value"
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 28
+    label.TextColor3 = Color3.fromRGB(100, 235, 120)
+    label.Text = MoneyFormat.Compact(value)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.new(0, 0, 0)
+    stroke.Thickness = 3
+    stroke.Parent = label
+    label.Parent = gui
+    gui.Parent = folder
+end
 
 -- Footprint and height are relative to the display plane's smaller dimension.
 -- Size limits are in studs: clamp the target footprint, not the source scale,
@@ -91,6 +132,7 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     folder.Name = "StashDisplay"
     folder.Parent = slot
     local surface, width, depth, thickness, normalAxis = displaySurface(slot)
+    showValue(slot, folder, surface, slotValue(state))
     local slotSize = math.min(width, depth)
     local itemSize = math.clamp(slotSize * DisplayFootprintScale, DisplayMinSize, DisplayMaxSize)
     local maxHeight = math.min(slotSize * DisplayMaxHeightScale, DisplayMaxSize)

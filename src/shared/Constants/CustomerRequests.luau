@@ -19,6 +19,7 @@ export type Request = {
     BasePayout: number,
     MinJumpTier: number,
     NPCOnly: boolean?,
+    Wildcard: boolean?, -- Accept any valid smoothie, with neutral successful grading.
 }
 
 -- Tag groups match any member and automatically include newly authored ingredient tags.
@@ -989,8 +990,8 @@ table.insert(requests, {
     DisplayText = "HEY! I want CARROT, MANGO, and SPICY",
     GoodResponse = "tasty!",
     BadResponse = "Not quite what I had in mind.",
-    RequiredIngredients = { "Carrot", "Mango"},
-    RequiredTags= {"Spicy"},
+    RequiredIngredients = { "Carrot", "Mango" },
+    RequiredTags = { "Spicy" },
     BasePayout = 110,
     MinJumpTier = 2,
     NPCOnly = true,
@@ -999,6 +1000,28 @@ table.insert(requests, {
 local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
+
+    RegularWildcardChance = 0.60,
+    SpecialWildcardChance = 0.30,
+    -- Assigned separately so wildcard never enters the specific-request variety pool.
+    WildcardRequest = {
+        Id = "Wildcard",
+        Wildcard = true,
+        DisplayText = "Surprise me!",
+        DisplayTexts = {
+            "Surprise me!",
+            "make me whatever!",
+            "I'll try anything!",
+            "Dealer's choice!",
+            "just blend me something!",
+            "you pick. I trust the smoothie master!",
+        },
+        GoodResponse = "Now THAT'S a smoothie! Thanks!",
+        BadResponse = "I still wanted a smoothie!",
+        RequiredTags = {},
+        BasePayout = 25,
+        MinJumpTier = 0,
+    } :: Request,
 
     SpecialCustomerChance = 0.45,
     -- Continuous special cooldown is configured in Economy.SpecialCustomerCooldownSeconds.
@@ -1103,7 +1126,7 @@ local CustomerRequests = {
             DisplayName = "Capybara",
             RequestId = "Capybara",
             Weight = 0.9,
-        }
+        },
     } :: {
         [string]: {
             Type: string?,

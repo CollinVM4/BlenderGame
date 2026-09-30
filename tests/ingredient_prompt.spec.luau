@@ -39,9 +39,17 @@ local function load(name)
     return modules[name]
 end
 services.ReplicatedStorage.Shared.Constants.Ingredients = "Ingredients"
+services.ReplicatedStorage.Shared.MoneyFormat = "MoneyFormat"
+services.ReplicatedStorage.Shared.Constants.DialogueTextStyle = "DialogueTextStyle"
 services.RunService.RenderStepped = signal()
 prompts.Enabled = true
 local definitions = load("Ingredients")
+for id, definition in definitions do
+    check(
+        type(definition.Value) == "number" and definition.Value > 0,
+        id .. " explicitly owns a positive monetary value"
+    )
+end
 local style = load("IngredientPickupPromptStyle")
 local view = load("IngredientPickupPromptPresentation")
 local controller = load("IngredientPickupPromptController")
@@ -81,6 +89,13 @@ check(
     "registered Strawberry definition"
 )
 check(label("Action").Text == "[F]", "actual keyboard key, no pickup action or income text")
+check(label("IngredientValue").Text == "$0.5K", "common pickup shows definition value")
+check(
+    label("IngredientValue").TextColor3 == style.ValueColor
+        and label("IngredientValue").Font == label("IngredientName").Font
+        and label("IngredientValue"):FindFirstChildOfClass("UIStroke").Color == style.StrokeColor,
+    "value uses green text with the existing bold font and dark outline"
+)
 check(gui().Adornee == item and gui().StudsOffsetWorldSpace.Y == 2.35, "attachment prompt anchored above part bounds")
 local old = gui()
 show()
@@ -101,9 +116,12 @@ check(
     "Steak outline and card width are unchanged"
 )
 check(
-    label("IngredientName").Position.Y.Offset == 30 and label("Action").Position.Y.Offset == 74,
-    "Steak title name and input layout is preserved"
+    label("IngredientName").Position.Y.Offset == 30
+        and label("IngredientValue").Position.Y.Offset == 70
+        and label("Action").Position.Y.Offset == 104,
+    "value sits below the name and above the input without overlap"
 )
+check(label("IngredientValue").Text == "$3K", "rare pickup shows definition value")
 for _, id in { "Crab", "Dragon_Fruit", "Mystery" } do
     local rarity = definitions[id].Rarity
     item:SetAttribute("IngredientId", id)
@@ -117,17 +135,19 @@ check(
     label("IngredientName").Text == "???" and item:GetAttribute("IngredientId") == "Mystery",
     "Mystery hides presentation only"
 )
+check(label("IngredientValue").Text == "$6.5K", "mystery value remains visible with hidden name")
 style.HideMysteryNames = false
 show()
 check(label("IngredientName").Text == "Mystery", "Mystery reveal toggle")
 style.HideMysteryNames = true
-definitions.Future = { Id = "Future", DisplayName = "Future Fruit" }
+definitions.Future = { Id = "Future", DisplayName = "Future Fruit", Value = 12000 }
 item:SetAttribute("IngredientId", "Future")
 show()
 check(
     label("Rarity").Text == "COMMON" and label("IngredientName").Text == "Future Fruit",
     "missing rarity and explicit display name"
 )
+check(label("IngredientValue").Text == "$12K", "individual definition value is used without rarity pricing")
 local rarity, name = style.Resolve({ Id = "Fallback" })
 check(rarity == "Common" and name == "Fallback", "missing display name uses Id")
 show("Gamepad")
@@ -174,6 +194,7 @@ check(gui() == nil, "missing identity cannot use instance name")
 model:SetAttribute("IngredientId", "Strawberry")
 services.RunService.RenderStepped:Fire()
 check(gui() ~= nil, "late replicated identity recovers shown prompt")
+check(label("IngredientValue").Text == "$0.5K", "recreated multipart pickup recovers its value label")
 services.CollectionService:RemoveTag(model, "IngredientWorldItem")
 services.RunService.RenderStepped:Fire()
 check(gui() == nil, "removed registration cleans view")

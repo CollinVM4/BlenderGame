@@ -14,6 +14,8 @@ paths += [root / path for path in (
     "src/client/UI/WorldBillboardStyle.luau",
     "src/client/Controllers/IngredientPickupPromptController.luau",
     "src/shared/Constants/Ingredients.luau",
+    "src/shared/MoneyFormat.luau",
+    "src/shared/Constants/DialogueTextStyle.luau",
     "src/server/Components/IngredientPickup.luau",
 )]
 bundle = "local sources = {\n" + "\n".join(

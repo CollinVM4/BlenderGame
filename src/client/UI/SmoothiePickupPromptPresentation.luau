@@ -1,9 +1,10 @@
 --!strict
 local Definitions = require(game:GetService("ReplicatedStorage").Shared.Constants.Ingredients)
+local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 local Input = require(script.Parent.InteractionPromptPresentation)
 local IngredientPresentation = require(script.Parent.IngredientPickupPromptPresentation)
 local Style = require(script.Parent.IngredientPickupPromptStyle)
-local Presentation = { Width = 460, Height = 160 }
+local Presentation = { Width = 460, Height = 160 + Style.ValueHeight + Style.InputSpacing }
 type Row = { Id: string, Name: string, Rarity: string }
 
 -- Display-only ordered metadata. Never aggregate duplicate ingredients.
@@ -87,8 +88,27 @@ function Presentation.Create(
             label.Parent = container
         end
     end
+    local total = 0
+    for _, row in rows do
+        total += Definitions[row.Id].Value
+    end
+    local value = Instance.new("TextLabel")
+    value.Name, value.Text = "SmoothieValue", MoneyFormat.Compact(total)
+    value.Position = UDim2.fromOffset(0, 114)
+    value.Size = UDim2.new(1, 0, 0, Style.ValueHeight)
+    value.BackgroundTransparency = 1
+    value.Font, value.TextSize = Style.Font, Style.ValueTextSize
+    value.TextColor3 = Style.ValueColor
+    value.TextStrokeTransparency = 1
+    value.TextScaled = true
+    local limit = Instance.new("UITextSizeConstraint")
+    limit.MinTextSize, limit.MaxTextSize, limit.Parent = 12, Style.ValueTextSize, value
+    local stroke = Instance.new("UIStroke")
+    stroke.Color, stroke.Thickness = Style.StrokeColor, Style.StrokeThickness
+    stroke.Transparency, stroke.Parent = Style.TextStrokeTransparency, value
+    value.Parent = gui
     local action = gui:FindFirstChild("Action") :: TextButton
-    action.Position = UDim2.fromOffset(0, 120)
+    action.Position = UDim2.fromOffset(0, 114 + Style.ValueHeight + Style.InputSpacing)
     action.Size = UDim2.new(1, 0, 0, Style.InputHeight)
     local function update()
         gui.StudsOffsetWorldSpace = IngredientPresentation.Top(object) - anchor.Position + Style.PromptStudsOffset

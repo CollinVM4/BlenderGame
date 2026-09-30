@@ -23,6 +23,11 @@ for _, child in smoothieGui:GetChildren() do
     end
 end
 check(rowCount == 3, "exactly three ingredient rows")
+check(
+    smoothieGui:FindFirstChild("SmoothieValue").Text
+        == load("MoneyFormat").Compact(definitions.Strawberry.Value * 2 + definitions.Banana.Value),
+    "world smoothie subtotal includes duplicate ingredients"
+)
 for index, id in { "Strawberry", "Banana", "Strawberry" } do
     local row = smoothieGui:FindFirstChild("IngredientRow" .. index)
     local rarity = row:FindFirstChild("Rarity")

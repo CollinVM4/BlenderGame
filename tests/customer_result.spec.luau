@@ -30,8 +30,8 @@ local expirations = {}
 services.Debris.AddItem = function(_, object, seconds)
     expirations[object] = seconds
 end
-local result = presentation.ShowResult(order, "A", 1313, 1.75)
-local main, rarity = result:FindFirstChild("Result"), result:FindFirstChild("Rarity")
+local result = presentation.ShowResult(order, "A", 1313, 4500)
+local main, ingredients = result:FindFirstChild("Result"), result:FindFirstChild("Ingredients")
 check(
     math.abs((0.5 - order.SizeOffset.Y) * order.Size.Y.Offset - 32) < 0.001,
     "served reaction and reward move down 32 fixed pixels"
@@ -40,9 +40,13 @@ check(
     main.Text == '<font color="rgb(100,225,120)">A</font>  <font color="rgb(255,222,115)">+$1,313</font>',
     "grade and gold awarded cash occupy primary row"
 )
-check(rarity.Text == "Rarity Bonus x1.75" and rarity.TextSize < main.TextSize, "rarity has smaller second row")
-check(rarity.Position.Y.Offset >= main.Size.Y.Offset, "result rows have separate pixel regions")
-for _, text in { main, rarity } do
+check(
+    ingredients.Text == 'Ingredients: <font color="rgb(100,225,120)">$4.5K</font>'
+        and ingredients.TextSize < main.TextSize,
+    "ingredients has smaller second row"
+)
+check(ingredients.Position.Y.Offset >= main.Size.Y.Offset, "result rows have separate pixel regions")
+for _, text in { main, ingredients } do
     check(
         text.Font == "FredokaOne" and not text.TextScaled and text:FindFirstChildOfClass("UIStroke").Thickness == 2.5,
         "rounded fixed-size result lettering with thick outline"
@@ -75,7 +79,7 @@ ownership:Fire()
 check(not result.Enabled and not order.Enabled, "other owner cannot see either display")
 model:SetAttribute("OwnerUserId", 51)
 ownership:Fire()
-local missed = presentation.ShowResult(order, "D", 197, 1.75)
+local missed = presentation.ShowResult(order, "D", 197, 4500)
 workspaceFake.DescendantAdded:Fire(missed)
 check(
     missed.Enabled
@@ -89,13 +93,14 @@ check(
 )
 check(
     missed:FindFirstChild("Retry").Position.Y.Offset
-        >= missed:FindFirstChild("Rarity").Position.Y.Offset + missed:FindFirstChild("Rarity").Size.Y.Offset,
-    "retry has a reserved row below rarity"
+        >= missed:FindFirstChild("Ingredients").Position.Y.Offset
+            + missed:FindFirstChild("Ingredients").Size.Y.Offset,
+    "retry has a reserved row below ingredients"
 )
 workspaceFake.DescendantRemoving:Fire(missed)
 ownership:Fire()
 check(not missed.Enabled, "removed result stays hidden")
-local large = presentation.ShowResult(order, "A", 1234567, 2.5)
+local large = presentation.ShowResult(order, "A", 1234567, 6500)
 check(string.find(large:FindFirstChild("Result").Text, "+$1,234,567", 1, true) ~= nil, "multiple thousands separators")
 
 -- Both outcomes stay above the full special card, including its name row.
@@ -110,8 +115,8 @@ for _, orderGui in { order, specialOrder } do
         local bottom = -reward.SizeOffset.Y * reward.Size.Y.Offset + reward.Size.Y.Offset / 2
         local top = -(orderGui.SizeOffset.Y + 0.5) * orderGui.Size.Y.Offset
         check(math.abs(top - bottom - 6) < 0.001, "success and failure clear regular reaction and full special card")
-        local white = reward:FindFirstChild("Rarity").TextColor3
-        check(white.R == 1 and white.G == 1 and white.B == 1, "rarity cannot inherit gold cash tint")
+        local white = reward:FindFirstChild("Ingredients").TextColor3
+        check(white.R == 1 and white.G == 1 and white.B == 1, "ingredients cannot inherit gold cash tint")
     end
 end
 

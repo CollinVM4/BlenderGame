@@ -67,6 +67,7 @@ SUITES = {
     "legacy-state": ("integration", ("server_state.spec.luau",)),
     "legacy-movement": ("integration", ("legacy_movement.spec.luau",)),
     "request-selection": ("integration", ("fixtures/customer_requests.luau", "customer_request_selection.spec.luau")),
+    "customer-wildcard": ("integration", ("fixtures/customer_requests.luau", "customer_wildcard.spec.luau")),
     "requests": ("integration", ("fixtures/customer_requests.luau", "customer_requests.spec.luau")),
     "world": ("integration", ("ingredient_world.spec.luau",)),
     "smoothie-roundtrip": ("integration", ("fixtures/smoothie.luau", "smoothie_roundtrip.spec.luau")),
@@ -99,7 +100,7 @@ focused = {
     "customer_result_only": ("customer-result",),
     "customer_queue_only": ("customer-queue",),
     "customer_only": ("legacy-state",),
-    "request_validation_only": ("customer-validation", "customer-compatibility", "request-selection", "requests"),
+    "request_validation_only": ("customer-validation", "customer-compatibility", "request-selection", "requests", "customer-wildcard"),
     "requests_only": ("request-selection", "requests", "customer-placement", "customer-walk"),
     "customer_order_text_only": ("customer-order-text",),
     "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
@@ -121,6 +122,7 @@ for directory in ("src/shared/Constants", "src/server/Services"):
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["MoneyFormat"] = (ROOT / "src/shared/MoneyFormat.luau").read_text(encoding="utf-8")
 sources["StashPromptController"] = (ROOT / "src/client/Controllers/StashPromptController.luau").read_text(encoding="utf-8")
 sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")
 sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")
