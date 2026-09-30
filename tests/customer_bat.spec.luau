@@ -83,8 +83,47 @@ check(
 )
 check(not customer.Serve(owner, second), "recovering front rejects Serve handler")
 check(not second:FindFirstChild("ServePrompt", true).Enabled, "recovering front disables Serve prompt")
-check(not customer.CanHitCustomer(owner, first), "served departing customer is ineligible")
 local cashBefore, consumedBefore = tycoon.GetCash(owner), consumed
+local servedGrade = first:GetAttribute("Grade")
+local servedHumanoid = first:FindFirstChildOfClass("Humanoid")
+local exitMoveCalls = 0
+servedHumanoid.MoveTo = function(humanoid, destination)
+    exitMoveCalls += 1
+    humanoid.WalkTarget = destination
+    if exitMoveCalls > 1 then
+        humanoid.MoveToFinished:Fire(true)
+    end
+end
+advance(2)
+check(exitMoveCalls == 1 and not first.Destroyed, "served customer starts its original exit walk")
+check(customer.CanHitCustomer(owner, first), "registered served customer remains hittable after queue removal")
+setup(customer.HitCustomer(owner, first, hitContext), "hit served customer walking to exit")
+check(
+    not first:FindFirstChild("TakeOrderPrompt", true).Enabled
+        and not first:FindFirstChild("ServePrompt", true).Enabled,
+    "served customer prompts remain disabled during recovery"
+)
+local stillQueued = false
+for _, entry in customer.GetQueueSnapshot(owner) do
+    stillQueued = stillQueued or entry.Model == first
+end
+check(not stillQueued, "served customer is not reinserted into the ordering queue")
+servedHumanoid.MoveToFinished:Fire(true)
+check(not first.Destroyed, "cancelled exit walk completion cannot remove a ragdolled customer")
+heartbeat()
+advance(hitContext.Duration)
+heartbeat()
+heartbeat()
+check(
+    first.Destroyed and servedHumanoid.WalkTarget.X == refs.CustomerExit.CFrame.Position.X,
+    "recovered served customer starts a fresh exit walk and is removed on completion"
+)
+check(
+    tycoon.GetCash(owner) == cashBefore
+        and consumed == consumedBefore
+        and first:GetAttribute("Grade") == servedGrade,
+    "hitting a served customer does not repeat payout, consumption, or grade"
+)
 heartbeat()
 local secondRoot = second:FindFirstChild("HumanoidRootPart")
 check(

@@ -28,3 +28,4 @@ require(script.Controllers.PlotIdentityController).Init()
 require(script.Controllers.BatController).Init()
 
 require(script.Controllers.StashExpansionController).Init()
+require(script.Controllers.ScrapbookController).Init()

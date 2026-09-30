@@ -155,6 +155,24 @@ local bat = bats(attacker)[1]
 check(bat.Grip == template.Grip, "grant preserves authored Tool grip")
 combat.RefreshPlayer(attacker)
 check(#bats(attacker) == 1 and bats(attacker)[1] == bat, "refresh is idempotent")
+check(not combat.IsBatEquipped(attacker), "issued Bat in Backpack is not considered equipped")
+local issuedHandle = bat:FindFirstChild("Handle")
+local issuedHitbox = bat:FindFirstChild("Hitbox")
+check(
+    issuedHandle ~= nil
+        and issuedHandle:IsA("BasePart")
+        and issuedHitbox ~= nil
+        and issuedHitbox:IsA("BasePart"),
+    "issued Bat resolves direct-child Handle and Hitbox BaseParts"
+)
+local fakeBat = instance("Tool")
+fakeBat.Name, fakeBat.Parent = "Bat", attacker.Character
+part("Handle", fakeBat)
+part("Hitbox", fakeBat)
+check(not combat.IsBatEquipped(attacker), "unissued Character Bat is not considered equipped")
+check(not combat.SwingBat(attacker), "unissued Character Bat cannot start a swing")
+check(#swingSounds == 0, "unissued Character Bat does not emit BatSwing")
+fakeBat:Destroy()
 local querySize, queryFrame, queryParams, queryCount = nil, nil, nil, 0
 local overlaps = {}
 workspaceFake.GetPartBoundsInBox = function(_, at, size, params)
@@ -168,6 +186,13 @@ end
 check(not combat.SwingBat(attacker), "unequipped bat rejects request")
 check(#swingSounds == 0, "unequipped bat rejection is silent")
 equip(attacker)
+check(combat.IsBatEquipped(attacker), "legitimate server-issued Character Bat resolves as equipped")
+issuedHandle.Parent = nil
+check(not combat.SwingBat(attacker), "missing direct-child Handle rejects safely")
+issuedHandle.Parent = bat
+issuedHitbox.Parent = nil
+check(not combat.SwingBat(attacker), "missing direct-child Hitbox rejects safely")
+issuedHitbox.Parent = bat
 overlaps =
     { attacker.Character:FindFirstChild("HumanoidRootPart"), teammate.Character:FindFirstChild("HumanoidRootPart") }
 check(combat.SwingBat(attacker), "owned equipped bat starts swing")
@@ -214,6 +239,16 @@ check(attacker:GetAttribute("BatDebugNextSwing") == nil, "one-swing diagnostic a
 check(
     string.find(table.concat(traceLines, "\n"), "SetStunned result=true", 1, true) ~= nil,
     "one-swing trace observes final authoritative stun"
+)
+local batTrace = table.concat(traceLines, "\n")
+check(
+    string.find(batTrace, "runtimeTool=" .. bat:GetFullName(), 1, true) ~= nil
+        and string.find(batTrace, "runtimeToolParent=" .. attacker.Character:GetFullName(), 1, true) ~= nil
+        and string.find(batTrace, "isUnderCharacter=true", 1, true) ~= nil
+        and string.find(batTrace, "handle=" .. issuedHandle:GetFullName(), 1, true) ~= nil
+        and string.find(batTrace, "hitbox=" .. issuedHitbox:GetFullName(), 1, true) ~= nil
+        and string.find(batTrace, "issuedValidation=true", 1, true) ~= nil,
+    "one-shot diagnostic reports runtime Tool hierarchy and issued validation"
 )
 check(queryFrame == liveHitbox.CFrame, "query samples actual equipped Hitbox at impact")
 check(

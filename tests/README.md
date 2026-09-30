@@ -196,3 +196,10 @@ engine doubles. It is a separate presentation suite and cannot prove physical
 collapse or getting up. The obsolete bat-reaction/stun-controller suites were
 removed with those modules. `combat` verifies authoritative stun/drop/immunity
 without physical ragdoll. See `docs/RAGDOLL.md` for manual Studio acceptance.
+
+## Scrapbook GUI
+
+Run `python tests/run_scrapbook_ui_tests.py --luau <luau.exe>` for the standalone
+presentation/controller suite. It uses real modules at a fake Roblox boundary and
+remains separate from authoritative discovery suites. Studio setup and manual
+layout checks are documented in `docs/SCRAPBOOK_GUI.md`.

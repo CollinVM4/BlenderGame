@@ -33,7 +33,7 @@ end
 local function current(_player: Player, queue: any): boolean
     return queues[queue.SessionId] == queue and deps.TycoonService.GetSessionOwner(queue.SessionId) ~= nil
 end
-local ownedModels: { [string]: { [Model]: boolean } } = {}
+local ownedModels: { [string]: { [Model]: any } } = {}
 local lastSpecialSpawn: { [string]: number } = {}
 local lastTemplates: { [string]: Model } = {}
 -- Runtime-only regular selections survive flow restarts.
@@ -858,7 +858,7 @@ end
 -- Keep all low-level traversal and pose handling in the existing walking helper.
 local function move(record: any, destination: CFrame, finished: () -> ())
     Walk.Move(record, destination, function(reached)
-        if reached or record.ReturningFromHit then
+        if reached or (record.ReturningFromHit and not record.Served) then
             if not reached then
                 -- CustomerWalk already exhausted its bounded retries. Preserve the order.
                 record.Root.AssemblyLinearVelocity = Vector3.zero
@@ -868,7 +868,7 @@ local function move(record: any, destination: CFrame, finished: () -> ())
             if record.ReturningFromHit then
                 record.ReturningFromHit = false
                 record.HitImmuneUntil = os.clock() + BatConfig.ImmunitySeconds
-                record.TakeOrderPrompt.Enabled = not record.OrderTaken
+                record.TakeOrderPrompt.Enabled = not record.Served and not record.OrderTaken
             end
             finished()
         elseif record.Model.Parent then
@@ -928,22 +928,20 @@ function CustomerService.RefreshQueue(player: Player)
     end
 end
 
--- Resolve from authoritative membership, never customer names, tags or attributes.
+-- Resolve from the physical customer registry, never names, tags or attributes.
 local function hitRecord(player: Player, model: Model): (any, any)
     local queue = queues[key(player)]
     if not queue or not current(player, queue) then
         return nil, nil
     end
-    for _, record in queue.Customers do
-        if
-            record.Model == model
-            and record.SessionId == queue.SessionId
-            and not record.Served
-            and record.Request
-            and model:IsDescendantOf(workspace)
-        then
-            return record, queue
-        end
+    local record = ownedModels[queue.SessionId] and ownedModels[queue.SessionId][model]
+    if
+        record
+        and record.Model == model
+        and record.SessionId == queue.SessionId
+        and model:IsDescendantOf(workspace)
+    then
+        return record, queue
     end
     return nil, nil
 end
@@ -990,19 +988,22 @@ function CustomerService.HitCustomer(
     local function valid(): boolean
         return current(player, queue)
             and record.SessionId == queue.SessionId
-            and table.find(queue.Customers, record) ~= nil
+            and ownedModels[queue.SessionId] ~= nil
+            and ownedModels[queue.SessionId][model] == record
             and record.Model == model
             and model:IsDescendantOf(workspace)
-            and not record.Served
-            and record.Request ~= nil
             and record.RecoveryToken == token
     end
-    local function returnToQueue()
+    local function resumeDestination()
         if not valid() then
             return
         end
         record.Recovering = false
         record.ReturningFromHit = true
+        if record.Served then
+            record.ResumeExit()
+            return
+        end
         -- Force a fresh route even if the queue marker has not changed.
         record.TargetMarker = nil
         local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
@@ -1017,7 +1018,7 @@ function CustomerService.HitCustomer(
         pcall(function()
             deps.RagdollService.SetRagdolled(model, false)
         end)
-        returnToQueue()
+        resumeDestination()
         return false
     end
     GameplaySfx.Emit("CustomerHurt", record.Root.Position)
@@ -1042,7 +1043,7 @@ function CustomerService.HitCustomer(
             return
         end
         -- Give native GettingUp a physics step before locomotion takes over.
-        RunService.Heartbeat:Once(returnToQueue)
+        RunService.Heartbeat:Once(resumeDestination)
     end)
     return true
 end
@@ -1058,7 +1059,7 @@ function CustomerService.ActivateForPlayer(player: Player): boolean
         return true
     end
     CustomerService.DeactivateForPlayer(player)
-    local queue: any = { Customers = {}, Plot = plot, Full = false, SessionId = key(player) }
+    local queue: any = { Customers = {}, Records = {}, Plot = plot, Full = false, SessionId = key(player) }
     queues[key(player)] = queue
     queue.PlotConnection = plot.AncestryChanged:Connect(function()
         if queues[queue.SessionId] == queue and not current(player, queue) then
@@ -1284,6 +1285,7 @@ local function spawnForPlayer(player: Player): Model?
         Exit = exitAt,
         ForcedReaction = nil,
     }
+    ownedModels[key(player)][model] = record
     local queue = queues[key(player)]
     if not queue or not current(player, queue) or not assignRequest(player, record) then
         walk.Destroy()
@@ -1293,6 +1295,7 @@ local function spawnForPlayer(player: Player): Model?
         model:Destroy()
         return nil
     end
+    queue.Records[model] = record
     table.insert(queue.Customers, record)
     if record.CustomerType == "Special" then
         lastSpecialSpawn[key(player)] = os.clock()
@@ -1314,6 +1317,7 @@ local function spawnForPlayer(player: Player): Model?
         CustomerService.Serve(actor, model, context)
     end)
     model.Destroying:Connect(function()
+        queue.Records[model] = nil
         walk.Destroy()
         activeTypingTasks[text] = nil
         if ownedModels[queue.SessionId] then
@@ -1518,12 +1522,23 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         record.Audio.notReadySound:Play()
     end
     Debris:AddItem(record.Model, 15)
-    task.delay(2, function()
-        if record.Model.Parent then
+    record.ResumeExit = function()
+        if
+            current(player, queue)
+            and ownedModels[queue.SessionId] ~= nil
+            and ownedModels[queue.SessionId][record.Model] == record
+            and record.Model:IsDescendantOf(workspace)
+            and not record.Recovering
+        then
             move(record, record.Exit, function()
                 Presentation.PreserveResult(resultGui)
                 record.Model:Destroy()
             end)
+        end
+    end
+    task.delay(2, function()
+        if not record.ReturningFromHit then
+            record.ResumeExit()
         end
     end)
     CustomerService.RefreshQueue(player)

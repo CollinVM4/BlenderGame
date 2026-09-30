@@ -8,6 +8,16 @@ local Knockback = require(script.Parent.BatKnockback)
 local CombatService = {}
 local deps: any
 type Weapon = { Tool: Tool, Scale: number }
+type EquippedBat = {
+    Character: Model?,
+    Weapon: Weapon?,
+    RuntimeTool: Instance?,
+    Tool: Tool?,
+    Handle: Instance?,
+    Hitbox: Instance?,
+    IsUnderCharacter: boolean,
+    IssuedValidation: boolean,
+}
 type Stun = { Character: Model, Until: number, ImmuneUntil: number }
 local weapons: { [Player]: Weapon? } = {}
 local attackAt: { [Player]: number } = {}
@@ -71,6 +81,23 @@ local function intact(tool: Tool): boolean
     local handle = tool:FindFirstChild("Handle")
     local hitbox = tool:FindFirstChild("Hitbox")
     return handle ~= nil and handle:IsA("BasePart") and hitbox ~= nil and hitbox:IsA("BasePart")
+end
+local function resolveEquippedBat(player: Player): EquippedBat
+    local character = player.Character
+    local runtimeTool = if character then character:FindFirstChild("Bat") else nil
+    local tool: Tool? = if runtimeTool and runtimeTool:IsA("Tool") then runtimeTool :: Tool else nil
+    local weapon = weapons[player]
+    local isUnderCharacter = character ~= nil and runtimeTool ~= nil and runtimeTool.Parent == character
+    return {
+        Character = character,
+        Weapon = weapon,
+        RuntimeTool = runtimeTool,
+        Tool = tool,
+        Handle = if tool then tool:FindFirstChild("Handle") else nil,
+        Hitbox = if tool then tool:FindFirstChild("Hitbox") else nil,
+        IsUnderCharacter = isUnderCharacter,
+        IssuedValidation = weapon ~= nil and tool ~= nil and weapon.Tool == tool and isUnderCharacter,
+    }
 end
 local function removeWeapon(player: Player)
     local weapon: Weapon? = weapons[player]
@@ -213,23 +240,27 @@ function CombatService.RefreshPlayer(player: Player)
     end
 end
 function CombatService.IsBatEquipped(player: Player): boolean
-    local weapon = weapons[player]
-    return weapon ~= nil and player.Character ~= nil and weapon.Tool.Parent == player.Character
+    return resolveEquippedBat(player).IssuedValidation
 end
 
-local function swingRejection(player: Player): string?
+local function swingRejection(player: Player, equipped: EquippedBat?): string?
     local character = alive(player)
-    local weapon: Weapon? = weapons[player]
     if not character then
         return "attacker not alive"
     end
-    if not weapon then
+    equipped = equipped or resolveEquippedBat(player)
+    if not equipped.Weapon then
         return "no issued Bat"
     end
-    if weapon.Tool.Parent ~= character then
+    if equipped.Character ~= character or not equipped.IssuedValidation then
         return "issued Bat not equipped"
     end
-    if not intact(weapon.Tool) then
+    if
+        not equipped.Handle
+        or not equipped.Handle:IsA("BasePart")
+        or not equipped.Hitbox
+        or not equipped.Hitbox:IsA("BasePart")
+    then
         return "missing Handle/Hitbox"
     end
     if not Config.Levels[levelFor(player)] then
@@ -320,15 +351,23 @@ end
 -- No target, level, duration or geometry is accepted from the requester.
 function CombatService.SwingBat(player: Player): boolean
     local trace = swingTrace(player)
-    local issued = weapons[player]
+    local equipped = resolveEquippedBat(player)
+    local function fullName(object: Instance?): string
+        return if object then object:GetFullName() else "nil"
+    end
     trace(
         string.format(
-            "BatLevel=%s equipped Tool=%s",
+            "BatLevel=%s runtimeTool=%s runtimeToolParent=%s isUnderCharacter=%s handle=%s hitbox=%s issuedValidation=%s",
             tostring(levelFor(player)),
-            tostring(issued ~= nil and issued.Tool.Parent == player.Character and intact(issued.Tool))
+            fullName(equipped.RuntimeTool),
+            fullName(if equipped.RuntimeTool then equipped.RuntimeTool.Parent else nil),
+            tostring(equipped.IsUnderCharacter),
+            fullName(equipped.Handle),
+            fullName(equipped.Hitbox),
+            tostring(equipped.IssuedValidation)
         )
     )
-    local rejection = swingRejection(player)
+    local rejection = swingRejection(player, equipped)
     if rejection or os.clock() < (attackAt[player] or 0) then
         trace("SwingBat rejected: " .. (rejection or "cooldown"))
         return false
@@ -338,25 +377,31 @@ function CombatService.SwingBat(player: Player): boolean
     local token = {}
     swings[player] = token
     local character = player.Character :: Model
-    local weapon = weapons[player] :: Weapon
-    local hitbox = weapon.Tool:FindFirstChild("Hitbox")
+    local weapon = equipped.Weapon :: Weapon
+    local tool = equipped.Tool :: Tool
+    local hitbox = equipped.Hitbox :: BasePart
     local _, root = alive(player)
-    local position = if hitbox and hitbox:IsA("BasePart") then hitbox.Position else root.Position
+    local position = hitbox.Position
     GameplaySfx.Emit("BatSwing", position)
     local context = deps.TycoonService.GetRequestContext(player)
     local function sampleImpact(sample: number)
         if swings[player] ~= token then
             return
         end
+        local currentEquipped = resolveEquippedBat(player)
         trace("impact callback reached sample=" .. tostring(sample))
         if
             swings[player] ~= token
             or player.Character ~= character
-            or weapons[player] ~= weapon
-            or swingRejection(player) ~= nil
+            or currentEquipped.Weapon ~= weapon
+            or currentEquipped.Tool ~= tool
+            or swingRejection(player, currentEquipped) ~= nil
             or not deps.TycoonService.ValidateActor(player, context)
         then
-            trace("impact rejected: " .. (swingRejection(player) or "character/weapon/swing or membership changed"))
+            trace(
+                "impact rejected: "
+                    .. (swingRejection(player, currentEquipped) or "character/weapon/swing or membership changed")
+            )
             swings[player] = nil
             return
         end
@@ -368,7 +413,7 @@ function CombatService.SwingBat(player: Player): boolean
         local level = Config.Levels[levelFor(player)]
         -- Sample the exact issued clone at impact, including authored joints/animation.
         -- configure() owns its size; clients never supply query geometry in the request.
-        local hitbox = weapon.Tool:FindFirstChild("Hitbox") :: BasePart
+        local hitbox = currentEquipped.Hitbox :: BasePart
         local size, at = hitbox.Size, hitbox.CFrame
         local maxRootDistance = Config.MaxRootDistance * level.Scale
         -- Replicated Tool poses are observations, not authority to hit across the map.
