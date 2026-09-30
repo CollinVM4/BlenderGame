@@ -11,6 +11,7 @@ local eventAssets: { [string]: string } = {
     IngredientPlant = Config.IngredientPlantSoundId,
     IngredientThrow = Config.IngredientThrowSoundId,
     BatSwing = Config.BatSwingSoundId,
+    CustomerHurt = Config.CustomerHurtSoundId,
 }
 
 local function play(template: Sound, position: Vector3)

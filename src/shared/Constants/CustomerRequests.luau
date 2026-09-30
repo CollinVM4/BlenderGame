@@ -109,50 +109,18 @@ local requests: { Request } = {
         MinJumpTier = 2,
     },
     {
-        Id = "Veggie",
-        RequestGroup = "Trait",
-        SimilarityKeys = { "Veggie" },
-        DisplayTexts = {
-            "my new years resolution is to eat more VEGGIES!",
-            "put some VEGGIES in there!",
-            "I should probably eat a vegetable today...",
-            "gimmie something with VEGGIES!",
-        },
-        GoodResponse = "I LOVE VEGGIES!",
-        BadResponse = "Not enough veggies!",
-        RequiredTags = { "Veggie" },
-        BasePayout = 25,
-        MinJumpTier = 0,
-    },
-    {
         Id = "Yellow",
         RequestGroup = "Color",
         SimilarityKeys = { "Yellow" },
         DisplayTexts = {
             "I'll have you know my favorite color is YELLOW!",
-            "make it bright YELLOW!",
-            "I need something YELLOW!",
+            "gimmie the YELLOW stuff!",
+            "make it with YELLOW!",
             "YELLOW smoothie. Surprise me!",
         },
         GoodResponse = "Thanks a lot, smoothie master!",
         BadResponse = "This isn't yellow enough!",
         RequiredTags = { "Yellow" },
-        BasePayout = 25,
-        MinJumpTier = 0,
-    },
-    {
-        Id = "Purple",
-        RequestGroup = "Color",
-        SimilarityKeys = { "Purple" },
-        DisplayTexts = {
-            "can't get enough PURPLE in my life!",
-            "PURPLE. That's all I need.",
-            "make me something really PURPLE!",
-            "gimmie the PURPLE stuff!",
-        },
-        GoodResponse = "YESS PURPLE!",
-        BadResponse = "This isn't purple enough!",
-        RequiredTags = { "Purple" },
         BasePayout = 25,
         MinJumpTier = 0,
     },
@@ -164,7 +132,8 @@ local requests: { Request } = {
             "I LOVE GREEN!",
             "make it GREEN!",
             "I want something super GREEN.",
-            "lemme get one of those GREEN smoothies!",
+            "GREEN. That's all I need.",
+            "gimmie the GREEN stuff!",
         },
         GoodResponse = "YAY I LOOOOVEE GREEN!",
         BadResponse = "This isn't green enough!",
@@ -337,8 +306,7 @@ local requests: { Request } = {
         BadResponse = "Where's my BLUE PROTEIN smoothie?!",
         DisplayTexts = {
             "make it BLUE and give me some PROTEIN!",
-            "BLUE smoothie. Extra gains.",
-            "I want something BLUE and PROTEIN packed!",
+            "BLUE smoothie. Extra Protein.",
         },
 
         RequiredTags = { "Blue", "Protein" },
@@ -356,7 +324,7 @@ local requests: { Request } = {
         DisplayTexts = {
             "I need PROTEIN... make it WEIRD.",
             "something WEIRD and packed with PROTEIN!",
-            "gimmie the strangest PROTEIN smoothie you got!",
+            "gimmie the WEIRDEST PROTEIN smoothie you got!",
         },
 
         RequiredTags = { "Weird", "Protein" },
@@ -373,8 +341,8 @@ local requests: { Request } = {
         BadResponse = "Where's the YELLOW and SWEET stuff?!",
         DisplayTexts = {
             "make it YELLOW and SWEET!",
-            "something bright YELLOW and super SWEET!",
-            "I want a SWEET YELLOW smoothie!",
+            "something YELLOW and super SWEET!",
+            "I want a SWEET & YELLOW smoothie!",
         },
 
         RequiredTags = { "Yellow", "Sweet" },
@@ -392,7 +360,6 @@ local requests: { Request } = {
         DisplayTexts = {
             "I want it SWEET AND SOUR!",
             "make my taste buds confused. SWEET and SOUR!",
-            "something SWEET with a SOUR kick!",
         },
 
         RequiredTags = { "Sweet", "Sour" },
@@ -402,17 +369,6 @@ local requests: { Request } = {
 
         RequestGroup = "Combo",
         SimilarityKeys = { "Sweet", "Sour" },
-    },
-    {
-        Id = "FruitProtein",
-        RequestGroup = "Combo",
-        SimilarityKeys = { "Fruit", "Protein" },
-        DisplayText = "FRUIT and PROTEIN. gotta get those gains!",
-        GoodResponse = "Thanks my brotha",
-        BadResponse = "Where's the good stuff?!",
-        RequiredTags = { "Fruit", "Protein" },
-        BasePayout = 50,
-        MinJumpTier = 1,
     },
     {
         Id = "GreenSpicy",
@@ -473,7 +429,6 @@ local requests: { Request } = {
         DisplayTexts = {
             "make it WEIRD, but keep the FISH out!",
             "I want something WEIRD with NO SEAFOOD.",
-            "give me the weirdest thing you've got... just nothing from the ocean.",
         },
 
         RequiredTags = { "Weird" },
@@ -486,31 +441,12 @@ local requests: { Request } = {
         SimilarityKeys = { "Weird", "Seafood" },
     },
     {
-        Id = "GreenNoFruit",
-        GoodResponse = "GREEN and fruit-free. Perfect!",
-        BadResponse = "WHY IS THERE FRUIT IN THIS?!",
-        DisplayTexts = {
-            "make it GREEN, but NO FRUIT!",
-            "I want a GREEN smoothie without any FRUIT.",
-            "GREEN please. Leave the FRUIT out.",
-        },
-
-        RequiredTags = { "Green" },
-        ForbiddenTags = { "Fruit" },
-
-        BasePayout = 75,
-        MinJumpTier = 1,
-
-        RequestGroup = "Restriction",
-        SimilarityKeys = { "Green", "Fruit" },
-    },
-    {
         Id = "ProteinNoSeafood",
         GoodResponse = "All gains, no fish. Beautiful.",
         BadResponse = "I said NO SEAFOOD!",
         DisplayTexts = {
             "I need PROTEIN, but NO SEAFOOD!",
-            "gains please. Keep the FISH out of it.",
+            "PROTEIN please just keep the SEAFOOD out of it.",
             "something PROTEIN packed... just nothing from the OCEAN.",
         },
 
@@ -535,18 +471,7 @@ local requests: { Request } = {
         BasePayout = 100,
         MinJumpTier = 3,
     },
-    {
-        Id = "FruitGreenNoMilk",
-        RequestGroup = "Restriction",
-        SimilarityKeys = { "Fruit", "Green", "NoMilk" },
-        DisplayText = "FRUITY and GREEN, but NO MILK!",
-        GoodResponse = "Now THAT'S a green smoothie!",
-        BadResponse = "I said NO MILK!",
-        RequiredTags = { "Fruit", "Green" },
-        ForbiddenTags = { "Milk" },
-        BasePayout = 100,
-        MinJumpTier = 3,
-    },
+
 
     -- Exact / scavenger-hunt requests
 
@@ -556,7 +481,7 @@ local requests: { Request } = {
         BadResponse = "This TIRE isn't sweet enough!",
         DisplayTexts = {
             "throw in a TIRE... make the rest SWEET.",
-            "TIRE smoothie. But make it taste SWEET somehow.",
+            "TIRE smoothie. But make it taste SWEET.",
             "I want a TIRE and something SWEET. Don't ask.",
         },
 
@@ -573,8 +498,7 @@ local requests: { Request } = {
         Id = "MilkPurple",
         DisplayTexts = {
             "MILK and something PURPLE!",
-            "make me a PURPLE milkshake... sorta.",
-            "throw in MILK and make the rest PURPLE!",
+            "throw in MILK and PURPLE!",
         },
 
         RequiredTags = { "Purple" },
@@ -665,7 +589,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Mushrooms", "Onion" },
         BasePayout = 75,
-        MinJumpTier = 1,
+        MinJumpTier = 0,
     },
 
     {
@@ -693,6 +617,9 @@ local requests: { Request } = {
         RequiredIngredients = { "Banana", "Milk", "Worm" },
         ExactIngredients = true,
 
+        GoodResponse = "Breakfast of champions!",
+        BadResponse = "I said BANANA, MILK, and a WORM!",
+
         BasePayout = 100,
         MinJumpTier = 2,
 
@@ -710,6 +637,9 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Coconut", "Pineapple", "Ice" },
         ExactIngredients = true,
+
+        GoodResponse = "Tropical and refreshing!",
+        BadResponse = "I said COCONUT, PINEAPPLE, and ICE!",
 
         BasePayout = 100,
         MinJumpTier = 2,
@@ -737,7 +667,6 @@ local requests: { Request } = {
         RequestGroup = "Ingredient",
         SimilarityKeys = { "Crab", "Coconut" },
         DisplayText = "CRAB and COCONUT! You choose the last ingredient.",
-        GoodResponse = "Tropical seafood... somehow it works!",
         BadResponse = "Where's my CRAB and COCONUT?!",
         RequiredTags = {},
         RequiredIngredients = { "Crab", "Coconut" },
@@ -957,10 +886,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "NotFunneh",
-    DisplayText = "Can I get something PURPLE and ICE COLD?",
+    DisplayText = "Can I get something Red and ICE COLD?",
     GoodResponse = "Okayyy, this is actually really good!",
     BadResponse = "Nooo! You forgot something!",
-    RequiredTags = { "Purple", "Cold" },
+    RequiredTags = { "Red", "Cold" },
     BasePayout = 105,
     MinJumpTier = 0,
     NPCOnly = true,
@@ -1001,7 +930,7 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.60,
+    RegularWildcardChance = 0.70,
     SpecialWildcardChance = 0.30,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {
@@ -1012,9 +941,10 @@ local CustomerRequests = {
             "Surprise me!",
             "make me whatever!",
             "I'll try anything!",
-            "Dealer's choice!",
+            "Your choice!",
             "just blend me something!",
             "you pick. I trust the smoothie master!",
+            "Throw whatever you want in there!",
         },
         GoodResponse = "Now THAT'S a smoothie! Thanks!",
         BadResponse = "I still wanted a smoothie!",
@@ -1023,7 +953,7 @@ local CustomerRequests = {
         MinJumpTier = 0,
     } :: Request,
 
-    SpecialCustomerChance = 0.45,
+    SpecialCustomerChance = 0.55,
     -- Continuous special cooldown is configured in Economy.SpecialCustomerCooldownSeconds.
     RegularCustomerRecencyWindow = 3,
     RegularRequestRecencyWindow = 3,

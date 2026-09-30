@@ -16,9 +16,15 @@ export type StashSlot = {
 export type Stack = { IngredientId: string, Count: number }
 export type Smoothie =
     { BlendId: string?, Ingredients: { string }, Tags: { string }, Color: Color3, Discovery: string? }
+export type DiscoveryState = {
+    Ingredients: { [string]: boolean },
+    SpecialCustomers: { [string]: boolean },
+}
+export type DiscoveryEvent = { Kind: "Ingredient" | "SpecialCustomer", Id: string }
 export type PersonalPlayerData = {
     Upgrades: { CarryCapacity: number, StackSize: number },
     Discoveries: { [string]: boolean },
+    Discovery: DiscoveryState,
     Stats: { CustomersServed: number, SmoothiesMade: number, PlayersSlapped: number, IngredientsStolen: number },
 }
 -- Compatibility snapshot: shared fields are projections, never a stored personal record.
@@ -36,6 +42,7 @@ export type PlayerData = {
         SprintStamina: number,
     },
     Discoveries: { [string]: boolean },
+    Discovery: DiscoveryState,
     Stats: { CustomersServed: number, SmoothiesMade: number, PlayersSlapped: number, IngredientsStolen: number },
 }
 export type PlotRequestContext = { PlotSessionId: string, MembershipRevision: number }

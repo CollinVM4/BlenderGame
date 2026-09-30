@@ -15,6 +15,9 @@ local Walk = require(script.Parent.CustomerWalk)
 local Presentation = require(script.Parent.CustomerPresentation)
 local AudioService = require(script.Parent.AudioService)
 local Film = require(script.Parent.FilmingUtil)
+local BatConfig = require(Shared.Constants.BatConfig)
+local Knockback = require(script.Parent.BatKnockback)
+local GameplaySfx = require(script.Parent.GameplaySfxService)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade) -> ()
@@ -855,7 +858,18 @@ end
 -- Keep all low-level traversal and pose handling in the existing walking helper.
 local function move(record: any, destination: CFrame, finished: () -> ())
     Walk.Move(record, destination, function(reached)
-        if reached then
+        if reached or record.ReturningFromHit then
+            if not reached then
+                -- CustomerWalk already exhausted its bounded retries. Preserve the order.
+                record.Root.AssemblyLinearVelocity = Vector3.zero
+                record.Root.AssemblyAngularVelocity = Vector3.zero
+                record.Model:PivotTo(destination)
+            end
+            if record.ReturningFromHit then
+                record.ReturningFromHit = false
+                record.HitImmuneUntil = os.clock() + BatConfig.ImmunitySeconds
+                record.TakeOrderPrompt.Enabled = not record.OrderTaken
+            end
             finished()
         elseif record.Model.Parent then
             -- Existing Destroying cleanup removes the failed entry and advances waiters.
@@ -885,7 +899,16 @@ function CustomerService.RefreshQueue(player: Player)
             record.Walk.SetMoving(false)
         else
             local destination = Placement.AtMarker(marker, record.BottomOffset)
-            if record.TargetMarker ~= marker or record.MarkerFrame ~= marker.CFrame or record.QueueIndex ~= index then
+            local changed = record.TargetMarker ~= marker
+                or record.MarkerFrame ~= marker.CFrame
+                or record.QueueIndex ~= index
+            if record.Recovering then
+                record.TargetMarker = marker
+                record.MarkerFrame = marker.CFrame
+                record.QueueIndex = index
+                record.Ready = false
+                record.Prompt.Enabled = false
+            elseif changed then
                 record.TargetMarker = marker
                 record.MarkerFrame = marker.CFrame
                 record.QueueIndex = index
@@ -903,6 +926,125 @@ function CustomerService.RefreshQueue(player: Player)
             end
         end
     end
+end
+
+-- Resolve from authoritative membership, never customer names, tags or attributes.
+local function hitRecord(player: Player, model: Model): (any, any)
+    local queue = queues[key(player)]
+    if not queue or not current(player, queue) then
+        return nil, nil
+    end
+    for _, record in queue.Customers do
+        if
+            record.Model == model
+            and record.SessionId == queue.SessionId
+            and not record.Served
+            and record.Request
+            and model:IsDescendantOf(workspace)
+        then
+            return record, queue
+        end
+    end
+    return nil, nil
+end
+
+function CustomerService.CanHitCustomer(player: Player, model: Model): boolean
+    local record = hitRecord(player, model)
+    if not record or record.Recovering or record.ReturningFromHit or os.clock() < (record.HitImmuneUntil or 0) then
+        return false
+    end
+    local root = model:FindFirstChild("HumanoidRootPart")
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if
+        not root
+        or not root:IsA("BasePart")
+        or root ~= record.Root
+        or root.Anchored
+        or not humanoid
+        or humanoid.Health <= 0
+    then
+        return false
+    end
+    local ok, compatible = pcall(function()
+        return deps.RagdollService.PrepareCharacter(model)
+    end)
+    return ok and compatible == true
+end
+
+function CustomerService.HitCustomer(
+    player: Player,
+    model: Model,
+    context: { Direction: Vector3, Duration: number }
+): boolean
+    if not CustomerService.CanHitCustomer(player, model) then
+        return false
+    end
+    local record, queue = hitRecord(player, model)
+    local token = (record.RecoveryToken or 0) + 1
+    record.RecoveryToken = token
+    record.Recovering = true
+    record.Ready = false
+    record.TakeOrderPrompt.Enabled = false
+    record.Prompt.Enabled = false
+    Walk.Cancel(record)
+    local function valid(): boolean
+        return current(player, queue)
+            and record.SessionId == queue.SessionId
+            and table.find(queue.Customers, record) ~= nil
+            and record.Model == model
+            and model:IsDescendantOf(workspace)
+            and not record.Served
+            and record.Request ~= nil
+            and record.RecoveryToken == token
+    end
+    local function returnToQueue()
+        if not valid() then
+            return
+        end
+        record.Recovering = false
+        record.ReturningFromHit = true
+        -- Force a fresh route even if the queue marker has not changed.
+        record.TargetMarker = nil
+        local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
+        if owner then
+            CustomerService.RefreshQueue(owner)
+        end
+    end
+    local ok, enabled = pcall(function()
+        return deps.RagdollService.SetRagdolled(model, true)
+    end)
+    if not ok or enabled ~= true then
+        pcall(function()
+            deps.RagdollService.SetRagdolled(model, false)
+        end)
+        returnToQueue()
+        return false
+    end
+    GameplaySfx.Emit("CustomerHurt", record.Root.Position)
+    RunService.Heartbeat:Once(function()
+        if valid() and record.Recovering then
+            pcall(function()
+                if deps.RagdollService.IsRagdolled(model) then
+                    Knockback.Apply(record.Root, context.Direction)
+                end
+            end)
+        end
+    end)
+    task.delay(context.Duration, function()
+        if not valid() then
+            return
+        end
+        local restored, result = pcall(function()
+            return deps.RagdollService.SetRagdolled(model, false)
+        end)
+        if not restored or result ~= true then
+            warn("[Customer] ragdoll recovery failed")
+            return
+        end
+        -- Give native GettingUp a physics step before locomotion takes over.
+        RunService.Heartbeat:Once(returnToQueue)
+    end)
+    return true
 end
 
 function CustomerService.ActivateForPlayer(player: Player): boolean
@@ -1116,6 +1258,9 @@ local function spawnForPlayer(player: Player): Model?
     end
     local record: any = {
         OrderTaken = false,
+        Recovering = false,
+        RecoveryToken = 0,
+        ReturningFromHit = false,
         TakeOrderPrompt = takeOrder,
         SessionId = key(player),
         BottomOffset = bottomOffset,
@@ -1151,6 +1296,11 @@ local function spawnForPlayer(player: Player): Model?
     table.insert(queue.Customers, record)
     if record.CustomerType == "Special" then
         lastSpecialSpawn[key(player)] = os.clock()
+        if deps.DiscoveryService then
+            for _, member in deps.TycoonService.GetMembers(record.SessionId) do
+                deps.DiscoveryService.DiscoverSpecialCustomer(member, record.CustomerId)
+            end
+        end
     end
     model:SetAttribute("CustomerId", record.CustomerId)
     model:SetAttribute("OwnerUserId", player.UserId)
@@ -1169,6 +1319,7 @@ local function spawnForPlayer(player: Player): Model?
         if ownedModels[queue.SessionId] then
             ownedModels[queue.SessionId][model] = nil
         end
+        record.RecoveryToken += 1
         record.MoveToken = (record.MoveToken or 0) + 1
         if queues[queue.SessionId] == queue then
             local index = table.find(queue.Customers, record)
@@ -1206,6 +1357,8 @@ function CustomerService.TakeOrder(player: Player, model: Model, context: any): 
         if record.Model == model then
             if
                 record.OrderTaken
+                or record.Recovering
+                or record.ReturningFromHit
                 or record.Served
                 or not record.Request
                 or not model.Parent
@@ -1263,6 +1416,8 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     if
         not record
         or not record.Ready
+        or record.Recovering
+        or record.ReturningFromHit
         or not record.Request
         or record.Served
         or (expectedModel ~= nil and expectedModel ~= record.Model)

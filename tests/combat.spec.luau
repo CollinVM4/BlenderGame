@@ -17,6 +17,7 @@ sfxRemote.FireAllClients = function(_, name, position)
 end
 dependency.MovementService = movement
 dependency.CombatService = combat
+dependency.CustomerService = customer
 movement.Init(dependency)
 combat.Init(dependency)
 -- Physical engine boundary; AJU joint restoration is covered in ragdoll.spec.
@@ -172,9 +173,7 @@ overlaps =
 check(combat.SwingBat(attacker), "owned equipped bat starts swing")
 local swingHitbox = bat:FindFirstChild("Hitbox")
 check(
-    #swingSounds == 1
-        and swingSounds[1].Name == "BatSwing"
-        and swingSounds[1].Position == swingHitbox.Position,
+    #swingSounds == 1 and swingSounds[1].Name == "BatSwing" and swingSounds[1].Position == swingHitbox.Position,
     "accepted swing emits once at the bat Hitbox even when no target is hit"
 )
 check(not combat.SwingBat(attacker), "swing cooldown rejects repeated request")
@@ -820,3 +819,64 @@ for _, forward in { vec(1, 0, 0), vec(0, 1, 0) } do
     advance(config.Levels[1].StunDuration)
     combat.RemovePlayer(target)
 end
+
+-- Classification uses the customer authority; both kinds share the same geometry/token gate.
+local registeredCustomer = instance("Model")
+registeredCustomer.Name, registeredCustomer.Parent = "Customer", workspaceFake
+local customerRoot = part("HumanoidRootPart", registeredCustomer)
+local customerHits = 0
+local receivedContext
+local realCustomerService = dependency.CustomerService
+local customerEligible = true
+dependency.CustomerService = {
+    CanHitCustomer = function(actor, model)
+        return actor == hitter and model == registeredCustomer and customerEligible
+    end,
+    HitCustomer = function(actor, model, context)
+        setup(actor == hitter and model == registeredCustomer, "dispatch registered customer")
+        customerHits += 1
+        receivedContext = context
+        return true
+    end,
+}
+hitter.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector = vec(0, 0, -1)
+local competingPlayer = fighter(-3)
+local savedRaycast = workspaceFake.Raycast
+for _, rejection in { "authority", "distance", "behind", "wall", "none" } do
+    advance(config.SwingCooldown)
+    customerEligible = rejection ~= "authority"
+    customerRoot.Position = if rejection == "distance"
+        then vec(0, 0, -100)
+        elseif rejection == "behind" then vec(0, 0, 2)
+        else vec(0, 0, -2)
+    workspaceFake.Raycast = function()
+        return if rejection == "wall" then { Instance = instance("Part") } else nil
+    end
+    overlaps = { customerRoot, customerRoot }
+    if rejection == "none" then
+        table.insert(overlaps, competingPlayer.Character:FindFirstChild("HumanoidRootPart"))
+    end
+    setup(combat.SwingBat(hitter), "customer candidate swing")
+    advance(config.HitActiveStart + 0.000001)
+    check(customerHits == (if rejection == "none" then 1 else 0), rejection .. " shares customer validation")
+    advance(config.HitSampleInterval)
+end
+check(
+    not movement.IsStunned(competingPlayer) and customerHits == 1,
+    "nearest customer wins over player and duplicate parts/later samples cannot accept another target"
+)
+check(
+    receivedContext.Duration == config.Levels[1].StunDuration and receivedContext.Direction.Z == -1,
+    "customer receives server-owned duration and shared knockback direction"
+)
+advance(config.SwingCooldown)
+customerRoot.Position = vec(0, 0, -4)
+overlaps = { customerRoot, competingPlayer.Character:FindFirstChild("HumanoidRootPart") }
+setup(combat.SwingBat(hitter), "closer player competes with customer")
+advance(config.HitActiveStart + 0.000001)
+check(
+    movement.IsStunned(competingPlayer) and customerHits == 1,
+    "nearest player keeps existing player stun handling without hitting customer"
+)
+workspaceFake.Raycast = savedRaycast
+dependency.CustomerService = realCustomerService

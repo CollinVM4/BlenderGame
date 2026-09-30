@@ -170,7 +170,7 @@ end
 -- as a global inventory-transfer policy: stash acquisition must separately validate
 -- its server-owned slot/protection state before granting a unit or held reservation.
 -- No caller-supplied owner, slot attributes, or "allow stealing" flag grants rights here.
-local function getLoosePickupRecord(player: Player, object: Instance)
+local function getLoosePickupRecord(player: Player, object: Instance): { Id: string }?
     local record = deps.IngredientService.GetRecord(object)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
@@ -469,6 +469,9 @@ local function equipVisual(
         switching[player] = nil
         return false
     end
+    if id and not smoothie and deps.DiscoveryService then
+        deps.DiscoveryService.DiscoverIngredient(player, id)
+    end
     return true
 end
 
@@ -530,6 +533,9 @@ function InventoryService.ConsumeHeldSmoothie(player: Player): Types.SmoothieDat
     return data
 end
 
+-- Reserve/consume privately so failed carry equips cannot unlock a discovery.
+local claimWorldItem: (Player, Instance) -> boolean
+
 function InventoryService.CarryWorldItem(player: Player, object: Instance): boolean
     if not MovementService.CanPerformGameplayAction(player) then
         return false
@@ -554,7 +560,7 @@ function InventoryService.CarryWorldItem(player: Player, object: Instance): bool
     local pickupPart = WorldUtil.Part(object)
     local pickupPosition = if pickupPart then pickupPart.Position else nil
     local visual = object:Clone()
-    if not InventoryService.ClaimWorldItem(player, object) then
+    if not claimWorldItem(player, object) then
         visual:Destroy()
         return false
     end
@@ -670,7 +676,7 @@ function InventoryService.GetSnapshot(player: Player)
         Layout = InventoryService.GetStashLayout(player),
     }
 end
-function InventoryService.AddUnit(player: Player, id: string): boolean
+local function reserveUnit(player: Player, id: string): boolean
     if not carried[player] or not deps.IngredientService.GetDefinition(id) then
         return false
     end
@@ -681,6 +687,15 @@ function InventoryService.AddUnit(player: Player, id: string): boolean
     carried[player][id] = count + 1
     return true
 end
+function InventoryService.AddUnit(player: Player, id: string): boolean
+    if not reserveUnit(player, id) then
+        return false
+    end
+    if deps.DiscoveryService then
+        deps.DiscoveryService.DiscoverIngredient(player, id)
+    end
+    return true
+end
 function InventoryService.RemoveUnit(player: Player, id: string): boolean
     local count = carried[player] and carried[player][id] or 0
     if count < 1 then
@@ -689,7 +704,7 @@ function InventoryService.RemoveUnit(player: Player, id: string): boolean
     carried[player][id] = if count == 1 then nil else count - 1
     return true
 end
-function InventoryService.ClaimWorldItem(player: Player, object: Instance): boolean
+claimWorldItem = function(player: Player, object: Instance): boolean
     if not MovementService.CanPerformGameplayAction(player) then
         return false
     end
@@ -697,12 +712,22 @@ function InventoryService.ClaimWorldItem(player: Player, object: Instance): bool
     if not record then
         return false
     end
-    if not InventoryService.AddUnit(player, record.Id) then
+    if not reserveUnit(player, record.Id) then
         return false
     end
     if not deps.IngredientService.Consume(object, true) then
         InventoryService.RemoveUnit(player, record.Id)
         return false
+    end
+    return true
+end
+function InventoryService.ClaimWorldItem(player: Player, object: Instance): boolean
+    local record = getLoosePickupRecord(player, object)
+    if not record or not claimWorldItem(player, object) then
+        return false
+    end
+    if deps.DiscoveryService then
+        deps.DiscoveryService.DiscoverIngredient(player, record.Id)
     end
     return true
 end

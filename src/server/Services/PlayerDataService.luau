@@ -20,6 +20,7 @@ function PlayerDataService.AddPlayer(player: Player)
             StackSize = 1,
         },
         Discoveries = {},
+        Discovery = { Ingredients = {}, SpecialCustomers = {} },
         Stats = { CustomersServed = 0, SmoothiesMade = 0, PlayersSlapped = 0, IngredientsStolen = 0 },
     }
     entitlements[player] = { VIPStorage = false, DoubleCash = false }
@@ -31,9 +32,26 @@ function PlayerDataService.AddPlayer(player: Player)
         player:SetAttribute(id .. "Level", 0)
     end
 end
+-- Server-only mutable save-data boundary. Older in-memory profiles may omit Discovery.
+function PlayerDataService.GetDiscoveryState(player: Player): Types.DiscoveryState?
+    local record = records[player]
+    if not record then
+        return nil
+    end
+    local discovery: Types.DiscoveryState = record.Discovery or { Ingredients = {}, SpecialCustomers = {} }
+    discovery.Ingredients = discovery.Ingredients or {}
+    discovery.SpecialCustomers = discovery.SpecialCustomers or {}
+    record.Discovery = discovery
+    return discovery
+end
 function PlayerDataService.GetSnapshot(player: Player): Types.PlayerData
     local source = data(player)
+    local discovery = PlayerDataService.GetDiscoveryState(player) :: Types.DiscoveryState
     return {
+        Discovery = {
+            Ingredients = table.clone(discovery.Ingredients),
+            SpecialCustomers = table.clone(discovery.SpecialCustomers),
+        },
         Cash = PlayerDataService.GetCash(player),
         Upgrades = {
             Bat = PlayerDataService.GetUpgrade(player, "Bat"),

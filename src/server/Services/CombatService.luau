@@ -4,6 +4,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.BatConfig)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
+local Knockback = require(script.Parent.BatKnockback)
 local CombatService = {}
 local deps: any
 type Weapon = { Tool: Tool, Scale: number }
@@ -281,13 +282,7 @@ local function hit(attacker: Player, victim: Player, duration: number)
     deps.MovementService.SetStunned(victim, true)
     local root = character:FindFirstChild("HumanoidRootPart") :: BasePart
     local attackerRoot = (attacker.Character :: Model):FindFirstChild("HumanoidRootPart") :: BasePart
-    local delta = root.Position - attackerRoot.Position
-    local away = Vector3.new(delta.X, 0, delta.Z)
-    if away.Magnitude < 0.001 then
-        local forward = attackerRoot.CFrame.LookVector
-        away = Vector3.new(forward.X, 0, forward.Z)
-    end
-    away = if away.Magnitude > 0.001 then away.Unit else Vector3.new(0, 0, -1)
+    local away = Knockback.Direction(attackerRoot, root)
     deps.InventoryService.DropCarriedIngredients(victim, "BatStun", away)
     if setRagdolled(character, true) then
         RunService.Heartbeat:Once(function()
@@ -306,12 +301,7 @@ local function hit(attacker: Player, victim: Player, duration: number)
                 if not deps.RagdollService.IsRagdolled(character) or root.Anchored then
                     return false
                 end
-                local mass = root.AssemblyMass
-                if mass > 0 and mass < math.huge then
-                    local velocity = away * Config.Knockback.HorizontalSpeed
-                        + Vector3.new(0, Config.Knockback.UpwardSpeed, 0)
-                    root:ApplyImpulse(velocity * mass)
-                end
+                Knockback.Apply(root, away)
                 return true
             end)
             if not ok then
@@ -395,16 +385,16 @@ function CombatService.SwingBat(player: Player): boolean
         params.MaxParts = 0
         local overlaps = workspace:GetPartBoundsInBox(at, size, params)
         trace("overlap parts=" .. tostring(#overlaps))
-        local closest: Player? = nil
+        local closest: Model? = nil
         local distance = math.huge
-        local candidates: { [Player]: boolean } = {}
+        local candidates: { [Model]: { Player: Player? } } = {}
         for _, part in overlaps do
             local ancestor: Instance? = part
             while ancestor and ancestor ~= workspace do
                 if ancestor:IsA("Model") then
                     local victim = Players:GetPlayerFromCharacter(ancestor)
                     if victim then
-                        candidates[victim] = true
+                        candidates[ancestor] = { Player = victim }
                         trace(
                             "candidate part="
                                 .. part.Name
@@ -414,24 +404,37 @@ function CombatService.SwingBat(player: Player): boolean
                                 .. victim.Name
                         )
                         break
+                    elseif deps.CustomerService.CanHitCustomer(player, ancestor) then
+                        candidates[ancestor] = {}
+                        break
                     end
                 end
                 ancestor = ancestor.Parent
             end
         end
-        for victim in candidates do
-            local target, targetRoot = alive(victim)
-            local enemyReason = enemyRejection(player, victim)
-            trace(
-                "candidate="
-                    .. victim.Name
-                    .. " plot/team/stun/immunity="
-                    .. (enemyReason or "pass")
-                    .. " sessions="
-                    .. tostring(deps.TycoonService.GetSessionId(player))
-                    .. "/"
-                    .. tostring(deps.TycoonService.GetSessionId(victim))
-            )
+        for target, candidate in candidates do
+            local victim = candidate.Player
+            local targetRoot: BasePart? = nil
+            local enemyReason: string? = nil
+            if victim then
+                local _, playerRoot = alive(victim)
+                targetRoot = playerRoot
+                enemyReason = enemyRejection(player, victim)
+                trace(
+                    "candidate="
+                        .. victim.Name
+                        .. " plot/team/stun/immunity="
+                        .. (enemyReason or "pass")
+                        .. " sessions="
+                        .. tostring(deps.TycoonService.GetSessionId(player))
+                        .. "/"
+                        .. tostring(deps.TycoonService.GetSessionId(victim))
+                )
+            elseif deps.CustomerService.CanHitCustomer(player, target) then
+                targetRoot = target:FindFirstChild("HumanoidRootPart") :: BasePart?
+            else
+                enemyReason = "customer ineligible"
+            end
             if target and targetRoot then
                 local direction = targetRoot.Position - root.Position
                 local separation = direction.Magnitude
@@ -444,7 +447,7 @@ function CombatService.SwingBat(player: Player): boolean
                 trace(
                     string.format(
                         "candidate=%s rootDistance=%.3f sanityDistance=%s forwardDot=%.3f forward=%s LOS=%s obstruction=%s",
-                        victim.Name,
+                        target.Name,
                         separation,
                         tostring(separation <= maxRootDistance),
                         forward,
@@ -460,22 +463,31 @@ function CombatService.SwingBat(player: Player): boolean
                     and forward >= 0
                     and visible
                 then
-                    closest, distance = victim, separation
+                    closest, distance = target, separation
                 end
             end
         end
         trace("selected=" .. (if closest then closest.Name else "no valid target"))
         if closest then
             swings[player] = nil
-            hit(player, closest, level.StunDuration)
-            trace(
-                "SetStunned result="
-                    .. tostring(deps.MovementService.IsStunned(closest))
-                    .. " Stunned="
-                    .. tostring(closest:GetAttribute("Stunned"))
-                    .. " StunnedUntil="
-                    .. tostring(closest:GetAttribute("StunnedUntil"))
-            )
+            local victim = Players:GetPlayerFromCharacter(closest)
+            if victim then
+                hit(player, victim, level.StunDuration)
+                trace(
+                    "SetStunned result="
+                        .. tostring(deps.MovementService.IsStunned(victim))
+                        .. " Stunned="
+                        .. tostring(victim:GetAttribute("Stunned"))
+                        .. " StunnedUntil="
+                        .. tostring(victim:GetAttribute("StunnedUntil"))
+                )
+            else
+                local targetRoot = closest:FindFirstChild("HumanoidRootPart") :: BasePart
+                deps.CustomerService.HitCustomer(player, closest, {
+                    Direction = Knockback.Direction(root, targetRoot),
+                    Duration = level.StunDuration,
+                })
+            end
         end
     end
     -- Keep only one pending sample. Late callbacks expire instead of replaying

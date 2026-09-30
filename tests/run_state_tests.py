@@ -37,6 +37,9 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "discovery": ("state", ("discovery.spec.luau",)),
+    "discovery-inventory": ("integration", ("fixtures/smoothie.luau", "discovery_inventory.spec.luau")),
+    "discovery-customers": ("integration", ("fixtures/customer_requests.luau", "discovery_customers.spec.luau")),
     "gameplay-sfx": ("integration", ("fixtures/smoothie.luau", "gameplay_sfx.spec.luau")),
     "stash-expansion": ("integration", ("fixtures/smoothie.luau", "stash_expansion.spec.luau")),
     "farm": ("integration", ("fixtures/smoothie.luau", "farm.spec.luau")),
@@ -60,7 +63,8 @@ SUITES = {
     "customer-payout": ("state", ("customer_payout.spec.luau",)),
     "customer-payout-serve": ("integration", ("customer_payout_serve.spec.luau",)),
     "customer-result": ("presentation", ("customer_result.spec.luau",)),
-    "customer-queue": ("integration", ("customer_queue.spec.luau",)),
+    "customer-queue": ("integration", ("fixtures/customer_queue.luau", "customer_queue.spec.luau")),
+    "customer-bat": ("integration", ("fixtures/customer_queue.luau", "customer_bat.spec.luau")),
     "customer-validation": ("state", ("customer_validation.spec.luau",)),
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
     "sprint": ("state", ("sprint.spec.luau",)),

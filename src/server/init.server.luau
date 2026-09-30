@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
 local services: { [string]: any } = {
+    DiscoveryService = require(script.Services.DiscoveryService),
     PlayerDataService = require(script.Services.PlayerDataService),
     MovementService = require(script.Services.MovementService),
     RagdollService = require(script.Services.RagdollService),
@@ -26,6 +27,7 @@ require(script.Services.FilmingUtil).Init()
 require(script.Services.GameplaySfxService).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
+services.DiscoveryService.Init(services)
 services.MovementService.Init(services)
 services.SprintService.Init(services)
 services.PlayerDataService.BindRuntimeAuthority(services.TycoonService)
@@ -88,6 +90,7 @@ local function addPlayer(player: Player)
     end
     initialized[player] = true
     services.PlayerDataService.AddPlayer(player)
+    services.DiscoveryService.PlayerAdded(player)
     services.TycoonService.RefreshUpgradeAttributes(player)
     services.MovementService.RefreshPlayer(player)
     services.InventoryService.AddPlayer(player)
@@ -134,6 +137,7 @@ Players.PlayerRemoving:Connect(function(player)
                 "SprintService",
                 "MovementService",
                 "CharacterPhysicsService",
+                "DiscoveryService",
                 "PlayerDataService",
             }
         do

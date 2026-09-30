@@ -24,7 +24,7 @@ local boundary = {
     ContentProvider = {
         PreloadAsync = function(_, assets)
             preloadCount += 1
-            check(#assets == 3, "preload deduplicates ingredient sounds and includes bat swing")
+            check(#assets == 4, "preload deduplicates ingredient sounds and includes bat swing and customer hurt")
         end,
     },
     Debris = { AddItem = function() end },

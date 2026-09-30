@@ -325,3 +325,35 @@ Roblox-aware typecheck of changed modules, StyLua and Rojo build. Tests cover la
 contact, no hits before startup/after expiry, one victim per swing, missed-swing
 cooldown, stale callbacks, and torso collision restoration through lifecycle cleanup.
 Studio still needs floor-penetration/recovery and broader-window gameplay verification.
+
+
+## Customer hits
+
+The existing live Hitbox samples choose one nearest eligible player or customer per
+swing, using the same distance, facing and line-of-sight checks. CustomerService
+accepts only active, unserved customers in the attacker's current plot session.
+Customers use the purchased bat's recovery duration and the shared BatKnockback
+impulse, without player stun, inventory drops or damage. Accepted customer hits emit
+CustomerHurt (`126967734395019`) through the existing positional audio event.
+
+CustomerService cancels walking and disables both interaction handlers/prompts
+while the customer is down or returning. Queue changes still update the assigned
+marker. After native ragdoll recovery and one physics step, walking explicitly
+restarts toward the latest marker, even when the marker did not change. Only a
+post-hit return that exhausts CustomerWalk retries resets the customer to that
+marker; the order and payout state survive. Immunity lasts BatConfig.ImmunitySeconds
+from return completion. Normal arrival failure behavior is unchanged.
+
+No template or Studio settings are changed. Hittable customer templates must
+already satisfy RagdollService's native R15 Avatar Joint Upgrade contract:
+a living Humanoid, HumanoidRootPart, enabled kinematic Root AnimationConstraint,
+all expected body AnimationConstraints and built-in BallSocketConstraints.
+Motor6D-only rigs and generic placeholders are rejected gracefully.
+
+Run `python tests/run_state_tests.py --suite combat --suite customer-bat --luau <luau.exe>`.
+Customer lifecycle tests share `tests/fixtures/customer_queue.luau` with the queue
+suite; native articulation remains owned by the ragdoll suite. In Studio, verify
+an authored compatible NPC stops its walk animation, ragdolls with modest
+knockback, stands up and returns after a queue advance. Also obstruct its return
+route and confirm fallback preserves its order; reset the plot while down and
+confirm no stale recovery. CLI doubles do not verify native physics or animations.
