@@ -37,6 +37,8 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "announcements": ("integration", ("fixtures/smoothie.luau", "announcements.spec.luau")),
+    "announcement-presentation": ("presentation", ("announcement_presentation.spec.luau",)),
     "discovery": ("state", ("discovery.spec.luau",)),
     "discovery-inventory": ("integration", ("fixtures/smoothie.luau", "discovery_inventory.spec.luau")),
     "discovery-customers": ("integration", ("fixtures/customer_requests.luau", "discovery_customers.spec.luau")),
@@ -64,10 +66,13 @@ SUITES = {
     "customer-payout-serve": ("integration", ("customer_payout_serve.spec.luau",)),
     "customer-result": ("presentation", ("customer_result.spec.luau",)),
     "customer-queue": ("integration", ("fixtures/customer_queue.luau", "customer_queue.spec.luau")),
+    "customer-serve-anywhere": ("integration", ("fixtures/customer_queue.luau", "customer_serve_anywhere.spec.luau")),
     "customer-bat": ("integration", ("fixtures/customer_queue.luau", "customer_bat.spec.luau")),
     "customer-validation": ("state", ("customer_validation.spec.luau",)),
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
     "sprint": ("state", ("sprint.spec.luau",)),
+    "fall-damage": ("state", ("fall_damage.spec.luau",)),
+    "health-regen": ("state", ("health_regen.spec.luau",)),
     "legacy-state": ("integration", ("server_state.spec.luau",)),
     "legacy-movement": ("integration", ("legacy_movement.spec.luau",)),
     "request-selection": ("integration", ("fixtures/customer_requests.luau", "customer_request_selection.spec.luau")),
@@ -126,6 +131,7 @@ for directory in ("src/shared/Constants", "src/server/Services"):
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["AnnouncementFormat"] = (ROOT / "src/shared/AnnouncementFormat.luau").read_text(encoding="utf-8")
 sources["MoneyFormat"] = (ROOT / "src/shared/MoneyFormat.luau").read_text(encoding="utf-8")
 sources["StashPromptController"] = (ROOT / "src/client/Controllers/StashPromptController.luau").read_text(encoding="utf-8")
 sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")

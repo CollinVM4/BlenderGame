@@ -70,6 +70,17 @@ for _, projectedY in { 100, 240, 450 } do
     )
 end
 check(expirations[result] == 4, "result holds fully readable for four seconds")
+local wildcardResult = presentation.ShowResult(order, nil, 1313, 4500)
+check(
+    wildcardResult:FindFirstChild("Result").Text == '<font color="rgb(255,222,115)">+$1,313</font>',
+    "wildcard reward displays cash without a grade"
+)
+check(
+    wildcardResult:FindFirstChild("Ingredients").Text
+        == 'Ingredients: <font color="rgb(100,225,120)">$4.5K</font>'
+        and not wildcardResult:FindFirstChild("Retry"),
+    "wildcard keeps the ingredient subtotal without failure messaging"
+)
 table.insert(descendants, result)
 table.insert(descendants, order)
 loadModule("CustomerOrderController").Init()

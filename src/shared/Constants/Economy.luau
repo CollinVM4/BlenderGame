@@ -11,8 +11,7 @@ return {
     SpecialCustomerCooldownSeconds = 300,
     BasePayout = 25,
     CashScale = 20, -- Legacy CalculatePayout compatibility only; live orders use ingredient dollars.
-    MissedOrderFraction = 0.15,
-    GradeMultiplier = { A = 1.5, B = 1, C = 0.7, D = 0.4 },
+    GradeMultiplier = { A = 1.25, B = 1.1, C = 0.9, D = 0.15 },
     GradeScore = { A = 4, B = 3, C = 2, D = 1 },
     MaxIngredients = 3,
     RequiredProgress = 65,

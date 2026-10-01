@@ -18,9 +18,10 @@ local Film = require(script.Parent.FilmingUtil)
 local BatConfig = require(Shared.Constants.BatConfig)
 local Knockback = require(script.Parent.BatKnockback)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
+local OrderEvaluation = require(script.Parent.CustomerOrderEvaluation)
 local CustomerService = {}
 local deps: any
-local onServed: (Player, Types.Grade) -> ()
+local onServed: (Player, Types.Grade?) -> ()
 local queues: { [string]: any } = {}
 local function key(player: Player): string
     return deps.TycoonService.GetSessionId(player) or ""
@@ -64,7 +65,7 @@ local function diagnostic(message: string)
     end
 end
 
--- Pure request decision, separate from legacy grading and cosmetic reactions.
+-- Validate authored request metadata; runtime matching and grading live in OrderEvaluation.
 -- Read definitions from actual ingredient IDs, never cup attributes or supplied result.Tags.
 -- Only tag comparisons ignore case; ingredient IDs and CustomerIds keep their existing semantics.
 function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Request): { string }
@@ -126,92 +127,10 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
 end
 
 function CustomerService.ValidateRequest(result: Types.Smoothie, request: CustomerRequests.Request): (boolean, string)
-    local requiredIngredients: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
-    if #result.Ingredients == 0 then
-        return false, "Empty smoothie"
-    end
-    if not request.Wildcard and #request.RequiredTags == 0 and #requiredIngredients == 0 then
-        return false, "Empty request"
-    end
-    if not request.Wildcard and request.ExactIngredients and #requiredIngredients == 0 then
-        return false, "ExactIngredients requires at least one RequiredIngredient"
-    end
-    local tags: { [string]: boolean } = {}
-    local ingredientCounts: { [string]: number } = {}
-    for _, id in result.Ingredients do
-        local definition = Ingredients[id]
-        if not definition then
-            return false, "Unknown ingredient: " .. id
-        end
-        ingredientCounts[id] = (ingredientCounts[id] or 0) + 1
-        for _, tag in definition.Tags do
-            tags[string.lower(tag)] = true
-        end
-    end
-    if request.Wildcard then
-        if #result.Ingredients < Economy.MaxIngredients then
-            return false, "Not enough ingredients"
-        end
-        return true, "Wildcard fulfilled"
-    end
-    for _, tag in request.RequiredTags do
-        local normalizedTag = string.lower(tag)
-        local matches = tags[normalizedTag] == true
-        local group = CustomerRequests.TagGroups[normalizedTag]
-        if group then
-            for member in group do
-                if tags[member] then
-                    matches = true
-                    break
-                end
-            end
-        end
-        if not matches then
-            return false, "Missing required tag: " .. tag
-        end
-    end
-    local forbiddenTags: { string } = request.ForbiddenTags or {}
-    for _, tag in forbiddenTags do
-        if tags[string.lower(tag)] then
-            return false, "Contains forbidden tag: " .. tag
-        end
-    end
-    -- Augmenting paths let overlapping slots reassign earlier matches instead of
-    -- greedily consuming the only ingredient available to a later slot.
-    local assignedSlots: { [number]: number } = {}
-    local function matchSlot(slot: number, visited: { [number]: boolean }): boolean
-        local requirement = requiredIngredients[slot]
-        for index, id in result.Ingredients do
-            local matches = if type(requirement) == "string"
-                then requirement == id
-                else table.find(requirement, id) ~= nil
-            if matches and not visited[index] then
-                visited[index] = true
-                local previousSlot = assignedSlots[index]
-                if not previousSlot or matchSlot(previousSlot, visited) then
-                    assignedSlots[index] = slot
-                    return true
-                end
-            end
-        end
-        return false
-    end
-    for slot, requirement in requiredIngredients do
-        if not matchSlot(slot, {}) then
-            local description = if type(requirement) == "string" then requirement else table.concat(requirement, " or ")
-            return false, "Missing required ingredient: " .. description
-        end
-    end
-    local forbiddenIngredients: { string } = request.ForbiddenIngredients or {}
-    for _, id in forbiddenIngredients do
-        if ingredientCounts[id] then
-            return false, "Contains forbidden ingredient: " .. id
-        end
-    end
-    if request.ExactIngredients and #result.Ingredients ~= #requiredIngredients then
-        return false, "Exact ingredient mismatch"
-    end
-    return true, "Request requirements matched"
+    local evaluation = OrderEvaluation.Evaluate(result, request)
+    return
+        evaluation.IsValid and evaluation.RequirementsCovered and not evaluation.RestrictionViolated,
+        evaluation.Reason
 end
 
 local function eligibleRequests(player: Player): { CustomerRequests.Request }
@@ -761,26 +680,22 @@ function CustomerService.Init(services, servedCallback, _servingCallback)
 end
 
 -- Grade and reaction are deliberately independent, pure decision functions.
-function CustomerService.CalculateGrade(result: Types.Smoothie, preference: string): Types.Grade
-    if preference == "Surprise Me" then
-        local unique = {}
-        for _, id in result.Ingredients do
-            unique[id] = true
-        end
-        local count = 0
-        for _ in unique do
-            count += 1
-        end
-        return if count >= 3 then "A" elseif count == 2 then "B" else "C"
-    end
-    local matching = 0
-    for _, id in result.Ingredients do
-        if table.find(deps.IngredientService.GetDefinition(id).Tags, preference) then
-            matching += 1
-        end
-    end
-    local ratio = matching / math.max(1, #result.Ingredients)
-    return if ratio >= 2 / 3 then "A" elseif ratio >= 1 / 3 then "B" elseif matching > 0 then "C" else "D"
+function CustomerService.EvaluateOrder(
+    result: Types.Smoothie,
+    request: CustomerRequests.Request
+): OrderEvaluation.Evaluation
+    return OrderEvaluation.Evaluate(result, request)
+end
+function CustomerService.CalculateGrade(result: Types.Smoothie, preference: string): Types.Grade?
+    local request: CustomerRequests.Request = {
+        Id = "LegacyPreference",
+        DisplayText = preference,
+        RequiredTags = if preference == "Surprise Me" then {} else { preference },
+        BasePayout = 0,
+        MinJumpTier = 0,
+        Wildcard = preference == "Surprise Me",
+    }
+    return OrderEvaluation.Evaluate(result, request).Grade
 end
 function CustomerService.SelectReaction(): string
     local total = 0
@@ -807,7 +722,7 @@ function CustomerService.CalculateOrderPayout(
     player: Player,
     result: Types.Smoothie,
     request: CustomerRequests.Request,
-    success: boolean
+    evaluation: OrderEvaluation.Evaluation?
 ): (number, number)
     local ingredientValue = 0
     for _, id in result.Ingredients do
@@ -816,16 +731,17 @@ function CustomerService.CalculateOrderPayout(
             ingredientValue += definition.Value
         end
     end
+    evaluation = evaluation or OrderEvaluation.Evaluate(result, request)
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
-    -- Wildcards earn neutral B; specific orders earn A. A miss pays 15% of
-    -- the full order value rather than also applying the D grade penalty.
-    local fulfilledGrade = if request.Wildcard then "B" else "A"
+    local gradeMultiplier = if evaluation.IsWildcard
+        then 1
+        else Economy.GradeMultiplier[evaluation.Grade :: Types.Grade]
     local amount = (ingredientValue + request.BasePayout)
-        * Economy.GradeMultiplier[fulfilledGrade]
+        * gradeMultiplier
         * upgrade
         * entitlement
-    return math.round(amount * (if success then 1 else Economy.MissedOrderFraction)), ingredientValue
+    return math.round(amount), ingredientValue
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
     local queue = queues[key(player)]
@@ -916,12 +832,11 @@ function CustomerService.RefreshQueue(player: Player)
                 record.Prompt.Enabled = false
                 move(record, destination, function()
                     if current(player, queue) and table.find(queue.Customers, record) then
-                        record.Ready = queue.Customers[1] == record
+                        record.Ready = true
                         record.Prompt.Enabled = record.Ready and record.OrderTaken
                     end
                 end)
             else
-                record.Ready = index == 1 and record.Ready
                 record.Prompt.Enabled = record.Ready and record.OrderTaken
             end
         end
@@ -935,12 +850,7 @@ local function hitRecord(player: Player, model: Model): (any, any)
         return nil, nil
     end
     local record = ownedModels[queue.SessionId] and ownedModels[queue.SessionId][model]
-    if
-        record
-        and record.Model == model
-        and record.SessionId == queue.SessionId
-        and model:IsDescendantOf(workspace)
-    then
+    if record and record.Model == model and record.SessionId == queue.SessionId and model:IsDescendantOf(workspace) then
         return record, queue
     end
     return nil, nil
@@ -1416,15 +1326,16 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         return false, "StaleSession"
     end
     local queue = queues[key(player)]
-    local record = front(player)
+    local record = if expectedModel then hitRecord(player, expectedModel) else front(player)
+    local index = if queue and record then table.find(queue.Customers, record) else nil
     if
         not record
+        or not index
         or not record.Ready
         or record.Recovering
         or record.ReturningFromHit
         or not record.Request
         or record.Served
-        or (expectedModel ~= nil and expectedModel ~= record.Model)
         or not queue
         or not current(player, queue)
         or not WorldUtil.Near(player, record.Root, Economy.InteractionDistance)
@@ -1452,14 +1363,22 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     record.TakeOrderPrompt.Enabled = false
     record.Model:SetAttribute("OrderRevealed", true)
     record.Prompt.Enabled = false
-    table.remove(queue.Customers, 1)
+    table.remove(queue.Customers, index)
     record.Model:SetAttribute("QueuePosition", nil)
-    local success, reason = CustomerService.ValidateRequest(result, record.Request)
-    local grade: Types.Grade = if success then (if record.Request.Wildcard then "B" else "A") else "D"
-    local response = Presentation.Response(record.Request, grade)
-    local reaction = record.ForcedReaction or (if success then "Smile" else "Disgust")
-    local payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, success)
+    local evaluation = OrderEvaluation.Evaluate(result, record.Request)
+    local grade = evaluation.Grade
+    local success = evaluation.IsFulfilled
+    local response = if evaluation.IsWildcard
+        then record.Request.GoodResponse
+        else Presentation.Response(record.Request, grade :: Types.Grade)
+    local reaction = record.ForcedReaction or (if evaluation.IsWildcard or grade == "A" or grade == "B"
+        then "Smile"
+        elseif grade == "C" then "Shudder" else "Disgust")
+    local payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, evaluation)
     deps.TycoonService.CreditTransaction(transaction, payout)
+    if deps.AnnouncementService then
+        deps.AnnouncementService.Served(player, result.Ingredients, payout)
+    end
     diagnostic(
         string.format(
             "served owner=%s request=%s blend=%s ingredients=[%s] success=%s reason=%s payout=%d cash=%d",
@@ -1468,7 +1387,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
             tostring(result.BlendId),
             table.concat(result.Ingredients, ", "),
             tostring(success),
-            reason,
+            evaluation.Reason,
             payout,
             deps.TycoonService.GetCash(player)
         )
@@ -1480,6 +1399,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     end
     record.Model:SetAttribute("Reaction", reaction)
     record.Model:SetAttribute("Grade", grade)
+    record.Model:SetAttribute("IsWildcard", evaluation.IsWildcard)
     record.Model:SetAttribute("OrderSucceeded", success)
     local resultGui = Presentation.ShowResult(record.Bubble, grade, payout, ingredientValue)
     record.Model:SetAttribute("RequestId", nil)
@@ -1491,6 +1411,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         Customer = record.Model,
         ReactionId = reaction,
         Grade = grade,
+        IsWildcard = evaluation.IsWildcard,
         Payout = payout,
         IngredientValue = ingredientValue,
         PlotSessionId = transaction,
@@ -1500,7 +1421,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         string.format(
             "served blend=%s grade=%s reaction=%s payout=%d",
             tostring(result.BlendId),
-            grade,
+            tostring(grade),
             reaction,
             payout
         )
@@ -1577,7 +1498,7 @@ end
 function CustomerService:ServeCheck(player: Player, item: Instance?): boolean
     return deps.BlendService.GetCup(player, item) ~= nil
 end
-function CustomerService:GetSatisfaction(player: Player, item: Instance?, preference: string?): string
+function CustomerService:GetSatisfaction(player: Player, item: Instance?, preference: string?): Types.Grade?
     local result = deps.BlendService.GetCup(player, item)
     if not result then
         return "D"

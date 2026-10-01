@@ -17,7 +17,13 @@ function Stash.Init(services: any)
         local connections = {}
         for index, slot in slots do
             slot:SetAttribute("StashLogicalSlotIndex", index)
-            local prompt = WorldUtil.Prompt(slot, "StashPrompt", "Store ingredient")
+            local origin = Instance.new("Attachment")
+            origin.Name = "StashPromptOrigin"
+            origin.Position = Vector3.new(0, slot.Size.Y / 2 + 0.5, 0)
+            origin.Parent = slot
+            local prompt = WorldUtil.Prompt(slot, "StashPrompt", "STORE")
+            prompt.Style = Enum.ProximityPromptStyle.Custom
+            prompt:SetAttribute("InteractionOrigin", origin.Name)
             prompt:SetAttribute("PlayerStashPrompt", true)
             prompts[index] = prompt
             table.insert(
@@ -48,17 +54,7 @@ function Stash.Init(services: any)
                 slot:SetAttribute("StashOwnerUserId", owner and owner.UserId or 0)
                 Presentation.Refresh(slot, state, services.IngredientService)
                 prompts[index].ObjectText = (if index <= Config.Protected then "Protected slot " else "Slot ") .. index
-                prompts[index].ActionText = if state and state.Count > 0
-                    then (if state.ItemType == "Smoothie"
-                        then "Take smoothie"
-                        else "Take "
-                            .. state.IngredientId
-                            .. " ("
-                            .. state.Count
-                            .. "/"
-                            .. Config.IngredientCapacity
-                            .. ")")
-                    else "Store ingredient"
+                prompts[index].ActionText = if state and state.Count > 0 then "TAKE" else "STORE"
             end
         end
         table.insert(
@@ -85,6 +81,10 @@ function Stash.Init(services: any)
                 prompt:Destroy()
             end
             for _, slot in slots do
+                local origin = slot:FindFirstChild("StashPromptOrigin")
+                if origin then
+                    origin:Destroy()
+                end
                 Presentation.Clear(slot)
                 for _, name in
                     {

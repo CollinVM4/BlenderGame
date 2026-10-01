@@ -1,0 +1,3 @@
+-- Intentionally empty: a Script named Health in StarterCharacterScripts prevents
+-- Roblox's default health regeneration script from loading on each spawn.
+-- Passive regeneration is owned by Server.Services.HealthRegenService.

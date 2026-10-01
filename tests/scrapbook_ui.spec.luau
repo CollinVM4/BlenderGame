@@ -131,6 +131,7 @@ local function hierarchy()
 end
 local modules = { Types = {} }
 local shared = node("Folder", "Shared")
+shared.MoneyFormat = "MoneyFormat"
 shared.Constants = {
     Ingredients = "Ingredients",
     CustomerRequests = "CustomerRequests",
@@ -208,7 +209,8 @@ local controller = load("ScrapbookController")
 local catalog = load("DiscoveryCatalog")
 local artwork = load("ScrapbookArtwork")
 for value, expected in
-    { [250] = "$250", [500] = "$500", [1000] = "$1K", [1500] = "$1.5K", [12000] = "$12K", [1e6] = "$1M" }
+    { [250] = "$250", [500] = "$500", [1000] = "$1K", [1500] = "$1.5K", [12000] = "$12K",
+        [165000] = "$165K", [1e6] = "$1M", [1.2e6] = "$1.2M" }
 do
     check(presentation.FormatValue(value) == expected, "compact value formatting")
 end

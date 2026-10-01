@@ -46,7 +46,7 @@ end
 function GameService.FinishDay(_player: Player): boolean
     return false
 end
-function GameService.CustomerServed(player: Player, grade: Types.Grade)
+function GameService.CustomerServed(player: Player, grade: Types.Grade?)
     local session = sessions[player]
     if not session then
         return
@@ -54,7 +54,8 @@ function GameService.CustomerServed(player: Player, grade: Types.Grade)
     session.State = "SERVING"
     session.Served += 1
     session.Grade = grade
-    session.Grades = { grade } -- Bounded legacy summary; lifetime stats belong to PlayerDataService.
+    -- Bounded legacy summary; lifetime stats belong to PlayerDataService.
+    session.Grades = if grade then { grade } else {}
     publish(player)
 end
 function GameService.ResumeDay(player: Player): boolean

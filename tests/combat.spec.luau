@@ -159,10 +159,7 @@ check(not combat.IsBatEquipped(attacker), "issued Bat in Backpack is not conside
 local issuedHandle = bat:FindFirstChild("Handle")
 local issuedHitbox = bat:FindFirstChild("Hitbox")
 check(
-    issuedHandle ~= nil
-        and issuedHandle:IsA("BasePart")
-        and issuedHitbox ~= nil
-        and issuedHitbox:IsA("BasePart"),
+    issuedHandle ~= nil and issuedHandle:IsA("BasePart") and issuedHitbox ~= nil and issuedHitbox:IsA("BasePart"),
     "issued Bat resolves direct-child Handle and Hitbox BaseParts"
 )
 local fakeBat = instance("Tool")
@@ -289,8 +286,8 @@ check(victimRoot.Impulse == nil, "knockback waits for the next Heartbeat")
 heartbeat()
 check(
     victimRoot.ImpulseCount == 1
-        and victimRoot.Impulse.Z == -config.Knockback.HorizontalSpeed * victimRoot.AssemblyMass
-        and victimRoot.Impulse.Y == config.Knockback.UpwardSpeed * victimRoot.AssemblyMass,
+        and victimRoot.Impulse.Z == -config.Levels[1].HorizontalKnockback * victimRoot.AssemblyMass
+        and victimRoot.Impulse.Y == config.Levels[1].VerticalKnockback * victimRoot.AssemblyMass,
     "one mass-aware impulse moves victim away with modest lift"
 )
 heartbeat()
@@ -516,6 +513,16 @@ for level = 2, 3 do
     setup(combat.SwingBat(attacker), "upgraded swing")
     advance(config.HitActiveStart + 0.000001)
     check(victim:GetAttribute("StunnedUntil") == now + config.Levels[level].StunDuration, "upgraded stun duration")
+    heartbeat()
+    check(
+        (victimRoot.Impulse / victimRoot.AssemblyMass - vec(
+            0,
+            config.Levels[level].VerticalKnockback,
+            -config.Levels[level].HorizontalKnockback
+        )).Magnitude < 0.0001,
+        "purchased bat level controls independent horizontal and vertical launch speeds"
+    )
+    check(victimHumanoid.Health == health, "upgraded bat impulse adds no direct damage")
     check(
         querySize.X > levelOneSize.X and math.abs(querySize.Z - hitbox.Size.Z * config.Levels[level].Scale) < 0.0001,
         "upgraded query grows modestly"
@@ -846,7 +853,10 @@ for _, forward in { vec(1, 0, 0), vec(0, 1, 0) } do
     hitter.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector = forward
     hitTarget(target)
     heartbeat()
-    local expected = if forward.X == 1 then vec(7, 4, 0) else vec(0, 4, -7)
+    local tuning = config.Levels[1]
+    local expected = if forward.X == 1
+        then vec(tuning.HorizontalKnockback, tuning.VerticalKnockback, 0)
+        else vec(0, tuning.VerticalKnockback, -tuning.HorizontalKnockback)
     check(
         (root.Impulse / root.AssemblyMass - expected).Magnitude < 0.0001,
         "coincident roots normalize safely and mass preserves configured velocity change"

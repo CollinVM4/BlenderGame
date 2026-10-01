@@ -2,6 +2,7 @@
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Catalog = require(Shared.Constants.DiscoveryCatalog)
 local Artwork = require(Shared.Constants.ScrapbookArtwork)
+local MoneyFormat = require(Shared.MoneyFormat)
 local Types = require(Shared.Types)
 local Presentation = {}
 export type Tab = "Ingredients" | "Customers"
@@ -12,14 +13,7 @@ export type View = {
 }
 
 function Presentation.FormatValue(value: number): string
-    for _, unit in { { Divisor = 1e9, Suffix = "B" }, { Divisor = 1e6, Suffix = "M" }, { Divisor = 1e3, Suffix = "K" } } do
-        local divisor = unit.Divisor
-        if math.abs(value) >= divisor then
-            local formatted = string.format("%.1f", value / divisor):gsub("%.0$", "")
-            return "$" .. formatted .. unit.Suffix
-        end
-    end
-    return "$" .. string.format("%.0f", value)
+    return MoneyFormat.Announcement(value)
 end
 
 -- Preserve the catalog's ordering, including the ordering within each section.

@@ -7,7 +7,7 @@ return {
     HitSampleInterval = 0.04,
     ImmunitySeconds = 2.5,
     Knockback = {
-        HorizontalSpeed = 7, -- Velocity change in studs/sec; independent of Bat level.
+        HorizontalSpeed = 7, -- Legacy customer knockback; player hits use Levels below.
         UpwardSpeed = 4,
     },
     Scatter = {
@@ -23,8 +23,9 @@ return {
     -- Contact still requires authored Hitbox overlap; Reach is not a root-distance veto.
     MaxRootDistance = 8,
     Levels = {
-        { Scale = 1, Reach = 5, StunDuration = 1.5 },
-        { Scale = 1.12, Reach = 5.75, StunDuration = 2.25 },
-        { Scale = 1.25, Reach = 6.5, StunDuration = 3 },
+        -- Independent horizontal/upward velocity changes in studs/sec, mass-scaled at impact.
+        { Scale = 1, Reach = 5, StunDuration = 1.5, HorizontalKnockback = 18, VerticalKnockback = 5 },
+        { Scale = 1.12, Reach = 5.75, StunDuration = 2.25, HorizontalKnockback = 27, VerticalKnockback = 7 },
+        { Scale = 1.25, Reach = 6.5, StunDuration = 3, HorizontalKnockback = 38, VerticalKnockback = 9 },
     },
 }

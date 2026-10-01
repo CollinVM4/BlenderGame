@@ -301,10 +301,11 @@ local function enemyRejection(attacker: Player, victim: Player): string?
     end
     return nil
 end
-local function hit(attacker: Player, victim: Player, duration: number)
+local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels[1]))
     if enemyRejection(attacker, victim) then
         return
     end
+    local duration = level.StunDuration
     local character = victim.Character :: Model
     local untilTime = os.clock() + duration
     local state = { Character = character, Until = untilTime, ImmuneUntil = untilTime + Config.ImmunitySeconds }
@@ -332,7 +333,7 @@ local function hit(attacker: Player, victim: Player, duration: number)
                 if not deps.RagdollService.IsRagdolled(character) or root.Anchored then
                     return false
                 end
-                Knockback.Apply(root, away)
+                Knockback.Apply(root, away, level)
                 return true
             end)
             if not ok then
@@ -517,7 +518,7 @@ function CombatService.SwingBat(player: Player): boolean
             swings[player] = nil
             local victim = Players:GetPlayerFromCharacter(closest)
             if victim then
-                hit(player, victim, level.StunDuration)
+                hit(player, victim, level)
                 trace(
                     "SetStunned result="
                         .. tostring(deps.MovementService.IsStunned(victim))

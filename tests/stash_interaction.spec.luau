@@ -109,6 +109,16 @@ do
         return inventory.GetSnapshot(p).Stash[index or 3].Count
     end
 
+    local protectedOwner = player()
+    carry(protectedOwner, "Milk")
+    check(inventory.Deposit(protectedOwner, "Milk", 1), "empty protected slot accepts one ingredient")
+    check(stored(protectedOwner, 1) == 1 and inventory.GetSnapshot(protectedOwner).Stash[1].Capacity == 1, "protected ingredient capacity is one")
+    carry(protectedOwner, "Banana")
+    check(not inventory.Deposit(protectedOwner, "Banana", 1), "occupied protected slot rejects another ingredient")
+    check(stored(protectedOwner, 1) == 1 and inventory.GetCarryCount(protectedOwner) == 1, "rejected deposit retains carried ingredient")
+    check(inventory.Deposit(protectedOwner, "Banana", 3), "unprotected slot accepts ingredient")
+    check(inventory.GetSnapshot(protectedOwner).Stash[3].Capacity == 3, "unprotected stack capacity remains three")
+
     local p = player()
     for _ = 1, 3 do
         carry(p)
@@ -319,6 +329,12 @@ do
         IngredientService = {},
     })
     local prompt = fixture:GetChildren()[3]:FindFirstChild("StashPrompt")
+    check(
+        prompt.Style == Enum.ProximityPromptStyle.Custom
+            and prompt:GetAttribute("InteractionOrigin") == "StashPromptOrigin"
+            and fixture:GetChildren()[3]:FindFirstChild("StashPromptOrigin") ~= nil,
+        "stash prompt uses shared custom presentation"
+    )
     for _ = 1, 3 do
         now += 0.1
         prompt.Triggered:Fire(p)

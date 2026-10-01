@@ -3,8 +3,9 @@ export type BlendState = "EMPTY" | "LOADING" | "READY" | "BLENDING" | "COMPLETE"
 export type DayState = "PREP" | "SERVING" | "FINISHED"
 export type Grade = "A" | "B" | "C" | "D"
 export type SmoothieData = { BlendId: string, Ingredients: { string } }
+export type AnnouncementOwnership = { LastOwnerUserId: number? }
 export type StashSlot = {
-    Ingredients: { { IngredientId: string } },
+    Ingredients: { { IngredientId: string, AnnouncementOwnership: AnnouncementOwnership? } },
     SlotIndex: number,
     ItemType: ("Ingredient" | "Smoothie")?,
     IngredientId: string?,

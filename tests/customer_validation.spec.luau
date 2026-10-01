@@ -254,3 +254,86 @@ for id, witness in witnesses do
         "catalog permits a three-ingredient example: " .. id
     )
 end
+
+local function gradingRequest(requiredTags, requiredIngredients, exact, forbiddenTags, forbiddenIngredients)
+    return {
+        Id = "Grading",
+        DisplayText = "Test order",
+        RequiredTags = requiredTags or {},
+        RequiredIngredients = requiredIngredients,
+        ExactIngredients = exact,
+        ForbiddenTags = forbiddenTags,
+        ForbiddenIngredients = forbiddenIngredients,
+        BasePayout = 25,
+        MinJumpTier = 0,
+    }
+end
+local function gradeFor(ids, request)
+    return customer.EvaluateOrder(requestResult(ids), request).Grade
+end
+
+local red = gradingRequest({ "Red" })
+check(gradeFor({ "Strawberry", "Cherries", "Apple" }, red) == "A", "three tag matches grade A")
+check(gradeFor({ "Strawberry", "Cherries", "Tire" }, red) == "B", "two tag matches grade B")
+check(gradeFor({ "Strawberry", "Tire", "Rock" }, red) == "C", "one tag match grades C")
+check(gradeFor({ "Tire", "Rock", "Onion" }, red) == "D", "zero tag matches grade D")
+
+local sweetRed = gradingRequest({ "Sweet", "Red" })
+check(gradeFor({ "Strawberry", "Cherries", "Apple" }, sweetRed) == "A", "three matches cover both requested tags")
+check(gradeFor({ "Strawberry", "Banana", "Tire" }, sweetRed) == "B", "two matches can cover both requested tags")
+check(gradeFor({ "Banana", "Tire", "Rock" }, sweetRed) == "C", "one match with a missing tag grades C")
+check(gradeFor({ "Banana", "Banana", "Banana" }, sweetRed) == "C", "three matches cannot hide an uncovered tag")
+check(gradeFor({ "Tire", "Rock", "Onion" }, sweetRed) == "D", "no useful multi-tag matches grade D")
+
+local mushroom = gradingRequest({}, { "Mushrooms" })
+check(gradeFor({ "Mushrooms", "Mushrooms", "Mushrooms" }, mushroom) == "A", "three requested ingredients grade A")
+check(gradeFor({ "Mushrooms", "Mushrooms", "Apple" }, mushroom) == "B", "two requested ingredients grade B")
+check(gradeFor({ "Mushrooms", "Apple", "Tire" }, mushroom) == "C", "one requested ingredient grades C")
+check(gradeFor({ "Apple", "Tire", "Rock" }, mushroom) == "D", "no requested ingredients grade D")
+
+local exactRecipe = gradingRequest({}, { "Apple", "Banana", "Ice" }, true)
+check(gradeFor({ "Apple", "Banana", "Ice" }, exactRecipe) == "A", "three exact slots grade A")
+check(gradeFor({ "Apple", "Banana", "Tire" }, exactRecipe) == "B", "two exact slots grade B")
+check(gradeFor({ "Apple", "Tire", "Rock" }, exactRecipe) == "C", "one exact slot grades C")
+check(gradeFor({ "Tire", "Rock", "Onion" }, exactRecipe) == "D", "no exact slots grade D")
+check(
+    gradeFor(
+        { "Green_Apple", "Banana", "Ice" },
+        gradingRequest({}, { { "Apple", "Green_Apple" }, "Banana", "Ice" }, true)
+    ) == "A",
+    "an exact alternative group counts as one slot"
+)
+
+local forbiddenApple = gradingRequest({ "Red" }, nil, nil, nil, { "Apple" })
+local restricted = customer.EvaluateOrder(requestResult({ "Strawberry", "Cherries", "Apple" }), forbiddenApple)
+check(
+    restricted.Grade == "D" and restricted.RestrictionViolated,
+    "a forbidden ingredient overrides three strong matches"
+)
+local forbiddenSweet = customer.EvaluateOrder(
+    requestResult({ "Strawberry", "Cherries", "Apple" }),
+    gradingRequest({ "Red" }, nil, nil, { "Sweet" })
+)
+check(forbiddenSweet.Grade == "D" and forbiddenSweet.RestrictionViolated, "a forbidden tag forces D")
+
+local wildcard = customer.EvaluateOrder(requestResult({ "Banana", "Banana", "Banana" }), {
+    Id = "Wildcard",
+    DisplayText = "Surprise me",
+    RequiredTags = {},
+    BasePayout = 25,
+    MinJumpTier = 0,
+    Wildcard = true,
+})
+check(
+    wildcard.IsValid and wildcard.IsFulfilled and wildcard.IsWildcard,
+    "wildcard accepts any valid three-ingredient smoothie"
+)
+check(wildcard.Grade == nil, "wildcard has no letter grade")
+local economy = loadModule("Economy")
+check(
+    economy.GradeMultiplier.A == 1.25
+        and economy.GradeMultiplier.B == 1.1
+        and economy.GradeMultiplier.C == 0.9
+        and economy.GradeMultiplier.D == 0.15,
+    "grade fulfillment multipliers match the provisional values"
+)

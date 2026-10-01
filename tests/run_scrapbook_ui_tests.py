@@ -14,6 +14,7 @@ paths = {
     "CustomerRequests": "src/shared/Constants/CustomerRequests.luau",
     "DiscoveryCatalog": "src/shared/Constants/DiscoveryCatalog.luau",
     "ScrapbookArtwork": "src/shared/Constants/ScrapbookArtwork.luau",
+    "MoneyFormat": "src/shared/MoneyFormat.luau",
     "ScrapbookPresentation": "src/client/UI/ScrapbookPresentation.luau",
     "ScrapbookController": "src/client/Controllers/ScrapbookController.luau",
 }

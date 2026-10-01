@@ -353,8 +353,8 @@ do
             )
         end
         check(
-            data.GetCash(owner) == cash + (if turn == 2 then 141 else 750),
-            "success pays and failure rejects forged tags"
+            data.GetCash(owner) == cash + (if turn == 2 then 454 else 1906),
+            "payout follows ingredient value and the evaluated grade"
         )
         check(not customer.Serve(owner), "completed order cannot pay twice")
         check(days.GetSnapshot(owner).Served == turn, "completion records each serve once")

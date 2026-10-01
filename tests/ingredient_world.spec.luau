@@ -212,6 +212,8 @@ setfenv(
         end,
     }, { __index = env })
 )
+deps.AnnouncementService = loadModule("AnnouncementService")
+deps.AnnouncementService.Init(deps)
 local announced = announceChunk()
 announced.Init(deps)
 announced.Init(deps)

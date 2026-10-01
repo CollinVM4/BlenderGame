@@ -1,12 +1,17 @@
 --!strict
 local Players = game:GetService("Players")
+local RespawnConfig = require(game:GetService("ReplicatedStorage").Shared.Constants.RespawnConfig)
 local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
+Players.RespawnTime = RespawnConfig.RespawnDelaySeconds
 local services: { [string]: any } = {
+    AnnouncementService = require(script.Services.AnnouncementService),
     DiscoveryService = require(script.Services.DiscoveryService),
     PlayerDataService = require(script.Services.PlayerDataService),
     MovementService = require(script.Services.MovementService),
     RagdollService = require(script.Services.RagdollService),
+    FallDamageService = require(script.Services.FallDamageService),
+    HealthRegenService = require(script.Services.HealthRegenService),
     CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
@@ -27,6 +32,7 @@ require(script.Services.FilmingUtil).Init()
 require(script.Services.GameplaySfxService).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
+services.AnnouncementService.Init(services)
 services.DiscoveryService.Init(services)
 services.MovementService.Init(services)
 services.SprintService.Init(services)
@@ -57,10 +63,19 @@ services.TycoonService.Init({
     end,
 })
 for _, name in
-    { "InventoryService", "BlendService", "GameService", "MarketService", "CombatService", "DevContentService" }
+    {
+        "InventoryService",
+        "BlendService",
+        "GameService",
+        "MarketService",
+        "CombatService",
+        "DevContentService",
+        "FallDamageService",
+    }
 do
     services[name].Init(services)
 end
+services.HealthRegenService.Init()
 services.CustomerService.Init(services, services.GameService.CustomerServed, services.GameService.IsServing)
 
 -- Migrate existing named plot fixtures to tags without yielding for absent assets.
@@ -101,6 +116,8 @@ local function addPlayer(player: Player)
         services.CombatService.ApplyCharacter(player, character)
         services.MovementService.ApplyCharacter(player, character)
         services.SprintService.ResetCharacter(player)
+        services.FallDamageService.ApplyCharacter(player, character)
+        services.HealthRegenService.ApplyCharacter(player, character)
     end
     removingConnections[player] = player.CharacterRemoving:Connect(services.RagdollService.CleanupCharacter)
     characterConnections[player] = player.CharacterAdded:Connect(onCharacterAdded)
@@ -139,6 +156,8 @@ Players.PlayerRemoving:Connect(function(player)
                 "CharacterPhysicsService",
                 "DiscoveryService",
                 "PlayerDataService",
+                "FallDamageService",
+                "HealthRegenService",
             }
         do
             services[name].RemovePlayer(player)

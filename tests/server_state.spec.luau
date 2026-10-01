@@ -256,6 +256,11 @@ days.CustomerServed(p, "D")
 days.CustomerServed(p, "B")
 check(days.GetSnapshot(p).Served == 3 and not days.FinishDay(p), "legacy summary cannot finish customer flow")
 check(days.GetSnapshot(p).Grade == "B", "legacy grade summarizes latest serve")
+days.CustomerServed(p, nil)
+check(
+    days.GetSnapshot(p).Grade == nil and #days.GetSnapshot(p).Grades == 0,
+    "wildcard serve clears the letter-grade summary"
+)
 
 local dev = loadModule("DevContentService")
 dev.Init(deps)

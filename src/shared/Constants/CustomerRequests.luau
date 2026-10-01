@@ -50,7 +50,7 @@ local requests: { Request } = {
         BadResponse = "This isn't red enough!",
 
         RequiredTags = { "Red" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -62,7 +62,7 @@ local requests: { Request } = {
         BadResponse = "This isn't red enough!",
         RequiredTags = { "Red" },
         ForbiddenIngredients = { "Apple" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 2,
     },
     {
@@ -78,7 +78,7 @@ local requests: { Request } = {
         GoodResponse = "Perfectly sweet!",
         BadResponse = "Too bland!",
         RequiredTags = { "Sweet" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -89,7 +89,7 @@ local requests: { Request } = {
         GoodResponse = "Thank you!",
         BadResponse = "Where are the mushrooms?",
         RequiredTags = { "Mushroom", "Fruit" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -105,7 +105,7 @@ local requests: { Request } = {
         GoodResponse = "MM.. Seafood delight!",
         BadResponse = "This isn't from the ocean!",
         RequiredTags = { "Seafood" },
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 2,
     },
     {
@@ -121,7 +121,7 @@ local requests: { Request } = {
         GoodResponse = "Thanks a lot, smoothie master!",
         BadResponse = "This isn't yellow enough!",
         RequiredTags = { "Yellow" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -138,7 +138,7 @@ local requests: { Request } = {
         GoodResponse = "YAY I LOOOOVEE GREEN!",
         BadResponse = "This isn't green enough!",
         RequiredTags = { "Green" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -154,7 +154,7 @@ local requests: { Request } = {
         GoodResponse = "Yipee cold!",
         BadResponse = "This isn't cold enough!",
         RequiredTags = { "Cold" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -170,7 +170,7 @@ local requests: { Request } = {
         GoodResponse = "Just the right spice!",
         BadResponse = "Not spicy enough!",
         RequiredTags = { "Spicy" },
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 1,
     },
     {
@@ -186,7 +186,7 @@ local requests: { Request } = {
         GoodResponse = "Oh yea, this will get me swole!",
         BadResponse = "Where's the protein at bro?",
         RequiredTags = { "Protein" },
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 1,
     },
     {
@@ -197,7 +197,7 @@ local requests: { Request } = {
         GoodResponse = "Thank you good sir!",
         BadResponse = "I said I wanted FAST FOOD!",
         RequiredTags = { "Fast Food" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 1,
     },
     {
@@ -213,7 +213,7 @@ local requests: { Request } = {
         GoodResponse = "Milk is the BEST!",
         BadResponse = "This isn't milky enough!",
         RequiredTags = { "Milk" },
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 2,
     },
     {
@@ -225,7 +225,7 @@ local requests: { Request } = {
         BadResponse = "Next time remember the pomegranate!",
         RequiredTags = {},
         RequiredIngredients = { "Pomegranate" },
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 2,
     },
     {
@@ -241,7 +241,7 @@ local requests: { Request } = {
         GoodResponse = "Oooh so sour!",
         BadResponse = "This isn't sour enough!",
         RequiredTags = { "Sour" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -257,7 +257,7 @@ local requests: { Request } = {
         GoodResponse = "Totally saved me!",
         BadResponse = "Guess i'll get scurvy..",
         RequiredTags = { "Fruit" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -268,7 +268,7 @@ local requests: { Request } = {
         GoodResponse = "how'd you do that!",
         BadResponse = "not enough watermelon!",
         RequiredTags = { "Watermelon" },
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     },
     {
@@ -279,7 +279,7 @@ local requests: { Request } = {
         GoodResponse = "Sweet AND refreshing!",
         BadResponse = "You're missing something!",
         RequiredTags = { "Sweet", "Cold" },
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 1,
     },
     {
@@ -294,7 +294,7 @@ local requests: { Request } = {
 
         RequiredTags = { "Red", "Spicy" },
 
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 1,
 
         RequestGroup = "Combo",
@@ -311,7 +311,7 @@ local requests: { Request } = {
 
         RequiredTags = { "Blue", "Protein" },
 
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 1,
 
         RequestGroup = "Combo",
@@ -329,7 +329,7 @@ local requests: { Request } = {
 
         RequiredTags = { "Weird", "Protein" },
 
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 1,
 
         RequestGroup = "Combo",
@@ -347,7 +347,7 @@ local requests: { Request } = {
 
         RequiredTags = { "Yellow", "Sweet" },
 
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 0,
 
         RequestGroup = "Combo",
@@ -364,7 +364,7 @@ local requests: { Request } = {
 
         RequiredTags = { "Sweet", "Sour" },
 
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 0,
 
         RequestGroup = "Combo",
@@ -378,7 +378,7 @@ local requests: { Request } = {
         GoodResponse = "That's got a kick!",
         BadResponse = "I said GREEN and SPICY!",
         RequiredTags = { "Green", "Spicy" },
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 1,
     },
     {
@@ -394,7 +394,7 @@ local requests: { Request } = {
         RequiredTags = { "Sweet" },
         ForbiddenTags = { "Fruit" },
 
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 1,
 
         RequestGroup = "Restriction",
@@ -409,7 +409,7 @@ local requests: { Request } = {
         BadResponse = "WHY IS THERE FRUIT?!",
         RequiredTags = { "Red" },
         ForbiddenTags = { "Fruit" },
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 2,
     },
     {
@@ -421,7 +421,7 @@ local requests: { Request } = {
         BadResponse = "Is that FRUIT?!",
         RequiredTags = { "Cold" },
         ForbiddenTags = { "Fruit" },
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 2,
     },
     {
@@ -434,7 +434,7 @@ local requests: { Request } = {
         RequiredTags = { "Weird" },
         ForbiddenTags = { "Seafood" },
 
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 2,
 
         RequestGroup = "Restriction",
@@ -453,7 +453,7 @@ local requests: { Request } = {
         RequiredTags = { "Protein" },
         ForbiddenTags = { "Seafood" },
 
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 1,
 
         RequestGroup = "Restriction",
@@ -468,7 +468,7 @@ local requests: { Request } = {
         BadResponse = "You messed up my order!",
         RequiredTags = { "Sweet", "Cold" },
         ForbiddenTags = { "Spicy" },
-        BasePayout = 100,
+        BasePayout = 1000,
         MinJumpTier = 3,
     },
 
@@ -488,7 +488,7 @@ local requests: { Request } = {
         RequiredTags = { "Sweet" },
         RequiredIngredients = { "Tire" },
 
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 1,
 
         RequestGroup = "Ingredient",
@@ -504,7 +504,7 @@ local requests: { Request } = {
         RequiredTags = { "Purple" },
         RequiredIngredients = { "Milk" },
 
-        BasePayout = 100,
+        BasePayout = 1000,
         MinJumpTier = 2,
 
         RequestGroup = "Ingredient",
@@ -520,7 +520,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { { "Apple", "Green_Apple" }, "Banana", "Ice" } :: { IngredientRequirement },
         ExactIngredients = true,
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 0,
     },
 
@@ -534,7 +534,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Strawberry", "Blueberry", "Cherries" },
         ExactIngredients = true,
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 0,
     },
 
@@ -548,7 +548,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Cabbage", "Carrot", "Onion" },
         ExactIngredients = true,
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 0,
     },
 
@@ -561,7 +561,7 @@ local requests: { Request } = {
         BadResponse = "Where's my apple and sour stuff?!",
         RequiredTags = { "Sour" },
         RequiredIngredients = { "Apple" },
-        BasePayout = 50,
+        BasePayout = 500,
         MinJumpTier = 0,
     },
 
@@ -575,7 +575,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Pineapple", "Chili_Pepper", "Ice" },
         ExactIngredients = true,
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 1,
     },
 
@@ -588,7 +588,7 @@ local requests: { Request } = {
         BadResponse = "I said MUSHROOMS and ONION!",
         RequiredTags = {},
         RequiredIngredients = { "Mushrooms", "Onion" },
-        BasePayout = 75,
+        BasePayout = 750,
         MinJumpTier = 0,
     },
 
@@ -602,7 +602,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Hamburger", "Tire", "Ice" },
         ExactIngredients = true,
-        BasePayout = 100,
+        BasePayout = 1000,
         MinJumpTier = 1,
     },
     {
@@ -620,7 +620,7 @@ local requests: { Request } = {
         GoodResponse = "Breakfast of champions!",
         BadResponse = "I said BANANA, MILK, and a WORM!",
 
-        BasePayout = 100,
+        BasePayout = 1000,
         MinJumpTier = 2,
 
         RequestGroup = "Recipe",
@@ -641,7 +641,7 @@ local requests: { Request } = {
         GoodResponse = "Tropical and refreshing!",
         BadResponse = "I said COCONUT, PINEAPPLE, and ICE!",
 
-        BasePayout = 100,
+        BasePayout = 1000,
         MinJumpTier = 2,
 
         RequestGroup = "Recipe",
@@ -658,7 +658,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Fish", "Squid", "Sushi" },
         ExactIngredients = true,
-        BasePayout = 125,
+        BasePayout = 1250,
         MinJumpTier = 2,
     },
 
@@ -670,7 +670,7 @@ local requests: { Request } = {
         BadResponse = "Where's my CRAB and COCONUT?!",
         RequiredTags = {},
         RequiredIngredients = { "Crab", "Coconut" },
-        BasePayout = 100,
+        BasePayout = 1000,
         MinJumpTier = 2,
     },
 
@@ -684,7 +684,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Pomegranate", "Coconut", "Milk" },
         ExactIngredients = true,
-        BasePayout = 125,
+        BasePayout = 1250,
         MinJumpTier = 2,
     },
 
@@ -698,7 +698,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Peach", "Melon", "Starfruit" },
         ExactIngredients = true,
-        BasePayout = 175,
+        BasePayout = 1750,
         MinJumpTier = 3,
     },
 
@@ -711,7 +711,7 @@ local requests: { Request } = {
         BadResponse = "Where's the DRAGON FRUIT and CINNAMON?!",
         RequiredTags = {},
         RequiredIngredients = { "Dragon_Fruit", "Cinnamon" },
-        BasePayout = 150,
+        BasePayout = 1500,
         MinJumpTier = 3,
     },
 
@@ -725,7 +725,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Potato", "GoldenTomato", "Tomato" },
         ExactIngredients = true,
-        BasePayout = 200,
+        BasePayout = 2000,
         MinJumpTier = 3,
     },
 
@@ -739,7 +739,7 @@ local requests: { Request } = {
         RequiredTags = {},
         RequiredIngredients = { "Mystery", "Noob", "Tire" },
         ExactIngredients = true,
-        BasePayout = 200,
+        BasePayout = 2000,
         MinJumpTier = 3,
     },
 }
@@ -749,7 +749,7 @@ table.insert(requests, {
     GoodResponse = "Oh yea! this will do.",
     BadResponse = "NEVER AGAIN!",
     RequiredTags = { "Steak" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
 })
@@ -759,27 +759,27 @@ table.insert(requests, {
     GoodResponse = "Beautifully blue!",
     BadResponse = "It isn't blue enough..",
     RequiredTags = { "Blue" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "Jynxzi",
-    DisplayText = "Bazalright.. I always need MILK before bed!",
-    GoodResponse = "SCHWEEEET!",
+    DisplayText = "Bazalright.. I always need MILK before bed! Make it SWEET",
+    GoodResponse = "SCHWEEEET! SMOOTHIEALRIGHTTT",
     BadResponse = "HIIIIVISEEEE GET ME A DIFFERENT SMOOTHIE!",
     RequiredTags = { "Milk" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 2,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "Caseoh",
-    DisplayText = "whats good cuh. you know I'm bout that PROTEIN action",
+    DisplayText = "whats good cuh. I'm bout that PROTEIN action. SPICY too",
     GoodResponse = "You're safe this time buster.",
     BadResponse = "Don't cross me again simpleton",
-    RequiredTags = { "Protein" },
-    BasePayout = 105,
+    RequiredTags = { "Protein", "Spicy" },
+    BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
 })
@@ -789,7 +789,7 @@ table.insert(requests, {
     GoodResponse = "Thanks, Daffodil!",
     BadResponse = "This isnt what I asked for!",
     RequiredTags = { "Red" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
@@ -799,7 +799,7 @@ table.insert(requests, {
     GoodResponse = "Thanks, Daffodil!",
     BadResponse = "This isnt what I asked for!",
     RequiredTags = { "Red" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
@@ -809,7 +809,7 @@ table.insert(requests, {
     GoodResponse = "hehe, this will do the trick!",
     BadResponse = "what the heck man, this won't work.",
     RequiredTags = { "Weird" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
 })
@@ -819,7 +819,7 @@ table.insert(requests, {
     GoodResponse = "ARRR KNEW YOU'D GET IT DONE..!",
     BadResponse = "ARRR! You landlubbers never listen!",
     RequiredTags = { "Seafood" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 2,
     NPCOnly = true,
 })
@@ -829,58 +829,59 @@ table.insert(requests, {
     GoodResponse = "Ha! You're hired kid. meet a los pollos 4 o'clock",
     BadResponse = "you've got more work to do.. Not Impressed!",
     RequiredTags = { "Blue" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "TotallyNotKreek",
-    DisplayText = "Alright... make me something RED, and throw in FAST FOOD!",
+    DisplayText = "Alright... make me something RED, COLD and throw in FAST FOOD!",
     GoodResponse = "Okayyy, you actually cooked!",
     BadResponse = "Bro... I said RED AND FAST FOOD. We gotta lock in!",
-    RequiredTags = { "Red", "Fast Food" },
-    BasePayout = 105,
+    RequiredTags = { "Red", "Cold", "Fast Food" },
+    BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "DefinitelyNotCaylus",
-    DisplayText = "Make me the CRAZIEST smoothie possible. I want something WEIRD and SPICY!",
+    DisplayText = "Make me the CRAZIEST smoothie possible. I want something WEIRD, SPICY, WITH FRUIT!",
     GoodResponse = "Okay... that's actually insane.",
     BadResponse = "Nahhh, that wasn't crazy enough!",
-    RequiredTags = { "Weird", "Spicy" },
-    BasePayout = 105,
+    RequiredTags = { "Weird", "Spicy", "Fruit" },
+    BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "NotFlamingo",
-    DisplayText = "I want something with Fish... and absolutely NO FRUIT.",
+    DisplayText = "I want something with SEAFOOD, maybe a TIRE... and absolutely NO FRUIT.",
     GoodResponse = "Excellent. This should not exist.",
     BadResponse = "Too normal. I expected worse.",
     RequiredTags = { "Seafood" },
+    RequiredIngredients = {"Tire" },
     ForbiddenTags = { "Fruit" },
-    BasePayout = 125,
+    BasePayout = 1250,
     MinJumpTier = 2,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "FoltynMaybe",
-    DisplayText = "Gimme something SWEET and COLD. Don't sell.",
-    GoodResponse = "W smoothie.",
+    DisplayText = "Gimme something SWEET, COLD, AND SPICY. Don't sell.",
+    GoodResponse = "This smoothie turned out great!.",
     BadResponse = "Nah bro, we're running that back.",
-    RequiredTags = { "Sweet", "Cold" },
-    BasePayout = 105,
+    RequiredTags = { "Sweet", "Cold", "Spicy" },
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
 table.insert(requests, {
     Id = "TotallyNotSketch",
-    DisplayText = "Okay buddy... something BLUE and SOUR. Easy enough, right?",
+    DisplayText = "Okay buddy... something BLUE, SOUR, AND SWEET. Easy enough, right?",
     GoodResponse = "Beautiful. Absolutely beautiful.",
     BadResponse = "Yeahhh... that ain't it.",
-    RequiredTags = { "Blue", "Sour" },
-    BasePayout = 105,
+    RequiredTags = { "Blue", "Sour", "Sweet" },
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
@@ -890,7 +891,7 @@ table.insert(requests, {
     GoodResponse = "Okayyy, this is actually really good!",
     BadResponse = "Nooo! You forgot something!",
     RequiredTags = { "Red", "Cold" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
@@ -900,7 +901,7 @@ table.insert(requests, {
     GoodResponse = "Okay definitely worth the Robux.",
     BadResponse = "I spent WHAT on this?!",
     RequiredTags = { "*" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
@@ -910,7 +911,7 @@ table.insert(requests, {
     GoodResponse = "This will definitely fill me up! ",
     BadResponse = "I can't do nathan with this..",
     RequiredTags = { "*" },
-    BasePayout = 105,
+    BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
 })
@@ -921,7 +922,7 @@ table.insert(requests, {
     BadResponse = "Not quite what I had in mind.",
     RequiredIngredients = { "Carrot", "Mango" },
     RequiredTags = { "Spicy" },
-    BasePayout = 110,
+    BasePayout = 1100,
     MinJumpTier = 2,
     NPCOnly = true,
 })
@@ -949,7 +950,7 @@ local CustomerRequests = {
         GoodResponse = "Now THAT'S a smoothie! Thanks!",
         BadResponse = "I still wanted a smoothie!",
         RequiredTags = {},
-        BasePayout = 25,
+        BasePayout = 250,
         MinJumpTier = 0,
     } :: Request,
 

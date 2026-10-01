@@ -172,11 +172,15 @@ dependency.BlendService.ConsumeCup = function(actor)
 end
 dataService.SetEntitlement(teammate, "DoubleCash", true)
 dataService.SetEntitlement(owner, "DoubleCash", true)
+local expectedEvaluation = customer.EvaluateOrder(
+    { Ingredients = { "Strawberry", "Banana", "Strawberry" } },
+    configs.Definitions[1]
+)
 local expected = customer.CalculateOrderPayout(
     teammate,
-    { Ingredients = { "Banana", "Banana", "Banana" } },
+    { Ingredients = { "Strawberry", "Banana", "Strawberry" } },
     configs.Definitions[1],
-    true
+    expectedEvaluation
 )
 setup(customer.Serve(teammate, npc, context(teammate)), "serve shared queue")
 check(

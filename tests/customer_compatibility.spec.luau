@@ -16,7 +16,7 @@ local bad = { Ingredients = { "Tire", "Tire", "Tire" } }
 local result = { Result = { Ingredients = { "Strawberry", "Banana", "Ice" } } }
 check(customer.CalculateGrade(bad, "Sweet") == "D", "bad match receives D")
 check(customer.CalculateGrade(bad, "Weird") == "A", "same smoothie matches Weird")
-check(customer.CalculateGrade(result.Result, "Surprise Me") == "A", "Surprise Me rewards variety")
+check(customer.CalculateGrade(result.Result, "Surprise Me") == nil, "Surprise Me has no letter grade")
 local normalPay = customer.CalculatePayout(p, "D")
 data.SetEntitlement(p, "DoubleCash", true)
 check(customer.CalculatePayout(p, "D") == normalPay * 2, "cash entitlement affects reward")

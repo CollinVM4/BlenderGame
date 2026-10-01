@@ -44,7 +44,7 @@ local plot = instance("Model")
 plot.Name, plot.Parent = "UpgradeSyncPlot", workspaceFake
 services.CollectionService:AddTag(plot, "PlayerPlot")
 setup(tycoon.AssignPlot(actor, plot) == plot, "claim active plot")
-tycoon.SetCash(actor, 50000)
+tycoon.SetCash(actor, 2321000)
 local originalNew = env.Instance.new
 env.Instance.new = function(class)
     local object = originalNew(class)
@@ -69,9 +69,9 @@ local function purchase(id, tier)
     check(row(id).Level == tier - 1, "replicated purchased tier for " .. id)
 end
 purchase("SprintStamina", 2)
-check(movement.GetMaxStamina(actor) == 80 and row("SprintStamina").Price == 5000, "sprint values/prices unchanged")
+check(movement.GetMaxStamina(actor) == 80 and row("SprintStamina").Price == 100000, "sprint value and next price")
 purchase("Jump", 2)
-check(humanoid.JumpPower == 85 and row("Jump").Price == 5000, "jump values/prices unchanged")
+check(humanoid.JumpPower == 85 and row("Jump").Price == 375000, "jump value and next price")
 purchase("Bat", 2)
 check(
     not backpack:FindFirstChild("Bat") and tycoon.GetUpgrade(actor, "Bat") == 2,

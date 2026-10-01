@@ -12,10 +12,17 @@ function BatKnockback.Direction(attackerRoot: BasePart, root: BasePart): Vector3
     return if away.Magnitude > 0.001 then away.Unit else Vector3.new(0, 0, -1)
 end
 
-function BatKnockback.Apply(root: BasePart, away: Vector3)
+function BatKnockback.Apply(
+    root: BasePart,
+    away: Vector3,
+    tuning: { HorizontalKnockback: number, VerticalKnockback: number }?
+)
     local mass = root.AssemblyMass
     if not root.Anchored and mass > 0 and mass < math.huge then
-        local velocity = away * Config.Knockback.HorizontalSpeed + Vector3.new(0, Config.Knockback.UpwardSpeed, 0)
+        local horizontal = if tuning then tuning.HorizontalKnockback else Config.Knockback.HorizontalSpeed
+        local vertical = if tuning then tuning.VerticalKnockback else Config.Knockback.UpwardSpeed
+        -- Direction is already a horizontal unit vector; do not normalize the combined launch.
+        local velocity = away * horizontal + Vector3.new(0, vertical, 0)
         root:ApplyImpulse(velocity * mass)
     end
 end

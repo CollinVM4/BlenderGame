@@ -56,7 +56,7 @@ end
 
 function CustomerPresentation.ShowResult(
     order: BillboardGui,
-    grade: string,
+    grade: string?,
     payout: number,
     ingredientValue: number
 ): BillboardGui
@@ -92,18 +92,15 @@ function CustomerPresentation.ShowResult(
         text.Parent = gui
         return text
     end
-    row(
-        "Result",
-        0,
-        32,
-        24,
-        string.format(
+    local resultText = if grade
+        then string.format(
             '<font color="%s">%s</font>  <font color="rgb(255,222,115)">+$%s</font>',
             GRADE_COLORS[grade] or "rgb(255,255,255)",
             grade,
             cash
         )
-    )
+        else '<font color="rgb(255,222,115)">+$' .. cash .. "</font>"
+    row("Result", 0, 32, 24, resultText)
     row(
         "Ingredients",
         34,

@@ -93,17 +93,17 @@ check(rows[1].Pad.CanTouch and not rows[2].Pad.CanTouch and not rows[3].Pad.CanT
 for _, row in rows do
     check(row.Dirt.Transparency == 1, "all dirt starts hidden")
 end
-tycoon.SetCash(owner, 12000)
+tycoon.SetCash(owner, 470000)
 touch(1, outsider)
 touch(2, owner)
 check(
-    tycoon.GetCash(owner) == 12000 and state(1) == "LOCKED" and state(2) == "LOCKED",
+    tycoon.GetCash(owner) == 470000 and state(1) == "LOCKED" and state(2) == "LOCKED",
     "outsiders and skipped rows cannot buy"
 )
-tycoon.SetCash(owner, 999)
+tycoon.SetCash(owner, 19999)
 touch(1, peer)
-check(state(1) == "LOCKED" and tycoon.GetCash(owner) == 999, "insufficient shared cash is preserved")
-tycoon.SetCash(owner, 12000)
+check(state(1) == "LOCKED" and tycoon.GetCash(owner) == 19999, "insufficient shared cash is preserved")
+tycoon.SetCash(owner, 470000)
 local originalSetAttribute = peer.SetAttribute
 function peer:SetAttribute(key, value)
     originalSetAttribute(self, key, value)
@@ -114,7 +114,7 @@ end
 touch(1, peer)
 touch(1, owner)
 check(
-    tycoon.GetCash(owner) == 11000 and state(1) == "EMPTY",
+    tycoon.GetCash(owner) == 450000 and state(1) == "EMPTY",
     "teammate purchase and duplicate/reentrant touches charge once"
 )
 check(
@@ -211,6 +211,22 @@ definition.Farmable = false
 plantRow(1, owner)
 check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "nonfarmable ingredient is retained")
 definition.Farmable = nil
+inventory.ClearHeld(owner)
+for _, id in { "Potato", "Tomato", "GoldenTomato" } do
+    carry(owner, id)
+    plantRow(1, owner)
+    check(state(1) == "GROWING", id .. " remains plantable")
+    timers[#timers].Run()
+    for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
+        if ingredients.GetRecord(object) then object:Destroy() end
+    end
+    inventory.ClearHeld(owner)
+end
+carry(owner, "Dragon_Fruit")
+plantRow(1, owner)
+check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "Dragon Fruit cannot be planted")
+inventory.ClearHeld(owner)
+carry(owner, "Apple")
 owner.Character:FindFirstChildOfClass("Humanoid").Health = 0
 plantRow(1, owner)
 check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "dead actor cannot consume a seed")
@@ -251,7 +267,7 @@ stale.Run()
 check(#sounds == beforeStale, "stale growth callback is silent")
 check(spawnCount == 0 and state(1) == "LOCKED", "stale timer cannot spawn into replacement session")
 check(tycoon.GetUpgrade(owner, "FarmRows") == 1, "new session clears row upgrades")
-tycoon.SetCash(owner, 1000)
+tycoon.SetCash(owner, 20000)
 touch(1, owner)
 detach()
 for _, motion in motions do

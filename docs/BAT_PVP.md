@@ -294,12 +294,30 @@ SetRagdolled(character, true). On success, a one-shot Heartbeat callback checks 
 original stun token, character and root identity, living/present player, stun deadline,
 MovementService.IsStunned and RagdollService.IsRagdolled before applying knockback.
 
-BatConfig.Knockback holds HorizontalSpeed=7 and UpwardSpeed=4 (studs/sec).
-Impulse = (horizontalAway * HorizontalSpeed + Vector3.new(0, UpwardSpeed, 0))
+BatConfig.Levels holds player HorizontalKnockback / VerticalKnockback velocity
+changes of **18 / 5**, **27 / 7**, and **38 / 9** studs/sec for Bat 1/2/3.
+Impulse = (horizontalAway * HorizontalKnockback + Vector3.new(0, VerticalKnockback, 0))
 * root.AssemblyMass. Horizontal direction uses victim minus attacker position, falls
 back to attacker forward for coincident roots, then world -Z if forward is vertical.
-It is captured at impact, independent of Bat level. Anchored or nonfinite-mass
-assemblies receive no impulse. Ingredient scatter remains stronger.
+It is captured at impact. The combined vector is never normalized, so upward
+tuning cannot reduce horizontal strength. Anchored or nonfinite-mass assemblies
+receive no impulse. Customer hits retain BatConfig.Knockback's existing 7 / 4
+defaults; ingredient scatter is unchanged.
+
+Bat hits add no damage or fall-damage multiplier. FallDamageService independently
+evaluates downward velocity across Freefall, Physics and recovery. Normal landings
+use FloorMaterial; possible ragdoll impacts use short downward probes from the
+collidable torso parts after vertical slowdown, filtering for upward-facing world
+support. Fast free flight does not run ground probes. JumpPower compensation and
+the existing damage curve remain unchanged. After evaluation, bounces stay part of
+the consumed fall until 0.25 seconds of quiet support rearms tracking. Death,
+character removal/replacement, anchoring and discontinuous repositioning clear
+the peak; swimming, climbing and seated states cancel it as well.
+No Studio asset changes are required. In two-client Studio play, compare all three
+levels on flat ground and near elevated edges, including landing before and after
+recovery. Check readable horizontal displacement, mild lift, safe flat landings,
+ingredient pickup gating, recovery, and immunity. CLI tests cannot establish
+actual displacement or engine landing-state transitions.
 
 The existing duration callback validates the stun token and character, calls ragdoll
 OFF, then releases MovementService stun and clears StunnedUntil. Existing immunity
@@ -317,7 +335,7 @@ No recovery teleport, nudge, collision proxy or full-body collision was added.
 Validation: Combat integration contracts cover ordering, one-shot mass-aware impulse,
 coincident-root fallback, ON/OFF failures, stale token/life callbacks, and existing Bat
 rules. The separate AJU contracts still cover physical property restoration. Studio
-should verify two-player Bat impact, restrained knockback, normal recovery, immunity,
+should verify two-player Bat impact, level-scaled knockback, normal recovery, immunity,
 and reset during stun; automated tests do not simulate physical motion.
 
 Follow-up checks pass: combat (125 assertions), ragdoll (45), bat-controller (49),

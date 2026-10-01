@@ -144,7 +144,7 @@ for _, sample in { { 0, true }, { 0.2999, true }, { 0.30, false }, { 0.9999, fal
         local expected = math.round(3 * ingredients.Apple.Value + wildcard.BasePayout)
         local before = data.GetCash(owner)
         check(customer.Serve(owner, model), "special wildcard consumes a valid cup")
-        check(model:GetAttribute("Grade") == "B" and servedGrade == "B", "wildcard publishes neutral successful grade")
+        check(model:GetAttribute("Grade") == nil and servedGrade == nil, "wildcard publishes no letter grade")
         check(data.GetCash(owner) == before + expected, "wildcard pays 1.0x ingredient value plus base")
         check(model:GetAttribute("Reaction") == "Disgust", "special forced reaction remains independent")
         flush()

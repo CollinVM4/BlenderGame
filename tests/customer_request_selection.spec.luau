@@ -207,7 +207,8 @@ do
         flush()
         flush()
         cup = { Ingredients = example[1], Tags = { "Sweet", "Cold" }, BlendId = "advanced" }
-        local expected = customer.CalculateOrderPayout(owner, cup, selected, example[2])
+        local evaluation = customer.EvaluateOrder(cup, selected)
+        local expected = customer.CalculateOrderPayout(owner, cup, selected, evaluation)
         local cash = data.GetCash(owner)
         check(customer.Serve(owner), "advanced serving completes")
         flush()

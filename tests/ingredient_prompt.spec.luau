@@ -89,7 +89,7 @@ check(
     "registered Strawberry definition"
 )
 check(label("Action").Text == "[F]", "actual keyboard key, no pickup action or income text")
-check(label("IngredientValue").Text == "$0.5K", "common pickup shows definition value")
+check(label("IngredientValue").Text == "$3K", "common pickup shows definition value")
 check(
     label("IngredientValue").TextColor3 == style.ValueColor
         and label("IngredientValue").Font == label("IngredientName").Font
@@ -121,7 +121,7 @@ check(
         and label("Action").Position.Y.Offset == 104,
     "value sits below the name and above the input without overlap"
 )
-check(label("IngredientValue").Text == "$3K", "rare pickup shows definition value")
+check(label("IngredientValue").Text == "$25K", "rare pickup shows definition value")
 for _, id in { "Crab", "Dragon_Fruit", "Mystery" } do
     local rarity = definitions[id].Rarity
     item:SetAttribute("IngredientId", id)
@@ -129,16 +129,16 @@ for _, id in { "Crab", "Dragon_Fruit", "Mystery" } do
     check(label("Rarity").Text == string.upper(rarity), "rarity " .. rarity)
     check(label("Rarity").TextColor3 == style.RarityStyles[rarity].TextColor, "central palette " .. rarity)
 end
-item:SetAttribute("IngredientId", "Mystery")
+item:SetAttribute("IngredientId", "Dragon_Fruit")
 show()
 check(
-    label("IngredientName").Text == "???" and item:GetAttribute("IngredientId") == "Mystery",
+    label("IngredientName").Text == "???" and item:GetAttribute("IngredientId") == "Dragon_Fruit",
     "Mystery hides presentation only"
 )
-check(label("IngredientValue").Text == "$6.5K", "mystery value remains visible with hidden name")
+check(label("IngredientValue").Text == "$165K", "mystery value remains visible with hidden name")
 style.HideMysteryNames = false
 show()
-check(label("IngredientName").Text == "Mystery", "Mystery reveal toggle")
+check(label("IngredientName").Text == "Dragon Fruit", "Mystery reveal toggle")
 style.HideMysteryNames = true
 definitions.Future = { Id = "Future", DisplayName = "Future Fruit", Value = 12000 }
 item:SetAttribute("IngredientId", "Future")
@@ -194,7 +194,7 @@ check(gui() == nil, "missing identity cannot use instance name")
 model:SetAttribute("IngredientId", "Strawberry")
 services.RunService.RenderStepped:Fire()
 check(gui() ~= nil, "late replicated identity recovers shown prompt")
-check(label("IngredientValue").Text == "$0.5K", "recreated multipart pickup recovers its value label")
+check(label("IngredientValue").Text == "$3K", "recreated multipart pickup recovers its value label")
 services.CollectionService:RemoveTag(model, "IngredientWorldItem")
 services.RunService.RenderStepped:Fire()
 check(gui() == nil, "removed registration cleans view")

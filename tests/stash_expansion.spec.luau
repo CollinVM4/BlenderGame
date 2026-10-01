@@ -105,16 +105,16 @@ for index = 6, 10 do
     )
 end
 setup(inventory.Deposit(owner, "Milk", 3), "base slot still accepts ingredient")
-tycoon.SetCash(owner, 7999)
+tycoon.SetCash(owner, 399999)
 touch(teammate)
 check(
-    tycoon.GetCash(owner) == 7999 and inventory.GetStashLayout(owner).Slots == 5,
+    tycoon.GetCash(owner) == 399999 and inventory.GetStashLayout(owner).Slots == 5,
     "insufficient cash preserves ledger and capacity"
 )
-tycoon.SetCash(owner, 20000)
+tycoon.SetCash(owner, 500000)
 touch(enemy)
 check(
-    tycoon.GetCash(owner) == 20000 and tycoon.GetUpgrade(owner, "SecondStorage") == 1,
+    tycoon.GetCash(owner) == 500000 and tycoon.GetUpgrade(owner, "SecondStorage") == 1,
     "nonmember touch cannot purchase"
 )
 check(
@@ -131,8 +131,8 @@ end
 touch(teammate)
 touch(owner)
 check(
-    tycoon.GetCash(owner) == 12000 and tycoon.GetUpgrade(teammate, "SecondStorage") == 2,
-    "duplicate and reentrant touches charge exactly 8000 once"
+    tycoon.GetCash(owner) == 100000 and tycoon.GetUpgrade(teammate, "SecondStorage") == 2,
+    "duplicate and reentrant touches charge exactly 400000 once"
 )
 check(not pad.CanTouch and pad.Transparency == 1, "purchase disables physical pad")
 for _, object in structure do
@@ -198,7 +198,7 @@ end
 check(row:GetAttribute("StashExpansionReady") == false, "retired reveal callbacks cannot enable recycled row")
 
 -- Releasing during an unfinished reveal must also leave the next session locked.
-tycoon.SetCash(owner, 8000)
+tycoon.SetCash(owner, 400000)
 touch(owner)
 tycoon.RemovePlayer(owner)
 setup(tycoon.AssignPlot(owner, plot) ~= nil, "recycle during reveal")

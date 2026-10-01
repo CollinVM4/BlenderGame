@@ -145,8 +145,10 @@ for _, operation in { "purchase", "input", "progress", "dispense", "serve" } do
                 )
             else
                 check(
-                    npc:GetAttribute("Grade") == "A" and blend.GetCup(actor) == nil and tycoon.GetCash(survivor) > 10000,
-                    "serve remains committed"
+                    npc:GetAttribute("Grade") == "C"
+                        and blend.GetCup(actor) == nil
+                        and tycoon.GetCash(survivor) > 10000,
+                    "serve remains committed with a partial-match grade"
                 )
             end
             tycoon.RemovePlayer(survivor)

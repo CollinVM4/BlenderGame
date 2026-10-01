@@ -77,6 +77,9 @@ function IngredientSpawn.Bind(services: any, tag: string, onSpawn: ((Instance, s
             if not item then
                 return
             end
+            if services.AnnouncementService then
+                services.AnnouncementService.TrackSpawn(item, id)
+            end
             active = item
             local function removed(destroying: boolean)
                 if stopped or active ~= item then

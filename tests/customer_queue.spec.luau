@@ -64,21 +64,18 @@ for index, entry in queue do
             and entry.Model:GetAttribute("OwnerUserId") == owner.UserId,
         "each customer publishes owner-visible order text"
     )
-    check(entry.Model:FindFirstChild("ServePrompt", true).Enabled == (index == 1), "only counter enables serving")
+    check(entry.Model:FindFirstChild("ServePrompt", true).Enabled, "revealed queued customer enables serving")
 end
 check(not customer.SpawnForPlayer(owner), "direct spawn cannot exceed capacity")
 advance(35)
 check(#customer.GetQueueSnapshot(owner) == 3, "full timer cannot create fourth customer")
 cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "queue-1" }
-check(not customer.Serve(owner, queue[2].Model) and consumed == 0, "waiting model cannot consume cup")
-queue[2].Model:FindFirstChild("ServePrompt", true).Triggered:Fire(owner)
-check(consumed == 0, "forged waiting prompt cannot serve front customer")
 check(not customer.Serve(foreign, queue[1].Model), "foreign player cannot serve queue")
 owner.Near = false
 check(not customer.Serve(owner) and consumed == 0, "distance rejects without consuming")
 owner.Near = true
 check(
-    customer.Serve(owner, queue[1].Model) and consumed == 1 and tycoon.GetCash(owner) == 750,
+    customer.Serve(owner, queue[1].Model) and consumed == 1 and tycoon.GetCash(owner) == 1373,
     "front consumes and pays once"
 )
 check(not customer.Serve(owner, queue[1].Model), "served record rejects replay")
@@ -88,7 +85,7 @@ check(
     #shifted == 2 and shifted[1].Model == queue[2].Model and shifted[2].Model == queue[3].Model,
     "successful serve immediately shifts ordered queue"
 )
-check(not shifted[1].Ready, "advance requires counter arrival before serving")
+check(not shifted[1].Ready and not shifted[2].Ready, "shifting customers await their new markers")
 flush()
 check(
     shifted[1].Model:GetPivot().Position.X == 10 and shifted[2].Model:GetPivot().Position.X == 20,
@@ -104,7 +101,7 @@ for turn = 2, 5 do
     advance(35)
 end
 check(
-    days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and tycoon.GetCash(owner) == 3750,
+    days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and tycoon.GetCash(owner) == 6865,
     "serving and payouts continue beyond third customer"
 )
 -- Destroy an NPC while moving; old callbacks cannot re-enable or reinsert it.

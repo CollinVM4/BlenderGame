@@ -118,6 +118,26 @@ check(label().Text == "[E] DISPENSE", "configured action and actual key")
 check(gui().AlwaysOnTop and label().BackgroundTransparency == 1, "transparent outlined world UI")
 check(label().TextScaled == false and label().TextSize == 24, "fixed font size")
 check(gui().Size.X.Scale == 0 and gui().Size.Y.Scale == 0, "pixel-only canvas")
+local stashDisplay = uiInstance("Folder", "StashDisplay", originPart)
+local stashValue = uiInstance("BillboardGui", "SlotValue", stashDisplay)
+stashValue.Adornee = originPart
+stashValue.StudsOffsetWorldSpace = { X = 0, Y = 5, Z = 0 }
+origin.Parent = originPart
+prompt:SetAttribute("PlayerStashPrompt", true)
+show()
+check(
+    gui():IsA("BillboardGui")
+        and gui().Adornee == stashValue.Adornee
+        and gui().StudsOffsetWorldSpace == stashValue.StudsOffsetWorldSpace
+        and gui().SizeOffset.X == -0.8
+        and gui().Size.X.Offset == 300
+        and gui().Size.Y.Offset == 56
+        and not label().TextScaled,
+    "stash prompt uses value world anchor and fixed pixel offset"
+)
+stashDisplay:Destroy()
+prompt:SetAttribute("PlayerStashPrompt", nil)
+show()
 local old = gui()
 show()
 check(old.Destroyed and #playerGui:GetChildren() == 1, "repeated shown replaces view without duplicates")
