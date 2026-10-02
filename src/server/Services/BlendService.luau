@@ -135,6 +135,7 @@ end
 function BlendService.GetSnapshot(player: Player): {
     State: Types.BlendState,
     Ingredients: { string },
+    IngredientItems: { Types.IngredientItem }?,
     Progress: number,
     Result: Types.Smoothie?,
 }?
@@ -145,6 +146,7 @@ function BlendService.GetSnapshot(player: Player): {
     return {
         State = batch.State,
         Ingredients = table.clone(batch.Ingredients),
+        IngredientItems = Item.CopyAll(batch.IngredientItems),
         Progress = batch.Progress,
         Result = if batch.Result then copyResult(batch.Result) else nil,
     }

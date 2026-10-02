@@ -16,6 +16,7 @@ local services: { [string]: any } = {
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
     IngredientService = require(script.Services.IngredientService),
+    PlayerHeadDropService = require(script.Services.PlayerHeadDropService),
     FarmService = require(script.Services.FarmService),
     SmoothieWorldItemService = require(script.Services.SmoothieWorldItemService),
     InventoryService = require(script.Services.InventoryService),
@@ -34,6 +35,7 @@ require(script.Services.GameplaySfxService).Init()
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
 services.IngredientService.Init(services)
+services.PlayerHeadDropService.Init(services)
 services.DiscoveryService.Init(services)
 services.MovementService.Init(services)
 services.SprintService.Init(services)
@@ -112,6 +114,7 @@ local function addPlayer(player: Player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
     local function onCharacterAdded(character: Model)
+        services.PlayerHeadDropService.ApplyCharacter(player, character)
         services.CharacterPhysicsService.ApplyCharacter(player, character, services.RagdollService.PrepareCharacter)
         services.InventoryService.CleanupCharacter(player)
         services.CombatService.ApplyCharacter(player, character)
@@ -152,6 +155,7 @@ Players.PlayerRemoving:Connect(function(player)
                 "CombatService",
                 "InventoryService",
                 "IngredientService",
+                "PlayerHeadDropService",
                 "GameplayService",
                 "SprintService",
                 "MovementService",

@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
+local Types = require(game:GetService("ReplicatedStorage").Shared.Types)
 local BlendVFX = {}
 -- Legacy fallback in BlendVisualOrigin's local axes; never scales templates.
 local IngredientSlotNames = { "IngredientSlot1", "IngredientSlot2", "IngredientSlot3" }
@@ -59,7 +60,7 @@ local function findLiquid(blender: Instance, visuals: Instance?): BasePart?
     return found
 end
 
-local function sanitize(proxy: Instance)
+local function sanitize(proxy: Instance, playerHead: boolean?)
     local descendants = proxy:GetDescendants()
     table.insert(descendants, proxy)
     for _, child in descendants do
@@ -84,6 +85,7 @@ local function sanitize(proxy: Instance)
                 or child:IsA("Texture")
                 or child:IsA("SurfaceAppearance")
                 or child:IsA("Attachment")
+                or (playerHead and (child:IsA("FaceControls") or child:IsA("BaseWrap")))
             )
         then
             child:Destroy()
@@ -239,7 +241,7 @@ function BlendVFX.Init(services: any)
                 liquid.Transparency = 1
             end
         end
-        local function addIngredient(id: string, index: number, from: CFrame?)
+        local function addIngredient(id: string, index: number, from: CFrame?, item: Types.IngredientItem?)
             if displayed[index] or not origin or not visuals then
                 return
             end
@@ -251,12 +253,12 @@ function BlendVFX.Init(services: any)
             else
                 return
             end
-            local proxy = services.IngredientService.CreateVisual(id)
+            local proxy = services.IngredientService.CreateVisual(id, item)
             diagnostic("visual source found=" .. tostring(proxy ~= nil))
             if not proxy then
                 return
             end
-            sanitize(proxy)
+            sanitize(proxy, id == "PlayerHead")
             local physical = proxy :: any
             -- Resolve the complete authored set at placement time. Exact direct
             -- Blender children take precedence; origin children are also supported.
@@ -382,7 +384,7 @@ function BlendVFX.Init(services: any)
                 local batch = services.BlendService.GetSnapshot(player)
                 if batch and (batch.State == "LOADING" or batch.State == "READY") and batch.Progress == 0 then
                     for index, id in batch.Ingredients do
-                        addIngredient(id, index, nil)
+                        addIngredient(id, index, nil, batch.IngredientItems and batch.IngredientItems[index])
                     end
                 end
             end
@@ -401,7 +403,7 @@ function BlendVFX.Init(services: any)
                 and batch.Progress == 0
                 and batch.Ingredients[index] == id
             then
-                addIngredient(id, index, at)
+                addIngredient(id, index, at, batch.IngredientItems and batch.IngredientItems[index])
             else
                 diagnostic(
                     "accepted visual skipped state="

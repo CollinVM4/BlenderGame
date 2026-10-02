@@ -6,6 +6,8 @@ local SmoothieGeometry = require(script.Parent.Parent.Services.SmoothieGeometry)
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Config = require(Shared.Constants.Economy).NormalStash
 local MoneyFormat = require(Shared.MoneyFormat)
+local IngredientName = require(Shared.IngredientName)
+local Item = require(Shared.IngredientItem)
 local RipenessStyle = require(Shared.Constants.RipenessPresentation)
 local Presentation = {}
 
@@ -133,9 +135,17 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     for i = 1, state.Count do
         local proxy = if state.ItemType == "Smoothie"
             then SmoothieGeometry.CreateVisual(state.Smoothie)
-            else ingredients.CreateVisual(state.Ingredients[i].IngredientId)
+            else ingredients.CreateVisual(state.Ingredients[i].IngredientId, state.Ingredients[i])
         if not proxy then
             continue
+        end
+        if state.ItemType ~= "Smoothie" then
+            local unit = state.Ingredients[i]
+            Item.ApplySourceMetadata(proxy, unit)
+            if unit.IngredientId == "PlayerHead" then
+                proxy.Name =
+                    IngredientName.Resolve("PlayerHead", "Player Head", unit.SourceUserId, unit.SourceDisplayName)
+            end
         end
         local descendants = proxy:GetDescendants()
         table.insert(descendants, proxy)

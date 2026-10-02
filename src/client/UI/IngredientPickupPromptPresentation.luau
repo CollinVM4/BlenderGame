@@ -4,6 +4,7 @@ local Style = require(script.Parent.IngredientPickupPromptStyle)
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Ingredients = require(Shared.Constants.Ingredients)
 local MoneyFormat = require(Shared.MoneyFormat)
+local IngredientName = require(Shared.IngredientName)
 local Presentation = {}
 
 -- Rotated-part extents keep the label above the actual visible geometry,
@@ -84,8 +85,12 @@ function Presentation.Create(
     local function rarityText(): string
         local ripe = object:GetAttribute("IsRipe") == true
         local stateColor = if ripe then "#FFDE73" else "#D2D6D5"
-        return string.upper(rarity) .. ' <font color="#D2D6D5">•</font> <font color="' .. stateColor .. '">'
-            .. (if ripe then "Ripe" else "Unripe") .. "</font>"
+        return string.upper(rarity)
+            .. ' <font color="#D2D6D5">•</font> <font color="'
+            .. stateColor
+            .. '">'
+            .. (if ripe then "Ripe" else "Unripe")
+            .. "</font>"
     end
     title.Text = rarityText()
     formatText(title, 0, Style.TitleHeight, Style.TitleTextSize, palette.TextColor, palette.StrokeColor)
@@ -112,6 +117,14 @@ function Presentation.Create(
         palette.StrokeColor
     )
     local function update()
+        if definition.Id == "PlayerHead" then
+            label.Text = IngredientName.Resolve(
+                definition.Id,
+                name,
+                object:GetAttribute("SourceUserId"),
+                object:GetAttribute("SourceDisplayName")
+            )
+        end
         title.Text = rarityText()
         value.Text =
             MoneyFormat.Compact((object:GetAttribute("EffectiveIngredientValue") :: number?) or definition.Value)

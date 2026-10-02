@@ -194,6 +194,10 @@ local function instance(class)
         clone.Attributes = table.clone(self.Attributes)
         clone.Size = self.Size
         clone.Color = self.Color
+        for _, property in { "MeshId", "TextureID", "TextureId", "MeshType", "Scale", "Offset", "Texture", "Face",
+            "Transparency", "Material", "CollisionGroup", "PivotOffset", "Transform" } do
+            clone[property] = self[property]
+        end
         clone.CFrame = self.CFrame
         clone.Grip = self.Grip
         clone.RigType, clone.DisplayName = self.RigType, self.DisplayName
@@ -241,6 +245,9 @@ local function instance(class)
     function object:IsA(name)
         return name == self.ClassName
             or (name == "BasePart" and (self.ClassName == "Part" or self.ClassName == "MeshPart"))
+            or (name == "DataModelMesh" and self.ClassName == "SpecialMesh")
+            or (name == "Attachment" and self.ClassName == "Bone")
+            or (name == "BaseWrap" and (self.ClassName == "WrapTarget" or self.ClassName == "WrapLayer"))
     end
     function object:FindFirstChild(name, recursive)
         for _, child in self:GetChildren() do
@@ -268,6 +275,9 @@ local function instance(class)
             end
         end
         return nil
+    end
+    function object:GetAttributes()
+        return table.clone(self.Attributes)
     end
     function object:SetAttribute(key, value)
         self.Attributes[key] = value
@@ -299,7 +309,7 @@ local function instance(class)
     end
     return object
 end
-local shared = { IngredientItem = "IngredientItem", Constants = {}, Types = "Types", MoneyFormat = "MoneyFormat", Events = instance("Folder") }
+local shared = { IngredientName = "IngredientName", IngredientItem = "IngredientItem", Constants = {}, Types = "Types", MoneyFormat = "MoneyFormat", Events = instance("Folder") }
 for name in sources do
     shared.Constants[name] = name
 end

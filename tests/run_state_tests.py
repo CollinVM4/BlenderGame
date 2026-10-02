@@ -104,6 +104,10 @@ SUITES = {
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
     "stash-prompts": ("presentation", ("stash_prompt.spec.luau",)),
     "gameplay-audio": ("presentation", ("gameplay_audio.spec.luau",)),
+    "player-head-stash": ("presentation", ("player_head_stash.spec.luau",)),
+    "player-head-blender-visual": ("presentation", ("player_head_blender_visual.spec.luau",)),
+    "player-head-visual": ("integration", ("player_head_visual.spec.luau",)),
+    "player-head": ("integration", ("fixtures/smoothie.luau", "player_head.spec.luau")),
 }
 focused = {
     "vfx_only": ("vfx",),
@@ -138,6 +142,7 @@ sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
 sources["AnnouncementFormat"] = (ROOT / "src/shared/AnnouncementFormat.luau").read_text(encoding="utf-8")
+sources["IngredientName"] = (ROOT / "src/shared/IngredientName.luau").read_text(encoding="utf-8")
 sources["IngredientItem"] = (ROOT / "src/shared/IngredientItem.luau").read_text(encoding="utf-8")
 sources["RipenessDisplayState"] = (ROOT / "src/client/UI/RipenessDisplayState.luau").read_text(encoding="utf-8")
 sources["RadialProgress"] = (ROOT / "src/client/UI/RadialProgress.luau").read_text(encoding="utf-8")

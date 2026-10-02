@@ -907,8 +907,8 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Nathan",
-    DisplayText = "Fill me up! Anything will do.",
-    GoodResponse = "This will definitely fill me up! ",
+    DisplayText = "I'LL EAT ANYTHING!",
+    GoodResponse = "This will do the trick! Thanks!",
     BadResponse = "I can't do nathan with this..",
     RequiredTags = { "*" },
     BasePayout = 1050,

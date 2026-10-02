@@ -15,8 +15,8 @@ local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean, I
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
 end
-function IngredientService.CreateVisual(id: string): Instance?
-    return Geometry.CreateVisual(id, IngredientService.GetDefinition(id))
+function IngredientService.CreateVisual(id: string, item: Types.IngredientItem?): Instance?
+    return Geometry.CreateVisual(id, IngredientService.GetDefinition(id), item and item.VisualKey)
 end
 function IngredientService.Spawn(
     id: string,
@@ -25,20 +25,25 @@ function IngredientService.Spawn(
     claimable: boolean?,
     options: {
         Item: Types.IngredientItem?,
+        VisualTemplate: Instance?,
         FreezeUntilPickup: boolean?,
         BeforePublish: ((Instance) -> ())?,
     }?
 ): Instance?
-    local object = IngredientService.CreateVisual(id)
+    local item: Types.IngredientItem = if options and options.Item
+        then table.clone(options.Item)
+        else Item.New(id, HttpService:GenerateGUID(false))
+    if id == "PlayerHead" and options and options.VisualTemplate then
+        item.VisualKey = Geometry.CapturePlayerHead(options.VisualTemplate)
+    end
+    local object = IngredientService.CreateVisual(id, item)
     if not object then
         return nil
     end
     object.Name = id
     object:SetAttribute("IngredientId", id)
-    local item = if options and options.Item
-        then table.clone(options.Item)
-        else Item.New(id, HttpService:GenerateGUID(false))
     object:SetAttribute("WorldItemId", item.ItemId)
+    Item.ApplySourceMetadata(object, item)
     object:SetAttribute("EffectiveIngredientValue", Item.GetIngredientValue(item, workspace:GetServerTimeNow()))
     object:SetAttribute("IsRipe", item.IsRipe)
     object:SetAttribute("RipenessStoredSeconds", item.RipenessStoredSeconds)

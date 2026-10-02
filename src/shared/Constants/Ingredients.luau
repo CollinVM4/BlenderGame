@@ -123,6 +123,16 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 0,
     },
 
+    PlayerHead = { 
+        Id = "PlayerHead",
+        DisplayName = "Player Head", -- This will need to be dynamic
+        Tags = { "Weird",},
+        BlendColor = Color3.fromRGB(255, 105, 180),
+        Rarity = "Uncommon",
+        Value = 15000,
+        JumpLocation = 0,
+    },
+
     Grapes = {
         Id = "Grapes",
         DisplayName = "Grapes",

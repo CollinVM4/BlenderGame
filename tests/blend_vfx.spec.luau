@@ -256,11 +256,74 @@ return function(t)
         },
         PlayerDataService = { IncrementStat = function() end, RecordDiscovery = function() end },
     }
+    if t.PlayerHeadOnly then
+        -- Presentation boundary only; real session transactions are covered by player-head integration.
+        local authority = deps.TycoonService
+        authority.GetSessionId = function()
+            return "head-vfx-session"
+        end
+        authority.GetSessionOwner = function()
+            return currentOwner
+        end
+        authority.GetMembers = function()
+            return { owner }
+        end
+        authority.GetRequestContext = function()
+            return {}
+        end
+        authority.ValidateActor = function(player)
+            return player == owner
+        end
+        authority.IsMember = function(player, object)
+            return player == owner and object == input
+        end
+        authority.BeginTransaction = function()
+            return "head-vfx-session"
+        end
+        authority.EndTransaction = function() end
+    end
     local blend = load("BlendService")
     deps.BlendService = blend
     blend.Init(deps)
     blend.Reset(owner)
     load("BlendVFX", true).Init(deps)
+    if t.PlayerHeadOnly then
+        -- Real shared resolver; engine ingestion authorization uses this harness's boundary double.
+        local geometry, item = load("IngredientGeometry"), load("IngredientItem")
+        ingredients.CreateVisual = function(id, unit)
+            return geometry.CreateVisual(id, definitions[id], unit and unit.VisualKey)
+        end
+        local head = new("MeshPart")
+        head.MeshId, head.TextureID = "victim-mesh", "victim-texture"
+        child("FaceControls", "FaceControls", head)
+        child("WrapTarget", "WrapTarget", head)
+        local unit = item.New("PlayerHead", "head-vfx")
+        unit.VisualKey = geometry.CapturePlayerHead(head)
+        head:Destroy()
+        local object = new("Part")
+        records[object] = { Id = "PlayerHead", Owner = owner, Claimable = true, Item = unit }
+        input.Overlaps = { object }
+        check(blend.TryInput(owner, object, input), "blender accepts captured avatar head")
+        local function preservesAvatar()
+            local proxy = folder:GetChildren()[1]
+            return proxy
+                and proxy:IsA("MeshPart")
+                and proxy.MeshId == "victim-mesh"
+                and proxy.TextureID == "victim-texture"
+                and proxy:FindFirstChild("FaceControls")
+                and proxy:FindFirstChild("WrapTarget")
+        end
+        check(preservesAvatar(), "blender arrival proxy preserves victim mesh and dynamic head rendering")
+        local snapshot = blend.GetSnapshot(owner)
+        check(
+            snapshot.IngredientItems[1].VisualKey == unit.VisualKey,
+            "batch snapshot preserves the opaque appearance key"
+        )
+        cleaning()
+        load("BlendVFX", true).Init(deps)
+        check(preservesAvatar(), "blender presentation reattachment restores victim appearance from batch snapshot")
+        return
+    end
     local notifications = 0
     local observation = blend.ObserveIngredientAccepted(function(player, _, _, index)
         notifications += 1

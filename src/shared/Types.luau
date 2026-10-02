@@ -8,6 +8,11 @@ export type IngredientItem = {
     RipenessStoredSeconds: number,
     RipenessStoredAt: number?,
     IsRipe: boolean,
+    SourceUserId: number?,
+    SourceDisplayName: string?,
+    SourceUsername: string?,
+    -- Opaque server-only appearance identity; never contains an Instance.
+    VisualKey: {}?,
     AnnouncementOwnership: AnnouncementOwnership?,
 }
 export type SmoothieData = { BlendId: string, Ingredients: { string }, IngredientItems: { IngredientItem }? }

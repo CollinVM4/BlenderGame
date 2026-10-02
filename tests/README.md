@@ -203,3 +203,11 @@ Run `python tests/run_scrapbook_ui_tests.py --luau <luau.exe>` for the standalon
 presentation/controller suite. It uses real modules at a fake Roblox boundary and
 remains separate from authoritative discovery suites. Studio setup and manual
 layout checks are documented in `docs/SCRAPBOOK_GUI.md`.
+
+## Player Head death drops
+
+`--suite player-head` covers the character death and identity round-trip through
+normal inventory, stash, theft, throw, blender input, and loose cleanup.
+`--suite player-head-visual` covers avatar cloning, sanitization and fallback.
+`--suite player-head-stash`, `--suite player-head-blender-visual`, and the ingredient prompt runner's `--player-head-only`
+flag keep head presentation checks separate. See [setup and validation](../docs/PLAYER_HEAD_DROPS.md).

@@ -9,6 +9,14 @@ function Item.New(id: string, itemId: string): Types.IngredientItem
     return { IngredientId = id, ItemId = itemId, RipenessStoredSeconds = 0, IsRipe = false }
 end
 
+function Item.ApplySourceMetadata(object: Instance, item: Types.IngredientItem)
+    if item.IngredientId == "PlayerHead" then
+        object:SetAttribute("SourceUserId", item.SourceUserId)
+        object:SetAttribute("SourceDisplayName", item.SourceDisplayName)
+        object:SetAttribute("SourceUsername", item.SourceUsername)
+    end
+end
+
 function Item.GetStoredRipenessSeconds(item: Types.IngredientItem, now: number): number
     if item.IsRipe then
         return Config.RipenessSeconds

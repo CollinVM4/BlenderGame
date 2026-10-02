@@ -4,6 +4,67 @@ local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
 local WorldUtil = require(script.Parent.WorldUtil)
 local Geometry = {}
+-- Item copies share an opaque key. When the final item/snapshot releases it,
+-- this weak-key entry releases its detached, behavior-free template as well.
+local headTemplates = setmetatable({} :: { [{}]: BasePart }, { __mode = "k" })
+
+function Geometry.CapturePlayerHead(template: Instance?): {}?
+    if not template or not template:IsA("BasePart") then
+        return nil
+    end
+    local clone: BasePart? = nil
+    local success = pcall(function()
+        clone = template:Clone()
+        local head = clone
+        if not head then
+            return
+        end
+        -- Keep rendered head data, including dynamic-head bones/FaceControls,
+        -- but no rig joints, character references, scripts, sounds or effects.
+        for _, child in head:GetDescendants() do
+            if
+                not (
+                    child:IsA("DataModelMesh")
+                    or child:IsA("Decal")
+                    or child:IsA("Texture")
+                    or child:IsA("SurfaceAppearance")
+                    or child:IsA("Attachment")
+                    or child:IsA("FaceControls")
+                    or child:IsA("BaseWrap")
+                    or child:IsA("Folder")
+                )
+            then
+                child:Destroy()
+            end
+        end
+        local descendants = head:GetDescendants()
+        table.insert(descendants, head)
+        for _, child in descendants do
+            for _, tag in CollectionService:GetTags(child) do
+                CollectionService:RemoveTag(child, tag)
+            end
+            for name in child:GetAttributes() do
+                child:SetAttribute(name, nil)
+            end
+        end
+        head.Anchored = false
+        head.CanCollide, head.CanTouch, head.CanQuery = true, true, true
+        head.Massless = false
+        head.CollisionGroup = "Default"
+        -- Roblox accepts nil to restore material defaults; the installed API typings do not.
+        head.CustomPhysicalProperties = nil :: any
+        head.AssemblyLinearVelocity, head.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+    end)
+    if not success or not clone then
+        if clone then
+            clone:Destroy()
+        end
+        return nil
+    end
+    local key = table.freeze({})
+    headTemplates[key] = clone
+    return key
+end
 
 -- Shared by world spawns and stash/carry visuals; registration stays in Spawn.
 local function prepareAssembly(object: Instance)
@@ -33,12 +94,13 @@ local function prepareAssembly(object: Instance)
     end
 end
 
-function Geometry.CreateVisual(id: string, definition: any): Instance?
+function Geometry.CreateVisual(id: string, definition: any, visualKey: {}?): Instance?
     if not definition then
         return nil
     end
     local templates = ServerStorage:FindFirstChild("Ingredients")
-    local template = templates and templates:FindFirstChild(id)
+    local appearance = if id == "PlayerHead" and visualKey then headTemplates[visualKey] else nil
+    local template = appearance or (templates and templates:FindFirstChild(id))
     local object: Instance
     if template and (template:IsA("Model") or template:IsA("BasePart")) and WorldUtil.Part(template) then
         object = template:Clone()

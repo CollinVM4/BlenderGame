@@ -5,6 +5,7 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local BatConfig = require(Shared.Constants.BatConfig)
 local Types = require(Shared.Types)
 local Item = require(Shared.IngredientItem)
+local IngredientName = require(Shared.IngredientName)
 local WorldUtil = require(script.Parent.WorldUtil)
 local CarryPresentation = require(script.Parent.IngredientCarryPresentation)
 local IngredientThrow = require(script.Parent.IngredientThrow)
@@ -384,7 +385,16 @@ local function equipVisual(
         tool.Name = "Smoothie"
     else
         local definition = deps.IngredientService.GetDefinition(id)
-        tool.Name = definition.DisplayName or (id :: string)
+        tool.Name = IngredientName.Resolve(
+            id :: string,
+            definition.DisplayName or (id :: string),
+            ingredientItem and ingredientItem.SourceUserId,
+            ingredientItem and ingredientItem.SourceDisplayName
+        )
+        if ingredientItem then
+            Item.ApplySourceMetadata(tool, ingredientItem)
+            Item.ApplySourceMetadata(visual, ingredientItem)
+        end
         tool:SetAttribute("IngredientId", id)
         tool:SetAttribute("CarryItemId", nextCarryItemId)
         tool:SetAttribute("ItemType", "Ingredient")
@@ -1015,7 +1025,9 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
     if slot.Count < 1 or (not id and not smoothie) then
         return false
     end
-    local visual = if smoothie then SmoothieGeometry.CreateTool(smoothie) else deps.IngredientService.CreateVisual(id)
+    local visual = if smoothie
+        then SmoothieGeometry.CreateTool(smoothie)
+        else deps.IngredientService.CreateVisual(id, unit)
     if not visual then
         return false
     end
