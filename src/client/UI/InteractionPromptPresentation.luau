@@ -30,25 +30,12 @@ function Presentation.Create(
     gui.Adornee = origin
     Style.ApplyBillboard(gui, config)
     gui.Active = true
-    if stashPrompt and origin:IsA("Attachment") then
-        local slot = origin.Parent
-        if slot and slot:IsA("BasePart") then
-            local display = slot:FindFirstChild("StashDisplay")
-            local value = display and display:FindFirstChild("SlotValue")
-            if value and value:IsA("BillboardGui") then
-                gui.Adornee = value.Adornee
-                gui.StudsOffsetWorldSpace = value.StudsOffsetWorldSpace
-            end
-        end
-        -- Offset the fixed-pixel canvas from the same world point as the value.
-        gui.SizeOffset = Vector2.new(-0.8, 0)
-    end
 
     -- A transparent button preserves touch/click input through the prompt's API.
     local text = Instance.new("TextButton")
     text.Name = "Action"
     Style.ApplyText(text, config)
-    if origin.Name == "DispenserTextOrigin" or stashPrompt then
+    if origin.Name == "DispenserTextOrigin" or stashPrompt or prompt:GetAttribute("JackedNoobPrompt") == true then
         TextStyle.Apply(text, config.TextSize or 24)
     end
     if config.CustomerAction and not stashPrompt then

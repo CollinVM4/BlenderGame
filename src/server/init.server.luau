@@ -33,6 +33,7 @@ require(script.Services.GameplaySfxService).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
+services.IngredientService.Init(services)
 services.DiscoveryService.Init(services)
 services.MovementService.Init(services)
 services.SprintService.Init(services)
@@ -129,6 +130,7 @@ Players.PlayerAdded:Connect(addPlayer)
 for _, player in Players:GetPlayers() do
     addPlayer(player)
 end
+require(script.Services.JackedNoobService).Init(services)
 Players.PlayerRemoving:Connect(function(player)
     services.TycoonService.RemovePlayer(player, function()
         if characterConnections[player] then

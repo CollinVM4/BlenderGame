@@ -88,7 +88,7 @@ local requests: { Request } = {
         DisplayText = "I want something with MUSHROOMS and FRUIT!",
         GoodResponse = "Thank you!",
         BadResponse = "Where are the mushrooms?",
-        RequiredTags = { "Mushroom", "Fruit" },
+        RequiredTags = { "Mushrooms", "Fruit" },
         BasePayout = 250,
         MinJumpTier = 0,
     },
@@ -931,13 +931,12 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.70,
+    RegularWildcardChance = 0.63,
     SpecialWildcardChance = 0.30,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {
         Id = "Wildcard",
         Wildcard = true,
-        DisplayText = "Surprise me!",
         DisplayTexts = {
             "Surprise me!",
             "make me whatever!",

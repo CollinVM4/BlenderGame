@@ -1,15 +1,16 @@
 --!strict
 local CollectionService = game:GetService("CollectionService")
-local Debris = game:GetService("Debris")
 local HttpService = game:GetService("HttpService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Definitions = require(Shared.Constants.Ingredients)
 local Economy = require(Shared.Constants.Economy)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Geometry = require(script.Parent.IngredientGeometry)
+local Item = require(Shared.IngredientItem)
+local Types = require(Shared.Types)
 local IngredientService = {}
 -- Tags/attributes are presentation metadata, never proof of ownership or validity.
-local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean } } = {}
+local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean, Item: Types.IngredientItem } } = {}
 
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
@@ -22,7 +23,11 @@ function IngredientService.Spawn(
     at: CFrame,
     owner: Player?,
     claimable: boolean?,
-    options: { FreezeUntilPickup: boolean?, BeforePublish: ((Instance) -> ())? }?
+    options: {
+        Item: Types.IngredientItem?,
+        FreezeUntilPickup: boolean?,
+        BeforePublish: ((Instance) -> ())?,
+    }?
 ): Instance?
     local object = IngredientService.CreateVisual(id)
     if not object then
@@ -30,7 +35,13 @@ function IngredientService.Spawn(
     end
     object.Name = id
     object:SetAttribute("IngredientId", id)
-    object:SetAttribute("WorldItemId", HttpService:GenerateGUID(false))
+    local item = if options and options.Item
+        then table.clone(options.Item)
+        else Item.New(id, HttpService:GenerateGUID(false))
+    object:SetAttribute("WorldItemId", item.ItemId)
+    object:SetAttribute("EffectiveIngredientValue", Item.GetIngredientValue(item, workspace:GetServerTimeNow()))
+    object:SetAttribute("IsRipe", item.IsRipe)
+    object:SetAttribute("RipenessStoredSeconds", item.RipenessStoredSeconds)
     object:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
     local frozen = options ~= nil and options.FreezeUntilPickup == true
     object:SetAttribute("FrozenUntilPickup", if frozen then true else nil)
@@ -53,12 +64,11 @@ function IngredientService.Spawn(
     if root and root:CanSetNetworkOwnership() then
         root:SetNetworkOwner(nil)
     end
-    records[object] = { Id = id, Owner = owner, Claimable = claimable ~= false }
+    records[object] = { Id = id, Owner = owner, Claimable = claimable ~= false, Item = item }
     object.Destroying:Connect(function()
         records[object] = nil
     end)
     CollectionService:AddTag(object, "IngredientWorldItem")
-    Debris:AddItem(object, Economy.WorldItemLifetime)
     return object
 end
 function IngredientService.Resolve(hit: Instance): Instance?
@@ -71,12 +81,16 @@ function IngredientService.Resolve(hit: Instance): Instance?
     end
     return nil
 end
-function IngredientService.GetRecord(object: Instance): { Id: string, Owner: Player?, Claimable: boolean }?
+function IngredientService.GetRecord(
+    object: Instance
+): { Id: string, Owner: Player?, Claimable: boolean, Item: Types.IngredientItem }?
     local record = records[object]
     if not record or not object:IsDescendantOf(workspace) then
         return nil
     end
-    return table.clone(record)
+    local copy = table.clone(record)
+    copy.Item = table.clone(record.Item)
+    return copy
 end
 -- Pickup callers set pickedUp only after inventory authorization/reservation succeeds.
 -- Other removal paths (including cleanup) never release frozen physics.
@@ -99,6 +113,49 @@ function IngredientService.Consume(object: Instance, pickedUp: boolean?): string
     object:Destroy()
     return record.Id
 end
+-- Snapshot the registry: removal callbacks may replenish spawn systems.
+-- Carry, stash and accepted blender contents have already left this registry.
+function IngredientService.ClearLooseIngredients()
+    local remove = {}
+    for object in records do
+        table.insert(remove, object)
+    end
+    for _, object in remove do
+        IngredientService.Consume(object)
+    end
+end
+
+local started = false
+function IngredientService.Init(services: any)
+    if started then
+        return
+    end
+    started = true
+    local interval = Economy.WorldIngredientCleanupInterval
+    local warningSeconds = Economy.WorldIngredientCleanupWarningSeconds
+    local nextCleanup = os.clock() + interval
+    local function scheduleCycle()
+        task.delay(math.max(0, nextCleanup - warningSeconds - os.clock()), function()
+            services.AnnouncementService.Publish({
+                Type = "ServerAnnouncement",
+                Text = "LOOSE INGREDIENTS CLEAR IN 1 MINUTE!",
+                Duration = 5,
+                Priority = 100,
+                Immediate = true,
+            })
+            task.delay(math.max(0, nextCleanup - os.clock()), function()
+                IngredientService.ClearLooseIngredients()
+                -- Keep the original cadence without replaying missed cycles after a stall.
+                repeat
+                    nextCleanup += interval
+                until nextCleanup - warningSeconds > os.clock()
+                scheduleCycle()
+            end)
+        end)
+    end
+    scheduleCycle()
+end
+
 function IngredientService.RemovePlayer(player: Player)
     local remove = {}
     for object, record in records do

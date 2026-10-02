@@ -5,21 +5,9 @@ local CollectionService = game:GetService("CollectionService")
 local SmoothieGeometry = require(script.Parent.Parent.Services.SmoothieGeometry)
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Config = require(Shared.Constants.Economy).NormalStash
-local Ingredients = require(Shared.Constants.Ingredients)
 local MoneyFormat = require(Shared.MoneyFormat)
+local RipenessStyle = require(Shared.Constants.RipenessPresentation)
 local Presentation = {}
-
--- Derived only for presentation from the authoritative slot snapshot.
-local function slotValue(state: any): number
-    if state.ItemType == "Smoothie" and state.Smoothie then
-        local total = 0
-        for _, id in state.Smoothie.Ingredients do
-            total += Ingredients[id].Value
-        end
-        return total
-    end
-    return Ingredients[state.IngredientId].Value * state.Count
-end
 
 local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value: number)
     local gui = Instance.new("BillboardGui")
@@ -29,7 +17,7 @@ local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value:
     gui.StudsOffsetWorldSpace = surface.Position - slot.Position + Vector3.new(0, 5, 0)
     gui.AlwaysOnTop = true
     gui.ResetOnSpawn = false
-    gui.MaxDistance = 100
+    gui.MaxDistance = RipenessStyle.StashMaxDistance
 
     local label = Instance.new("TextLabel")
     label.Name = "Value"
@@ -132,7 +120,7 @@ function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
     folder.Name = "StashDisplay"
     folder.Parent = slot
     local surface, width, depth, thickness, normalAxis = displaySurface(slot)
-    showValue(slot, folder, surface, slotValue(state))
+    showValue(slot, folder, surface, state.Value)
     local slotSize = math.min(width, depth)
     local itemSize = math.clamp(slotSize * DisplayFootprintScale, DisplayMinSize, DisplayMaxSize)
     local maxHeight = math.min(slotSize * DisplayMaxHeightScale, DisplayMaxSize)

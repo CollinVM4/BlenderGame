@@ -2,10 +2,19 @@
 export type BlendState = "EMPTY" | "LOADING" | "READY" | "BLENDING" | "COMPLETE" | "DISPENSED"
 export type DayState = "PREP" | "SERVING" | "FINISHED"
 export type Grade = "A" | "B" | "C" | "D"
-export type SmoothieData = { BlendId: string, Ingredients: { string } }
+export type IngredientItem = {
+    IngredientId: string,
+    ItemId: string,
+    RipenessStoredSeconds: number,
+    RipenessStoredAt: number?,
+    IsRipe: boolean,
+    AnnouncementOwnership: AnnouncementOwnership?,
+}
+export type SmoothieData = { BlendId: string, Ingredients: { string }, IngredientItems: { IngredientItem }? }
 export type AnnouncementOwnership = { LastOwnerUserId: number? }
 export type StashSlot = {
-    Ingredients: { { IngredientId: string, AnnouncementOwnership: AnnouncementOwnership? } },
+    Value: number?,
+    Ingredients: { IngredientItem },
     SlotIndex: number,
     ItemType: ("Ingredient" | "Smoothie")?,
     IngredientId: string?,
@@ -15,8 +24,14 @@ export type StashSlot = {
     Protected: boolean,
 }
 export type Stack = { IngredientId: string, Count: number }
-export type Smoothie =
-    { BlendId: string?, Ingredients: { string }, Tags: { string }, Color: Color3, Discovery: string? }
+export type Smoothie = {
+    BlendId: string?,
+    Ingredients: { string },
+    IngredientItems: { IngredientItem }?,
+    Tags: { string },
+    Color: Color3,
+    Discovery: string?,
+}
 export type DiscoveryState = {
     Ingredients: { [string]: boolean },
     SpecialCustomers: { [string]: boolean },

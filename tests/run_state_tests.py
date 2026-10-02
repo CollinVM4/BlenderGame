@@ -37,6 +37,12 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "ingredient-cleanup": ("integration", ("fixtures/smoothie.luau", "ingredient_cleanup.spec.luau")),
+    "jacked-noob": ("state", ("jacked_noob.spec.luau",)),
+    "jacked-noob-inventory": ("integration", ("fixtures/smoothie.luau", "jacked_noob_inventory.spec.luau")),
+    "ripeness": ("state", ("ripeness.spec.luau",)),
+    "ripeness-presentation": ("presentation", ("ripeness_presentation.spec.luau",)),
+    "ripeness-lifecycle": ("integration", ("fixtures/smoothie.luau", "ripeness_lifecycle.spec.luau")),
     "announcements": ("integration", ("fixtures/smoothie.luau", "announcements.spec.luau")),
     "announcement-presentation": ("presentation", ("announcement_presentation.spec.luau",)),
     "discovery": ("state", ("discovery.spec.luau",)),
@@ -132,6 +138,11 @@ sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
 sources["AnnouncementFormat"] = (ROOT / "src/shared/AnnouncementFormat.luau").read_text(encoding="utf-8")
+sources["IngredientItem"] = (ROOT / "src/shared/IngredientItem.luau").read_text(encoding="utf-8")
+sources["RipenessDisplayState"] = (ROOT / "src/client/UI/RipenessDisplayState.luau").read_text(encoding="utf-8")
+sources["RadialProgress"] = (ROOT / "src/client/UI/RadialProgress.luau").read_text(encoding="utf-8")
+sources["RipenessPresentationController"] = (ROOT / "src/client/Controllers/RipenessPresentationController.luau").read_text(encoding="utf-8")
+sources["RipenessTutorialText"] = (ROOT / "src/client/UI/RipenessTutorialText.luau").read_text(encoding="utf-8")
 sources["MoneyFormat"] = (ROOT / "src/shared/MoneyFormat.luau").read_text(encoding="utf-8")
 sources["StashPromptController"] = (ROOT / "src/client/Controllers/StashPromptController.luau").read_text(encoding="utf-8")
 sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")

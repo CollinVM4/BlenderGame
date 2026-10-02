@@ -28,7 +28,7 @@ do
             }
             display.Refresh(
                 pad,
-                { IngredientId = "Strawberry", Ingredients = items, Count = n, Protected = false },
+                { IngredientId = "Strawberry", Ingredients = items, Count = n, Protected = false, Value = 0 },
                 visuals
             )
             for i, item in items do
@@ -77,17 +77,72 @@ do
     }
     local definitions = loadModule("Ingredients")
     local formatter = loadModule("MoneyFormat")
+    local ripenessStyle = loadModule("RipenessPresentation")
+    local values = loadModule("StashValue")
+    local item = loadModule("IngredientItem")
+    local function unit(id, ripe)
+        local record = item.New(id, id .. "-test")
+        record.IsRipe = ripe == true
+        return record
+    end
     local function textValue()
         return pad:FindFirstChild("StashDisplay"):FindFirstChild("SlotValue"):FindFirstChild("Value").Text
     end
     for _, count in { 1, 5, 2 } do
-        display.Refresh(pad, {
+        local state = {
             ItemType = "Ingredient",
             IngredientId = "Apple",
             Count = count,
-            Ingredients = table.create(count, { IngredientId = "Apple" }),
-        }, visuals)
+            Ingredients = table.create(count, unit("Apple")),
+        }
+        state.Value = values.Calculate(state)
+        display.Refresh(pad, state, visuals)
         check(textValue() == formatter.Compact(definitions.Apple.Value * count), "slot value follows stack quantity")
+        check(pad:FindFirstChild("StashDisplay"):FindFirstChild("SlotValue").MaxDistance == ripenessStyle.StashMaxDistance,
+            "stash value uses nearby visibility range")
+    end
+    local mixed = {
+        ItemType = "Ingredient",
+        IngredientId = "Banana",
+        Count = 2,
+        Ingredients = { unit("Mango"), unit("Banana") },
+    }
+    check(values.Calculate(mixed) == 22000, "existing $20K plus Banana totals $22K")
+    mixed.Value = values.Calculate(mixed)
+    display.Refresh(pad, mixed, visuals)
+    check(textValue() == "$22K", "slot label uses complete mixed total")
+    check(values.Calculate({
+        ItemType = "Ingredient",
+        Ingredients = {
+            unit("Banana"),
+            unit("Banana"),
+            unit("Banana"),
+        },
+    }) == 6000, "three physical Bananas total $6K")
+    check(values.Calculate({
+        ItemType = "Ingredient",
+        Ingredients = {
+            unit("Starfruit"),
+            unit("Tire"),
+            unit("Banana"),
+        },
+    }) == 20000, "mixed $10K, $8K and $2K items total $20K")
+    local ripe = {
+        ItemType = "Ingredient",
+        IngredientId = "Strawberry",
+        Count = 3,
+        Ingredients = {
+            unit("Strawberry", true),
+            unit("Strawberry"),
+            unit("Strawberry"),
+        },
+    }
+    check(values.Calculate(ripe) == 9750, "individual effective values sum before rounding")
+    ripe.Value = values.Calculate(ripe)
+    display.Refresh(pad, ripe, visuals)
+    check(textValue() == "$10K", "ripe and fresh values round once after summing")
+    for _, sample in { { 9740, "$9.5K" }, { 9750, "$10K" }, { 10249, "$10K" }, { 10250, "$10.5K" } } do
+        check(formatter.Compact(sample[1]) == sample[2], "nearest $500 boundary")
     end
     display.Refresh(pad, { Count = 0 }, visuals)
     check(not pad:FindFirstChild("StashDisplay"), "empty slot hides its value")
@@ -96,11 +151,13 @@ do
     geometry.CreateVisual = function()
         return nil
     end
-    display.Refresh(pad, {
+    local smoothie = {
         ItemType = "Smoothie",
         Count = 1,
         Smoothie = { BlendId = "value-test", Ingredients = { "Apple", "Apple", "Banana" } },
-    }, visuals)
+    }
+    smoothie.Value = values.Calculate(smoothie)
+    display.Refresh(pad, smoothie, visuals)
     check(
         textValue() == formatter.Compact(definitions.Apple.Value * 2 + definitions.Banana.Value),
         "smoothie value derives from composition and counts repeated ingredients"

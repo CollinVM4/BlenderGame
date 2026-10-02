@@ -299,7 +299,7 @@ local function instance(class)
     end
     return object
 end
-local shared = { Constants = {}, Types = "Types", MoneyFormat = "MoneyFormat", Events = instance("Folder") }
+local shared = { IngredientItem = "IngredientItem", Constants = {}, Types = "Types", MoneyFormat = "MoneyFormat", Events = instance("Folder") }
 for name in sources do
     shared.Constants[name] = name
 end
@@ -322,6 +322,10 @@ local workspaceFake = {
 }
 local tags = {}
 local nextGuid = 0
+local heartbeat = signal()
+heartbeat.Wait = function()
+    return 10
+end
 local services = {
     ReplicatedStorage = { Shared = shared },
     ServerStorage = storage,
@@ -332,11 +336,7 @@ local services = {
         end,
     },
     RunService = {
-        Heartbeat = {
-            Wait = function()
-                return 10
-            end,
-        },
+        Heartbeat = heartbeat,
         IsStudio = function()
             return studio
         end,

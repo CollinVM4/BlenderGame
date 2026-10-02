@@ -1,7 +1,7 @@
 --!strict
 local MoneyFormat = require(script.Parent.MoneyFormat)
 local Format = {}
-export type Message = { Text: string, Duration: number, SoundType: string?, Priority: number }
+export type Message = { Text: string, Duration: number, SoundType: string?, Priority: number, Immediate: boolean }
 
 function Format.Escape(value: string): string
     local escaped = value:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"):gsub("'", "&apos;")
@@ -60,18 +60,26 @@ function Format.Build(payload: any): Message?
         Duration = duration,
         SoundType = if typeof(payload.SoundType) == "string" then payload.SoundType else nil,
         Priority = priority,
+        Immediate = payload.Type == "ServerAnnouncement" and payload.Immediate == true,
     }
 end
 
--- Stable priority order; the visible announcement always completes its hold.
+-- Time-sensitive server notices lead the queue; ordinary priorities remain stable.
 function Format.Enqueue(queue: { Message }, message: Message)
     for index, pending in queue do
-        if message.Priority > pending.Priority then
+        if
+            (message.Immediate and not pending.Immediate)
+            or (message.Immediate == pending.Immediate and message.Priority > pending.Priority)
+        then
             table.insert(queue, index, message)
             return
         end
     end
     table.insert(queue, message)
+end
+
+function Format.ShouldInterrupt(queue: { Message }): boolean
+    return queue[1] ~= nil and queue[1].Immediate
 end
 
 return Format

@@ -15,10 +15,10 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Apple = {
         Id = "Apple",
         DisplayName = "Apple",
-        Tags = { "Fruit", "Sweet", "Healthy", "Red" },
+        Tags = { "Fruit", "Sweet", "Red" },
         BlendColor = Color3.fromRGB(210, 55, 45),
         Rarity = "Common",
-        Value = 2000,
+        Value = 1500,
         JumpLocation = 0,
     },
 
@@ -38,34 +38,34 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Blue" },
         BlendColor = Color3.fromRGB(80, 75, 190),
         Rarity = "Common",
-        Value = 2500,
+        Value = 2000,
         JumpLocation = 0,
     },
 
     Cabbage = {
         Id = "Cabbage",
         DisplayName = "Cabbage",
-        Tags = { "Veggie", "Healthy", "Green" },
+        Tags = { "Veggie", "Green" },
         BlendColor = Color3.fromRGB(125, 180, 95),
         Rarity = "Common",
-        Value = 1000,
+        Value = 2000,
         JumpLocation = 0,
     },
 
     Carrot = {
         Id = "Carrot",
         DisplayName = "Carrot",
-        Tags = { "Veggie", "Healthy", "Orange" },
+        Tags = { "Veggie", "Orange" },
         BlendColor = Color3.fromRGB(240, 125, 45),
         Rarity = "Common",
-        Value = 1500,
+        Value = 2000,
         JumpLocation = 0,
     },
 
     Crab = {
         Id = "Crab",
         DisplayName = "Crab",
-        Tags = { "Seafood", "Red", "Weird" },
+        Tags = { "Seafood", "Red", "Weird", "Protein" },
         BlendColor = Color3.fromRGB(200, 50, 50),
         Rarity = "Rare",
         Value = 35000,
@@ -78,7 +78,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Red" },
         BlendColor = Color3.fromRGB(190, 35, 55),
         Rarity = "Common",
-        Value = 2500,
+        Value = 2000,
         JumpLocation = 0,
     },
 
@@ -88,7 +88,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Veggie", "Spicy", "Red" },
         BlendColor = Color3.fromRGB(215, 45, 35),
         Rarity = "Common",
-        Value = 6000,
+        Value = 3000,
         JumpLocation = 1,
     },
 
@@ -96,9 +96,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Id = "Coconut",
         DisplayName = "Coconut",
         Tags = { "Fruit", "Sweet", "Tropical" },
-        BlendColor = Color3.fromRGB(225, 220, 195),
-        Rarity = "Uncommon",
-        Value = 18000,
+        BlendColor = Color3.fromRGB(126, 76, 2),
+        Rarity = "Rare",
+        Value = 25000,
         JumpLocation = 2,
     },
 
@@ -116,10 +116,10 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Mushrooms = {
         Id = "Mushrooms",
         DisplayName = "Mushrooms",
-        Tags = { "Mushroom", "White" },
+        Tags = { "Mushrooms", "White", "Veggie" },
         BlendColor = Color3.fromRGB(225, 215, 180),
         Rarity = "Uncommon",
-        Value = 6000,
+        Value = 3000,
         JumpLocation = 0,
     },
 
@@ -129,7 +129,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Purple" },
         BlendColor = Color3.fromRGB(125, 65, 170),
         Rarity = "Common",
-        Value = 2500,
+        Value = 2000,
         JumpLocation = 0,
     },
 
@@ -139,14 +139,14 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Healthy", "Green" },
         BlendColor = Color3.fromRGB(130, 190, 65),
         Rarity = "Common",
-        Value = 2000,
+        Value = 1500,
         JumpLocation = 0,
     },
 
     Pizza = {
         Id = "Pizza",
         DisplayName = "Pizza",
-        Tags = { "Fast Food", "Mystery", "" },
+        Tags = { "Fast Food", "Mystery",},
         BlendColor = Color3.fromRGB(255, 200, 100),
         Rarity = "Rare",
         Value = 75000,
@@ -159,7 +159,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Green" },
         BlendColor = Color3.fromRGB(115, 170, 65),
         Rarity = "Common",
-        Value = 2500,
+        Value = 2000,
         JumpLocation = 0,
     },
 
@@ -189,21 +189,19 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Weird", "Brown" },
         BlendColor = Color3.fromRGB(120, 85, 60),
         Rarity = "Common",
-        Value = 1000,
+        Value = 2500,
         JumpLocation = 0,
     },
 
     Worm = {
         Id = "Worm",
         DisplayName = "Worm",
-        Tags = { "Weird", "Protein", "Brown" },
-        BlendColor = Color3.fromRGB(120, 85, 60),
+        Tags = { "Weird", "Protein", "Purple" },
+        BlendColor = Color3.fromRGB(160, 50, 160),
         Rarity = "Common",
         Value = 1000,
         JumpLocation = 0,
     },
-    -- have carry system fill in hotbar slots, not stack in one
-    -- have item name use Ingredients.Ingredient.DisplayName
 
     Cinnamon = {
         Id = "Cinnamon",
@@ -228,10 +226,10 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Onion = {
         Id = "Onion",
         DisplayName = "Onion",
-        Tags = { "Veggie", "White", "Weird", "Healthy" },
+        Tags = { "Veggie", "White", "Weird",},
         BlendColor = Color3.fromRGB(220, 205, 170),
         Rarity = "Common",
-        Value = 1500,
+        Value = 2000,
         JumpLocation = 0,
     },
 
@@ -241,7 +239,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Candy", "Sweet", "Red" },
         BlendColor = Color3.fromRGB(255, 100, 100),
         Rarity = "Rare",
-        Value = 18000,
+        Value = 25000,
         JumpLocation = 0,
     },
 
@@ -251,7 +249,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Citrus", "Orange" },
         BlendColor = Color3.fromRGB(245, 145, 45),
         Rarity = "Common",
-        Value = 2000,
+        Value = 3000,
         JumpLocation = 0,
     },
 
@@ -260,8 +258,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
         DisplayName = "Mango",
         Tags = { "Fruit", "Sweet", "Orange" },
         BlendColor = Color3.fromRGB(255, 165, 65),
-        Rarity = "Uncommon",
-        Value = 20000,
+        Rarity = "Rare",
+        Value = 25000,
         JumpLocation = 2,
     },
 
@@ -310,8 +308,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
         DisplayName = "Pineapple",
         Tags = { "Fruit", "Sweet", "Yellow" },
         BlendColor = Color3.fromRGB(235, 190, 65),
-        Rarity = "Common",
-        Value = 7000,
+        Rarity = "Uncommon",
+        Value = 10000,
         JumpLocation = 1,
     },
 
@@ -321,7 +319,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Seafood", "White", "Weird", "Protein" },
         BlendColor = Color3.fromRGB(200, 200, 200),
         Rarity = "Uncommon",
-        Value = 20000,
+        Value = 15000,
         JumpLocation = 2,
     },
 
@@ -340,8 +338,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
         DisplayName = "Pomegranate",
         Tags = { "Fruit", "Sweet", "Red" },
         BlendColor = Color3.fromRGB(185, 45, 65),
-        Rarity = "Uncommon",
-        Value = 22000,
+        Rarity = "Rare",
+        Value = 25000,
         JumpLocation = 2,
     },
 
@@ -353,6 +351,16 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Rarity = "Rare",
         Value = 60000,
         JumpLocation = 3,
+    },
+
+    Protein = {
+        Id = "Protein",
+        DisplayName = "Protein",
+        Tags = { "Protein", },
+        BlendColor = Color3.fromRGB(119, 95, 13),
+        Rarity = "Uncommon",
+        Value = 5000,
+        JumpLocation = 0,
     },
 
     Starfruit = {
@@ -371,7 +379,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Fruit", "Sweet", "Red" },
         BlendColor = Color3.fromRGB(235, 65, 80),
         Rarity = "Common",
-        Value = 3000,
+        Value = 2000,
         JumpLocation = 0,
     },
 
@@ -412,8 +420,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
         DisplayName = "Milk",
         Tags = { "Milk", "White" },
         BlendColor = Color3.fromRGB(245, 245, 245),
-        Rarity = "Uncommon",
-        Value = 18000,
+        Rarity = "Rare",
+        Value = 20000,
         JumpLocation = 2,
     },
 
@@ -459,12 +467,12 @@ local Ingredients: { [string]: IngredientDefinition } = {
 
     Noob = {
         Id = "Noob",
-        DisplayName = "Noob",
+        DisplayName = "Noob's Head",
         Tags = { "Weird", "Yellow", "Noob" },
         BlendColor = Color3.fromRGB(245, 210, 55),
-        Rarity = "Rare",
-        Value = 60000,
-        JumpLocation = 3,
+        Rarity = "Uncommon",
+        Value = 12000,
+        JumpLocation = 1,
     },
 
     GoldenTomato = {

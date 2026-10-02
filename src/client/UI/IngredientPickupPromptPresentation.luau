@@ -79,7 +79,15 @@ function Presentation.Create(
         stroke.Parent = label
     end
     local title = Instance.new("TextLabel")
-    title.Name, title.Text = "Rarity", string.upper(rarity)
+    title.Name = "Rarity"
+    title.RichText = true
+    local function rarityText(): string
+        local ripe = object:GetAttribute("IsRipe") == true
+        local stateColor = if ripe then "#FFDE73" else "#D2D6D5"
+        return string.upper(rarity) .. ' <font color="#D2D6D5">•</font> <font color="' .. stateColor .. '">'
+            .. (if ripe then "Ripe" else "Unripe") .. "</font>"
+    end
+    title.Text = rarityText()
     formatText(title, 0, Style.TitleHeight, Style.TitleTextSize, palette.TextColor, palette.StrokeColor)
     title.Parent = gui
     local label = Instance.new("TextLabel")
@@ -88,7 +96,9 @@ function Presentation.Create(
     formatText(label, nameY, Style.NameHeight, Style.NameTextSize, Style.NameColor, Style.StrokeColor)
     label.Parent = gui
     local value = Instance.new("TextLabel")
-    value.Name, value.Text = "IngredientValue", MoneyFormat.Compact(definition.Value)
+    value.Name, value.Text =
+        "IngredientValue",
+        MoneyFormat.Compact((object:GetAttribute("EffectiveIngredientValue") :: number?) or definition.Value)
     local valueY = nameY + Style.NameHeight + Style.RowSpacing
     formatText(value, valueY, Style.ValueHeight, Style.ValueTextSize, Style.ValueColor, Style.StrokeColor)
     value.Parent = gui
@@ -102,6 +112,9 @@ function Presentation.Create(
         palette.StrokeColor
     )
     local function update()
+        title.Text = rarityText()
+        value.Text =
+            MoneyFormat.Compact((object:GetAttribute("EffectiveIngredientValue") :: number?) or definition.Value)
         gui.StudsOffsetWorldSpace = Presentation.Top(object) - anchor.Position + Style.PromptStudsOffset
     end
     update()

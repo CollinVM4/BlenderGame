@@ -1,6 +1,6 @@
 --!strict
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.IngredientCarry)
-local Ingredients = require(game:GetService("ReplicatedStorage").Shared.Constants.Ingredients)
+local Item = require(game:GetService("ReplicatedStorage").Shared.IngredientItem)
 local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Presentation = {}
@@ -38,19 +38,21 @@ function Presentation.RefreshValue(player: Player, stack: { any })
     local total, height = 0, 0
     for _, item in stack do
         if item.Smoothie then
-            for _, id in item.Smoothie.Ingredients do
-                total += Ingredients[id].Value
-            end
+            total += Item.GetSmoothieValue(item.Smoothie, workspace:GetServerTimeNow())
         else
-            total += Ingredients[item.Id].Value
+            total += Item.GetIngredientValue(item.Item, workspace:GetServerTimeNow())
             height += item.Height
         end
     end
     local gui = if previous then previous :: BillboardGui else Instance.new("BillboardGui")
+    local staleDetails = gui:FindFirstChild("RipenessDetails")
+    if staleDetails then
+        staleDetails:Destroy()
+    end
+    gui.Size = UDim2.fromOffset(180, 44)
     if not previous then
         gui.Name = "CarryValue"
         gui.Adornee = root
-        gui.Size = UDim2.fromOffset(180, 44)
         gui.AlwaysOnTop = true
         gui.ResetOnSpawn = false
         gui.MaxDistance = 100
@@ -71,6 +73,7 @@ function Presentation.RefreshValue(player: Player, stack: { any })
     local top = headTop(root) + math.max(0, Config.HeightAboveHead) + math.max(0, height - Config.StackGap)
     gui.StudsOffsetWorldSpace = Vector3.new(0, top + 1, -Config.ForwardOffset)
     local label = gui:FindFirstChild("Value") :: TextLabel
+    label.Size = UDim2.fromScale(1, 1)
     label.Text = MoneyFormat.Compact(total)
 end
 

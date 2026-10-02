@@ -4,6 +4,7 @@ local Economy = require(Shared.Constants.Economy)
 local Upgrades = require(Shared.Constants.Upgrades)
 local BatConfig = require(Shared.Constants.BatConfig)
 local Types = require(Shared.Types)
+local Item = require(Shared.IngredientItem)
 local WorldUtil = require(script.Parent.WorldUtil)
 local CarryPresentation = require(script.Parent.IngredientCarryPresentation)
 local IngredientThrow = require(script.Parent.IngredientThrow)
@@ -13,13 +14,14 @@ local SmoothieGeometry = require(script.Parent.SmoothieGeometry)
 local InventoryService = {}
 local MovementService = require(script.Parent.MovementService)
 local deps: any
-local carried: { [Player]: { [string]: number? } } = {}
+local carried: { [Player]: { [string]: { Types.IngredientItem } } } = {}
 local stashes: { [Player]: { [number]: Types.StashSlot } } = {}
 local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
 local StashConfig = Economy.NormalStash
 local StashSlots = require(script.Parent.StashSlots)
+local StashValue = require(script.Parent.StashValue)
 local function ingredientSlotCapacity(protected: boolean): number
     return if protected then 1 else StashConfig.IngredientCapacity
 end
@@ -33,6 +35,7 @@ type StashIntent = {
 }
 local stashIntents: { [Player]: StashIntent } = {}
 type HeldItem = {
+    Item: Types.IngredientItem?,
     AnnouncementOwnership: Types.AnnouncementOwnership?,
     Tool: Tool,
     CarryItemId: number,
@@ -175,7 +178,7 @@ end
 -- as a global inventory-transfer policy: stash acquisition must separately validate
 -- its server-owned slot/protection state before granting a unit or held reservation.
 -- No caller-supplied owner, slot attributes, or "allow stealing" flag grants rights here.
-local function getLoosePickupRecord(player: Player, object: Instance): { Id: string }?
+local function getLoosePickupRecord(player: Player, object: Instance): { Id: string, Item: Types.IngredientItem }?
     local record = deps.IngredientService.GetRecord(object)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
@@ -221,6 +224,7 @@ local function releaseHeld(
         end
         local at = IngredientThrow.Origin(root)
         local object = deps.IngredientService.Spawn(record.Id :: string, at, nil, true, {
+            Item = record.Item,
             BeforePublish = function(prepared: Instance)
                 if deps.AnnouncementService then
                     deps.AnnouncementService.TrackWorld(prepared, record.AnnouncementOwnership)
@@ -251,7 +255,7 @@ local function releaseHeld(
         else at * offset
     local object = if record.Smoothie
         then deps.SmoothieWorldItemService.Spawn(record.Smoothie, at * offset)
-        else deps.IngredientService.Spawn(record.Id :: string, spawnAt, nil, true)
+        else deps.IngredientService.Spawn(record.Id :: string, spawnAt, nil, true, { Item = record.Item })
     if not object then
         record.Releasing = false
         return nil
@@ -356,7 +360,8 @@ local function equipVisual(
     visual: Instance,
     smoothie: Types.SmoothieData?,
     onCommitted: (() -> ())?,
-    announcementOwnership: Types.AnnouncementOwnership?
+    announcementOwnership: Types.AnnouncementOwnership?,
+    ingredientItem: Types.IngredientItem?
 ): boolean
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -405,6 +410,7 @@ local function equipVisual(
     end
     local reservation: HeldItem = {
         AnnouncementOwnership = announcementOwnership,
+        Item = ingredientItem,
         VisualHost = visualHost,
         Tool = tool,
         CarryItemId = nextCarryItemId,
@@ -501,6 +507,25 @@ function InventoryService.GrantSmoothie(player: Player, data: Types.SmoothieData
     return visual ~= nil and equipVisual(player, nil, visual, data)
 end
 
+-- Server-only direct reward path. Use the same item identity, geometry and held
+-- stack as a world pickup, without publishing an unclaimed object to Workspace.
+function InventoryService.GrantIngredient(player: Player, id: string): boolean
+    if
+        not MovementService.CanPerformGameplayAction(player)
+        or not carried[player]
+        or not deps.IngredientService.GetDefinition(id)
+        or InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
+    then
+        return false
+    end
+    local visual = deps.IngredientService.CreateVisual(id)
+    if not visual then
+        return false
+    end
+    local item = Item.New(id, game:GetService("HttpService"):GenerateGUID(false))
+    return equipVisual(player, id, visual, nil, nil, nil, item)
+end
+
 -- Separate loose smoothie path; replicated contents never enter this transaction.
 function InventoryService.CarryWorldSmoothie(player: Player, object: Instance): boolean
     if not MovementService.CanPerformGameplayAction(player) then
@@ -583,18 +608,46 @@ function InventoryService.CarryWorldItem(player: Player, object: Instance): bool
         if pickupPosition then
             GameplaySfx.Emit("IngredientPickup", pickupPosition)
         end
-    end, ownership)
+    end, ownership, record.Item)
     if equipped and deps.AnnouncementService then
         deps.AnnouncementService.Acquired(player, ownership)
     end
     return equipped
 end
 
+local ripenessConnection: RBXScriptConnection? = nil
 function InventoryService.Init(services)
     deps = services
+    if ripenessConnection then
+        ripenessConnection:Disconnect()
+    end
+    local elapsed = 0
+    ripenessConnection = game:GetService("RunService").Heartbeat:Connect(function(dt)
+        elapsed += dt
+        if elapsed < 1 then
+            return
+        end
+        elapsed = 0
+        local now = workspace:GetServerTimeNow()
+        for owner, slots in stashes do
+            local changed = false
+            for _, slot in slots do
+                for _, unit in slot.Ingredients do
+                    if not unit.IsRipe and Item.IsRipe(unit, now) then
+                        Item.Resolve(unit, now)
+                        changed = true
+                    end
+                end
+            end
+            if changed then
+                stashChanged:Fire(owner)
+            end
+        end
+    end)
 end
 function InventoryService.AddPlayer(player: Player)
     stashIntents[player] = nil
+    player:SetAttribute("RipenessTutorialShown", false)
     carried[player] = {}
     syncHeld(player)
     stashes[player] = {}
@@ -671,37 +724,59 @@ function InventoryService.CleanupSession(sessionId: string)
 end
 function InventoryService.GetSnapshot(player: Player)
     local stash = {}
+    local promoted = false
+    local now = workspace:GetServerTimeNow()
     local source = stashes[player]
     if source then
         for index, stack in source do
             if index > InventoryService.GetStashLayout(player).Slots then
                 continue
             end
+            for _, item in stack.Ingredients do
+                if not item.IsRipe and Item.IsRipe(item, now) then
+                    Item.Resolve(item, now)
+                    promoted = true
+                end
+            end
             stash[index] = table.clone(stack)
+            stash[index].Value = StashValue.Calculate(stack)
             stash[index].Ingredients = {}
             for _, item in stack.Ingredients do
-                table.insert(stash[index].Ingredients, { IngredientId = item.IngredientId })
+                Item.Resolve(item, workspace:GetServerTimeNow())
+                local copy = table.clone(item)
+                copy.AnnouncementOwnership = nil
+                table.insert(stash[index].Ingredients, copy)
             end
             if stack.Smoothie then
                 stash[index].Smoothie = SmoothieItem.Copy(stack.Smoothie)
             end
         end
     end
+    if promoted then
+        stashChanged:Fire(player)
+    end
+    local counts = {}
+    local reservations: { [string]: { Types.IngredientItem } } = carried[player] or {}
+    for id, units in reservations do
+        counts[id] = #units
+    end
     return {
-        Carried = table.clone(carried[player] or {}),
+        Carried = counts,
         Stash = stash,
         Layout = InventoryService.GetStashLayout(player),
     }
 end
-local function reserveUnit(player: Player, id: string): boolean
+local function reserveUnit(player: Player, id: string, item: Types.IngredientItem?): boolean
     if not carried[player] or not deps.IngredientService.GetDefinition(id) then
         return false
     end
-    local count = carried[player][id] or 0
+    local units = carried[player][id] or {}
+    local count = #units
     if count >= InventoryService.GetStackCap(player) then
         return false
     end
-    carried[player][id] = count + 1
+    table.insert(units, item or Item.New(id, game:GetService("HttpService"):GenerateGUID(false)))
+    carried[player][id] = units
     return true
 end
 function InventoryService.AddUnit(player: Player, id: string): boolean
@@ -713,13 +788,16 @@ function InventoryService.AddUnit(player: Player, id: string): boolean
     end
     return true
 end
-function InventoryService.RemoveUnit(player: Player, id: string): boolean
-    local count = carried[player] and carried[player][id] or 0
-    if count < 1 then
-        return false
+function InventoryService.RemoveUnit(player: Player, id: string): (boolean, Types.IngredientItem?)
+    local units = carried[player] and carried[player][id]
+    if not units or #units == 0 then
+        return false, nil
     end
-    carried[player][id] = if count == 1 then nil else count - 1
-    return true
+    local unit = table.remove(units)
+    if #units == 0 then
+        carried[player][id] = nil
+    end
+    return true, unit
 end
 claimWorldItem = function(player: Player, object: Instance): boolean
     if not MovementService.CanPerformGameplayAction(player) then
@@ -729,7 +807,7 @@ claimWorldItem = function(player: Player, object: Instance): boolean
     if not record then
         return false
     end
-    if not reserveUnit(player, record.Id) then
+    if not reserveUnit(player, record.Id, record.Item) then
         return false
     end
     if not deps.IngredientService.Consume(object, true) then
@@ -762,14 +840,17 @@ function InventoryService.ReleaseUnit(player: Player, id: string): Instance?
         or not humanoid
         or humanoid.Health <= 0
         or now < (releaseAt[player] or 0)
-        or not InventoryService.RemoveUnit(player, id)
     then
         return nil
     end
+    local removed, unit = InventoryService.RemoveUnit(player, id)
+    if not removed then
+        return nil
+    end
     releaseAt[player] = now + 0.25
-    local object = deps.IngredientService.Spawn(id, root.CFrame * CFrame.new(0, 2, -3), player)
+    local object = deps.IngredientService.Spawn(id, root.CFrame * CFrame.new(0, 2, -3), player, nil, { Item = unit })
     if not object then
-        InventoryService.AddUnit(player, id)
+        reserveUnit(player, id, unit)
     end
     local part = WorldUtil.Part(object)
     if part then
@@ -789,10 +870,10 @@ function InventoryService.DropOne(player: Player): Instance?
     if not id then
         return nil
     end
-    InventoryService.RemoveUnit(player, id)
-    local object = deps.IngredientService.Spawn(id, root.CFrame * CFrame.new(0, 1, -3), nil)
+    local _, unit = InventoryService.RemoveUnit(player, id)
+    local object = deps.IngredientService.Spawn(id, root.CFrame * CFrame.new(0, 1, -3), nil, nil, { Item = unit })
     if not object then
-        InventoryService.AddUnit(player, id)
+        reserveUnit(player, id, unit)
     end
     return object
 end
@@ -885,15 +966,18 @@ local function depositSelected(player: Player, itemType: string, key: string, in
             return false
         end
         slot.Smoothie = nil
-        table.insert(
-            slot.Ingredients,
-            { IngredientId = record.Id :: string, AnnouncementOwnership = record.AnnouncementOwnership }
-        )
+        local unit = assert(record.Item)
+        unit.AnnouncementOwnership = record.AnnouncementOwnership
+        Item.EnterStash(unit, workspace:GetServerTimeNow())
+        table.insert(slot.Ingredients, unit)
         slot.IngredientId = record.Id
         slot.Count += 1
         slot.Capacity = capacity
     end
     slot.ItemType = record.ItemType
+    if record.ItemType == "Ingredient" and player:GetAttribute("RipenessTutorialShown") ~= true then
+        player:SetAttribute("RipenessTutorialShown", true)
+    end
     removeAt(player, table.find(held[player], record))
     stashChanged:Fire(owner)
     return true
@@ -914,7 +998,19 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
         return false
     end
     local slot = stashes[owner][index]
-    local id = slot.IngredientId
+    local now = workspace:GetServerTimeNow()
+    local unitIndex = 1
+    for i, candidate in slot.Ingredients do
+        Item.Resolve(candidate, now)
+        if
+            Item.GetStoredRipenessSeconds(candidate, now)
+            > Item.GetStoredRipenessSeconds(slot.Ingredients[unitIndex], now)
+        then
+            unitIndex = i
+        end
+    end
+    local unit = slot.Ingredients[unitIndex]
+    local id = if unit then unit.IngredientId else slot.IngredientId
     local smoothie = if slot.Smoothie then SmoothieItem.Copy(slot.Smoothie) else nil
     if slot.Count < 1 or (not id and not smoothie) then
         return false
@@ -924,12 +1020,11 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
         return false
     end
     -- Synchronous reservation; restore the exact record list on failed equip.
-    local unit = slot.Ingredients[#slot.Ingredients]
     local ownership = if unit then unit.AnnouncementOwnership else nil
     local previous = table.clone(slot)
     slot.Ingredients = table.clone(slot.Ingredients)
     if not smoothie then
-        table.remove(slot.Ingredients)
+        table.remove(slot.Ingredients, unitIndex)
     end
     slot.Count -= 1
     if slot.Count == 0 then
@@ -937,7 +1032,11 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
     else
         slot.IngredientId = slot.Ingredients[#slot.Ingredients].IngredientId
     end
-    if not equipVisual(player, id, visual, smoothie, nil, ownership) then
+    local taken = if unit then table.clone(unit) else nil
+    if taken then
+        Item.ExitStash(taken, now)
+    end
+    if not equipVisual(player, id, visual, smoothie, nil, ownership, taken) then
         stashes[owner][index] = previous
         return false
     end

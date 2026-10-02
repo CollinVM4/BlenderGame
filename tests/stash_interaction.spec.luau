@@ -11,6 +11,7 @@ do
         Attach = function()
             return frame(), function() end, 1
         end,
+        RefreshValue = function() end,
     }
     local inventory = loadModule("InventoryService")
     local records = {}
@@ -90,9 +91,12 @@ do
         inventory.AddPlayer(p)
         return p
     end
-    local function carry(p, id)
+    local function carry(p, id, ripeValue)
         local object = instance("Part")
-        records[object] = { Id = id or "Strawberry", Claimable = true }
+        local ingredientId = id or "Strawberry"
+        local item = loadModule("IngredientItem").New(ingredientId, tostring(#allInstances))
+        item.IsRipe = ripeValue ~= nil
+        records[object] = { Id = ingredientId, Claimable = true, Item = item }
         setup(inventory.CarryWorldItem(p, object), "fixture pickup")
     end
     local function seed(p, index, amount, id)
@@ -109,13 +113,37 @@ do
         return inventory.GetSnapshot(p).Stash[index or 3].Count
     end
 
+    local valueOwner, valueThief = player(), player()
+    seed(valueOwner, 3, 1, "Mango")
+    carry(valueOwner, "Banana")
+    setup(inventory.Deposit(valueOwner, "Banana", 3), "store Banana beside Mango")
+    check(inventory.GetSnapshot(valueOwner).Stash[3].Value == 22000, "STORE rebuilds $20K plus $2K")
+    check(inventory.Withdraw(valueOwner, 3), "take one item from mixed slot")
+    check(inventory.GetSnapshot(valueOwner).Stash[3].Value == 2000, "TAKE rebuilds from remaining Banana")
+    inventory.ClearHeld(valueOwner)
+    carry(valueOwner, "Mango")
+    setup(inventory.Deposit(valueOwner, "Mango", 3), "restore mixed slot for theft")
+    check(inventory.Steal(valueThief, valueOwner, 3), "steal from mixed slot")
+    check(inventory.GetSnapshot(valueOwner).Stash[3].Value == 20000, "steal rebuilds owner's remaining value")
+    local ripeOwner = player()
+    carry(ripeOwner, "Strawberry", 3750)
+    setup(inventory.Deposit(ripeOwner, "Strawberry", 3), "store ripe effective value")
+    seed(ripeOwner, 3, 2, "Strawberry")
+    check(inventory.GetSnapshot(ripeOwner).Stash[3].Value == 9750, "same-ID items retain separate effective values")
+
     local protectedOwner = player()
     carry(protectedOwner, "Milk")
     check(inventory.Deposit(protectedOwner, "Milk", 1), "empty protected slot accepts one ingredient")
-    check(stored(protectedOwner, 1) == 1 and inventory.GetSnapshot(protectedOwner).Stash[1].Capacity == 1, "protected ingredient capacity is one")
+    check(
+        stored(protectedOwner, 1) == 1 and inventory.GetSnapshot(protectedOwner).Stash[1].Capacity == 1,
+        "protected ingredient capacity is one"
+    )
     carry(protectedOwner, "Banana")
     check(not inventory.Deposit(protectedOwner, "Banana", 1), "occupied protected slot rejects another ingredient")
-    check(stored(protectedOwner, 1) == 1 and inventory.GetCarryCount(protectedOwner) == 1, "rejected deposit retains carried ingredient")
+    check(
+        stored(protectedOwner, 1) == 1 and inventory.GetCarryCount(protectedOwner) == 1,
+        "rejected deposit retains carried ingredient"
+    )
     check(inventory.Deposit(protectedOwner, "Banana", 3), "unprotected slot accepts ingredient")
     check(inventory.GetSnapshot(protectedOwner).Stash[3].Capacity == 3, "unprotected stack capacity remains three")
 
@@ -152,7 +180,7 @@ do
     now += 1.11
     check(press(p) and stored(p) == 1, "E: timeout reselects TAKE")
     -- The idle window slides after each successful press, rather than starting once.
-    now += 0.6
+    now += 0.4
     check(press(p) and stored(p) == 0, "E: refreshed burst still takes after total duration exceeds timeout")
 
     p = player()
@@ -220,9 +248,9 @@ do
         mixed.Ingredients[1].IngredientId == "Strawberry" and mixed.Ingredients[3].IngredientId == "Banana",
         "mixed ingredients retain individual records"
     )
-    mixed.Ingredients[3].IngredientId = "Milk"
+    mixed.Ingredients[1].IngredientId = "Milk"
     now += 1.2
-    check(press(p) and inventory.GetHeldIngredientId(p) == "Banana", "snapshot mutation cannot alter stored record")
+    check(press(p) and inventory.GetHeldIngredientId(p) == "Strawberry", "snapshot mutation cannot alter stored record")
 
     local owner, enemy, secondEnemy, teammate = player(), player(), player(), player()
     fixtures[teammate], sessions[teammate] = fixtures[owner], sessions[owner]
@@ -301,6 +329,9 @@ do
     seed(p, 3, 3)
     local fixture = fixtures[p]
     fixture.Parent = workspaceFake
+    local slot = fixture:GetChildren()[3]
+    local origin = instance("Attachment")
+    origin.Name, origin.Parent = "StashPromptOrigin", slot
     local cleanup
     cache.WorldUtil.BindTag = function(tag, bind)
         check(tag == "PlayerStash", "component binds stash tag")
@@ -312,7 +343,7 @@ do
         setmetatable({
             script = {
                 Parent = {
-                    Parent = { Services = { WorldUtil = "WorldUtil" } },
+                    Parent = { Services = { WorldUtil = "WorldUtil", StashSlots = "StashSlots" } },
                     StashPresentation = "TestStashPresentation",
                 },
             },
@@ -328,12 +359,12 @@ do
         },
         IngredientService = {},
     })
-    local prompt = fixture:GetChildren()[3]:FindFirstChild("StashPrompt")
+    local prompt = slot:FindFirstChild("StashPrompt")
     check(
-        prompt.Style == Enum.ProximityPromptStyle.Custom
+        prompt.Style == env.Enum.ProximityPromptStyle.Custom
             and prompt:GetAttribute("InteractionOrigin") == "StashPromptOrigin"
-            and fixture:GetChildren()[3]:FindFirstChild("StashPromptOrigin") ~= nil,
-        "stash prompt uses shared custom presentation"
+            and slot:FindFirstChild("StashPromptOrigin") == origin,
+        "stash prompt uses authored origin for shared custom presentation"
     )
     for _ = 1, 3 do
         now += 0.1
@@ -341,5 +372,19 @@ do
     end
     check(inventory.GetCarryCount(p) == 3 and stored(p) == 0, "actual prompt preserves TAKE for three presses")
     cleanup()
+    check(slot:FindFirstChild("StashPromptOrigin") == origin, "component cleanup preserves authored origin")
+    local promoted = false
+    local promotionConnection = inventory.StashChanged:Connect(function(owner)
+        if owner == ripeOwner then
+            promoted = true
+        end
+    end)
+    now += 120
+    heartbeat:Fire(1)
+    check(
+        promoted and inventory.GetSnapshot(ripeOwner).Stash[3].Value == 11250,
+        "ripeness promotion refreshes slot total"
+    )
+    promotionConnection:Disconnect()
     print("PASS stash interaction: " .. (count - before) .. " checks")
 end

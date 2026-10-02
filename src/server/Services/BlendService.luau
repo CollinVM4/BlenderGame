@@ -3,6 +3,7 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local HttpService = game:GetService("HttpService")
 local Economy = require(Shared.Constants.Economy)
 local Types = require(Shared.Types)
+local Item = require(Shared.IngredientItem)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
 local SmoothieItem = require(script.Parent.SmoothieItem)
@@ -42,6 +43,7 @@ local function batchColor(ids: { string }): Color3?
 end
 
 type Batch = {
+    IngredientItems: { Types.IngredientItem },
     NotificationToken: number,
     State: Types.BlendState,
     Ingredients: { string },
@@ -101,6 +103,7 @@ local function copyResult(result: Types.Smoothie): Types.Smoothie
     return {
         BlendId = result.BlendId,
         Ingredients = table.clone(result.Ingredients),
+        IngredientItems = Item.CopyAll(result.IngredientItems),
         Tags = table.clone(result.Tags),
         Color = result.Color,
         Discovery = result.Discovery,
@@ -118,6 +121,7 @@ function BlendService.Reset(player: Player)
         NotificationToken = nextNotificationToken,
         State = "EMPTY",
         Ingredients = {},
+        IngredientItems = {},
         Progress = 0,
         Result = nil,
         NextProgressPresentationAt = 0,
@@ -187,6 +191,7 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
         return false
     end
     table.insert(batch.Ingredients, id)
+    table.insert(batch.IngredientItems, record.Item)
     Film.Log("Blend", string.format("%s accepted (%d/3)", id, #batch.Ingredients))
     batch.State = if #batch.Ingredients == Economy.MaxIngredients then "READY" else "LOADING"
     publish(player)
@@ -211,7 +216,7 @@ function BlendService.Ready(player: Player): boolean
     Film.Log("Blend", "READY")
     return true
 end
-local function makeResult(ids: { string }): Types.Smoothie
+local function makeResult(ids: { string }, items: { Types.IngredientItem }): Types.Smoothie
     local tags = {}
     for _, id in ids do
         local definition = deps.IngredientService.GetDefinition(id)
@@ -224,6 +229,7 @@ local function makeResult(ids: { string }): Types.Smoothie
     return {
         BlendId = HttpService:GenerateGUID(false),
         Ingredients = table.clone(ids),
+        IngredientItems = Item.CopyAll(items),
         Tags = tags,
         Color = batchColor(ids) :: Color3,
         -- Retained for compatibility with existing smoothie consumers.
@@ -297,7 +303,7 @@ local function addProgress(player: Player, wheel: BasePart, delta: number, conte
     end
     if batch.Progress >= Economy.RequiredProgress then
         batch.State = "COMPLETE"
-        local result = makeResult(batch.Ingredients)
+        local result = makeResult(batch.Ingredients, batch.IngredientItems)
         batch.Result = result
         Film.Emit(player, "BlendCompleted", {
             BlendId = result.BlendId,
@@ -349,6 +355,7 @@ function BlendService.Dispense(player: Player, button: BasePart, context: any): 
     local data: Types.SmoothieData = {
         BlendId = batch.Result.BlendId :: string,
         Ingredients = table.clone(batch.Result.Ingredients),
+        IngredientItems = Item.CopyAll(batch.Result.IngredientItems),
     }
     -- Grant is synchronous. Guard signals from equip/presentation against a
     -- reentrant dispense of this same batch, including while it is still COMPLETE.

@@ -32,6 +32,7 @@ return {
     SlapRange = 8,
     StunSeconds = 0.5,
     MarketRespawnSeconds = 12,
-    WorldItemLifetime = 240,
+    WorldIngredientCleanupInterval = 240,
+    WorldIngredientCleanupWarningSeconds = 60,
     RarityWeights = rarityWeights,
 }

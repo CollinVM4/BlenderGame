@@ -85,11 +85,24 @@ end
 show()
 check(#playerGui:GetChildren() == 1, "idempotent startup gives one view")
 check(
-    label("Rarity").Text == "COMMON" and label("IngredientName").Text == "Strawberry",
+    string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
+        and string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil
+        and label("IngredientName").Text == "Strawberry",
     "registered Strawberry definition"
 )
 check(label("Action").Text == "[F]", "actual keyboard key, no pickup action or income text")
 check(label("IngredientValue").Text == "$3K", "common pickup shows definition value")
+check(label("Rarity").RichText and string.find(label("Rarity").Text, "•", 1, true) ~= nil, "rarity and freshness share one line")
+item:SetAttribute("IsRipe", true)
+item:SetAttribute("EffectiveIngredientValue", 3750)
+services.RunService.RenderStepped:Fire()
+check(string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
+    and string.find(label("Rarity").Text, "Ripe", 1, true) ~= nil, "ripe world item keeps rarity and warm state")
+check(label("IngredientValue").Text == "$4K", "ripe Strawberry uses replicated effective value and shared formatter")
+item:SetAttribute("IsRipe", false)
+item:SetAttribute("EffectiveIngredientValue", nil)
+services.RunService.RenderStepped:Fire()
+check(string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil, "fresh state restores on metadata change")
 check(
     label("IngredientValue").TextColor3 == style.ValueColor
         and label("IngredientValue").Font == label("IngredientName").Font
@@ -103,7 +116,9 @@ check(old.Destroyed and #playerGui:GetChildren() == 1, "repeated shown cleans pr
 item:SetAttribute("IngredientId", "Steak")
 show()
 check(
-    label("Rarity").Text == "RARE" and label("IngredientName").Text == "Steak",
+    string.find(label("Rarity").Text, "RARE", 1, true) ~= nil
+        and string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil
+        and label("IngredientName").Text == "Steak",
     "Steak retains its rarity and name card"
 )
 check(
@@ -126,8 +141,12 @@ for _, id in { "Crab", "Dragon_Fruit", "Mystery" } do
     local rarity = definitions[id].Rarity
     item:SetAttribute("IngredientId", id)
     services.RunService.RenderStepped:Fire()
-    check(label("Rarity").Text == string.upper(rarity), "rarity " .. rarity)
+    check(string.find(label("Rarity").Text, string.upper(rarity), 1, true) ~= nil, "rarity " .. rarity)
     check(label("Rarity").TextColor3 == style.RarityStyles[rarity].TextColor, "central palette " .. rarity)
+    item:SetAttribute("IsRipe", true)
+    services.RunService.RenderStepped:Fire()
+    check(string.find(label("Rarity").Text, "Ripe", 1, true) ~= nil, "ripe state for " .. rarity)
+    item:SetAttribute("IsRipe", false)
 end
 item:SetAttribute("IngredientId", "Dragon_Fruit")
 show()
@@ -144,7 +163,8 @@ definitions.Future = { Id = "Future", DisplayName = "Future Fruit", Value = 1200
 item:SetAttribute("IngredientId", "Future")
 show()
 check(
-    label("Rarity").Text == "COMMON" and label("IngredientName").Text == "Future Fruit",
+    string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
+        and label("IngredientName").Text == "Future Fruit",
     "missing rarity and explicit display name"
 )
 check(label("IngredientValue").Text == "$12K", "individual definition value is used without rarity pricing")

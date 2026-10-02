@@ -31,3 +31,20 @@ check(
     table.remove(queue, 1) == acquired and table.remove(queue, 1) == second and table.remove(queue, 1) == ordinary,
     "pending priority is stable FIFO within each priority"
 )
+format.Enqueue(queue, acquired)
+check(not format.ShouldInterrupt(queue), "ordinary mystery announcements preserve the visible hold")
+local warning = format.Build({
+    Type = "ServerAnnouncement",
+    Text = "LOOSE INGREDIENTS CLEAR IN 1 MINUTE!",
+    Immediate = true,
+    Priority = 100,
+})
+for _ = 1, 20 do
+    format.Enqueue(queue, second)
+end
+format.Enqueue(queue, warning)
+check(
+    format.ShouldInterrupt(queue) and table.remove(queue, 1) == warning,
+    "cleanup warning interrupts hold and bypasses backlog"
+)
+check(not format.ShouldInterrupt(queue) and queue[1] == acquired, "pending mystery notices retain order after warning")

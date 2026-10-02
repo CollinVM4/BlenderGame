@@ -2,6 +2,7 @@
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Types = require(Shared.Types)
 local Ingredients = require(Shared.Constants.Ingredients)
+local Item = require(Shared.IngredientItem)
 local SmoothieItem = {}
 
 function SmoothieItem.Valid(data: Types.SmoothieData): boolean
@@ -24,10 +25,14 @@ function SmoothieItem.Valid(data: Types.SmoothieData): boolean
 end
 
 function SmoothieItem.Copy(data: Types.SmoothieData): Types.SmoothieData
-    return { BlendId = data.BlendId, Ingredients = table.clone(data.Ingredients) }
+    return {
+        BlendId = data.BlendId,
+        Ingredients = table.clone(data.Ingredients),
+        IngredientItems = Item.CopyAll(data.IngredientItems),
+    }
 end
 
--- Compatibility result for existing customer/film consumers. Inventory only stores IDs.
+-- IDs remain compatible with grading; physical unit metadata survives cup transfers.
 function SmoothieItem.Result(data: Types.SmoothieData): Types.Smoothie
     local sum = Vector3.zero
     local tags = {}
@@ -45,6 +50,7 @@ function SmoothieItem.Result(data: Types.SmoothieData): Types.Smoothie
     return {
         BlendId = data.BlendId,
         Ingredients = table.clone(data.Ingredients),
+        IngredientItems = Item.CopyAll(data.IngredientItems),
         Tags = tags,
         Color = Color3.new(sum.X, sum.Y, sum.Z),
         Discovery = nil,

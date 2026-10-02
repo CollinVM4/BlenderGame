@@ -128,8 +128,7 @@ end
 
 function CustomerService.ValidateRequest(result: Types.Smoothie, request: CustomerRequests.Request): (boolean, string)
     local evaluation = OrderEvaluation.Evaluate(result, request)
-    return
-        evaluation.IsValid and evaluation.RequirementsCovered and not evaluation.RestrictionViolated,
+    return evaluation.IsValid and evaluation.RequirementsCovered and not evaluation.RestrictionViolated,
         evaluation.Reason
 end
 
@@ -718,29 +717,21 @@ function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): nu
 end
 
 -- Called only with the consumed server cup and the customer's assigned request.
+local IngredientItem = require(game:GetService("ReplicatedStorage").Shared.IngredientItem)
 function CustomerService.CalculateOrderPayout(
     player: Player,
     result: Types.Smoothie,
     request: CustomerRequests.Request,
     evaluation: OrderEvaluation.Evaluation?
 ): (number, number)
-    local ingredientValue = 0
-    for _, id in result.Ingredients do
-        local definition = Ingredients[id]
-        if definition then
-            ingredientValue += definition.Value
-        end
-    end
+    local ingredientValue = IngredientItem.GetSmoothieValue(result, workspace:GetServerTimeNow())
     evaluation = evaluation or OrderEvaluation.Evaluate(result, request)
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
     local gradeMultiplier = if evaluation.IsWildcard
         then 1
         else Economy.GradeMultiplier[evaluation.Grade :: Types.Grade]
-    local amount = (ingredientValue + request.BasePayout)
-        * gradeMultiplier
-        * upgrade
-        * entitlement
+    local amount = (ingredientValue + request.BasePayout) * gradeMultiplier * upgrade * entitlement
     return math.round(amount), ingredientValue
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
@@ -1371,9 +1362,15 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     local response = if evaluation.IsWildcard
         then record.Request.GoodResponse
         else Presentation.Response(record.Request, grade :: Types.Grade)
-    local reaction = record.ForcedReaction or (if evaluation.IsWildcard or grade == "A" or grade == "B"
-        then "Smile"
-        elseif grade == "C" then "Shudder" else "Disgust")
+    local reaction = record.ForcedReaction
+        or (
+            if evaluation.IsWildcard
+                    or grade == "A"
+                    or grade == "B"
+                then "Smile"
+                elseif grade == "C" then "Shudder"
+                else "Disgust"
+        )
     local payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, evaluation)
     deps.TycoonService.CreditTransaction(transaction, payout)
     if deps.AnnouncementService then

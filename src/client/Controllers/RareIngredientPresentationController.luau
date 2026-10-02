@@ -77,7 +77,10 @@ function Controller.Init()
                         cue:Stop()
                     end)
                 end
-                task.wait(0.24 + message.Duration)
+                local holdUntil = os.clock() + 0.24 + message.Duration
+                repeat
+                    task.wait(0.1)
+                until os.clock() >= holdUntil or Format.ShouldInterrupt(queue)
                 local exit = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
                 TweenService
                     :Create(banner, exit, { Position = resting - UDim2.fromOffset(0, 10), TextTransparency = 1 })

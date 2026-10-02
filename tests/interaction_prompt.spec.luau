@@ -122,21 +122,38 @@ local stashDisplay = uiInstance("Folder", "StashDisplay", originPart)
 local stashValue = uiInstance("BillboardGui", "SlotValue", stashDisplay)
 stashValue.Adornee = originPart
 stashValue.StudsOffsetWorldSpace = { X = 0, Y = 5, Z = 0 }
-origin.Parent = originPart
+local stashOrigin = uiInstance("Attachment", "StashPromptOrigin", originPart)
 prompt:SetAttribute("PlayerStashPrompt", true)
+prompt:SetAttribute("InteractionOrigin", "StashPromptOrigin")
+prompt.ActionText = "STORE"
 show()
 check(
     gui():IsA("BillboardGui")
-        and gui().Adornee == stashValue.Adornee
-        and gui().StudsOffsetWorldSpace == stashValue.StudsOffsetWorldSpace
-        and gui().SizeOffset.X == -0.8
+        and gui().Adornee == stashOrigin
+        and gui().StudsOffsetWorldSpace == nil
+        and gui().StudsOffset == nil
+        and gui().SizeOffset == nil
         and gui().Size.X.Offset == 300
         and gui().Size.Y.Offset == 56
+        and gui().Size.X.Scale == 0
+        and gui().Size.Y.Scale == 0
         and not label().TextScaled,
-    "stash prompt uses value world anchor and fixed pixel offset"
+    "stash prompt uses authored attachment with fixed pixel size and no positioning offsets"
 )
+check(label().Text == "[E] STORE", "stash store retains key and action")
 stashDisplay:Destroy()
+prompt.ActionText = "TAKE"
+prompt:GetPropertyChangedSignal("ActionText"):Fire()
+check(gui().Adornee == stashOrigin and label().Text == "[E] TAKE", "stash take needs no value display")
+stashOrigin.Parent = nil
+show()
+check(gui() == nil and prompt.Enabled, "missing stash origin hides only the custom view")
+stashOrigin.Parent = originPart
+workspaceFake.DescendantAdded:Fire(stashOrigin)
+check(gui().Adornee == stashOrigin, "late stash origin restores the anchored view")
 prompt:SetAttribute("PlayerStashPrompt", nil)
+prompt:SetAttribute("InteractionOrigin", "DispenserTextOrigin")
+prompt.ActionText = "Dispense smoothie"
 show()
 local old = gui()
 show()
