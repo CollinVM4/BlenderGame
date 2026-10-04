@@ -37,6 +37,8 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "muncher": ("integration", ("fixtures/smoothie.luau", "muncher.spec.luau")),
+    "muncher-presentation": ("presentation", ("muncher_presentation.spec.luau",)),
     "ingredient-cleanup": ("integration", ("fixtures/smoothie.luau", "ingredient_cleanup.spec.luau")),
     "jacked-noob": ("state", ("jacked_noob.spec.luau",)),
     "jacked-noob-inventory": ("integration", ("fixtures/smoothie.luau", "jacked_noob_inventory.spec.luau")),
@@ -141,6 +143,8 @@ for directory in ("src/shared/Constants", "src/server/Services"):
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["MuncherPresentation"] = (ROOT / "src/server/Components/MuncherPresentation.luau").read_text(encoding="utf-8")
+sources["MuncherComponent"] = (ROOT / "src/server/Components/Muncher.luau").read_text(encoding="utf-8")
 sources["AnnouncementFormat"] = (ROOT / "src/shared/AnnouncementFormat.luau").read_text(encoding="utf-8")
 sources["IngredientName"] = (ROOT / "src/shared/IngredientName.luau").read_text(encoding="utf-8")
 sources["IngredientItem"] = (ROOT / "src/shared/IngredientItem.luau").read_text(encoding="utf-8")

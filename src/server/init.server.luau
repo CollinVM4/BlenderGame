@@ -21,6 +21,7 @@ local services: { [string]: any } = {
     SmoothieWorldItemService = require(script.Services.SmoothieWorldItemService),
     InventoryService = require(script.Services.InventoryService),
     BlendService = require(script.Services.BlendService),
+    MuncherService = require(script.Services.MuncherService),
     CustomerService = require(script.Services.CustomerService),
     GameService = require(script.Services.GameService),
     MarketService = require(script.Services.MarketService),
@@ -44,6 +45,7 @@ services.TycoonService.Init({
     SessionStarted = function(player)
         services.FarmService.StartSession(player)
         services.BlendService.Reset(player)
+        services.MuncherService.Reset(player)
         services.CustomerService.ActivateForPlayer(player)
     end,
     MemberChanged = function(player)
@@ -57,18 +59,21 @@ services.TycoonService.Init({
         services.CombatService.RefreshPlayer(player)
         services.BlendService.RemovePlayer(player)
         services.CustomerService.RemovePlayer(player)
+        services.MuncherService.RemovePlayer(player)
     end,
     SessionEnded = function(id)
         services.FarmService.CleanupSession(id)
         services.InventoryService.CleanupSession(id)
         services.CustomerService.CleanupSession(id)
         services.BlendService.CleanupSession(id)
+        services.MuncherService.CleanupSession(id)
     end,
 })
 for _, name in
     {
         "InventoryService",
         "BlendService",
+        "MuncherService",
         "GameService",
         "MarketService",
         "CombatService",
@@ -152,6 +157,7 @@ Players.PlayerRemoving:Connect(function(player)
                 "CustomerService",
                 "GameService",
                 "BlendService",
+                "MuncherService",
                 "CombatService",
                 "InventoryService",
                 "IngredientService",
@@ -176,6 +182,7 @@ services.GameplayService.Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
+    require(script.Components.Muncher),
     require(script.Components.BlenderVacuum),
     require(script.Components.IngredientPickup),
     require(script.Components.SmoothiePickup),

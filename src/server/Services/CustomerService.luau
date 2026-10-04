@@ -713,7 +713,10 @@ end
 function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): number
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local multiplier = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
-    return math.round(Economy.BasePayout * Economy.CashScale * Economy.GradeMultiplier[grade] * upgrade * multiplier)
+    local muncher = if deps.MuncherService then deps.MuncherService.GetCashMultiplier(player) else 1
+    return math.round(
+        Economy.BasePayout * Economy.CashScale * Economy.GradeMultiplier[grade] * upgrade * multiplier * muncher
+    )
 end
 
 -- Called only with the consumed server cup and the customer's assigned request.
@@ -731,7 +734,8 @@ function CustomerService.CalculateOrderPayout(
     local gradeMultiplier = if evaluation.IsWildcard
         then 1
         else Economy.GradeMultiplier[evaluation.Grade :: Types.Grade]
-    local amount = (ingredientValue + request.BasePayout) * gradeMultiplier * upgrade * entitlement
+    local muncher = if deps.MuncherService then deps.MuncherService.GetCashMultiplier(player) else 1
+    local amount = (ingredientValue + request.BasePayout) * gradeMultiplier * upgrade * entitlement * muncher
     return math.round(amount), ingredientValue
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
