@@ -10,6 +10,61 @@ local IngredientName = require(Shared.IngredientName)
 local Item = require(Shared.IngredientItem)
 local RipenessStyle = require(Shared.Constants.RipenessPresentation)
 local Presentation = {}
+local FilledIndicatorColor = Color3.fromRGB(0, 255, 0)
+local EmptyIndicatorColor = Color3.fromRGB(117, 0, 0)
+
+local function refreshIndicators(slot: BasePart, state: any)
+    -- The resolver supplies the interaction base; authored indicators may be its
+    -- siblings inside the slot model, or descendants of a standalone slot part.
+    local parent = slot.Parent
+    local root: Instance = if parent
+            and parent:IsA("Model")
+            and (
+                parent.PrimaryPart == slot
+                or parent:FindFirstChild("SlotIndicator") ~= nil
+                or string.match(parent.Name, "^LockedSlot%d+$")
+                or string.match(parent.Name, "^Slot%d+$")
+            )
+        then parent
+        else slot
+    local indicators: { { Part: BasePart, X: number, Y: number, Z: number, Order: number } } = {}
+    for order, child in root:GetDescendants() do
+        if child:IsA("BasePart") and child.Name == "SlotIndicator" then
+            local offset = child.Position - slot.Position
+            table.insert(indicators, {
+                Part = child,
+                X = offset:Dot(slot.CFrame.RightVector),
+                Y = offset:Dot(slot.CFrame.UpVector),
+                Z = offset:Dot(slot.CFrame.LookVector * -1),
+                Order = order,
+            })
+        end
+    end
+    table.sort(indicators, function(a, b)
+        if a.X ~= b.X then
+            return a.X < b.X
+        elseif a.Y ~= b.Y then
+            return a.Y < b.Y
+        elseif a.Z ~= b.Z then
+            return a.Z < b.Z
+        end
+        return a.Order < b.Order
+    end)
+    local protected = (slot:GetAttribute("StashLogicalSlotIndex") or slot:GetAttribute("SlotIndex") or 0)
+        <= Config.Protected
+    local capacity = if state then state.Capacity else nil
+    if type(capacity) ~= "number" or capacity ~= capacity then
+        capacity = if protected then 1 else Config.IngredientCapacity
+    end
+    local occupied = if state and state.ItemType == "Smoothie"
+        then state.Count
+        elseif state and type(state.Ingredients) == "table" then #state.Ingredients
+        else 0
+    local filled = math.clamp(math.floor(occupied), 0, math.min(#indicators, math.max(0, math.floor(capacity))))
+    for index, indicator in indicators do
+        indicator.Part.Color = if index <= filled then FilledIndicatorColor else EmptyIndicatorColor
+    end
+end
 
 local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value: number)
     local gui = Instance.new("BillboardGui")
@@ -103,8 +158,31 @@ function Presentation.Clear(slot: BasePart)
         old:Destroy()
     end
 end
-function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
+function Presentation.Refresh(slot: BasePart?, state: any, ingredients: any)
+    if not slot then
+        return
+    end
+    if
+        type(state) ~= "table"
+        or type(state.Count) ~= "number"
+        or state.Count ~= state.Count
+        or state.Count < 0
+        or state.Count % 1 ~= 0
+        or (state.IngredientId and type(state.Ingredients) ~= "table")
+    then
+        state = nil
+    end
+    if state and state.IngredientId then
+        for index = 1, state.Count do
+            local unit = state.Ingredients[index]
+            if type(unit) ~= "table" or type(unit.IngredientId) ~= "string" then
+                state = nil
+                break
+            end
+        end
+    end
     Presentation.Clear(slot)
+    refreshIndicators(slot, state)
     slot:SetAttribute("StashIngredientId", state and state.IngredientId)
     slot:SetAttribute("StashItemType", state and state.ItemType)
     slot:SetAttribute("StashCapacity", state and state.Capacity or Config.IngredientCapacity)

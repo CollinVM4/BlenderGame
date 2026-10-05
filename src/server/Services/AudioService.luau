@@ -1,5 +1,17 @@
 --!strict
 local AudioService = {}
+local BadCustomers = require(game:GetService("ReplicatedStorage").Shared.Constants.BadCustomers)
+
+function AudioService.PlayBadCustomerCue(parent: Instance, cue: string)
+    local config = (BadCustomers.Audio :: any)[cue]
+    if not config then
+        return
+    end
+    local sound = AudioService.ConstructAudioCue(parent, config.SoundId, config.Volume, false)
+    sound.PlaybackSpeed = config.PlaybackSpeed
+    sound:Play()
+    game:GetService("Debris"):AddItem(sound, 8)
+end
 
 local CUSTOMER_DIALOGUE_SOUND_ID = "rbxassetid://130763160561998"
 

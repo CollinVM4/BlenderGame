@@ -93,12 +93,16 @@ check(countScale.Scale == 1.18 and barScale.Scale == 1.07, "completion response 
 update({ Progress = 1, Target = 100 }, true)
 step(0.4)
 check(
-    gui:FindFirstChild("Title").Text == "MUNCHER" and fill.Size.X.Scale == 0.01,
-    "feed during completion converges without stale feedback"
+    gui:FindFirstChild("Title").Text == "FULL!" and fill.Size.X.Scale == 0.01,
+    "feed during completion preserves FULL while progress converges immediately"
 )
+step(0.4)
+check(gui:FindFirstChild("Title").Text == "MUNCHER", "completion hold eventually ends despite intervening feeds")
 update({ Progress = 99, Target = 100 })
 update({ Progress = 0, Target = 100 }, true)
 step(0.4)
+check(gui:FindFirstChild("Title").Text == "FULL!", "completion remains perceptible when the next goal is identical")
+step(0.5)
 check(gui:FindFirstChild("Title").Text == "MUNCHER", "completion title returns even when next goal is identical")
 update({ Progress = 200, Target = 100 })
 step(0.21)
@@ -121,6 +125,84 @@ check(
     presentation.Marker(instance("Folder")) == nil and presentation.Marker(nil) == nil,
     "missing or malformed markers are safe"
 )
+do
+    local titleGui, render = presentation.Display(origin)
+    local title = titleGui:FindFirstChild("Title")
+    local count = titleGui:FindFirstChild("Count")
+    render({ Progress = 0, Target = 25 })
+    check(title.Text == "MUNCHER", "idle title is MUNCHER")
+    render({ Progress = 1, Target = 25 }, true)
+    check(title.Text == "YUM!" and count.Text == "1 / 25", "accepted feed immediately enters YUM and updates progress")
+    render({ Progress = 1, Target = 25 }) -- The component also publishes after intake.
+    step(0.5)
+    check(title.Text == "YUM!", "YUM survives idle rendering and remains visible for half a second")
+    step(0.06)
+    check(title.Text == "MUNCHER", "YUM returns to idle after its hold")
+
+    render({ Progress = 2, Target = 25 }, true)
+    step(0.2)
+    render({ Progress = 3, Target = 25 }, true)
+    step(0.36)
+    check(title.Text == "YUM!", "old YUM callback cannot clear a refreshed YUM")
+    step(0.2)
+    check(title.Text == "MUNCHER", "refreshed YUM ends half a second after the latest feed")
+
+    render({ Progress = 24, Target = 25 }, true)
+    step(0.2)
+    render({ Progress = 0, Target = 50 }, true)
+    check(
+        title.Text == "FULL!" and count.Text == "0 / 50",
+        "completion takes priority while new target is immediately valid"
+    )
+    render({ Progress = 0, Target = 50 })
+    step(0.36) -- The preceding YUM timer has now fired.
+    check(title.Text == "FULL!", "stale YUM callback and goal-reset render cannot clear FULL")
+    render({ Progress = 1, Target = 50 }, true)
+    step(0.4)
+    check(
+        title.Text == "FULL!" and count.Text == "1 / 50",
+        "normal feeding cannot replace perceptible FULL or delay progress"
+    )
+    step(0.1)
+    check(title.Text == "MUNCHER", "FULL returns to idle after its own hold")
+
+    -- A new completion also owns a new generation, independent of the old hold.
+    render({ Progress = 49, Target = 50 })
+    render({ Progress = 0, Target = 25 }, true)
+    step(0.4)
+    render({ Progress = 24, Target = 25 })
+    render({ Progress = 0, Target = 25 }, true)
+    step(0.46)
+    check(title.Text == "FULL!", "older FULL callback cannot end a newer completion hold")
+    step(0.4)
+    check(title.Text == "MUNCHER", "latest completion hold ends normally")
+
+    for progress = 1, 10 do
+        render({ Progress = progress, Target = 25 }, true)
+        render({ Progress = progress, Target = 25 })
+        step(0.1)
+        check(title.Text == "YUM!", "rapid feeds refresh title without stale callback corruption")
+    end
+    step(0.46)
+    check(
+        title.Text == "MUNCHER" and count.Text == "10 / 25",
+        "rapid feeding settles with immediate authoritative count"
+    )
+    render({ Progress = 11, Target = 25 }, true)
+    step(0.2)
+    render(nil)
+    check(title.Text == "MUNCHER", "release immediately clears temporary title")
+    render({ Progress = 1, Target = 25 }, true)
+    step(0.36)
+    check(title.Text == "YUM!", "released generation cannot clear new session feedback")
+    step(0.2)
+    check(title.Text == "MUNCHER", "new session title returns normally")
+    render({ Progress = 24, Target = 25 })
+    render({ Progress = 0, Target = 25 }, true)
+    titleGui:Destroy()
+    step(0.9)
+    check(title.Text == "FULL!", "destroyed display cannot be mutated by a pending title callback")
+end
 -- Missing fixtures do not stop attachment; adding them later repairs intake and UI.
 local cleanup
 local activeOwner = nil

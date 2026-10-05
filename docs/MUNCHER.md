@@ -49,12 +49,15 @@ Its 156x20 charcoal pill track has a green rounded fill, dark outer outline and
 white rim; outlined title and count sit close above and below the meter.
 Changed progress tweens over 0.2 seconds, clamped to [0, 1]. Accepted ingredients
 immediately update the count and trigger a 15% count punch plus 2.5% bar bump.
-Completion briefly shows gold FULL! with an 18% count punch and 7% bar bump,
+Feeds show YUM! for 0.55 seconds, refreshed by each accepted feed. Completion
+holds gold FULL! for 0.85 seconds with an 18% count punch and 7% bar bump,
 while the new target updates immediately. The pre-feed snapshot detects completion
 even when the new target matches the previous one; rewards/reset logic are untouched.
 Each animation cancels its predecessor, scale pulses restart at 1 and reverse,
-and idle polling does not restart tweens. Title delays are guarded against newer
-feeds, release and destruction; release/destruction cancel active tweens.
+and idle polling does not restart tweens or clear temporary titles. FULL! takes
+priority over normal feed titles during its hold; a newer completion refreshes it.
+Version-guarded title callbacks cannot clear newer states, including after release
+or destruction; release/destruction cancel active tweens.
 The component also creates an independent, noncolliding
 ingredient copy that travels to MouthOrigin for 0.18 seconds. This visual is never
 registered as inventory and its completion has no gameplay effect. Missing

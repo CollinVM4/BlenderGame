@@ -28,12 +28,12 @@ controller.Init()
 controller.Init()
 check(#labelOrigin:GetChildren() == 1, "startup and repeated Init create one label")
 local firstGui = display(labelOrigin)
-check(firstGui:FindFirstChild("Text").Text == "JUMP I ZONE", "startup reads authored text")
+check(firstGui:FindFirstChild("Text").Text:gsub("<[^>]+>", "") == "JUMP I ZONE", "startup reads authored text")
 check(not display(bare) and not display(empty) and not display(invalid), "missing empty and nonstring text ignored")
 check(not display(part), "non-Attachment ignored")
 labelOrigin:SetAttribute("WorldText", "JUMP II ZONE")
 check(
-    display(labelOrigin) == firstGui and firstGui:FindFirstChild("Text").Text == "JUMP II ZONE",
+    display(labelOrigin) == firstGui and firstGui:FindFirstChild("Text").Text:gsub("<[^>]+>", "") == "JUMP II ZONE",
     "text updates same GUI"
 )
 labelOrigin:SetAttribute("WorldTextVisible", false)

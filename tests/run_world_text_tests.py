@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "DialogueTextStyle": "src/shared/Constants/DialogueTextStyle.luau",
     "WorldTextController": "src/client/Controllers/WorldTextController.luau",
     "WorldBillboardStyle": "src/client/UI/WorldBillboardStyle.luau",
     "WorldTextPresentation": "src/client/UI/WorldTextPresentation.luau",
@@ -18,7 +19,7 @@ bundle = "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((root / path).read_text())},"
     for name, path in paths.items()
 ) + "\n}\n"
-bundle += (root / "tests/server_state.spec.luau").read_text().split("env.require = loadModule", 1)[0]
+bundle += (root / "tests/fixtures/roblox.luau").read_text()
 bundle += (root / "tests/world_text.spec.luau").read_text()
 bundle += (root / "tests/world_text_controller.spec.luau").read_text()
 with tempfile.TemporaryDirectory(prefix="world-text-tests-") as directory:

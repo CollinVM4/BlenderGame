@@ -8,6 +8,13 @@ local DURATION = 0.3
 local BEFORE_CAMERA = "TurbineCameraPrepare"
 local AFTER_CAMERA = "TurbineCameraRender"
 local cleanup: (() -> ())? = nil
+local releaseCamera: (() -> ())? = nil
+
+function Controller.ReleaseCamera()
+    if releaseCamera then
+        releaseCamera()
+    end
+end
 
 type View = {
     Camera: Camera,
@@ -73,6 +80,8 @@ function Controller.Init()
         current.Camera.CFrame = current.Normal
         current.Camera.Focus = current.NormalFocus
     end
+
+    releaseCamera = restore
 
     local function resolvePlot()
         local assigned: Instance? = nil
@@ -154,6 +163,9 @@ function Controller.Init()
         local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
         local subject = humanoid()
         local camera = workspace.CurrentCamera
+        if camera and camera:GetAttribute("StandNameEditorActive") then
+            return
+        end
         local assigned = plot
         local blender = if assigned and assigned:IsDescendantOf(workspace)
             then assigned:FindFirstChild("Blender")

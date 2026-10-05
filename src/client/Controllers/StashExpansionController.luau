@@ -21,7 +21,7 @@ function Controller.Init()
         end
         local gui = Instance.new("BillboardGui")
         gui.Name, gui.Adornee = "SecondStorageDisplay", object
-        Style.ApplyBillboard(gui, { Width = 340, Height = 64, MaxDistance = 40 })
+        Style.ApplyBillboard(gui, { Width = 340, Height = 64, MaxDistance = 28 })
         gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
         local price =
             tostring(Upgrades.SecondStorage[2].Cost):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")

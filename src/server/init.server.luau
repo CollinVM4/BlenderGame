@@ -179,6 +179,8 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 services.GameplayService.Init(services)
+require(script.Services.StandIdentityService).Init(services)
+require(script.Services.PlotClaimZones).Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),

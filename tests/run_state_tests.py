@@ -37,6 +37,9 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "bad-customer-presentation": ("presentation", ("bad_customer_presentation.spec.luau",)),
+    "bad-customers": ("integration", ("fixtures/customer_queue.luau", "bad_customers.spec.luau")),
+    "bad-customer-stash": ("integration", ("fixtures/smoothie.luau", "bad_customer_stash.spec.luau")),
     "muncher": ("integration", ("fixtures/smoothie.luau", "muncher.spec.luau")),
     "muncher-presentation": ("presentation", ("muncher_presentation.spec.luau",)),
     "ingredient-cleanup": ("integration", ("fixtures/smoothie.luau", "ingredient_cleanup.spec.luau")),
@@ -104,12 +107,16 @@ SUITES = {
     "plot-session-feedback": ("presentation", ("fixtures/smoothie.luau", "plot_session_feedback.spec.luau")),
     "blend-presentation": ("presentation", ("fixtures/smoothie.luau", "blend_presentation.spec.luau")),
     "stash-presentation": ("presentation", ("stash_presentation.spec.luau",)),
+    "stash-capacity-indicators": ("presentation", ("stash_capacity_indicators.spec.luau",)),
     "stash-prompts": ("presentation", ("stash_prompt.spec.luau",)),
     "gameplay-audio": ("presentation", ("gameplay_audio.spec.luau",)),
     "player-head-stash": ("presentation", ("player_head_stash.spec.luau",)),
     "player-head-blender-visual": ("presentation", ("player_head_blender_visual.spec.luau",)),
     "player-head-visual": ("integration", ("player_head_visual.spec.luau",)),
     "player-head": ("integration", ("fixtures/smoothie.luau", "player_head.spec.luau")),
+    "stand-editor": ("presentation", ("fixtures/stand_graphemes.luau", "stand_editor.spec.luau")),
+    "stand-identity": ("integration", ("fixtures/smoothie.luau", "fixtures/stand_graphemes.luau", "stand_identity.spec.luau")),
+    "stand-sign": ("presentation", ("stand_sign.spec.luau",)),
 }
 focused = {
     "vfx_only": ("vfx",),
@@ -126,7 +133,7 @@ focused = {
     "customer_order_text_only": ("customer-order-text",),
     "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
     "customer_walk_only": ("customer-walk", "customer-routing"),
-    "stash_only": ("stash", "stash-integration", "stash-presentation", "stash-prompts"),
+    "stash_only": ("stash", "stash-integration", "stash-presentation", "stash-capacity-indicators", "stash-prompts"),
     "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
 }
 selected = args.suite or next((names for flag, names in focused.items() if getattr(args, flag)), None)
@@ -157,6 +164,8 @@ sources["StashPromptController"] = (ROOT / "src/client/Controllers/StashPromptCo
 sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_text(encoding="utf-8")
 sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")
 sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encoding="utf-8")
+sources["InteractionPromptPresentation"] = (ROOT / "src/client/UI/InteractionPromptPresentation.luau").read_text(encoding="utf-8")
+sources["WorldBillboardStyle"] = (ROOT / "src/client/UI/WorldBillboardStyle.luau").read_text(encoding="utf-8")
 sources["Types"] = (ROOT / "src/shared/Types.luau").read_text(encoding="utf-8")
 sources["BlenderInputComponent"] = (ROOT / "src/server/Components/BlenderInput.luau").read_text(encoding="utf-8")
 sources["IngredientSpawnComponent"] = (ROOT / "src/server/Components/IngredientSpawn.luau").read_text(encoding="utf-8")
@@ -169,6 +178,8 @@ sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(en
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
 sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")
 sources["SessionInteractionController"] = (ROOT / "src/client/Controllers/SessionInteractionController.luau").read_text(encoding="utf-8")
+sources["StandIdentityController"] = (ROOT / "src/client/Controllers/StandIdentityController.luau").read_text(encoding="utf-8")
+sources["StandNameEditor"] = (ROOT / "src/client/UI/StandNameEditor.luau").read_text(encoding="utf-8")
 sources["PlotIdentityController"] = (ROOT / "src/client/Controllers/PlotIdentityController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (

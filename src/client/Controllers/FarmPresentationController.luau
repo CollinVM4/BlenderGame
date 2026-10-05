@@ -127,6 +127,7 @@ function Controller.Init()
             if pad and pad:IsA("BasePart") and price then
                 row.Pad = pad
                 local padGui = billboard(pad, playerGui, 64)
+                padGui.MaxDistance = 28 -- Purchase signage only; growing/ready displays retain 40.
                 row.PadGui = padGui
                 label(padGui, 0, "FARM ROW")
                 local amount = tostring(price):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")

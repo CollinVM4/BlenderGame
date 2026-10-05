@@ -86,7 +86,15 @@ python tests/run_upgrade_ui_tests.py --luau <luau.exe>
 python -B tests/test_state_runner.py
 ```
 
-## Player-facing plot flow (current)
+## Current walk-in claim flow
+
+The entry interaction and default join policy below have been superseded by
+[stand identity onboarding](STAND_IDENTITY.md). Claim/join now use authored server
+zones; new sessions default to Open (Anyone), and committed owners receive the
+stand naming intro. PlotIdentityOrigin and existing management/leave semantics
+remain intact. The earlier implementation notes below are historical.
+
+## Earlier player-facing plot flow
 
 Players now enter unassigned. Player bootstrap no longer calls AssignPlot. Legacy GameService.StartDay and the Studio SpawnCustomer helper require an existing plot instead of allocating one. PlayerData/inventory/character initialization stays personal; no shared cash/upgrades or blender/customer runtime is created until a successful claim. The trusted AssignPlot API remains for compatibility and test setup; there are no automatic runtime callers. ClaimPlot selects an exact physical plot through that existing creation path and invokes SessionStarted exactly once. Joining only publishes/binds the existing session.
 

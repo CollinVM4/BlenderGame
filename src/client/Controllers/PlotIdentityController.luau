@@ -11,24 +11,8 @@ local player = Players.LocalPlayer
 local portraits: { [number]: string } = {}
 local pending: { [number]: boolean } = {}
 local displays: { [Instance]: BillboardGui } = {}
+local padLabels: { [Instance]: BillboardGui } = {}
 local initialized = false
-local friends: { [number]: boolean } = {}
-local checkingFriends: { [number]: boolean } = {}
-local nextFriendCheck: { [number]: number } = {}
-local function isFriend(id: number): boolean
-    if os.clock() >= (nextFriendCheck[id] or 0) and not checkingFriends[id] then
-        checkingFriends[id] = true
-        task.spawn(function()
-            local ok, result = pcall(function()
-                return player:IsFriendsWithAsync(id)
-            end)
-            friends[id] = ok and result == true
-            nextFriendCheck[id] = os.clock() + 30
-            checkingFriends[id] = nil
-        end)
-    end
-    return friends[id] == true
-end
 local function portrait(id: number): string
     if not portraits[id] and not pending[id] then
         pending[id] = true
@@ -203,11 +187,35 @@ function Controller.Init()
         local assigned = player:GetAttribute("PlotSessionId") ~= nil
         status.Text = if os.clock() < failureUntil
             then "Plot action unavailable. Move closer or try again."
-            elseif not assigned then "UNASSIGNED - Walk to a plot to claim or join"
+            elseif not assigned then "Claim an available PLOT!"
             else ""
+        status.TextSize = if not assigned and os.clock() >= failureUntil then 20 else 17
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         local live: { [Instance]: boolean } = {}
+        local liveLabels: { [Instance]: boolean } = {}
         for _, plot in CollectionService:GetTagged("PlayerPlot") do
+            local identity = plot:FindFirstChild("PlotIdentity")
+            if identity and plot:IsDescendantOf(workspace) then
+                for _, role in { "Claim", "Teammate" } do
+                    local labelOrigin = identity:FindFirstChild(role .. "LabelOrigin")
+                    if labelOrigin and (labelOrigin:IsA("BasePart") or labelOrigin:IsA("Attachment")) then
+                        liveLabels[labelOrigin] = true
+                        local display = padLabels[labelOrigin]
+                        if not display then
+                            local created = Instance.new("BillboardGui")
+                            created.Name = role .. "ZoneLabel"
+                            created.Size = UDim2.fromOffset(180, 32)
+                            created.AlwaysOnTop, created.MaxDistance, created.Active = true, 22, false
+                            created.Adornee, created.Parent = labelOrigin, gui
+                            label(created, if role == "Claim" then "CLAIM PLOT" else "JOIN STAND", 0)
+                            padLabels[labelOrigin] = created
+                            display = created
+                        end
+                        local occupancy = plot:GetAttribute("PlotOccupancy") or 0
+                        display.Enabled = if role == "Claim" then occupancy == 0 else occupancy == 1
+                    end
+                end
+            end
             local origin = plot:FindFirstChild("PlotIdentityOrigin", true)
             if
                 not plot:IsDescendantOf(workspace)
@@ -230,24 +238,14 @@ function Controller.Init()
             display.Adornee = origin
             local owner = plot:GetAttribute("OwnerUserId")
             local teammate = plot:GetAttribute("TeammateUserId")
+            display.MaxDistance = if type(owner) == "number" then 160 else 80
             local position = if origin:IsA("Attachment") then origin.WorldPosition else (origin :: BasePart).Position
             local nearby = root and root:IsA("BasePart") and (root.Position - position).Magnitude <= 32
             local action = if not nearby
                 then nil
                 elseif owner == player.UserId then "MANAGE PLOT"
                 elseif teammate == player.UserId then "LEAVE TEAM"
-                elseif not assigned and not owner then "CLAIM PLOT"
-                elseif
-                    not assigned
-                    and not teammate
-                    and type(owner) == "number"
-                    and (
-                        plot:GetAttribute("JoinMode") == "Open"
-                        or (plot:GetAttribute("JoinMode") == "FriendsOnly" and isFriend(owner))
-                    )
-                then "JOIN TEAM"
                 else nil
-            -- Local friendship only controls visibility; the server checks independently.
             local signature = tostring(owner)
                 .. tostring(teammate)
                 .. tostring(plot:GetAttribute("PlotMembershipRevision"))
@@ -290,15 +288,7 @@ function Controller.Init()
                         if action == "MANAGE PLOT" then
                             openManage(plot)
                         else
-                            send(
-                                plot,
-                                if action == "CLAIM PLOT"
-                                    then "ClaimPlot"
-                                    elseif action == "JOIN TEAM" then "JoinTeam"
-                                    else "LeaveTeam",
-                                nil,
-                                captured
-                            )
+                            send(plot, "LeaveTeam", nil, captured)
                         end
                     end)
                 end
@@ -308,6 +298,12 @@ function Controller.Init()
             if not live[plot] then
                 display:Destroy()
                 displays[plot] = nil
+            end
+        end
+        for origin, display in padLabels do
+            if not liveLabels[origin] then
+                display:Destroy()
+                padLabels[origin] = nil
             end
         end
         if managed then

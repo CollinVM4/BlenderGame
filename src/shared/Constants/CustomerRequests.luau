@@ -1,5 +1,6 @@
 --!strict
 local Ingredients = require(script.Parent.Ingredients)
+local BadCustomers = require(script.Parent.BadCustomers)
 
 export type IngredientRequirement = string | { string }
 
@@ -34,6 +35,34 @@ local tagGroups: { [string]: { [string]: boolean } } = {
 }
 
 local requests: { Request } = {
+    {
+        Id = "Thief",
+        DisplayText = "Nice stash. You, uh... keep all your fruit in there?",
+        DisplayTexts = {
+            "Nice stash. You, uh... keep all your fruit in there?",
+            "I'll order in a second. Just checking your security.",
+            "Don't mind me. I'm only window shopping... for fruit.",
+        },
+        RequiredTags = {},
+        BasePayout = 0,
+        MinJumpTier = 0,
+        NPCOnly = true,
+        Wildcard = true,
+    },
+    {
+        Id = "Freeloader",
+        DisplayText = "Anything's good. As long as it's free.",
+        DisplayTexts = {
+            "Anything's good. As long as it's free.",
+            "Lemme get a free smoothie..",
+        },
+        GoodResponse = "Thanks! Here's your bill for my time.",
+        RequiredTags = {},
+        BasePayout = 0,
+        MinJumpTier = 0,
+        NPCOnly = true,
+        Wildcard = true,
+    },
     {
         Id = "Red",
         RequestGroup = "Color",
@@ -472,7 +501,6 @@ local requests: { Request } = {
         MinJumpTier = 3,
     },
 
-
     -- Exact / scavenger-hunt requests
 
     {
@@ -845,7 +873,7 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "DefinitelyNotCaylus",
-    DisplayText = "Make me the CRAZIEST smoothie possible. I want something WEIRD, SPICY, WITH FRUIT!",
+    DisplayText = "Make the CRAZIEST smoothie possible. Something WEIRD, SPICY, WITH FRUIT!",
     GoodResponse = "Okay... that's actually insane.",
     BadResponse = "Nahhh, that wasn't crazy enough!",
     RequiredTags = { "Weird", "Spicy", "Fruit" },
@@ -859,7 +887,7 @@ table.insert(requests, {
     GoodResponse = "Excellent. This should not exist.",
     BadResponse = "Too normal. I expected worse.",
     RequiredTags = { "Seafood" },
-    RequiredIngredients = {"Tire" },
+    RequiredIngredients = { "Tire" },
     ForbiddenTags = { "Fruit" },
     BasePayout = 1250,
     MinJumpTier = 2,
@@ -953,7 +981,7 @@ local CustomerRequests = {
         MinJumpTier = 0,
     } :: Request,
 
-    SpecialCustomerChance = 0.55,
+    SpecialCustomerChance = 1,
     -- Continuous special cooldown is configured in Economy.SpecialCustomerCooldownSeconds.
     RegularCustomerRecencyWindow = 3,
     RegularRequestRecencyWindow = 3,
@@ -961,6 +989,22 @@ local CustomerRequests = {
     RegularRequestSimilarityRecencyWindow = 2,
 
     NPCs = {
+        thief = {
+            Type = "Special",
+            DisplayName = "Robert Stealer",
+            RequestId = "Thief",
+            Weight = BadCustomers.ThiefWeight,
+            Rejectable = true,
+            BadCustomerType = "Thief",
+        },
+        freeloader = {
+            Type = "Special",
+            DisplayName = "Freebie Fred",
+            RequestId = "Freeloader",
+            Weight = BadCustomers.FreeloaderWeight,
+            Rejectable = true,
+            BadCustomerType = "Freeloader",
+        },
         steak = {
             Type = "Special",
             DisplayName = "Steak",
@@ -1051,6 +1095,12 @@ local CustomerRequests = {
             RequestId = "Nathan",
             Weight = 1,
         },
+        brooke = {
+            Type = "Special",
+            DisplayName = "Brooke",
+            RequestId = "Brooke",
+            Weight = 0.7,
+        },
         jeremy = {
             Type = "Special",
             DisplayName = "Capybara",
@@ -1063,6 +1113,8 @@ local CustomerRequests = {
             DisplayName: string?,
             RequestId: string?,
             Weight: number?,
+            Rejectable: boolean?,
+            BadCustomerType: string?,
         },
     },
 }

@@ -50,3 +50,9 @@ Legacy DayState/DayNumber/DayGrade/CustomersServedToday attributes remain for ca
 Studio smoke test: claim a plot without pressing Start Day; wait for three arrivals and verify all orders are legible. Serve the counter while a waiter is entering; verify both waiters advance with unchanged requests, only the new counter enables serving, and the served NPC reacts/exits concurrently. Serve at least five customers, test a full-queue timer then free a slot, release/reclaim the plot, and repeat with two clients and imported R15/AnimationConstraint rigs. CLI doubles cannot certify actual rendering, replication, or animation assets.
 
 Implementation validation: queue integration, request integration, compatibility helpers, customer order visibility, placement/walk, smoothie survivors/geometry, Roblox-aware typecheck, StyLua, and Rojo build pass. Remaining existing test failures were reproduced on a copy of the pre-change code with the user's working-tree configuration: customer-validation expects Apple+Ice not to satisfy Sweet; smoothie-world/smoothie expect older carry capacities; smoothie-roundtrip fails its stash take setup; legacy-state expects one held ingredient. These failures were kept separate from queue implementation tests. No Studio play session was run.
+
+## Bad customers and REJECT
+
+See [BAD_CUSTOMERS.md](BAD_CUSTOMERS.md) for Thief/Freeloader templates, the sibling
+RejectButton hierarchy, owner-only queue-front targeting, legitimate dismissal,
+shared Button/Bat rejection, authoritative stash theft, tuning and validation.

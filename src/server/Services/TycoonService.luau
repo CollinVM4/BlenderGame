@@ -5,6 +5,7 @@ local TycoonService = {}
 local HttpService = game:GetService("HttpService")
 local Upgrades = require(game:GetService("ReplicatedStorage").Shared.Constants.Upgrades)
 local FarmConfig = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
+local StandIdentity = require(game:GetService("ReplicatedStorage").Shared.Constants.StandIdentity)
 local Types = require(game:GetService("ReplicatedStorage").Shared.Types)
 type Session =
     Types.PlotSessionState
@@ -83,6 +84,8 @@ function TycoonService.GetSession(player: Player): Types.PlotSessionState?
         OwnerUserId = session.OwnerUserId,
         TeammateUserId = session.TeammateUserId,
         JoinMode = session.JoinMode,
+        StandName = session.StandName,
+        StandNameRevision = session.StandNameRevision,
         SharedCash = session.SharedCash,
         SharedUpgrades = table.clone(session.SharedUpgrades),
         Status = session.Status,
@@ -125,6 +128,8 @@ function TycoonService.EndTransaction(id: string)
     end
 end
 local function publishIdentity(plot: Instance, session: Session?)
+    plot:SetAttribute("StandName", if session then session.StandName else nil)
+    plot:SetAttribute("StandNameRevision", if session then session.StandNameRevision else nil)
     plot:SetAttribute("PlotOwnerName", if session then session.Owner.Name else nil)
     plot:SetAttribute("PlotTeammateName", if session and session.Teammate then session.Teammate.Name else nil)
     plot:SetAttribute("TeammateUserId", if session then session.TeammateUserId else nil)
@@ -200,6 +205,14 @@ function TycoonService.CreditTransaction(id: string, amount: number)
     assert(session and session.Busy and session.Status == "Active", "No transaction")
     assert(validAmount(amount) and validAmount(session.SharedCash + amount), "Invalid award")
     session.SharedCash = math.floor(session.SharedCash + amount)
+    publish(session)
+end
+-- Server-only loss under the same nonnegative cash policy as SetCash/purchases.
+function TycoonService.DebitTransaction(id: string, amount: number)
+    local session = byId[id]
+    assert(session and session.Busy and session.Status == "Active", "No transaction")
+    assert(validAmount(amount), "Invalid debit")
+    session.SharedCash = math.max(0, session.SharedCash - math.floor(amount))
     publish(session)
 end
 function TycoonService.PurchaseUpgrade(
@@ -437,6 +450,7 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
             "CustomerWait1",
             "CustomerWait2",
             "CustomerExit",
+            "CustomerThiefPoint",
             "StartDayButton",
             "PlayerStash",
             "TurbineWheel",
@@ -463,8 +477,14 @@ function TycoonService.AutoTagLegacyPlot(plot: Instance)
     end
 end
 
-local customerRoles =
-    { CustomerSpawn = true, CustomerCounter = true, CustomerWait1 = true, CustomerWait2 = true, CustomerExit = true }
+local customerRoles = {
+    CustomerSpawn = true,
+    CustomerCounter = true,
+    CustomerWait1 = true,
+    CustomerWait2 = true,
+    CustomerExit = true,
+    CustomerThiefPoint = true,
+}
 
 -- Customer destinations must be explicit markers, never an arbitrary part of a tagged area.
 -- Prefer tagged parts over legacy tagged containers so tagging the actual marker repairs
@@ -588,7 +608,10 @@ function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Ins
                 OwnerUserId = player.UserId,
                 Teammate = nil,
                 TeammateUserId = nil,
-                JoinMode = "FriendsOnly",
+                JoinMode = "Open",
+                -- DisplayName is platform moderated; custom submissions use StandIdentityService.
+                StandName = StandIdentity.DefaultName(player.DisplayName or player.Name),
+                StandNameRevision = 1,
                 SharedCash = 0,
                 SharedUpgrades = upgrades,
                 Status = "Active",
@@ -668,6 +691,35 @@ function TycoonService.SetJoinMode(player: Player, mode: any, context: any): boo
     session.MembershipRevision += 1
     publish(session)
     TycoonService.EndTransaction(session.PlotSessionId)
+    return true
+end
+-- TODO(Settings): Expose teammate access in Settings > Stand.
+-- Planned policies: Anyone / FriendsOnly. Access checks stay server-authoritative
+-- in RequestJoin; this adapter retains the existing Open wire value.
+function TycoonService.SetTeammateAccess(player: Player, mode: string, context: any): boolean
+    return TycoonService.SetJoinMode(player, if mode == "Anyone" then "Open" else mode, context)
+end
+
+-- Trusted server-only commit. Never expose this method directly to a remote.
+function TycoonService.CommitFilteredStandName(player: Player, plot: Instance, text: string, context: any): boolean
+    local session = sessionFor(player)
+    if
+        not session
+        or session.Owner ~= player
+        or session.Plot ~= plot
+        or type(context) ~= "table"
+        or context.StandNameRevision ~= session.StandNameRevision
+    then
+        return false
+    end
+    local id = TycoonService.BeginTransaction(player, context)
+    if not id then
+        return false
+    end
+    session.StandName = text
+    session.StandNameRevision += 1
+    publishIdentity(plot, session)
+    TycoonService.EndTransaction(id)
     return true
 end
 function TycoonService.LeaveTeam(player: Player, context: any): boolean

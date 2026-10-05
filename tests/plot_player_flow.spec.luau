@@ -49,7 +49,8 @@ check(
     not t.ClaimPlot(peer, plot, empty) and not t.ClaimPlot(owner, second, claimContext(second)),
     "racing/assigned claims fail"
 )
-check(t.GetSession(owner).JoinMode == "FriendsOnly", "safe friend default")
+check(t.GetSession(owner).JoinMode == "Open", "new stands allow anyone")
+t.SetJoinMode(owner, "FriendsOnly", context())
 peer.IsFriendsWithAsync = function()
     return false
 end
@@ -144,6 +145,7 @@ check(
 check(not t.ClaimPlot(owner, plot, empty), "old empty claim revision cannot claim replacement occupancy")
 check(t.ClaimPlot(owner, plot, claimContext(plot)) and t.GetSessionId(owner) ~= id, "reuse creates fresh session")
 -- Owner departs during friendship lookup: never join a replacement lifetime.
+t.SetJoinMode(owner, "FriendsOnly", context())
 pending = coroutine.create(function()
     joined = t.RequestJoin(peer, plot, context())
 end)
@@ -183,7 +185,8 @@ peer.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, 0)
 request(peer, "JoinTeam", plot, nil, nil)
 check(t.GetPlot(peer) == nil, "remote join requires submitted context")
 request(peer, "JoinTeam", plot, nil, t.GetRequestContext(visitor))
-check(t.GetPlot(peer) == plot, "remote join routes through policy")
+check(t.GetPlot(peer) == nil, "legacy remote join is retired")
+check(t.RequestJoin(peer, plot, t.GetRequestContext(visitor)), "trusted join still uses existing policy")
 request(peer, "KickTeammate", plot, visitor.UserId, t.GetRequestContext(peer))
 check(t.GetPlot(visitor) == plot, "remote teammate cannot kick owner")
 local oldAccess = t.GetRequestContext(peer)
@@ -193,4 +196,4 @@ request(peer, "ClaimPlot", second, nil, claimContext(second))
 check(t.GetPlot(peer) == nil, "missing marker fails safely")
 part("PlotIdentityOrigin", second)
 request(peer, "ClaimPlot", second, nil, claimContext(second))
-check(t.GetPlot(peer) == second, "remote physical claim succeeds")
+check(t.GetPlot(peer) == nil, "legacy remote claim is retired even with marker")

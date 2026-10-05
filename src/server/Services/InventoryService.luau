@@ -946,6 +946,68 @@ local function clearSlot(slot: Types.StashSlot)
     slot.Ingredients = {}
     slot.Count, slot.Capacity = 0, ingredientSlotCapacity(slot.Protected)
 end
+-- Server-only NPC theft. Caller holds the plot transaction and claims
+-- its one theft attempt before entering. Never transfers the unit to another inventory.
+function InventoryService.RemoveThiefIngredient(
+    owner: Player,
+    sessionId: string,
+    committed: ((Types.IngredientItem) -> ())?
+): Types.IngredientItem?
+    local plot = deps.TycoonService.GetPlot(owner)
+    if
+        not plot
+        or deps.TycoonService.GetOwner(plot) ~= owner
+        or deps.TycoonService.GetSessionId(owner) ~= sessionId
+        or InventoryService.GetStashRaidState(owner).State == "Protected"
+    then
+        return nil
+    end
+    local candidates: { { Slot: Types.StashSlot, UnitIndex: number } } = {}
+    local slots: { [number]: Types.StashSlot } = stashes[owner] or {}
+    for index, slot in slots do
+        if
+            index > StashConfig.Protected
+            and not slot.Protected
+            and slot.ItemType == "Ingredient"
+            and getSlotPart(owner, index)
+        then
+            for unitIndex in slot.Ingredients do
+                table.insert(candidates, { Slot = slot, UnitIndex = unitIndex })
+            end
+        end
+    end
+    if #candidates == 0 then
+        return nil
+    end
+    local chosen = candidates[math.random(1, #candidates)]
+    local slot = chosen.Slot
+    -- No yield or presentation event between selection and removal: this is commit.
+    local unit = assert(table.remove(slot.Ingredients, chosen.UnitIndex))
+    Item.ExitStash(unit, workspace:GetServerTimeNow())
+    slot.Count = #slot.Ingredients
+    if slot.Count == 0 then
+        clearSlot(slot)
+    else
+        slot.IngredientId = slot.Ingredients[1].IngredientId
+    end
+    -- Transfer the exact unit before Immediate stash listeners can reject/destroy
+    -- the thief. This callback must not yield or publish presentation.
+    if committed then
+        committed(unit)
+    end
+    stashChanged:Fire(owner)
+    return unit
+end
+
+-- The caller relinquishes its exclusive thief reservation before publishing.
+-- This uses the same registry, pickup and cleanup path as ordinary held drops.
+function InventoryService.ReleaseThiefIngredient(item: Types.IngredientItem, at: CFrame): Instance?
+    local object = deps.IngredientService.Spawn(item.IngredientId, at, nil, true, { Item = item })
+    if object and deps.AnnouncementService then
+        deps.AnnouncementService.TrackWorld(object, item.AnnouncementOwnership)
+    end
+    return object
+end
 local function depositSelected(player: Player, itemType: string, key: string, index: number, owner: Player): boolean
     local record = resolveActionItem(player)
     if

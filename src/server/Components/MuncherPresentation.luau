@@ -36,7 +36,8 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
     bar.AnchorPoint = Vector2.new(0.5, 0.5)
     bar.Position = UDim2.fromOffset(88, 38)
     bar.Size = UDim2.fromOffset(156, 20)
-    bar.BackgroundColor3 = Color3.fromRGB(42, 48, 56)
+    bar.BackgroundColor3 = Style.White
+    bar.BackgroundTransparency = 0.30
     bar.BorderSizePixel = 0
     bar.Parent = gui
     local function round(object: GuiObject)
@@ -105,6 +106,22 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
         tweens[name] = tween
         tween:Play()
     end
+    local function showTemporaryTitle(text: string, duration: number)
+        -- Feeding can refresh YUM!, but cannot interrupt the completion hold.
+        if text == "YUM!" and title.Text == "FULL!" then
+            return
+        end
+        revision += 1
+        local currentRevision = revision
+        title.Text = text
+        title.TextColor3 = if text == "FULL!" then Style.Gold else Style.White
+        task.delay(duration, function()
+            if alive and revision == currentRevision then
+                title.Text = "MUNCHER"
+                title.TextColor3 = Style.White
+            end
+        end)
+    end
     gui.Destroying:Connect(function()
         alive = false
         revision += 1
@@ -148,18 +165,7 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
             if consumed and snapshot then
                 punch("Count", countScale, if completed then 1.18 else 1.15)
                 punch("Bar", barScale, if completed then 1.07 else 1.025)
-                revision += 1
-                local currentRevision = revision
-                title.Text = if completed then "FULL!" else "MUNCHER"
-                title.TextColor3 = if completed then Style.Gold else Style.White
-                if completed then
-                    task.delay(0.35, function()
-                        if alive and revision == currentRevision then
-                            title.Text = "MUNCHER"
-                            title.TextColor3 = Style.White
-                        end
-                    end)
-                end
+                showTemporaryTitle(if completed then "FULL!" else "YUM!", if completed then 0.85 else 0.55)
             elseif not snapshot then
                 revision += 1
                 cancel("Fill")

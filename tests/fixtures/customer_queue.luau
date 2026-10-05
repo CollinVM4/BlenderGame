@@ -52,6 +52,7 @@ local tycoon = loadModule("TycoonService")
 local days = loadModule("GameService")
 local economy = loadModule("Economy")
 local requests = loadModule("CustomerRequests")
+local authoredCustomerDefinitions = table.clone(requests.Definitions)
 table.clear(requests.Definitions)
 requests.Definitions[1] =
     { Id = "QueueRed", DisplayText = "Something RED!", RequiredTags = { "Red" }, BasePayout = 25, MinJumpTier = 0 }

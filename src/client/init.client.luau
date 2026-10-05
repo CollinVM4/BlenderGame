@@ -1,3 +1,5 @@
+-- Subscribe to committed claims before other controller initialization can yield.
+require(script.Controllers.StandIdentityController).Init()
 require(script.Controllers.GameplayAudioController).Init()
 require(script.Controllers.SmoothiePickupPromptController).Init()
 require(script.Controllers.InteractionPromptController).Init()

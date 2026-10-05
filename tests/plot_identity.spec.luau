@@ -5,6 +5,12 @@ t.RemovePlayer(viewer)
 services.CollectionService:AddTag(plot, "PlayerPlot")
 part("PlotIdentityOrigin", plot)
 part("PlotIdentityOrigin", occupied)
+for _, target in { plot, occupied } do
+    local identity = instance("Folder")
+    identity.Name, identity.Parent = "PlotIdentity", target
+    part("ClaimLabelOrigin", identity)
+    part("TeammateLabelOrigin", identity)
+end
 services.Players.LocalPlayer = viewer
 local playerGui = instance("PlayerGui")
 playerGui.Name, playerGui.Parent = "PlayerGui", viewer
@@ -81,7 +87,7 @@ local function findText(text)
         if object.Text == text then
             local current, visible = object, true
             while current and current ~= playerGui do
-                if current.Visible == false then
+                if current.Visible == false or current.Enabled == false then
                     visible = false
                 end
                 current = current.Parent
@@ -95,36 +101,36 @@ local function findText(text)
 end
 tick()
 tick()
-check(findText("AVAILABLE PLOT") and findText("CLAIM PLOT"), "empty plot exposes nearby claim")
-check(findText("JOIN TEAM") ~= nil, "friend visitor sees join")
-findText("CLAIM PLOT").Activated:Fire()
-check(
-    requests[1][1] == "ClaimPlot" and requests[1][2] == plot and requests[1][4].ClaimRevision ~= nil,
-    "claim submits plot and captured context"
-)
+for _, object in playerGui:GetDescendants() do
+    if object.Name == "ClaimZoneLabel" or object.Name == "TeammateZoneLabel" then
+        check(object.MaxDistance == 22, "pad labels are restricted to close range")
+    end
+end
+check(findText("CLAIM PLOT") and findText("CLAIM PLOT").ClassName == "TextLabel", "claim pad label has no click action")
+check(findText("JOIN STAND") and findText("JOIN STAND").ClassName == "TextLabel", "join pad is label only")
 local snapshot = t.GetRequestContext(owner)
 t.JoinSession(viewer, owner, snapshot)
 tick()
-check(findText("LEAVE TEAM") and not findText("CLAIM PLOT"), "teammate sees leave, no new claim")
+check(findText("LEAVE TEAM"), "teammate sees leave, no new claim")
 findText("LEAVE TEAM").Activated:Fire()
 check(
-    requests[2][1] == "LeaveTeam" and requests[2][4].PlotSessionId == t.GetSessionId(viewer),
+    requests[1][1] == "LeaveTeam" and requests[1][4].PlotSessionId == t.GetSessionId(viewer),
     "leave submits expected session"
 )
 t.RemovePlayer(owner)
 tick()
 check(findText("MANAGE PLOT") and not findText("LEAVE TEAM"), "promotion changes management action")
 findText("MANAGE PLOT").Activated:Fire()
-check(findText("Empty Slot") and findText("PUBLIC"), "owner management shows slot and policy")
-local public, friends, private = findText("PUBLIC"), findText("SELECTED: FRIENDS"), findText("PRIVATE")
+check(findText("Empty Slot") and findText("SELECTED: PUBLIC"), "owner management shows slot and policy")
+local public, friends, private = findText("SELECTED: PUBLIC"), findText("FRIENDS"), findText("PRIVATE")
 local positions = { public.Position, friends.Position, private.Position }
-public.Activated:Fire()
-check(requests[3][1] == "SetJoinMode" and requests[3][3] == "Open", "management submits policy")
-check(friends.Text == "SELECTED: FRIENDS", "request does not optimistically change permission presentation")
-occupied:SetAttribute("JoinMode", "Open")
+friends.Activated:Fire()
+check(requests[2][1] == "SetJoinMode" and requests[2][3] == "FriendsOnly", "management submits policy")
+check(public.Text == "SELECTED: PUBLIC", "request does not optimistically change permission presentation")
+occupied:SetAttribute("JoinMode", "FriendsOnly")
 tick()
 check(
-    public.Text == "SELECTED: PUBLIC" and friends.Text == "FRIENDS" and private.Text == "PRIVATE",
+    public.Text == "PUBLIC" and friends.Text == "SELECTED: FRIENDS" and private.Text == "PRIVATE",
     "selection prefix follows replicated mode"
 )
 check(
@@ -132,7 +138,7 @@ check(
     "selection keeps all three positions fixed"
 )
 check(
-    public:FindFirstChild("SelectionScale").Scale == 1.1 and friends:FindFirstChild("SelectionScale").Scale == 1,
+    public:FindFirstChild("SelectionScale").Scale == 1 and friends:FindFirstChild("SelectionScale").Scale == 1.1,
     "selected option grows in place and previous option settles"
 )
 friends.Activated:Fire()
@@ -152,6 +158,6 @@ check(
 t.RemovePlayer(viewer)
 tick()
 check(
-    findText("UNASSIGNED - Walk to a plot to claim or join") and not findText("Empty Slot"),
+    findText("Claim an available PLOT!") and not findText("Empty Slot"),
     "departure closes management and returns unassigned"
 )

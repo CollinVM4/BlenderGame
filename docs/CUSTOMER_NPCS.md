@@ -194,3 +194,9 @@ for this pass: 52 presentation assertions pass. Typecheck and StyLua pass; the
 existing CharacterPhysicsService deprecation warning remains. Rojo build passes.
 Visible playback and the exact live root cause remain unverified until Studio
 Output and authored rigs can be inspected.
+
+## Bad customers and REJECT
+
+See [BAD_CUSTOMERS.md](BAD_CUSTOMERS.md) for Thief/Freeloader templates, the sibling
+RejectButton hierarchy, owner-only queue-front targeting, legitimate dismissal,
+shared Button/Bat rejection, authoritative stash theft, tuning and validation.

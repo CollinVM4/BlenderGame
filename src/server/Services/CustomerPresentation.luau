@@ -58,17 +58,19 @@ function CustomerPresentation.ShowResult(
     order: BillboardGui,
     grade: string?,
     payout: number,
-    ingredientValue: number
+    ingredientValue: number?
 ): BillboardGui
     -- Serving has disabled both action prompts. Lower the reaction and reward as
     -- one fixed-pixel stack, keeping their gap and special name row intact.
     order.SizeOffset = Vector2.new(order.SizeOffset.X, 0.5 - RESULT_DROP / order.Size.Y.Offset)
-    local cash = tostring(payout):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    local cash = tostring(math.abs(payout)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    local reward = (if payout < 0 then "-$" else "+$") .. cash
+    local rewardColor = if payout < 0 then "rgb(255,95,95)" else "rgb(255,222,115)"
     local gui = Instance.new("BillboardGui")
     gui.Name = "CustomerResult"
     gui.Adornee = order.Adornee
     gui.StudsOffset = Vector3.zero
-    local height = if grade == "D" then 76 else 54
+    local height = if ingredientValue == nil then 32 elseif grade == "D" then 76 else 54
     gui.Size = UDim2.fromOffset(300, height)
     -- Same stable anchor, fixed pixel rows above the entire reaction dialogue.
     local dialogueTop = (order.SizeOffset.Y + 0.5) * order.Size.Y.Offset
@@ -94,20 +96,23 @@ function CustomerPresentation.ShowResult(
     end
     local resultText = if grade
         then string.format(
-            '<font color="%s">%s</font>  <font color="rgb(255,222,115)">+$%s</font>',
+            '<font color="%s">%s</font>  <font color="%s">%s</font>',
             GRADE_COLORS[grade] or "rgb(255,255,255)",
             grade,
-            cash
+            rewardColor,
+            reward
         )
-        else '<font color="rgb(255,222,115)">+$' .. cash .. "</font>"
+        else '<font color="' .. rewardColor .. '">' .. reward .. "</font>"
     row("Result", 0, 32, 24, resultText)
-    row(
-        "Ingredients",
-        34,
-        20,
-        18,
-        'Ingredients: <font color="rgb(100,225,120)">' .. MoneyFormat.Compact(ingredientValue) .. "</font>"
-    )
+    if ingredientValue ~= nil then
+        row(
+            "Ingredients",
+            34,
+            20,
+            18,
+            'Ingredients: <font color="rgb(100,225,120)">' .. MoneyFormat.Compact(ingredientValue) .. "</font>"
+        )
+    end
     if grade == "D" then
         local retry = row("Retry", 56, 20, 16, "TRY AGAIN \u{00B7} 15% PAYOUT")
         retry.TextColor3 = Color3.fromRGB(255, 95, 95)
@@ -116,6 +121,40 @@ function CustomerPresentation.ShowResult(
     gui:SetAttribute("ResultExpiresAt", os.clock() + RESULT_DURATION)
     game:GetService("Debris"):AddItem(gui, RESULT_DURATION)
     return gui
+end
+
+-- Cosmetic geometry only: never call IngredientService.Spawn or register an item.
+function CustomerPresentation.AttachStolenIngredient(model: Model, visual: Instance): Instance?
+    local root = model:FindFirstChild("HumanoidRootPart")
+    local part = if visual:IsA("BasePart") then visual elseif visual:IsA("Model") then visual.PrimaryPart else nil
+    if not root or not root:IsA("BasePart") or not part then
+        visual:Destroy()
+        return nil
+    end
+    local descendants = visual:GetDescendants()
+    table.insert(descendants, visual)
+    for _, child in descendants do
+        for name in child:GetAttributes() do
+            child:SetAttribute(name, nil)
+        end
+        if child:IsA("BasePart") then
+            child.Anchored = false
+            child.CanCollide, child.CanTouch, child.CanQuery = false, false, false
+            child.Massless = true
+        end
+    end
+    local at = root.CFrame * CFrame.new(1.4, 0, -0.8)
+    if visual:IsA("Model") then
+        visual:PivotTo(at)
+    else
+        part.CFrame = at
+    end
+    visual.Name = "StolenIngredientVisual"
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0, weld.Part1 = root, part
+    weld.Parent = part
+    visual.Parent = model
+    return visual
 end
 
 -- A short exit route must not truncate the readable hold or delay the next customer.

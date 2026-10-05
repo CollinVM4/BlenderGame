@@ -211,3 +211,31 @@ normal inventory, stash, theft, throw, blender input, and loose cleanup.
 `--suite player-head-visual` covers avatar cloning, sanitization and fallback.
 `--suite player-head-stash`, `--suite player-head-blender-visual`, and the ingredient prompt runner's `--player-head-only`
 flag keep head presentation checks separate. See [setup and validation](../docs/PLAYER_HEAD_DROPS.md).
+
+## Bad customer first pass
+
+`--suite bad-customers --suite bad-customer-stash` runs the new customer lifecycle,
+queue-front/owner authority, Serve/Dismiss/Reject races, Thief/Freeloader outcomes,
+real stash isolation and real blender/smoothie preservation integration.
+`--suite bad-customer-presentation` separately verifies only new REJECT lettering
+and inert stolen geometry. Presentation is not a prerequisite for gameplay.
+Existing normal request/payout, queue, walk and ragdoll tests keep their original
+homes. See [BAD_CUSTOMERS.md](../docs/BAD_CUSTOMERS.md) for Studio smoke checks and
+baseline validation limitations.
+
+
+## Walk-in claiming and stand identity
+
+`--suite stand-identity --suite plot-player-flow` checks zone entry, existing
+session membership and filtered rename authority. Presentation remains separate:
+`--suite stand-sign --suite stand-editor --suite plot-identity`. The turbine camera
+runner verifies the editor handoff preserves its existing contracts. See
+[STAND_IDENTITY.md](../docs/STAND_IDENTITY.md) for Studio setup, validation and
+pre-existing session/typecheck/runner blockers.
+
+Naming-specific coverage now includes the shared 27-grapheme contract, conservative
+token/separator masking, both Roblox filter failure stages, safe star publication,
+duplicate SAVE/on-screen Return/FocusLost events, controller navigation and keyboard
+placement calculations. `fixtures/stand_graphemes.luau` is a limited CLI Unicode
+double; engine segmentation, native keyboards and rendered readability require the
+Device Simulator checks documented in that guide.

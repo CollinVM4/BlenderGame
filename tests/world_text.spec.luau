@@ -8,10 +8,11 @@ env.typeof = function(value)
 end
 -- These modules must function without any prompt, input, camera, or frame service.
 env.game.GetService = function(_, name)
-    error("Unexpected service dependency: " .. name)
+    assert(name == "ReplicatedStorage", "Unexpected service dependency: " .. name)
+    return { Shared = { Constants = { DialogueTextStyle = "DialogueTextStyle" } } }
 end
 env.Instance.new = function(class)
-    assert(class == "BillboardGui" or class == "TextLabel", "visual-only code created " .. class)
+    assert(class == "BillboardGui" or class == "TextLabel" or class == "UIStroke", "visual-only code created " .. class)
     return instance(class)
 end
 local modules = {}
@@ -33,6 +34,7 @@ local function module(name)
     )
     return chunk()
 end
+modules.DialogueTextStyle = module("DialogueTextStyle")
 modules.WorldBillboardStyle = module("WorldBillboardStyle")
 local worldText = module("WorldTextPresentation")
 local root = instance("Model")

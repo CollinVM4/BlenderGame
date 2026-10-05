@@ -73,6 +73,8 @@ export type PlotSessionState = {
     OwnerUserId: number,
     TeammateUserId: number?,
     JoinMode: string,
+    StandName: string,
+    StandNameRevision: number,
     SharedCash: number,
     SharedUpgrades: { [string]: number },
     Status: string,

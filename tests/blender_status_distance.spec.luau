@@ -72,7 +72,7 @@ local controller = loadModule("BlenderStatusDistanceController")
 controller.Init()
 controller.Init()
 workspaceFake.DescendantAdded:Fire(turbine.Label)
-check(counter.Gui.MaxDistance == 60 and turbine.Gui.MaxDistance == 40, "original visibility ranges retained")
+check(counter.Gui.MaxDistance == 60 and turbine.Gui.MaxDistance == 40, "non-guidance visibility ranges retained")
 check(counter.Label.AnchorPoint.X == 0.5 and counter.Label.Position.X.Scale == 0.5, "centered count layout retained")
 local countPosition, countAnchor = counter.Label.Position, counter.Label.AnchorPoint
 for _, distance in { 0, 12, 15, 21, 35, 45, 50, 55, 59.9, 60, 80, 0 } do

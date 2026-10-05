@@ -68,6 +68,7 @@ function BlenderStatusPresentation.Init(services: any)
         local guis: { BillboardGui } = {}
         local countText: TextLabel? = nil
         local promptText: TextLabel? = nil
+        local promptGui: BillboardGui? = nil
         if countOrigin then
             local gui, text = billboard(countOrigin, "IngredientCountDisplay", COUNT_SIZE, COUNT_OFFSET)
             table.insert(guis, gui)
@@ -77,6 +78,7 @@ function BlenderStatusPresentation.Init(services: any)
             local gui, text = billboard(promptOrigin, "TurbineStatusDisplay", PROMPT_SIZE, PROMPT_OFFSET)
             table.insert(guis, gui)
             promptText = text
+            promptGui = gui
         end
         local owner: Player? = nil
         local ownerConnections: { RBXScriptConnection } = {}
@@ -101,6 +103,12 @@ function BlenderStatusPresentation.Init(services: any)
                         Economy.MaxIngredients
                     )
                     else "LOAD INGREDIENTS TO BLEND!"
+                local guidance = promptText.Text == "LOAD INGREDIENTS TO BLEND!"
+                promptText.TextSize = if guidance then TEXT_SIZE * 0.85 else TEXT_SIZE
+                if promptGui then
+                    promptGui.Size = if guidance then UDim2.fromOffset(323, 68) else PROMPT_SIZE
+                    promptGui.MaxDistance = if guidance then MAX_DISTANCE * 0.70 else MAX_DISTANCE
+                end
             end
         end
         local function disconnectOwner()

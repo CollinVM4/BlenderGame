@@ -72,6 +72,16 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 2,
     },
 
+    Rainbow_Trout = {
+        Id = "Rainbow_Trout",
+        DisplayName = "Rainbow Trout",
+        Tags = { "Seafood", "Rainbow", "Protein" },
+        BlendColor = Color3.fromRGB(180, 200, 220),
+        Rarity = "Rare",
+        Value = 30000,
+        JumpLocation = 0,
+    },
+
     Cherries = {
         Id = "Cherries",
         DisplayName = "Cherries",
@@ -88,7 +98,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Veggie", "Spicy", "Red" },
         BlendColor = Color3.fromRGB(215, 45, 35),
         Rarity = "Common",
-        Value = 3000,
+        Value = 10000,
         JumpLocation = 1,
     },
 
@@ -353,9 +363,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 2,
     },
 
-    Potato = {
-        Id = "Potato",
-        DisplayName = "Potato",
+    Golden_Potato = {
+        Id = "Golden_Potato",
+        DisplayName = "Golden Potato",
         Tags = { "Vegetable", "Golden", "Cloud Garden" },
         BlendColor = Color3.fromRGB(247, 250, 61),
         Rarity = "Rare",
@@ -393,13 +403,23 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 0,
     },
 
-    Tomato = {
-        Id = "Tomato",
-        DisplayName = "Tomato",
+    Golden_Tomato = {
+        Id = "Golden_Tomato",
+        DisplayName = "Golden Tomato",
         Tags = { "Fruit", "Golden", "Cloud Garden" },
         BlendColor = Color3.fromRGB(236, 227, 59),
         Rarity = "Rare",
         Value = 60000,
+        JumpLocation = 3,
+    },
+
+    Cotton_Candy = {
+        Id = "Cotton_Candy",
+        DisplayName = "Cotton Candy",
+        Tags = { "Sweet", "Pink", "Candy"},
+        BlendColor = Color3.fromRGB(255, 182, 193),
+        Rarity = "Rare",
+        Value = 65000,
         JumpLocation = 3,
     },
 
@@ -483,16 +503,6 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Rarity = "Uncommon",
         Value = 12000,
         JumpLocation = 1,
-    },
-
-    GoldenTomato = {
-        Id = "GoldenTomato",
-        DisplayName = "Golden Tomato",
-        Tags = { "Fruit", "Sweet", "Healthy", "Yellow" },
-        BlendColor = Color3.fromRGB(255, 205, 55),
-        Rarity = "Rare",
-        Value = 100000,
-        JumpLocation = 3,
     },
 
     -- Mystery uses the same deterministic RGB mean as every other unit.

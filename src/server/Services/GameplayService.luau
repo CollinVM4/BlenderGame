@@ -19,6 +19,10 @@ function GameplayService.HandlePlotRequest(
     value: any,
     context: any
 ): boolean
+    -- Claims/joins originate exclusively from server-authored zone detection now.
+    if action == "ClaimPlot" or action == "JoinTeam" then
+        return false
+    end
     if not MovementService.CanPerformGameplayAction(player) then
         return false
     end
@@ -35,11 +39,6 @@ function GameplayService.HandlePlotRequest(
         return false
     end
     local authority = services.TycoonService
-    if action == "ClaimPlot" then
-        return authority.ClaimPlot(player, plot, context)
-    elseif action == "JoinTeam" then
-        return authority.RequestJoin(player, plot, context)
-    end
     if authority.GetPlot(player) ~= plot or not authority.ValidateActor(player, context) then
         return false
     end

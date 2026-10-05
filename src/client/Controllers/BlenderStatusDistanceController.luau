@@ -3,10 +3,10 @@ local TweenService = game:GetService("TweenService")
 local Controller = {}
 local started = false
 
--- Preserve the existing visibility ranges; Roblox performs camera-distance culling.
+-- Scoped visibility ranges; Roblox performs camera-distance culling.
 local MAX_DISTANCES: { [string]: number } = {
     IngredientCountDisplay = 60,
-    TurbineStatusDisplay = 40,
+    TurbineStatusDisplay = 28,
 }
 
 function Controller.Init()
@@ -27,7 +27,20 @@ function Controller.Init()
         if not maxDistance then
             return
         end
-        gui.MaxDistance = maxDistance
+        if gui.Name == "TurbineStatusDisplay" then
+            local function guidanceRange()
+                gui.MaxDistance = if object.Text == "LOAD INGREDIENTS TO BLEND!" then maxDistance else 40
+            end
+            guidanceRange()
+            if not cleanups[object] then
+                local changed = object:GetPropertyChangedSignal("Text"):Connect(guidanceRange)
+                cleanups[object] = function()
+                    changed:Disconnect()
+                end
+            end
+        else
+            gui.MaxDistance = maxDistance
+        end
         if gui.Name == "IngredientCountDisplay" then
             -- Retain the label's existing centered layout inside the pixel canvas.
             object.AnchorPoint = Vector2.new(0.5, 0.5)

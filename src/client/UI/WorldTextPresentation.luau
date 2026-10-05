@@ -1,5 +1,6 @@
 --!strict
 local Style = require(script.Parent.WorldBillboardStyle)
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local Presentation = {}
 
 export type Settings = Style.Settings & {
@@ -38,7 +39,34 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
     Style.ApplyText(text, config)
     text.Active = false
     text.Selectable = false
-    text.Text = config.Text or ""
+    local function setText(value: string)
+        local tier = string.match(value, "^JUMP ([123]) ZONE$")
+            or ({ I = "1", II = "2", III = "3" })[string.match(value, "^JUMP (I+) ZONE$") or ""]
+        Style.ApplyText(text, config)
+        text.RichText = tier ~= nil
+        if tier then
+            TextStyle.Apply(text, config.TextSize or 24)
+            if tier == "3" then
+                -- Per-letter pastels keep the rainbow confined to JUMP 3; ZONE stays white.
+                text.Text = '<font color="rgb(255,188,202)">J</font><font color="rgb(255,213,177)">U</font>'
+                    .. '<font color="rgb(255,237,177)">M</font><font color="rgb(184,231,206)">P</font> '
+                    .. '<font color="rgb(187,208,247)">'
+                    .. (string.match(value, "^JUMP (.+) ZONE$") or "3")
+                    .. "</font> ZONE"
+            else
+                local color = if tier == "1" then "rgb(226,193,139)" else "rgb(133,208,235)"
+                local jump = string.match(value, "^(JUMP .+) ZONE$") or ""
+                text.Text = '<font color="' .. color .. '">' .. jump .. "</font> ZONE"
+            end
+        else
+            local outline = text:FindFirstChild("DialogueOutline")
+            if outline then
+                outline:Destroy()
+            end
+            text.Text = value
+        end
+    end
+    setText(config.Text or "")
     text.Parent = gui
     -- Client-created child: no server replication; origin destruction owns cleanup.
     gui.Parent = origin
@@ -58,7 +86,7 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
     local handle: Handle = {
         SetText = function(_self: Handle, value: string)
             if not destroyed then
-                text.Text = value
+                setText(value)
             end
         end,
         SetVisible = function(_self: Handle, visible: boolean)
