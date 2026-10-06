@@ -1,4 +1,4 @@
 -- Main HUD
 
--- TODO: stamina bar synced to Player:GetAttribute("StaminaCurrent"/"StaminaMax"), plus an
--- onscreen sprint button for mobile/console modalities (see SprintController.luau)
+-- TODO: stamina bar synced to Player:GetAttribute("StaminaCurrent"/"StaminaMax").
+-- SprintController owns the mobile hold-to-sprint button.

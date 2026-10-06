@@ -1,3 +1,6 @@
+env.UDim2.new = function(xScale, xOffset, yScale, yOffset)
+    return { X = { Scale = xScale, Offset = xOffset }, Y = { Scale = yScale, Offset = yOffset } }
+end
 -- Real sprint/controller/movement modules, fake engine signals; no client state listener.
 local function countedSignal()
     local event = signal()
@@ -139,6 +142,17 @@ check(
 
 local input = { InputBegan = countedSignal(), InputEnded = countedSignal(), WindowFocusReleased = countedSignal() }
 services.UserInputService = input
+local touchAction
+services.ContextActionService = {
+    BindAction = function(_, _, callback, createTouchButton)
+        setup(createTouchButton, "sprint provides a mobile button")
+        touchAction = callback
+    end,
+    SetTitle = function() end,
+    SetPosition = function() end,
+}
+env.Enum.ContextActionResult = { Sink = "Sink" }
+env.Enum.UserInputState = { Begin = "Begin", End = "End", Cancel = "Cancel" }
 env.Enum.KeyCode = { LeftShift = "LeftShift", RightShift = "RightShift", A = "A" }
 services.Players.LocalPlayer = runner
 local stunChanged = signal()
@@ -191,6 +205,31 @@ stunChanged:Fire()
 local requestsBeforeStunned = #requests
 services.UserInputService.InputBegan:Fire({ KeyCode = env.Enum.KeyCode.LeftShift }, false)
 check(#requests == requestsBeforeStunned and humanoid.WalkSpeed == 0, "local sprint input cannot bypass stun")
+movement.SetStunned(runner, false)
+stunChanged:Fire()
+input.InputEnded:Fire(left)
+local beforeTouch = #requests
+touchAction("SprintHeld", "Begin")
+touchAction("SprintHeld", "Begin")
+check(#requests == beforeTouch + 1 and requests[#requests], "holding mobile sprint sends one start")
+input.InputBegan:Fire(left, false)
+touchAction("SprintHeld", "End")
+check(#requests == beforeTouch + 1, "mobile release preserves held keyboard sprint")
+input.InputEnded:Fire(left)
+check(requests[#requests] == false, "last held input release stops sprint")
+touchAction("SprintHeld", "Begin")
+touchAction("SprintHeld", "Cancel")
+check(requests[#requests] == false, "cancelled mobile touch stops sprint")
+touchAction("SprintHeld", "Begin")
+input.WindowFocusReleased:Fire()
+check(requests[#requests] == false, "focus loss stops held mobile sprint")
+touchAction("SprintHeld", "Begin")
+movement.SetStunned(runner, true)
+stunChanged:Fire()
+local beforeStunnedTouch = #requests
+touchAction("SprintHeld", "Begin")
+check(#requests == beforeStunnedTouch and requests[#requests] == false, "stun clears and blocks held mobile sprint")
+touchAction("SprintHeld", "End")
 movement.SetStunned(runner, false)
 stunChanged:Fire()
 check(serverSends == 0, "server never sends SprintRequest during any lifecycle")

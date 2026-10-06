@@ -1,3 +1,6 @@
+env.UDim2.new = function(xScale, xOffset, yScale, yOffset)
+    return { X = { Scale = xScale, Offset = xOffset }, Y = { Scale = yScale, Offset = yOffset } }
+end
 -- One input action reaches the server-owned throw path, including rate limiting.
 local newInstance = env.Instance.new
 env.Instance.new = function(class)
@@ -38,6 +41,7 @@ services.ContextActionService = {
         touchEnabled = createTouchButton
     end,
     SetTitle = function() end,
+    SetPosition = function() end,
 }
 env.Enum.ContextActionResult = { Pass = "Pass", Sink = "Sink" }
 env.Enum.UserInputState = { Begin = "Begin", End = "End" }

@@ -45,6 +45,7 @@ function Controller.Init()
     end
     ContextActionService:BindAction("ThrowHeld", throw, true, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
     ContextActionService:SetTitle("ThrowHeld", "Throw")
+    ContextActionService:SetPosition("ThrowHeld", UDim2.new(1, -85, 0, -60))
 end
 
 return Controller

@@ -970,6 +970,7 @@ local CustomerRequests = {
             "make me whatever!",
             "I'll try anything!",
             "Your choice!",
+            "I'm not picky..",
             "just blend me something!",
             "you pick. I trust the smoothie master!",
             "Throw whatever you want in there!",

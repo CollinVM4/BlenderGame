@@ -20,13 +20,16 @@
     
     "ServerScriptService": {
       "$className": "ServerScriptService",
-      "Server": {
+      "Server": {git 
         "$path": "src/server"
       }
     },
     
     "StarterPlayer": {
       "$className": "StarterPlayer",
+      "$properties": {
+        "AutoJumpEnabled": false
+      },
       "StarterCharacterScripts": {
         "$className": "StarterCharacterScripts",
         "Health": {

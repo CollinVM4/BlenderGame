@@ -1,5 +1,6 @@
 --!strict
--- Detects sprint input (keyboard Shift) and requests sprint start/stop from the server
+-- Detects held sprint input (keyboard Shift or mobile button) and requests it from the server.
+local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -10,6 +11,7 @@ local SprintController = {}
 local started = false
 local requested = false
 local heldShift: { [Enum.KeyCode]: boolean } = {}
+local heldTouch = false
 
 local function requestSprint(sprintEvent: RemoteEvent, wantsToSprint: boolean)
     wantsToSprint = wantsToSprint and player:GetAttribute("Stunned") ~= true
@@ -29,6 +31,7 @@ function SprintController.Init()
     player:GetAttributeChangedSignal("Stunned"):Connect(function()
         if player:GetAttribute("Stunned") == true then
             table.clear(heldShift)
+            heldTouch = false
             requestSprint(sprintEvent, false)
         end
     end)
@@ -46,17 +49,30 @@ function SprintController.Init()
     UserInputService.InputEnded:Connect(function(input: InputObject)
         if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
             heldShift[input.KeyCode] = nil
-            requestSprint(sprintEvent, next(heldShift) ~= nil)
+            requestSprint(sprintEvent, heldTouch or next(heldShift) ~= nil)
         end
     end)
 
     UserInputService.WindowFocusReleased:Connect(function()
         table.clear(heldShift)
+        heldTouch = false
         requestSprint(sprintEvent, false)
     end)
 
-    -- TODO: mobile onscreen sprint button and console/gamepad input (e.g. thumbstick click) should
-    -- also call requestSprint(sprintEvent, true/false) here once those input modalities are built
+    local function sprintTouch(_action: string, state: Enum.UserInputState): Enum.ContextActionResult
+        if state == Enum.UserInputState.Begin then
+            heldTouch = player:GetAttribute("Stunned") ~= true
+        elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+            heldTouch = false
+        else
+            return Enum.ContextActionResult.Sink
+        end
+        requestSprint(sprintEvent, heldTouch or next(heldShift) ~= nil)
+        return Enum.ContextActionResult.Sink
+    end
+    ContextActionService:BindAction("SprintHeld", sprintTouch, true)
+    ContextActionService:SetTitle("SprintHeld", "Sprint")
+    ContextActionService:SetPosition("SprintHeld", UDim2.new(1, -85, 0, 30))
 
     -- Presentation reads the server-replicated StaminaCurrent/StaminaMax/IsSprinting attributes.
 end
