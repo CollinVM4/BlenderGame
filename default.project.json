@@ -20,7 +20,7 @@
     
     "ServerScriptService": {
       "$className": "ServerScriptService",
-      "Server": {git 
+      "Server": {
         "$path": "src/server"
       }
     },
