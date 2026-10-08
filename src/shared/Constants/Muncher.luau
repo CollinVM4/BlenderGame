@@ -1,9 +1,14 @@
 --!strict
 return {
-    Goals = {
-        { Required = 25, CashMultiplier = 1.25, Duration = 300 },
-        { Required = 50, CashMultiplier = 1.5, Duration = 420 },
-        { Required = 100, CashMultiplier = 2, Duration = 600 },
+    PurchaseCost = 100000,
+    Required = 25,
+    BuffDuration = 300,
+    RevealDepth = 6,
+    RevealSeconds = 0.95,
+    Buffs = {
+        { Id = "Cash125", Name = "CASH BOOST 1.25x", CashMultiplier = 1.25 },
+        { Id = "Cash150", Name = "CASH BOOST 1.5x", CashMultiplier = 1.5 },
+        { Id = "Cash200", Name = "CASH BOOST 2x", CashMultiplier = 2 },
     },
     FeedDistance = 10,
     FeedCooldown = 0.15,

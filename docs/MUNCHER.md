@@ -1,122 +1,165 @@
-# Muncher V1
+# Muncher purchase and buffs
 
-`MuncherService` owns appetite, progress, multiplier and server expiration per
-`PlotSessionId`. A teammate shares the plot's reward; leaving the team revokes
-access immediately. Session closure clears progress and buffs, so a reassigned
-plot starts fresh. Nothing persists across servers.
+Muncher remains the existing physical InputZone intake, ingredient registry /
+inventory consumption, cosmetic mouth travel, feed audio path, Fredoka progress
+BillboardGui, YUM! and FULL! feedback. No Feed ProximityPrompt or new gameplay
+remote is introduced. Purchase and progress are session-only.
 
-Balancing lives in `src/shared/Constants/Muncher.luau`: equally likely targets of
-25 / 50 / 100, earning 1.25x for 300 seconds / 1.5x for 420 seconds / 2x for
-600 seconds. Every accepted ingredient contributes one, regardless of its value,
-rarity, type or ripeness. Completion resets progress and rolls another goal.
-New rewards replace the previous multiplier and deadline, including weaker rewards.
-Expiration uses `workspace:GetServerTimeNow()` and is checked on payout lookup,
-so a delayed presentation tick cannot prolong a buff.
+## Purchase and reveal
 
-## Feeding and authority
+Touch the authored `Muncher.PurchasePoint1` BasePart to purchase for exactly
+$100,000. The pad displays MUNCHER / $100K using the Farm purchase-signage convention:
+a client-owned 340x64 BillboardGui in PlayerGui, with the pad itself as Adornee,
+a two-stud StudsOffsetWorldSpace lift, AlwaysOnTop true, MaxDistance 28 and two
+32-pixel Fredoka 24 rows (white title / gold price). No attachment is needed.
+The label is stationary during the rise and follows the existing replicated
+CanTouch / Transparency visibility policy; session reset re-enables the same GUI,
+and removal/replacement of the pad cleans it up. `MuncherService.TryPurchase` verifies
+the actor's current plot, the exact pad, character proximity/action eligibility,
+and captured session membership. Owner or current teammate may purchase.
 
-World feeding is exclusively physical: carry/throw an ingredient into InputZone.
-The component creates no Feed prompt or manual interaction callback and removes
-legacy ProximityPrompts beneath InputZone, including ones added later. The service
-API remains compatible, but its manual intake branch has no world interaction
-binding. The server checks current membership, character health and action
-eligibility. No new ingredient-ID or gameplay-state remote exists.
+The existing `TycoonService.PurchasePersonalUpgrade` server cost/callback adapter
+is reused: despite its historical name, it debits **session SharedCash** under
+BeginTransaction, invokes a synchronous purchase commit, publishes both members'
+cash and then releases the lifecycle lock. There is no second cash ledger or
+purchase refactor. Insufficient funds return the existing `InsufficientCash`
+reason and leave the pad and balance intact; the physical pad retains the same
+silent unsuccessful-touch behavior as the farm/stash purchase pads.
 
-Thrown/loose world ingredients are scanned at 0.1-second intervals, resolved
-through `IngredientService`'s private registry, verified against actual server
-overlap and removed with `IngredientService.Consume`. Only the item's owner may
-feed owned world items, and that player must belong to the receiving plot.
-Unowned claimable ingredients overlapping the zone feed the plot's Muncher.
-Unclaimable and frozen-until-pickup items are preserved. Smoothies, forged
-attributes and arbitrary parts cannot enter either ingredient intake path.
+The purchase commits once, hides/disables the pad and starts a 0.95-second,
+six-stud Quad-Out rise. Studio positions are the resting positions.
+`MuncherReveal` captures authored world transforms and applies one shared vertical
+fraction on the server each Heartbeat. All nested artwork parts and gameplay
+markers move together; PurchasePoint1 and its entire subtree stay fixed.
+Part-backed attachments follow their parts; independent attachments are translated
+as world markers. Artwork is anchored during controlled operation, with its
+collision disabled underground / in motion and restored at rest. Binding cleanup
+restores authored transforms and anchoring. Session release places the assembly
+underground again and restores the purchase pad.
 
-Intake commits under the existing Tycoon session transaction without yielding.
-Authoritative removal precedes progress; repeated contact with a removed item
-cannot count again. A failed consumption never advances progress.
-Blender, throwing, stash and ingredient lifetime implementations are unchanged.
+Only after the complete assembly reaches rest and the server deadline passes does
+`CompleteReveal` enable intake. Both carried and world-item feed APIs reject
+unbought / revealing Munchers without consuming anything. The component skips
+world overlap intake while inactive and hides the progress display.
 
-## Payout and presentation
+## Exactly 25 ingredients, one buff
 
-`CustomerService.CalculateOrderPayout` and the legacy `CalculatePayout` obtain the
-bonus solely from `MuncherService.GetCashMultiplier`. It multiplies the final
-cash chain alongside payout upgrades and DoubleCash, before rounding. Grading,
-ingredient subtotals, stash values, costs and unrelated cash grants are unchanged.
+Each successfully consumed valid ingredient contributes exactly +1. At 25,
+existing FULL! feedback animates the green fill to completion, one equally likely
+existing cash buff is selected, and progress resets to zero:
 
-`Components/Muncher` binds existing PlayerPlot tags and discovers direct fixtures
-by name. `MuncherPresentation` creates a compact 176x80 Fredoka BillboardGui at
-DisplayOrigin, shifted upward 0.65 studs (MaxDistance 36, AlwaysOnTop false).
-Its 156x20 charcoal pill track has a green rounded fill, dark outer outline and
-white rim; outlined title and count sit close above and below the meter.
-Changed progress tweens over 0.2 seconds, clamped to [0, 1]. Accepted ingredients
-immediately update the count and trigger a 15% count punch plus 2.5% bar bump.
-Feeds show YUM! for 0.55 seconds, refreshed by each accepted feed. Completion
-holds gold FULL! for 0.85 seconds with an 18% count punch and 7% bar bump,
-while the new target updates immediately. The pre-feed snapshot detects completion
-even when the new target matches the previous one; rewards/reset logic are untouched.
-Each animation cancels its predecessor, scale pulses restart at 1 and reverse,
-and idle polling does not restart tweens or clear temporary titles. FULL! takes
-priority over normal feed titles during its hold; a newer completion refreshes it.
-Version-guarded title callbacks cannot clear newer states, including after release
-or destruction; release/destruction cancel active tweens.
-The component also creates an independent, noncolliding
-ingredient copy that travels to MouthOrigin for 0.18 seconds. This visual is never
-registered as inventory and its completion has no gameplay effect. Missing
-fixtures warn once per plot; missing artwork/UI/feedback does not prevent unrelated
-gameplay. Late fixtures are discovered automatically.
+| Buff ID | Existing effect | Duration |
+| --- | --- | --- |
+| Cash125 | 1.25x customer cash payout | 300 seconds |
+| Cash150 | 1.5x customer cash payout | 300 seconds |
+| Cash200 | 2x customer cash payout | 300 seconds |
 
-**The entirety of `Visual`, including the pot, is the Muncher artwork. No code
-independently manipulates `Visual.Potted Plant` or any other Visual descendant.**
-FeedSfxOrigin remains available for future audio and is unused in V1.
+These are the complete existing Muncher buff pool; there were no Muncher movement
+or farming effects to duplicate. CustomerService still obtains the multiplier
+through the existing GetCashMultiplier API, without changing grades, ingredient
+subtotals, other cash grants or purchase costs. Rewards remain scoped to the
+plot session: teammates share them and departing members lose access.
 
-## Studio setup and smoke checks
+A second batch can accumulate while a buff is active. At 25 it holds FULL until
+the original server expiry; no multiplier replacement, stacking or deadline
+extension occurs. Further ingredients are rejected and preserved. Expiry clears
+the old effect; if a full batch is pending, exactly one new random buff starts for
+300 seconds and progress resets. Server GetServerTimeNow is authoritative, checked
+on every snapshot / payout lookup and while the component polls idle plots.
 
-Keep the supplied direct hierarchy beneath each plot:
+## Replication and presentation
+
+The server projects `Purchased`, `Active`, `Progress`, `ActiveBuff` and
+`BuffExpiresAt` attributes onto the authored Muncher. `GetSnapshot` retains
+Multiplier and ExpiresAt compatibility fields and adds purchase / activation
+state. The normal progress BillboardGui remains server-owned at DisplayOrigin.
+Both track and green fill use their own UICorner with CornerRadius UDim.new(1, 0).
+Rapid feed tweens cancel earlier fill/pulse work; guarded completion/title delays
+cannot overwrite newer authoritative counts or released/destroyed displays.
+
+MuncherPresentationController creates a compact Fredoka buff BillboardGui at
+DisplayOrigin, above the normal meter (offset 2.35 versus 0.65 studs, MaxDistance
+36). It renders the replicated buff name and a locally interpolated m:ss countdown
+from the server expiry, including 5:00 and 0:01, and removes it at zero without
+waiting for another server update. Gameplay duration stays entirely on the server.
+
+The first access to an active Muncher in the player's current session shows:
+`FEED MUNCHER to receive a temporary buff!`
+It appears once per player/server session, including for teammates who join later.
+
+Both Muncher and stash ripeness use `UI/TutorialTooltip`. A single CanvasGroup
+fade includes background, lettering and the opaque DialogueOutline UIStroke that
+previously outlived TextTransparency. Entrance is 0.18 seconds, exit starts at
+4.3 seconds and lasts 0.45 seconds; completion destroys the whole GUI together.
+The stash tutorial's rich text wording and hold/fade timing are preserved.
+
+## Changed files
+
+- src/shared/Constants/Muncher.luau
+- src/server/Services/MuncherService.luau
+- src/server/Components/Muncher.luau
+- src/server/Components/MuncherPresentation.luau
+- src/server/Components/MuncherReveal.luau (new)
+- src/client/Controllers/MuncherPresentationController.luau (new)
+- src/client/Controllers/RipenessPresentationController.luau
+- src/client/UI/TutorialTooltip.luau (new)
+- src/client/init.client.luau
+- tests/muncher.spec.luau
+- tests/muncher_presentation.spec.luau
+- tests/run_state_tests.py (new module-source mappings only)
+- docs/MUNCHER.md
+
+Existing unrelated worktree edits were preserved.
+
+## Validation and Studio setup
+
+Keep the direct authored hierarchy under each tagged PlayerPlot:
 
 ```text
-Plot
-  Muncher
-    InputZone       (BasePart)
-    MouthOrigin     (BasePart or Attachment)
-    DisplayOrigin   (BasePart or Attachment)
-    FeedSfxOrigin
-    Visual          (all artwork, including pot)
+Muncher
+  DisplayOrigin    (BasePart or Attachment)
+  FeedSfxOrigin
+  MouthOrigin      (BasePart or Attachment)
+  Visual           (all authored artwork, including nested parts/models)
+  InputZone        (BasePart)
+  PurchasePoint1   (BasePart; touch pad at its authored accessible position)
 ```
 
-Attachments must be parented appropriately in Studio; if using nested attachments,
-put the named BasePart marker directly under Muncher instead. InputZone is made
-anchored, invisible, noncolliding and queryable by the component. Place/size it
-where throws should be accepted. No Muncher-specific tags or authored animations
-are required. Plot tags use existing bootstrap discovery.
+No second authored position, extra tag or new remote is required. Part-backed
+attachments keep their authored parenting. Do not weld purchase-pad geometry to
+the moving artwork. The server makes the static fixture anchored and InputZone
+invisible, noncolliding and queryable.
 
-In Studio, verify no Muncher Feed prompt appears, carrying/throwing multipart items
-through InputZone, UI readability/face clearance, mouth travel and collision
-behavior. Check single and rapid feeds, fill settling, count/bar pulses, FULL! and
-the fresh target (including consecutive identical targets). Confirm smoothie
-rejection, all three goal rewards, weaker/stronger
-replacement, expiration, shared team payouts, death, leaving, plot reassignment,
-missing markers and interrupted cosmetic feedback. CLI mocks cannot validate
-Roblox contact physics, network behavior or visual appearance.
+Focused suites: `python tests/run_state_tests.py --luau <luau.exe> --suite muncher
+--suite muncher-presentation`. Gameplay verifies exact cost, insufficient cash,
+foreign plot rejection, owner/team authority, duplicate purchase, locked/revealing
+intake preservation, equal progress, exact threshold, all three effects and
+300-second deadlines, expiry, full pending batches, preserved excess ingredients,
+existing payouts and session reset. Presentation verifies rounded fill, rapid-feed
+settling, feedback, multipart reveal / stationary pad / session release, countdown,
+one-time tutorial and shared tooltip cleanup.
 
-## Automated validation
+Validation: Muncher integration PASS (297 behavior checks, 17 setup checks), Muncher
+presentation PASS (92 checks), focused Roblox-aware typecheck PASS, StyLua PASS,
+and Rojo build PASS. Full src typecheck retains 203 pre-existing diagnostics,
+identical to a pre-change copy that preserves the unrelated worktree edits.
+`ripeness-presentation` fails on its pre-existing missing global Color3 fixture;
+`throw-blender` fails on a pre-existing player double without DisplayName in
+StandIdentity.DefaultName. Both reproduce with the unchanged Muncher/ripeness
+implementation. Those unrelated fixtures and production systems were not changed.
 
-Run `python tests/run_state_tests.py --luau <luau.exe> --suite muncher` for real
-inventory/ingredient/session/customer integration. This includes exact goal
-completion, equal ingredient progress, duplicate/fake/stale rejection, expiration,
-replacement, real boosted customer serving, grade/upgrade/entitlement composition,
-unmodified costs/grants, team membership and plot reassignment.
+Studio smoke remains necessary: two-client shared purchase contention, insufficient
+cash touches, pad signage and location, multipart rise smoothness/collisions,
+no intake during reveal, unchanged feed audio/vacuum/mouth feedback, capsule fill
+at 1/25 and 25/25, pending FULL, readable countdown above the meter, both tutorial
+fade-out outlines, leaving/rejoining and fresh plot reassignment. No Studio session
+was run; CLI doubles do not prove engine physics, rendered layout or replication.
 
-Run `--suite muncher-presentation` separately for immediate counts, animated fill,
-rapid-feed settling, scale recovery, completion/new targets, release/destruction,
-physical-intake feedback, prompt removal, missing/late fixtures, nonblocking
-intake and preservation of the full Visual artwork. The presentation polish pass
-passes this suite, `muncher` and `throw-blender`, plus focused Roblox-aware
-typecheck for both changed components, StyLua and Rojo build. Studio appearance,
-contact physics and replicated tween smoothness remain manual smoke checks.
-Existing `throw-blender`, `carry-selection` and `stash-integration` regressions pass.
-StyLua and Rojo build pass. Full Roblox-aware typecheck has no added diagnostics;
-existing CustomerRequests, CombatService, JackedNoobService and CustomerService
-diagnostics also reproduce on unchanged HEAD. Existing `customer-payout` and
-`customer-payout-serve` suites fail on unchanged HEAD with outdated expected
-ingredient values. `plot-session-races` also fails on unchanged HEAD at
-"purchase remains committed". These unrelated assertions and production systems
-were not changed here.
+
+Purchase signage follow-up: the server-owned pad BillboardGui was replaced with
+the Farm client convention described above; purchase logic, reveal, price and
+buffs are unchanged. Muncher presentation and gameplay suites, focused typecheck,
+StyLua and Rojo build pass. The unchanged HEAD Farm presentation suite also fails
+its stale $1,000 expected price (FarmConfig currently sets row one to $20,000).
+Repeated purchase/reset signage checks verify the same elevated GUI is reused,
+with no duplicate purchase billboards; removing the pad disposes its GUI.

@@ -11,8 +11,11 @@ white lettering, a dark 2.5px outline and selective gold/purple/green accents.
 Its safe-inset upper-center banner is 92% wide with a 780px maximum. Text scales
 between 18 and 32px. Entrance takes 0.24s from 0.93 scale and a small upward
 offset, followed by a 3.5s hold and a 0.18s upward fade. Pending high-priority
-events go first; equal priorities remain FIFO. New events never interrupt the
-visible message. The quiet entrance cue reuses the existing blender-ready ding
+events go first; equal priorities remain FIFO. Ordinary events preserve the
+visible message's hold. Immediate server notices and the ingredient cleanup countdown interrupt that hold and lead the queue;
+the countdown updates in place using its server-time deadline. See
+[ingredient cleanup](INGREDIENT_CLEANUP.md) for timing and red accents. The quiet
+entrance cue reuses the existing blender-ready ding
 and stops after at most 1.5s.
 
 Mystery rarity is read from ingredient definitions. Both existing ingredient

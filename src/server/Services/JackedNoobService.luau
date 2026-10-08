@@ -8,6 +8,7 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local Service = {}
 local deadlines: Logic.State = {}
 local busy: { [Player]: boolean } = {}
+local talkDeadlines: { [Player]: number } = {}
 local active: Model? = nil
 local template: Model? = nil
 local spawn: CFrame? = nil
@@ -78,8 +79,13 @@ bind = function(model: Model)
         if not WorldUtil.Near(player, head, Config.InteractionDistance) then
             return
         end
+        local now = workspace:GetServerTimeNow()
+        if now < (talkDeadlines[player] or 0) then
+            return
+        end
+        talkDeadlines[player] = now + 1
         busy[player] = true
-        local ok, line = pcall(Logic.TryReward, deadlines, player, workspace:GetServerTimeNow(), function()
+        local ok, line = pcall(Logic.TryReward, deadlines, player, now, function()
             return inventory.GetCarryCount(player) < inventory.GetCarryCapacity(player)
         end, function()
             return inventory.GrantIngredient(player, Config.ProteinIngredientId)
@@ -143,6 +149,7 @@ function Service.Init(services: any)
     response.Parent = ReplicatedStorage
     Players.PlayerRemoving:Connect(function(player)
         deadlines[player] = nil
+        talkDeadlines[player] = nil
         busy[player] = nil
     end)
     workspace.DescendantAdded:Connect(function(object)

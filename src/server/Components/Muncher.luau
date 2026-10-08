@@ -1,4 +1,6 @@
 --!strict
+local Players = game:GetService("Players")
+local Reveal = require(script.Parent.MuncherReveal)
 local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Muncher)
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
@@ -13,6 +15,29 @@ function Component.Init(services: any)
         local gui: BillboardGui? = nil
         local update: ((any, boolean?) -> ())? = nil
         local elapsed = 0
+        local assembly: Instance? = nil
+        local reveal: ((any) -> boolean)? = nil
+        local restore: (() -> ())? = nil
+        local pad: BasePart? = nil
+        local padConnection: RBXScriptConnection? = nil
+        local padAppearance: { [Instance]: any } = {}
+        local function padVisibility(purchased: boolean)
+            for object, saved in padAppearance do
+                if object:IsA("BasePart") then
+                    object.Transparency = if purchased then 1 else saved.Transparency
+                    object.CanCollide = not purchased and saved.CanCollide
+                    object.CanTouch = not purchased
+                elseif object:IsA("Decal") then
+                    object.Transparency = if purchased then 1 else saved.Transparency
+                elseif object:IsA("Texture") then
+                    object.Transparency = if purchased then 1 else saved.Transparency
+                elseif object:IsA("LayerCollector") then
+                    object.Enabled = not purchased and saved.Enabled
+                elseif object:IsA("ProximityPrompt") then
+                    object.Enabled = false -- Purchase uses the authored touch pad, like farm rows.
+                end
+            end
+        end
         local function warning(name: string)
             if not warned[name] then
                 warned[name] = true
@@ -46,12 +71,6 @@ function Component.Init(services: any)
                     gui, update = Presentation.Display(origin)
                 end
             end
-            local owner = services.TycoonService.GetOwner(plot)
-            local function publish(consumed: boolean?)
-                if update then
-                    update(if owner then services.MuncherService.GetSnapshot(owner) else nil, consumed)
-                end
-            end
             if zone ~= input then
                 input = zone
                 if zone then
@@ -60,6 +79,95 @@ function Component.Init(services: any)
                     zone.CanTouch = false
                     zone.CanQuery = true
                     zone.Transparency = 1
+                end
+            end
+            local owner = services.TycoonService.GetOwner(plot)
+            local snapshot = if owner then services.MuncherService.GetSnapshot(owner) else nil
+            if muncher ~= assembly then
+                if restore then
+                    restore()
+                end
+                assembly, reveal, restore = muncher, nil, nil
+                if muncher then
+                    reveal, restore = Reveal.Bind(muncher)
+                end
+            end
+            local candidatePad = muncher and muncher:FindFirstChild("PurchasePoint1")
+            local nextPad = if candidatePad and candidatePad:IsA("BasePart") then candidatePad else nil
+            if nextPad ~= pad then
+                if padConnection then
+                    padConnection:Disconnect()
+                end
+                pad, padConnection, padAppearance = nextPad, nil, {}
+                if nextPad then
+                    local objects = nextPad:GetDescendants()
+                    table.insert(objects, nextPad)
+                    for _, object in objects do
+                        if object:IsA("BasePart") then
+                            padAppearance[object] =
+                                { Transparency = object.Transparency, CanCollide = object.CanCollide }
+                        elseif object:IsA("Decal") or object:IsA("Texture") then
+                            padAppearance[object] = { Transparency = object.Transparency }
+                        elseif object:IsA("LayerCollector") then
+                            padAppearance[object] = { Enabled = object.Enabled }
+                        elseif object:IsA("ProximityPrompt") then
+                            padAppearance[object] = {}
+                        end
+                    end
+                    nextPad.Anchored = true
+                    nextPad:SetAttribute("PurchaseCost", Config.PurchaseCost)
+                    padConnection = nextPad.Touched:Connect(function(hit)
+                        local ancestor: Instance? = hit.Parent
+                        while ancestor and ancestor ~= workspace do
+                            local actor = if ancestor:IsA("Model")
+                                then Players:GetPlayerFromCharacter(ancestor)
+                                else nil
+                            if actor then
+                                services.MuncherService.TryPurchase(
+                                    actor,
+                                    nextPad,
+                                    services.TycoonService.GetRequestContext(actor)
+                                )
+                                local currentOwner = services.TycoonService.GetOwner(plot)
+                                local current = if currentOwner
+                                    then services.MuncherService.GetSnapshot(currentOwner)
+                                    else nil
+                                padVisibility(current ~= nil and current.Purchased == true)
+                                return
+                            end
+                            ancestor = ancestor.Parent
+                        end
+                    end)
+                else
+                    warning("PurchasePoint1 BasePart")
+                end
+            end
+            padVisibility(snapshot ~= nil and snapshot.Purchased == true)
+            if reveal and reveal(snapshot) and owner and muncher then
+                services.MuncherService.CompleteReveal(owner, muncher)
+                snapshot = services.MuncherService.GetSnapshot(owner)
+            end
+            local function publish(consumed: boolean?)
+                local current = if owner then services.MuncherService.GetSnapshot(owner) else nil
+                if muncher then
+                    local attributes: { [string]: any } = {
+                        Purchased = current ~= nil and current.Purchased == true,
+                        Active = current ~= nil and current.Active == true,
+                        Progress = if current then current.Progress else 0,
+                        BuffExpiresAt = if current then current.BuffExpiresAt else 0,
+                    }
+                    for name, value in attributes do
+                        if muncher:GetAttribute(name) ~= value then
+                            muncher:SetAttribute(name, value)
+                        end
+                    end
+                    local buff = if current then current.ActiveBuff else nil
+                    if muncher:GetAttribute("ActiveBuff") ~= buff then
+                        muncher:SetAttribute("ActiveBuff", buff)
+                    end
+                end
+                if update then
+                    update(if current and current.Active then current else nil, consumed)
                 end
             end
             if zone then
@@ -71,7 +179,7 @@ function Component.Init(services: any)
                 end
             end
             publish() -- Prime the display before any accepted feeds (including completion).
-            if owner and zone then
+            if owner and zone and snapshot and snapshot.Active then
                 local seen: { [Instance]: boolean } = {}
                 for _, part in workspace:GetPartsInPart(zone) do
                     local item = services.IngredientService.Resolve(part)
@@ -96,6 +204,11 @@ function Component.Init(services: any)
         end
         refresh()
         local connection = RunService.Heartbeat:Connect(function(dt)
+            -- Move the controlled assembly every frame; intake polling remains at 10 Hz.
+            if reveal then
+                local owner = services.TycoonService.GetOwner(plot)
+                reveal(if owner then services.MuncherService.GetSnapshot(owner) else nil)
+            end
             elapsed += dt
             if elapsed >= Config.ScanInterval then
                 elapsed = 0
@@ -104,6 +217,13 @@ function Component.Init(services: any)
         end)
         return function()
             connection:Disconnect()
+            if padConnection then
+                padConnection:Disconnect()
+            end
+            padVisibility(false)
+            if restore then
+                restore()
+            end
             if gui then
                 gui:Destroy()
             end

@@ -138,6 +138,7 @@ function IngredientService.Init(services: any)
     started = true
     local interval = Economy.WorldIngredientCleanupInterval
     local warningSeconds = Economy.WorldIngredientCleanupWarningSeconds
+    local countdownSeconds = Economy.WorldIngredientCleanupCountdownSeconds
     local nextCleanup = os.clock() + interval
     local function scheduleCycle()
         task.delay(math.max(0, nextCleanup - warningSeconds - os.clock()), function()
@@ -148,13 +149,23 @@ function IngredientService.Init(services: any)
                 Priority = 100,
                 Immediate = true,
             })
-            task.delay(math.max(0, nextCleanup - os.clock()), function()
-                IngredientService.ClearLooseIngredients()
-                -- Keep the original cadence without replaying missed cycles after a stall.
-                repeat
-                    nextCleanup += interval
-                until nextCleanup - warningSeconds > os.clock()
-                scheduleCycle()
+            task.delay(math.max(0, nextCleanup - countdownSeconds - os.clock()), function()
+                local remaining = nextCleanup - os.clock()
+                if remaining > 0 then
+                    services.AnnouncementService.Publish({
+                        Type = "IngredientCleanupCountdown",
+                        EndsAt = workspace:GetServerTimeNow() + remaining,
+                        Priority = 100,
+                    })
+                end
+                task.delay(math.max(0, nextCleanup - os.clock()), function()
+                    IngredientService.ClearLooseIngredients()
+                    -- Keep the original cadence without replaying missed cycles after a stall.
+                    repeat
+                        nextCleanup += interval
+                    until nextCleanup - warningSeconds > os.clock()
+                    scheduleCycle()
+                end)
             end)
         end)
     end

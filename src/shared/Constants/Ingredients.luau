@@ -303,6 +303,16 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 3,
     },
 
+    Pear = {
+        Id = "Pear",
+        DisplayName = "Pear",
+        Tags = { "Fruit", "Sweet", "Yellow" },
+        BlendColor = Color3.fromRGB(200, 230, 150),
+        Rarity = "Uncommon",
+        Value = 10000,
+        JumpLocation = 1,
+    },
+
     Honey = {
         Id = "Honey",
         DisplayName = "Honey",
@@ -462,6 +472,27 @@ local Ingredients: { [string]: IngredientDefinition } = {
         BlendColor = Color3.fromRGB(45, 45, 50),
         Rarity = "Uncommon",
         Value = 8000,
+        JumpLocation = 1,
+    },
+
+    Cactus = {
+        Id = "Cactus",
+        DisplayName = "Cactus",
+        Tags = { "Weird", "Green", "Plant"},
+        BlendColor = Color3.fromRGB(100, 200, 100),
+        Rarity = "Uncommon",
+        Value = 8000,
+        JumpLocation = 1,
+    },
+
+
+    French_Fries = {
+        Id = "French_Fries",
+        DisplayName = "French Fries",
+        Tags = { "Weird", "Fast Food", "Potato" },
+        BlendColor = Color3.fromRGB(240, 200, 100),
+        Rarity = "Uncommon",
+        Value = 15000,
         JumpLocation = 1,
     },
 

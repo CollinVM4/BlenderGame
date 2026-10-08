@@ -37,6 +37,12 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "tutorial": ("state", ("tutorial.spec.luau",)),
+    "initial-spawn": ("integration", ("initial_spawn.spec.luau",)),
+    "tutorial-targets": ("presentation", ("tutorial_targets.spec.luau",)),
+    "tutorial-gameplay": ("integration", ("fixtures/smoothie.luau", "tutorial_gameplay.spec.luau")),
+    "admin": ("integration", ("admin.spec.luau",)),
+    "admin-legacy": ("integration", ("admin_legacy.spec.luau", "admin.spec.luau")),
     "bad-customer-presentation": ("presentation", ("bad_customer_presentation.spec.luau",)),
     "bad-customers": ("integration", ("fixtures/customer_queue.luau", "bad_customers.spec.luau")),
     "bad-customer-stash": ("integration", ("fixtures/smoothie.luau", "bad_customer_stash.spec.luau")),
@@ -144,13 +150,18 @@ if args.list:
         print(f"{SUITES[name][0]}: {name}")
     raise SystemExit(0)
 sources = {}
-for directory in ("src/shared/Constants", "src/server/Services"):
+for directory in ("src/shared/Constants", "src/server/Services", "src/server/Admin"):
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
+sources["TutorialTargets"] = (ROOT / "src/shared/TutorialTargets.luau").read_text(encoding="utf-8")
+sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
 sources["MuncherPresentation"] = (ROOT / "src/server/Components/MuncherPresentation.luau").read_text(encoding="utf-8")
+sources["MuncherReveal"] = (ROOT / "src/server/Components/MuncherReveal.luau").read_text(encoding="utf-8")
+sources["TutorialTooltip"] = (ROOT / "src/client/UI/TutorialTooltip.luau").read_text(encoding="utf-8")
+sources["MuncherPresentationController"] = (ROOT / "src/client/Controllers/MuncherPresentationController.luau").read_text(encoding="utf-8")
 sources["MuncherComponent"] = (ROOT / "src/server/Components/Muncher.luau").read_text(encoding="utf-8")
 sources["AnnouncementFormat"] = (ROOT / "src/shared/AnnouncementFormat.luau").read_text(encoding="utf-8")
 sources["IngredientName"] = (ROOT / "src/shared/IngredientName.luau").read_text(encoding="utf-8")

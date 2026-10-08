@@ -9,10 +9,15 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--luau', default='luau')
 args = parser.parse_args()
-source = (root / 'src/server/Services/CharacterPhysicsService.luau').read_text(encoding='utf-8')
-boundary = (root / 'tests/server_state.spec.luau').read_text(encoding='utf-8').split('env.require = loadModule', 1)[0]
+sources = {
+    name: (root / f'src/server/Services/{name}.luau').read_text(encoding='utf-8')
+    for name in ('CharacterPhysicsService', 'PlayerOnlyCollisionService')
+}
+boundary = (root / 'tests/fixtures/roblox.luau').read_text(encoding='utf-8')
 spec = (root / 'tests/character_physics.spec.luau').read_text(encoding='utf-8')
-bundle = 'local sources = {CharacterPhysicsService = ' + json.dumps(source) + '}\n' + boundary + spec
+collision_spec = (root / 'tests/player_only_collision.spec.luau').read_text(encoding='utf-8')
+source_table = ','.join(name + ' = ' + json.dumps(source) for name, source in sources.items())
+bundle = 'local sources = {' + source_table + '}\n' + boundary + collision_spec + spec
 with tempfile.TemporaryDirectory(prefix='blender-character-tests-') as directory:
     path = Path(directory) / 'test.luau'
     path.write_text(bundle, encoding='utf-8')

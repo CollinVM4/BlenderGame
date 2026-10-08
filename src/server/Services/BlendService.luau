@@ -133,6 +133,10 @@ function BlendService.Reset(player: Player)
     Film.Log("Blend", "reset")
 end
 function BlendService.GetSnapshot(player: Player): {
+    BatchId: number,
+    AcceptedIngredientCount: number,
+    ReadyToDispense: boolean,
+    ProgressPercent: number,
     State: Types.BlendState,
     Ingredients: { string },
     IngredientItems: { Types.IngredientItem }?,
@@ -144,6 +148,12 @@ function BlendService.GetSnapshot(player: Player): {
         return nil
     end
     return {
+        BatchId = batch.NotificationToken,
+        ProgressPercent = math.clamp(batch.Progress / Economy.RequiredProgress * 100, 0, 100),
+        AcceptedIngredientCount = #batch.Ingredients,
+        ReadyToDispense = batch.State == "COMPLETE"
+            and batch.Progress >= Economy.RequiredProgress
+            and batch.Result ~= nil,
         State = batch.State,
         Ingredients = table.clone(batch.Ingredients),
         IngredientItems = Item.CopyAll(batch.IngredientItems),
@@ -199,6 +209,9 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
     publish(player)
     Film.Log("Blend", batch.State)
     diagnostic("accepted notify ingredient=" .. id .. " observers=" .. tostring(observerCount()))
+    if deps.TutorialService then
+        deps.TutorialService.Mark(player, "LoadedBlender")
+    end
     ingredientAccepted:Fire(token, id, acceptedAt, #batch.Ingredients, batch.NotificationToken)
     deps.TycoonService.EndTransaction(token)
     return true
@@ -290,6 +303,15 @@ local function addProgress(player: Player, wheel: BasePart, delta: number, conte
         Film.Emit(player, "BlendStarted", { IngredientIds = table.clone(batch.Ingredients) })
         Film.Log("Blend", "BLENDING")
     end
+    -- Physical spin is measured for the shared batch, with no individual input actor.
+    -- Credit only living nearby members, including the teammate, after accepted progress.
+    if deps.TutorialService then
+        for _, member in deps.TycoonService.GetMembers(key(player)) do
+            if WorldUtil.Near(member, wheel, 12) then
+                deps.TutorialService.Mark(member, "UsedTurbine")
+            end
+        end
+    end
     local oldProgress = batch.Progress
     batch.Progress = math.min(Economy.RequiredProgress, batch.Progress + delta)
     local now = os.clock()
@@ -372,6 +394,9 @@ function BlendService.Dispense(player: Player, button: BasePart, context: any): 
     if not granted then
         deps.TycoonService.EndTransaction(sessionId)
         return false, "Cannot carry smoothie"
+    end
+    if deps.TutorialService then
+        deps.TutorialService.Mark(player, "DispensedSmoothie")
     end
     batch.State = "DISPENSED"
     publish(player)

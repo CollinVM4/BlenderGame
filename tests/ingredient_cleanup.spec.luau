@@ -56,23 +56,34 @@ check(ingredients.GetRecord(oldLoose) ~= nil, "no independent four-minute expira
 local start = now
 ingredients.Init(dependency)
 ingredients.Init(dependency)
-advance(start + 179)
+advance(start + 299)
 check(#messages == 0 and ingredients.GetRecord(oldLoose) ~= nil, "no early warning or cleanup")
-advance(start + 180)
-check(#messages == 1 and messages[1].At == start + 180, "one warning sixty seconds before sweep")
+advance(start + 300)
+check(#messages == 1 and messages[1].At == start + 300, "one warning sixty seconds before sweep")
 check(
     messages[1].Payload.Type == "ServerAnnouncement"
         and messages[1].Payload.Text == "LOOSE INGREDIENTS CLEAR IN 1 MINUTE!"
         and messages[1].Payload.Immediate == true,
     "warning uses existing time-sensitive server announcement pipeline"
 )
-advance(start + 220)
+advance(start + 340)
 local late = ingredients.Spawn("Dragon_Fruit", frame(), nil, true)
-advance(start + 239.9)
+advance(start + 354.9)
+check(#messages == 1, "no early final reminder")
+advance(start + 355)
+check(
+    #messages == 2
+        and messages[2].At == start + 355
+        and messages[2].Payload.Type == "IngredientCleanupCountdown"
+        and messages[2].Payload.EndsAt == start + 360,
+    "one final reminder five seconds before the server cleanup deadline"
+)
+advance(start + 359.9)
+check(#messages == 2, "countdown requires no per-second broadcasts")
 check(ingredients.GetRecord(late) and ingredients.GetRecord(thrown), "loose items remain until shared deadline")
 local rescued = ingredients.Spawn("Banana", frame(), nil, true)
 setup(inventory.CarryWorldItem(p, rescued), "pickup immediately before sweep")
-advance(start + 240)
+advance(start + 360)
 for _, object in { oldLoose, dropped, thrown, late } do
     check(object.Parent == nil and ingredients.GetRecord(object) == nil, "sweep removes registered loose ingredient")
 end
@@ -87,10 +98,15 @@ check(
     "active blender batch survives"
 )
 local nextLoose = ingredients.Spawn("Banana", frame(), nil, true)
-advance(start + 420)
-check(#messages == 2 and messages[2].At == start + 420, "warning repeats on original cadence")
+advance(start + 660)
+check(#messages == 3 and math.abs(messages[3].At - (start + 660)) < 0.001, "warning repeats on six-minute cadence")
 check(ingredients.GetRecord(nextLoose) ~= nil, "new cycle keeps loose item until sweep")
-advance(start + 480)
+advance(start + 715)
+check(
+    #messages == 4 and messages[4].Payload.EndsAt == start + 720,
+    "final reminder repeats against the next six-minute sweep"
+)
+advance(start + 720)
 check(nextLoose.Parent == nil, "next cycle sweeps newly registered ingredients")
 
 -- Market regeneration continues through the normal registry/removal boundary.
@@ -102,7 +118,7 @@ pedestal:SetAttribute("RespawnSeconds", 12)
 market.Register(pedestal)
 market.Step()
 setup(pedestal:GetAttribute("StockIngredientId") == "Banana", "market has stock")
-advance(start + 720)
+advance(start + 1080)
 market.Step()
 check(pedestal:GetAttribute("StockIngredientId") == nil, "sweep releases market stock")
 advance(now + 12)
@@ -140,9 +156,9 @@ marker:SetAttribute("RespawnSeconds", 5)
 marker:SetAttribute("FreezeSpawnedItem", true)
 attach(marker)
 local previous = stationItem
-advance(start + 960)
+advance(start + 1440)
 check(previous.Parent == nil, "frozen untouched station stock participates in sweep")
-advance(start + 965)
+advance(start + 1445)
 check(
     stationItem ~= previous and ingredients.GetRecord(stationItem),
     "station respawns registered stock on existing cooldown"

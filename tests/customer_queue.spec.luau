@@ -17,8 +17,8 @@ advance(2)
 services.PathfindingService.CreatePath = originalPathFactory
 check(table.concat(entranceTargets, ",") == "10", "first arrival routes directly to the counter")
 check(#customer.GetQueueSnapshot(owner) == 1, "one initial arrival despite duplicate activation")
-advance(35)
-advance(35)
+advance(economy.CustomerSpawnMinSeconds)
+advance(economy.CustomerSpawnMinSeconds)
 local queue = customer.GetQueueSnapshot(owner)
 check(#queue == economy.MaxCustomersPerPlot, "three timed arrivals fill queue")
 cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "held-during-order" }
@@ -67,7 +67,7 @@ for index, entry in queue do
     check(entry.Model:FindFirstChild("ServePrompt", true).Enabled, "revealed queued customer enables serving")
 end
 check(not customer.SpawnForPlayer(owner), "direct spawn cannot exceed capacity")
-advance(35)
+advance(economy.CustomerSpawnMinSeconds)
 check(#customer.GetQueueSnapshot(owner) == 3, "full timer cannot create fourth customer")
 cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "queue-1" }
 check(not customer.Serve(foreign, queue[1].Model), "foreign player cannot serve queue")
@@ -92,13 +92,13 @@ check(
     "both waiting customers walk forward"
 )
 check(shifted[1].Model:FindFirstChild("ServePrompt", true).Enabled, "advanced customer becomes serveable")
-advance(5)
+advance(economy.CustomerFullRetryMinSeconds)
 check(#customer.GetQueueSnapshot(owner) == 3, "full queue retries shortly after capacity frees")
 for turn = 2, 5 do
     cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "queue-" .. turn }
     setup(customer.Serve(owner), "serve beyond third customer")
     flush()
-    advance(35)
+    advance(economy.CustomerSpawnMinSeconds)
 end
 check(
     days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and tycoon.GetCash(owner) == 6865,

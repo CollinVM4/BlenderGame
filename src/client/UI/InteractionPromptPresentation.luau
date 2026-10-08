@@ -58,12 +58,6 @@ function Presentation.Create(
         TextStyle.Outline(text)
     end
     text.AutoButtonColor = false
-    local rejectPrompt = prompt:GetAttribute("RejectButtonPrompt") == true
-    if rejectPrompt then
-        TextStyle.Apply(text, 24)
-        text.TextColor3 = Color3.fromRGB(255, 95, 95)
-        gui.MaxDistance = 40
-    end
     text.Parent = gui
     gui.Parent = parent
 
@@ -89,9 +83,6 @@ function Presentation.Create(
             if holding then "HOLD " else "",
             config.ActionText or prompt.ActionText
         )
-        if rejectPrompt then
-            text.Text = "REJECT"
-        end
         if config.InputOnly then
             text.Text = string.format("%s[%s]", if holding then "HOLD " else "", key or "")
         end

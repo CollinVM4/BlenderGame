@@ -114,6 +114,12 @@ local service = loadModule("CharacterPhysicsService")
 local character, humanoid, root, torso, handle, toolHandle = spawnCharacter(player)
 service.ApplyCharacter(player, character)
 flush()
+check(
+    root.CollisionGroup == "Players" and torso.CollisionGroup == "Players",
+    "character physical parts use player group"
+)
+check(handle.CollisionGroup == "Players", "avatar cosmetics use player group")
+check(toolHandle.CollisionGroup ~= "Players", "gameplay tools retain their collision group")
 check(humanoid.Applications == 0, "waits for appearance")
 check(
     handle.Massless and not handle.CanCollide and not handle.CanTouch and not handle.CanQuery,
@@ -151,12 +157,22 @@ local latePart = object("Part", "Handle", lateAccessory)
 character.DescendantAdded:Fire(latePart)
 flush()
 check(latePart.Massless and not latePart.CanCollide, "late accessory normalized")
+check(latePart.CollisionGroup == "Players", "late avatar parts use player group")
+local lateBody = object("Part", "LeftFoot", character)
+lateBody.CanCollide = true
+character.DescendantAdded:Fire(lateBody)
+flush()
+check(
+    lateBody.CollisionGroup == "Players" and lateBody.CanCollide,
+    "late physical body keeps collision in player group"
+)
 
 player.CharacterRemoving:Fire(character)
 local replacement, replacementHumanoid = spawnCharacter(player)
 service.ApplyCharacter(player, replacement) -- HasAppearanceLoaded catches missed event.
 flush()
 check(replacementHumanoid.Applications == 1, "already-loaded respawn normalized")
+check(replacement:FindFirstChild("UpperTorso").CollisionGroup == "Players", "respawn retains player collision group")
 check(#logs == 2, "one diagnostic for each respawn")
 local stale = object("Part", "Handle", lateAccessory)
 character.DescendantAdded:Fire(stale)

@@ -1,7 +1,14 @@
 --!strict
 local MoneyFormat = require(script.Parent.MoneyFormat)
 local Format = {}
-export type Message = { Text: string, Duration: number, SoundType: string?, Priority: number, Immediate: boolean }
+export type Message = {
+    Text: string,
+    Duration: number,
+    SoundType: string?,
+    Priority: number,
+    Immediate: boolean,
+    CountdownEndsAt: number?,
+}
 
 function Format.Escape(value: string): string
     local escaped = value:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"):gsub("'", "&apos;")
@@ -12,11 +19,29 @@ local function accent(value: string, color: string): string
     return '<font color="' .. color .. '">' .. Format.Escape(value) .. "</font>"
 end
 
+function Format.CleanupCountdownText(seconds: number): string
+    local remaining = math.max(1, math.ceil(seconds))
+    return accent("LOOSE INGREDIENTS", "#FF6666")
+        .. " CLEAR IN "
+        .. accent(tostring(remaining) .. (if remaining == 1 then " SECOND" else " SECONDS"), "#FF6666")
+        .. "!"
+end
+
+-- A server deadline keeps countdowns aligned despite network/queue delays.
+function Format.VisibleText(message: Message, serverTime: number): string?
+    if message.CountdownEndsAt then
+        local remaining = message.CountdownEndsAt - serverTime
+        return if remaining > 0 then Format.CleanupCountdownText(remaining) else nil
+    end
+    return message.Text
+end
+
 function Format.Build(payload: any): Message?
     if typeof(payload) ~= "table" then
         return nil
     end
     local text: string
+    local countdownEndsAt: number? = nil
     local mystery = accent("MYSTERY ITEM", "#E19BFF")
     if
         payload.Type == "RareIngredientSpawned"
@@ -44,6 +69,14 @@ function Format.Build(payload: any): Message?
             .. " "
             .. accent("MYSTERY SMOOTHIE", "#E19BFF")
             .. "!"
+    elseif
+        payload.Type == "IngredientCleanupCountdown"
+        and typeof(payload.EndsAt) == "number"
+        and payload.EndsAt == payload.EndsAt
+        and math.abs(payload.EndsAt) < math.huge
+    then
+        countdownEndsAt = payload.EndsAt
+        text = Format.CleanupCountdownText(5)
     elseif payload.Type == "ServerAnnouncement" and typeof(payload.Text) == "string" then
         text = if payload.RichText == true then payload.Text else Format.Escape(payload.Text)
     else
@@ -60,7 +93,8 @@ function Format.Build(payload: any): Message?
         Duration = duration,
         SoundType = if typeof(payload.SoundType) == "string" then payload.SoundType else nil,
         Priority = priority,
-        Immediate = payload.Type == "ServerAnnouncement" and payload.Immediate == true,
+        Immediate = countdownEndsAt ~= nil or (payload.Type == "ServerAnnouncement" and payload.Immediate == true),
+        CountdownEndsAt = countdownEndsAt,
     }
 end
 

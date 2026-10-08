@@ -4,6 +4,16 @@ local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
 local Customers = require(Shared.Constants.Customers)
 local CustomerRequests = require(Shared.Constants.CustomerRequests)
+local TutorialOrders = require(Shared.Constants.TutorialOrders)
+local tutorialRequests: { [number]: CustomerRequests.Request } = {}
+for index, order in TutorialOrders do
+    for _, request in CustomerRequests.Definitions do
+        if request.Id == order.RequestId then
+            tutorialRequests[index] = request
+            break
+        end
+    end
+end
 local Ingredients = require(Shared.Constants.Ingredients)
 local RunService = game:GetService("RunService")
 local Economy = require(Shared.Constants.Economy)
@@ -21,6 +31,7 @@ local GameplaySfx = require(script.Parent.GameplaySfxService)
 local OrderEvaluation = require(script.Parent.CustomerOrderEvaluation)
 local BadCustomers = require(Shared.Constants.BadCustomers)
 local BadBehavior = require(script.Parent.BadCustomerBehavior)
+local RejectFloorButton = require(script.Parent.RejectFloorButton)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade?) -> ()
@@ -383,7 +394,7 @@ local function candidateFor(player: Player, template: Model): Candidate?
     }
 end
 
-local function cloneNPC(player: Player, customerId: string?): (Model?, Candidate?)
+local function cloneNPC(player: Player, customerId: string?, regularOnly: boolean?): (Model?, Candidate?)
     local folder = ServerStorage:FindFirstChild("CustomerNPCs")
     if customerId then
         local id = CustomerRequests.NormalizeCustomerId(customerId)
@@ -450,7 +461,8 @@ local function cloneNPC(player: Player, customerId: string?): (Model?, Candidate
             end
         end
     end
-    local useSpecial = #special > 0
+    local useSpecial = not regularOnly
+        and #special > 0
         and (lastSpecialSpawn[key(player)] == nil or os.clock() - lastSpecialSpawn[key(player)] >= Economy.SpecialCustomerCooldownSeconds)
         and math.random() < CustomerRequests.SpecialCustomerChance
     local candidates = if useSpecial then special else regular
@@ -1159,23 +1171,21 @@ local function bindRejectButton(queue: any)
         end
         return
     end
-    local prompt = WorldUtil.Prompt(button, "RejectPrompt", "REJECT")
-    prompt.Style = Enum.ProximityPromptStyle.Custom
-    prompt:SetAttribute("RejectButtonPrompt", true)
-    prompt:SetAttribute("InteractionOrigin", "Attachment")
-    prompt:SetAttribute("InteractionActionText", "REJECT")
-    prompt:SetAttribute("InteractionMaxDistance", 40)
-    prompt:SetAttribute("InteractionOwnerUserId", deps.TycoonService.GetSessionOwner(queue.SessionId).UserId)
-    queue.RejectPrompt = prompt
-    deps.GameplayService.RegisterPlotInteraction(prompt, function(actor, context)
-        if
-            queues[queue.SessionId] == queue
-            and current(actor, queue)
-            and deps.TycoonService.GetSessionOwner(queue.SessionId) == actor
-            and WorldUtil.Near(actor, button, prompt.MaxActivationDistance)
-        then
-            CustomerService.RejectFront(actor, queue.Plot, context)
+    local oldPrompt = button:FindFirstChild("RejectPrompt")
+    if oldPrompt then
+        oldPrompt:Destroy()
+    end
+    queue.RejectCleanup = RejectFloorButton.Bind(button, origin, function()
+        return if queues[queue.SessionId] == queue then deps.TycoonService.GetSessionOwner(queue.SessionId) else nil
+    end, function(actor)
+        return current(actor, queue)
+            and WorldUtil.Near(actor, button, 10)
+            and CustomerService.ResolveRejectTarget(actor) ~= nil
+    end, function(actor)
+        if queues[queue.SessionId] ~= queue or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= actor then
+            return false
         end
+        return CustomerService.RejectFront(actor, queue.Plot, deps.TycoonService.GetRequestContext(actor))
     end)
 end
 
@@ -1313,7 +1323,24 @@ function CustomerService.HitCustomer(
     return true
 end
 
-function CustomerService.ActivateForPlayer(player: Player): boolean
+-- Released/unfulfilled tutorial records get a replacement through this same queue.
+local function pendingTutorial(queue: any): (number?, boolean)
+    if not queue.TutorialOrders then
+        return nil, false
+    end
+    for index, order in TutorialOrders do
+        local record = queue.TutorialOrders[index]
+        if record and record.TutorialFulfilled then
+            continue
+        end
+        if not record or not table.find(queue.Customers, record) or not record.Model.Parent then
+            return if os.clock() >= queue.StartedAt + order.Arrival then index else nil, true
+        end
+    end
+    return nil, false
+end
+
+function CustomerService.ActivateForPlayer(player: Player, tutorial: boolean?): boolean
     local plot = deps.TycoonService.GetPlot(player)
     if not plot then
         CustomerService.DeactivateForPlayer(player)
@@ -1325,6 +1352,12 @@ function CustomerService.ActivateForPlayer(player: Player): boolean
     end
     CustomerService.DeactivateForPlayer(player)
     local queue: any = { Customers = {}, Records = {}, Plot = plot, Full = false, SessionId = key(player) }
+    if tutorial then
+        queue.TutorialOrders = {}
+        queue.StartedAt = os.clock()
+        queue.TutorialInserted = 0
+        queue.NextNormalAt = 0
+    end
     queues[key(player)] = queue
     bindRejectButton(queue)
     queue.PlotConnection = plot.AncestryChanged:Connect(function()
@@ -1357,6 +1390,21 @@ function CustomerService.ActivateForPlayer(player: Player): boolean
             diagnostic("queue full owner=" .. player.Name)
         end
         queue.Full = full
+        local tutorialIndex, tutorialPending = pendingTutorial(queue)
+        if queue.TutorialOrders then
+            local normalDue = not tutorialPending and os.clock() >= queue.NextNormalAt
+            if not full and (tutorialIndex or normalDue) then
+                local spawned = CustomerService.SpawnForPlayer(player) ~= nil
+                if spawned and not tutorialIndex then
+                    queue.NextNormalAt = os.clock()
+                        + math.random(Economy.CustomerSpawnMinSeconds, Economy.CustomerSpawnMaxSeconds)
+                end
+            end
+            if current(player, queue) then
+                task.delay(0.5, tick)
+            end
+            return
+        end
         local spawned = not full and CustomerService.SpawnForPlayer(player) ~= nil
         if not current(player, queue) then
             return
@@ -1368,11 +1416,15 @@ function CustomerService.ActivateForPlayer(player: Player): boolean
             tick
         )
     end
-    task.delay(math.random(Economy.InitialCustomerDelayMin, Economy.InitialCustomerDelayMax), tick)
+    if tutorial then
+        task.defer(tick) -- claim transaction must release before spawning
+    else
+        task.delay(math.random(Economy.InitialCustomerDelayMin, Economy.InitialCustomerDelayMax), tick)
+    end
     return true
 end
 
-local function spawnForPlayer(player: Player, customerId: string?): Model?
+local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex: number?): Model?
     if not CustomerService.CanSpawn(player) then
         return nil
     end
@@ -1391,7 +1443,7 @@ local function spawnForPlayer(player: Player, customerId: string?): Model?
             exit:GetFullName()
         )
     )
-    local customModel, candidate = cloneNPC(player, customerId)
+    local customModel, candidate = cloneNPC(player, customerId, tutorialIndex ~= nil)
     if customerId and not customModel then
         return nil
     end
@@ -1532,7 +1584,7 @@ local function spawnForPlayer(player: Player, customerId: string?): Model?
         RuntimeToken = 0,
         Rejectable = candidate and candidate.Rejectable == true,
         BadCustomerType = if candidate then candidate.BadCustomerType else nil,
-        Wildcard = if candidate and candidate.Rejectable then false else nil,
+        Wildcard = if tutorialIndex or (candidate and candidate.Rejectable) then false else nil,
         OrderTaken = false,
         Recovering = false,
         RecoveryToken = 0,
@@ -1541,7 +1593,10 @@ local function spawnForPlayer(player: Player, customerId: string?): Model?
         SessionId = key(player),
         BottomOffset = bottomOffset,
         CustomerType = if candidate then candidate.CustomerType else "Regular",
-        FixedRequest = if candidate then candidate.Request else nil,
+        FixedRequest = if tutorialIndex
+            then tutorialRequests[tutorialIndex]
+            else if candidate then candidate.Request else nil,
+        TutorialIndex = tutorialIndex,
         DisplayName = displayName,
         CustomerId = CustomerRequests.NormalizeCustomerId(model:GetAttribute("CustomerId")),
         TemplateName = templateName or "<generic>",
@@ -1574,6 +1629,15 @@ local function spawnForPlayer(player: Player, customerId: string?): Model?
     queue.Sequence = (queue.Sequence or 0) + 1
     record.Sequence = queue.Sequence
     table.insert(queue.Customers, record)
+    if tutorialIndex then
+        queue.TutorialOrders[tutorialIndex] = record
+        queue.TutorialInserted = math.max(queue.TutorialInserted, tutorialIndex)
+        if queue.TutorialInserted == #TutorialOrders then
+            queue.NextNormalAt = os.clock()
+                + math.random(Economy.CustomerSpawnMinSeconds, Economy.CustomerSpawnMaxSeconds)
+        end
+        model:SetAttribute("TutorialOrderIndex", tutorialIndex)
+    end
     if record.CustomerType == "Special" then
         lastSpecialSpawn[key(player)] = os.clock()
         if deps.DiscoveryService then
@@ -1630,11 +1694,20 @@ function CustomerService.SpawnForPlayer(player: Player, customerId: string?): Mo
     if customerId and not (RunService:IsStudio() and RunService:IsServer()) then
         return nil
     end
+    local queue = queues[key(player)]
+    local tutorialIndex: number? = nil
+    local tutorialPending = false
+    if queue then
+        tutorialIndex, tutorialPending = pendingTutorial(queue)
+    end
+    if tutorialPending and not tutorialIndex then
+        return nil
+    end
     local token = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
     if not token then
         return nil
     end
-    local model = spawnForPlayer(player, customerId)
+    local model = spawnForPlayer(player, if tutorialIndex then nil else customerId, tutorialIndex)
     deps.TycoonService.EndTransaction(token)
     return model
 end
@@ -1784,6 +1857,9 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     local evaluation = OrderEvaluation.Evaluate(result, record.Request)
     local grade = evaluation.Grade
     local success = evaluation.IsFulfilled
+    if record.TutorialIndex then
+        record.TutorialFulfilled = success and evaluation.IsValid
+    end
     local response = if evaluation.IsWildcard
         then record.Request.GoodResponse
         else Presentation.Response(record.Request, grade :: Types.Grade)
@@ -1820,6 +1896,9 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         )
     )
     deps.PlayerDataService.IncrementStat(player, "CustomersServed")
+    if deps.TutorialService then
+        deps.TutorialService.Mark(player, "ServedCustomer")
+    end
     for _, member in deps.TycoonService.GetMembers(transaction) do
         member:SetAttribute("CustomerSatisfaction", grade)
         member:SetAttribute("CustomerReaction", reaction)
@@ -1957,6 +2036,24 @@ function CustomerService:RefreshOrder(model: Model)
     end
 end
 -- Snapshots expose presentation state, never mutable authoritative records.
+function CustomerService.GetTutorialSnapshot(player: Player): { any }?
+    local queue = queues[key(player)]
+    if not queue or not queue.TutorialOrders then
+        return nil
+    end
+    local snapshot = {}
+    for index, order in TutorialOrders do
+        local record = queue.TutorialOrders[index]
+        local present = record and table.find(queue.Customers, record) ~= nil and record.Model.Parent ~= nil
+        snapshot[index] = {
+            RequestId = order.RequestId,
+            Served = record ~= nil and record.TutorialFulfilled == true,
+            OrderTaken = present and record.OrderTaken == true,
+            Model = if present then record.Model else nil,
+        }
+    end
+    return snapshot
+end
 function CustomerService.GetQueueSnapshot(player: Player): { any }
     local result = {}
     local queue = queues[key(player)]
@@ -1976,8 +2073,8 @@ local function cleanupFlow(sessionId: string)
     if queue and queue.PlotConnection then
         queue.PlotConnection:Disconnect()
     end
-    if queue and queue.RejectPrompt then
-        queue.RejectPrompt:Destroy()
+    if queue and queue.RejectCleanup then
+        queue.RejectCleanup()
     end
     local models = ownedModels[sessionId]
     ownedModels[sessionId] = nil
@@ -2004,9 +2101,6 @@ function CustomerService.BindPlayer(player: Player)
     if queue then
         local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
         if owner then
-            if queue.RejectPrompt then
-                queue.RejectPrompt:SetAttribute("InteractionOwnerUserId", owner.UserId)
-            end
             for model, record in table.clone((ownedModels[queue.SessionId] or {}) :: { [Model]: any }) do
                 if bad(record) and record.SpawnOwnerUserId ~= owner.UserId then
                     model:Destroy()

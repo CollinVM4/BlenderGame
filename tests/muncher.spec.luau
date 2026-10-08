@@ -4,7 +4,7 @@ env.Random = {
     new = function()
         return {
             NextInteger = function(_, low, high)
-                check(low == 1 and high == 3, "appetite rolls use the three configured goals")
+                check(low == 1 and high == 3, "buff rolls use the three existing multipliers")
                 return goalIndex
             end,
         }
@@ -24,7 +24,53 @@ local plot = dependency.TycoonService.GetPlot(p)
 local model = instance("Model")
 model.Name, model.Parent = "Muncher", plot
 local input = part("InputZone", model)
+local pad = part("PurchasePoint1", model)
 muncher.Reset(p)
+local tycoonPurchase = dependency.TycoonService
+carry(p)
+check(
+    not muncher.TryFeed(p, input, nil, tycoonPurchase.GetRequestContext(p)) and inventory.GetCarryCount(p) == 1,
+    "unbought Muncher preserves carried ingredients"
+)
+local lockedLoose = ingredients.Spawn("Banana", frame(), nil, true)
+input.Overlaps = { lockedLoose }
+check(
+    not muncher.TryFeed(p, input, lockedLoose, nil) and ingredients.GetRecord(lockedLoose) ~= nil,
+    "unbought input preserves overlapping world ingredients"
+)
+tycoonPurchase.SetCash(p, 99999)
+local bought, reason = muncher.TryPurchase(p, pad, tycoonPurchase.GetRequestContext(p))
+check(
+    not bought and reason == "InsufficientCash" and tycoonPurchase.GetCash(p) == 99999,
+    "insufficient shared cash preserves balance"
+)
+local outsider = player(3)
+tycoonPurchase.SetCash(outsider, 100000)
+check(
+    not muncher.TryPurchase(outsider, pad, tycoonPurchase.GetRequestContext(outsider)),
+    "other plot cannot buy Muncher"
+)
+local function unlock()
+    tycoonPurchase.SetCash(p, 100100)
+    check(
+        muncher.TryPurchase(p, pad, tycoonPurchase.GetRequestContext(p)),
+        "purchase succeeds using existing shared cash"
+    )
+    check(tycoonPurchase.GetCash(p) == 100, "Muncher costs exactly 100000")
+    check(
+        not muncher.TryPurchase(p, pad, tycoonPurchase.GetRequestContext(p)) and tycoonPurchase.GetCash(p) == 100,
+        "purchase commits only once"
+    )
+    check(
+        not muncher.CompleteReveal(p, model) and not muncher.GetSnapshot(p).Active,
+        "reveal cannot complete before server deadline"
+    )
+    check(not muncher.TryFeed(p, input, nil, nil), "intake remains off during reveal")
+    now += loadModule("Muncher").RevealSeconds
+    check(muncher.CompleteReveal(p, model) and muncher.GetSnapshot(p).Active, "intake activates after completed reveal")
+end
+unlock()
+inventory.ConsumeHeldIngredient(p, "Banana")
 local function feed()
     now += 0.2
     return muncher.TryFeed(p, input, nil, dependency.TycoonService.GetRequestContext(p))
@@ -96,22 +142,29 @@ check(
 )
 check(feed(), "valid context remains usable after rejection")
 local config = loadModule("Muncher")
-for index, goal in config.Goals do
+for index, buff in config.Buffs do
     goalIndex = index
     muncher.Reset(p)
-    for n = 1, goal.Required do
+    unlock()
+    for n = 1, 25 do
         local object = world(if n % 2 == 0 then "Rock" else "Mystery")
         check(muncher.TryFeed(p, input, object, nil), "each normal ingredient counts equally")
         local snapshot = muncher.GetSnapshot(p)
-        if n < goal.Required then
-            check(snapshot.Progress == n and snapshot.Multiplier == 1, "no reward before exact target")
+        if n < 25 then
+            check(
+                snapshot.Progress == n and snapshot.ActiveBuff == nil and snapshot.Multiplier == 1,
+                "no reward before exactly 25"
+            )
         end
     end
     local snapshot = muncher.GetSnapshot(p)
-    check(snapshot.Progress == 0 and snapshot.Target == goal.Required, "completion resets progress and rolls appetite")
     check(
-        snapshot.Multiplier == goal.CashMultiplier and snapshot.ExpiresAt == now + goal.Duration,
-        "correct cash multiplier and server duration"
+        snapshot.Progress == 0 and snapshot.Target == 25 and snapshot.ActiveBuff == buff.Id,
+        "25th ingredient rolls exactly one buff and resets progress"
+    )
+    check(
+        snapshot.Multiplier == buff.CashMultiplier and snapshot.ExpiresAt == now + 300,
+        "existing multiplier lasts exactly 300 seconds"
     )
     check(muncher.GetCashMultiplier(stranger) == 1, "other plot receives no buff")
     local cup = smoothie("payout", { "Banana", "Banana", "Banana" })
@@ -122,27 +175,48 @@ for index, goal in config.Goals do
     local base, baseValue = customer.CalculateOrderPayout(p, cup, request, evaluation)
     dependency.MuncherService = muncher
     check(
-        boosted == math.round(base * goal.CashMultiplier) and value == baseValue and evaluation.Grade == nil,
-        "wildcard payout boosted without changing ingredient subtotal or grade"
+        boosted == math.round(base * buff.CashMultiplier) and value == baseValue and evaluation.Grade == nil,
+        "wildcard payout uses existing multiplier without changing grade or ingredient subtotal"
     )
     now = snapshot.ExpiresAt
-    check(muncher.GetCashMultiplier(p) == 1 and muncher.GetSnapshot(p).ExpiresAt == 0, "expires exactly at deadline")
+    check(
+        muncher.GetCashMultiplier(p) == 1
+            and muncher.GetSnapshot(p).ActiveBuff == nil
+            and muncher.GetSnapshot(p).ExpiresAt == 0,
+        "expiry clears effect and buff state exactly at deadline"
+    )
 end
--- A weaker reward replaces a stronger active buff and starts a fresh duration.
+-- A full pending batch never replaces/stacks an active effect or destroys excess items.
 goalIndex = 3
 muncher.Reset(p)
-goalIndex = 1
-for _ = 1, 100 do
-    check(muncher.TryFeed(p, input, world(), nil), "complete stronger goal")
+unlock()
+for _ = 1, 25 do
+    check(muncher.TryFeed(p, input, world(), nil), "complete first batch")
 end
-check(muncher.GetCashMultiplier(p) == 2 and muncher.GetSnapshot(p).Target == 25, "new appetite rolls after reward")
+local deadline = muncher.GetSnapshot(p).ExpiresAt
+goalIndex = 1
 now += 20
 for _ = 1, 25 do
-    check(muncher.TryFeed(p, input, world(), nil), "complete replacement goal")
+    check(muncher.TryFeed(p, input, world(), nil), "accumulate pending batch")
 end
+local full = muncher.GetSnapshot(p)
 check(
-    muncher.GetCashMultiplier(p) == 1.25 and muncher.GetSnapshot(p).ExpiresAt == now + 300,
-    "new reward replaces rather than stacks, even when weaker"
+    full.Progress == 25 and full.Multiplier == 2 and full.ExpiresAt == deadline,
+    "FULL batch preserves single active buff and original deadline"
+)
+local excess = world()
+check(
+    not muncher.TryFeed(p, input, excess, nil) and ingredients.GetRecord(excess) ~= nil,
+    "FULL preserves excess ingredients"
+)
+now = deadline
+local pending = muncher.GetSnapshot(p)
+check(
+    pending.Progress == 0
+        and pending.ActiveBuff == config.Buffs[1].Id
+        and pending.Multiplier == 1.25
+        and pending.ExpiresAt == now + 300,
+    "expiry activates one pending buff and resets progress"
 )
 -- Actual serve consumes the authoritative inventory cup and credits the active bonus.
 local upgrade = loadModule("Upgrades").Payout[2]
@@ -221,6 +295,10 @@ carry(stranger)
 now += 0.2
 check(muncher.TryFeed(stranger, input, nil, tycoon.GetRequestContext(stranger)), "teammate can feed shared Muncher")
 check(muncher.GetSnapshot(p).Progress == 1, "team feed advances same plot appetite")
+check(
+    not muncher.TryPurchase(stranger, pad, tycoon.GetRequestContext(stranger)),
+    "teammate cannot repurchase unlocked Muncher"
+)
 setup(tycoon.LeaveTeam(stranger, tycoon.GetRequestContext(stranger)), "leave Muncher team")
 check(muncher.GetCashMultiplier(stranger) == 1, "departing teammate loses access to buff")
 local oldSession = tycoon.GetSessionId(p)
@@ -231,4 +309,16 @@ muncher.Reset(p)
 check(
     tycoon.GetSessionId(p) ~= oldSession and muncher.GetSnapshot(p).Progress == 0 and muncher.GetCashMultiplier(p) == 1,
     "fresh session state starts empty"
+)
+
+check(not muncher.GetSnapshot(p).Purchased and not muncher.GetSnapshot(p).Active, "fresh session resets purchase gate")
+tycoon.RemovePlayer(stranger)
+setup(tycoon.JoinSession(stranger, p, tycoon.GetRequestContext(p)), "join fresh session before purchase")
+tycoon.SetCash(stranger, 100001)
+check(muncher.TryPurchase(stranger, pad, tycoon.GetRequestContext(stranger)), "correct teammate can buy shared Muncher")
+check(tycoon.GetCash(p) == 1 and tycoon.GetCash(stranger) == 1, "teammate purchase debits the same shared cash ledger")
+now += config.RevealSeconds
+check(
+    muncher.CompleteReveal(stranger, model) and muncher.GetSnapshot(p).Active,
+    "teammate purchase reveals shared assembly"
 )

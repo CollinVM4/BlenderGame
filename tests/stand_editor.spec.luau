@@ -3,6 +3,10 @@ local keyboardChanged = {}
 services.UserInputService = {
     InputBegan = signal(),
     GamepadEnabled = true,
+    PreferredInput = "Gamepad",
+    GetLastInputType = function()
+        return "Gamepad1"
+    end,
     OnScreenKeyboardVisible = false,
     OnScreenKeyboardSize = env.Vector2.new(390, 300),
     OnScreenKeyboardPosition = env.Vector2.new(0, 544),
@@ -12,6 +16,7 @@ services.UserInputService = {
     end,
 }
 services.GuiService = {}
+env.Enum.PreferredInput = { Gamepad = "Gamepad", KeyboardAndMouse = "KeyboardAndMouse", Touch = "Touch" }
 env.Enum.TextXAlignment = { Right = "Right" }
 env.Enum.KeyCode = { Escape = "Escape", ButtonB = "ButtonB" }
 parent.Parent.UI = { StandNameEditor = "StandNameEditor" }
@@ -63,6 +68,23 @@ env.task.spawn = function(callback)
     local ok, err = coroutine.resume(coroutine.create(callback))
     assert(ok, err)
 end
+local focusTime = 0
+local focusTimers = {}
+env.task.delay = function(seconds, callback)
+    table.insert(focusTimers, { At = focusTime + seconds, Callback = callback })
+end
+local function advanceFocus(seconds)
+    focusTime += seconds
+    local pending = focusTimers
+    focusTimers = {}
+    for _, timer in pending do
+        if timer.At <= focusTime then
+            timer.Callback()
+        else
+            table.insert(focusTimers, timer)
+        end
+    end
+end
 local tweens = {}
 services.TweenService = {
     Create = function(_, object, info, goal)
@@ -82,22 +104,72 @@ services.TweenService = {
     end,
 }
 local original = env.Instance.new
+local releaseEnter = false
+local deferGuiEnabled = false
 env.Instance.new = function(class, parentObject)
     local object = original(class)
     object.Parent = parentObject
-    local changed = signal()
-    object.GetPropertyChangedSignal = function()
-        return changed
+    local changed = {}
+    object.GetPropertyChangedSignal = function(_, key)
+        changed[key] = changed[key] or signal()
+        return changed[key]
     end
+    local originalIsA = object.IsA
+    object.IsA = function(self, name)
+        return originalIsA(self, name)
+            or (
+                name == "GuiObject"
+                and (class == "TextBox" or class == "TextButton" or class == "TextLabel" or class == "Frame")
+            )
+    end
+    object.Visible = true
+    object.Selectable = class == "TextButton" or class == "TextBox"
+    if class == "ScreenGui" then
+        local enabled = true
+        setmetatable(object, {
+            __index = function(_, key)
+                if key == "Enabled" then
+                    return enabled
+                end
+                return nil
+            end,
+            __newindex = function(self, key, value)
+                if key == "Enabled" then
+                    local previous = enabled
+                    enabled = value
+                    if previous ~= value and changed.Enabled then
+                        if deferGuiEnabled then
+                            env.task.defer(function()
+                                changed.Enabled:Fire()
+                            end)
+                        else
+                            changed.Enabled:Fire()
+                        end
+                    end
+                else
+                    rawset(self, key, value)
+                end
+            end,
+        })
+    elseif class == "BillboardGui" or class == "SurfaceGui" then
+        object.Enabled = true
+    end
+    object.Focused = signal()
     object.FocusLost = signal()
     object.ReturnPressedFromOnScreenKeyboard = signal()
     object.CursorPosition, object.SelectionStart = -1, -1
     object.AbsoluteSize, object.AbsolutePosition = env.Vector2.new(390, 844), env.Vector2.new(0, 0)
     object.CaptureFocus = function(self)
-        self.Focused = true
+        self.FocusedState = true
+        self.FocusCaptures = (self.FocusCaptures or 0) + 1
+        self.Focused:Fire()
     end
     object.ReleaseFocus = function(self)
-        self.Focused = false
+        self.FocusedState = false
+        self.FocusLost:Fire(releaseEnter)
+    end
+    object.IsFocused = function(self)
+        return self.FocusedState == true
     end
     return object
 end
@@ -166,10 +238,44 @@ local function open()
     check(camera.CameraType == "Scriptable" and not gui.Enabled, "camera moves before UI appears")
     tweens[#tweens]:Finish()
     check(
-        gui.Enabled and box.Focused and box.Text == plot:GetAttribute("StandName"),
-        "arrival opens focused editor with authoritative value"
+        gui.Enabled and not box:IsFocused() and box.Text == plot:GetAttribute("StandName"),
+        "arrival opens editor without keyboard focus and with authoritative value"
     )
 end
+open()
+advanceFocus(2.99)
+check(not box:IsFocused(), "autofocus waits three seconds after the UI opens")
+advanceFocus(0.01)
+check(box:IsFocused(), "untouched active editor autofocuses after three seconds")
+controller.Close(true)
+open()
+advanceFocus(1)
+box:CaptureFocus()
+check(box:IsFocused(), "manual text entry focuses immediately before the delay")
+box:ReleaseFocus()
+local captures = box.FocusCaptures
+advanceFocus(2)
+check(not box:IsFocused() and box.FocusCaptures == captures, "manual focus then blur cancels delayed autofocus")
+controller.Close(true)
+open()
+controller.Close(true)
+advanceFocus(3)
+check(not gui.Enabled and not box:IsFocused(), "closed editor cannot receive delayed focus")
+open()
+advanceFocus(1)
+controller.Close(true)
+open()
+advanceFocus(2)
+check(gui.Enabled and not box:IsFocused(), "old session timer cannot focus a newer session")
+advanceFocus(1)
+check(box:IsFocused(), "new session retains its own three-second focus delay")
+controller.Close(true)
+open()
+plot:SetAttribute("PlotMembershipRevision", 2)
+advanceFocus(3)
+check(not box:IsFocused(), "invalid naming session cannot receive delayed focus")
+plot:SetAttribute("PlotMembershipRevision", 1)
+controller.Close(true)
 open()
 local counter = gui:FindFirstChild("CharacterCounter", true)
 box.Text = string.rep("👩‍👩‍👧‍👦", 28)
@@ -201,7 +307,6 @@ for _, viewport in { { 320, 568, 280 }, { 430, 932, 360 }, { 1024, 768, 300 }, {
     keyboardChanged.OnScreenKeyboardVisible:Fire()
     check(panel.Position.Y.Scale == 1 and panel.Position.Y.Offset == -20, "keyboard closure restores desktop position")
 end
-gui:GetPropertyChangedSignal("Enabled"):Fire()
 check(
     services.GuiService.SelectedObject == box
         and box.NextSelectionDown.Text == "SAVE"
@@ -280,14 +385,20 @@ for _, invalidate in
 do
     invalidate()
     services.RunService.Heartbeat:Fire(0.1)
-    check(camera.CameraType == "Custom" and not gui.Enabled, "lifecycle invalidation immediately releases camera")
+    check(
+        camera.CameraType == "Custom" and not gui.Enabled and services.GuiService.SelectedObject == nil,
+        "lifecycle invalidation immediately releases camera and editor selection"
+    )
     human.Health, plot.Parent, marker.Parent = 100, workspaceFake, plot
     plot:SetAttribute("OwnerUserId", owner.UserId)
     plot:SetAttribute("PlotMembershipRevision", 1)
     open()
 end
 owner.CharacterRemoving:Fire(owner.Character)
-check(camera.CameraType == "Custom" and not gui.Enabled, "character removal cancels")
+check(
+    camera.CameraType == "Custom" and not gui.Enabled and services.GuiService.SelectedObject == nil,
+    "character removal cancels camera and editor selection"
+)
 root, human = newCharacter()
 owner.CharacterAdded:Fire(owner.Character)
 open()
@@ -352,6 +463,156 @@ for _, platform in { "mobile", "console" } do
     tweens[#tweens]:Finish()
     open()
 end
+controller.Close(true)
+local hud = env.Instance.new("ScreenGui", playerGui)
+hud.Name = "UpgradesGui"
+local hudArea = env.Instance.new("Frame", hud)
+local upgrades = env.Instance.new("TextButton", hudArea)
+upgrades.Name = "Upgrades"
+local otherGui = env.Instance.new("ScreenGui", playerGui)
+local otherSelection = env.Instance.new("TextButton", otherGui)
+local selectionService = services.GuiService
+local namingRequests = 0
+remote.InvokeServer = function()
+    namingRequests += 1
+    return true, "Safe Name"
+end
+for _, mode in { "KeyboardAndMouse", "Touch", "Gamepad" } do
+    input.PreferredInput = mode
+    for _, dismiss in { "SAVE", "SKIP", "X", "Escape", "ButtonB", "immediate", "external", "session", "character" } do
+        selectionService.SelectedObject = upgrades
+        open()
+        check(
+            selectionService.SelectedObject == (if mode == "Gamepad" then box else upgrades),
+            mode .. " only enters editor navigation for active controller input"
+        )
+        box:CaptureFocus()
+        box.Text = "Safe Name"
+        if dismiss == "immediate" then
+            controller.Close(true)
+        elseif dismiss == "external" then
+            gui.Enabled = false
+        elseif dismiss == "session" then
+            plot:SetAttribute("PlotMembershipRevision", 2)
+            services.RunService.Heartbeat:Fire(0.1)
+            plot:SetAttribute("PlotMembershipRevision", 1)
+        elseif dismiss == "character" then
+            owner.CharacterRemoving:Fire(owner.Character)
+        elseif dismiss == "Escape" or dismiss == "ButtonB" then
+            input.InputBegan:Fire({ KeyCode = dismiss })
+        else
+            button(dismiss).Activated:Fire()
+        end
+        check(
+            not gui.Enabled
+                and not box:IsFocused()
+                and selectionService.SelectedObject == (if mode == "Gamepad" then upgrades else nil),
+            mode .. " " .. dismiss .. " resolves editor focus and navigation"
+        )
+        -- A repeat dismissal must not undo a menu opened after the first one.
+        selectionService.SelectedObject = otherSelection
+        controller.Close(true)
+        check(
+            selectionService.SelectedObject == otherSelection,
+            mode .. " repeated " .. dismiss .. " preserves subsequent menu selection"
+        )
+    end
+    selectionService.SelectedObject = upgrades
+    open()
+    selectionService.SelectedObject = otherSelection
+    controller.Close(true)
+    check(selectionService.SelectedObject == otherSelection, mode .. " preserves an independently selected UI")
+end
+input.PreferredInput = "Gamepad"
+for _, invalid in
+    { "destroyed", "hidden", "nonselectable", "hidden parent", "disabled ScreenGui", "disabled BillboardGui" }
+do
+    local screen = env.Instance.new("ScreenGui", playerGui)
+    local billboard = env.Instance.new("BillboardGui", screen)
+    local container = env.Instance.new("Frame", billboard)
+    local target = env.Instance.new("TextButton", container)
+    selectionService.SelectedObject = target
+    open()
+    if invalid == "destroyed" then
+        target:Destroy()
+    elseif invalid == "hidden" then
+        target.Visible = false
+    elseif invalid == "nonselectable" then
+        target.Selectable = false
+    elseif invalid == "hidden parent" then
+        container.Visible = false
+    elseif invalid == "disabled ScreenGui" then
+        screen.Enabled = false
+    else
+        billboard.Enabled = false
+    end
+    controller.Close(true)
+    check(selectionService.SelectedObject == nil, "controller does not restore " .. invalid .. " destination")
+end
+selectionService.SelectedObject = upgrades
+open()
+input.PreferredInput = "KeyboardAndMouse"
+controller.Close(true)
+check(selectionService.SelectedObject == nil, "switching from controller to mouse clears editor-owned selection")
+
+input.PreferredInput = "KeyboardAndMouse"
+selectionService.SelectedObject = upgrades
+open()
+input.PreferredInput = "Gamepad"
+keyboardChanged.PreferredInput:Fire()
+check(selectionService.SelectedObject == box, "switching to controller enters editor navigation")
+controller.Close(true)
+check(selectionService.SelectedObject == upgrades, "switched controller restores prior destination")
+
+input.PreferredInput = "KeyboardAndMouse"
+selectionService.SelectedObject = upgrades
+open()
+selectionService.SelectedObject = box
+controller.Close(true)
+check(selectionService.SelectedObject == nil, "pointer text selection never restores stale HUD selection")
+
+selectionService.SelectedObject = upgrades
+open()
+box:CaptureFocus()
+releaseEnter = true
+local beforeRequests = namingRequests
+local releasedWhileEnabled = false
+local releaseConnection = box.FocusLost:Connect(function()
+    releasedWhileEnabled = gui.Enabled
+    selectionService.SelectedObject = otherSelection
+end)
+controller.Close(true)
+releaseConnection:Disconnect()
+releaseEnter = false
+check(
+    releasedWhileEnabled and namingRequests == beforeRequests and selectionService.SelectedObject == otherSelection,
+    "shutdown releases focus while enabled, blocks recursive Save, and preserves focus-loss menu handoff"
+)
+
+input.PreferredInput = "Gamepad"
+selectionService.SelectedObject = upgrades
+deferGuiEnabled = true
+open()
+check(selectionService.SelectedObject == box, "controller selection starts without waiting for Enabled observer")
+controller.Close(true)
+check(selectionService.SelectedObject == upgrades, "immediate close restores selection before deferred GUI signals")
+selectionService.SelectedObject = otherSelection
+flush()
+check(selectionService.SelectedObject == otherSelection, "deferred disabled observers cannot clear a later menu")
+deferGuiEnabled = false
+
+selectionService.SelectedObject = upgrades
+open()
+box:CaptureFocus()
+local blurConnection = box.FocusLost:Connect(function()
+    selectionService.SelectedObject = nil
+end)
+controller.Close(true)
+blurConnection:Disconnect()
+check(selectionService.SelectedObject == upgrades, "controller ownership survives selection reset during text blur")
+
+selectionService.SelectedObject = upgrades
+open()
 marker:Destroy()
 services.RunService.Heartbeat:Fire(0.1)
 check(camera.CameraType == "Custom", "destroyed camera marker releases camera")

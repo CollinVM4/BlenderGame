@@ -150,6 +150,40 @@ geometry has not been edited from this workspace.
 
 ## Validation and limits
 
+### Naming editor selection cleanup
+
+The editor captures prior GUI selection when opening. It enters controller
+navigation using `UserInputService.PreferredInput`, not gamepad availability.
+All naming-editor dismissals release text focus, resolve selection, then hide the
+editor through one idempotent routine. External disabling uses the same routine.
+Mouse/touch dismissal clears editor selection or an unchanged stale pre-editor
+selection. Selection moved to another UI is preserved. Controller dismissal
+restores the prior target only if it remains in PlayerGui, selectable, visible
+through its ancestors, outside the editor, and in enabled GUI layers. There is
+no existing controller fallback; an invalid return target resolves to nil, with
+Roblox navigation still enabled. Manage Plot and Upgrades styling is unchanged.
+
+Studio-only diagnostics default to off. During Play, run this in the **client**
+Command Bar before claiming a plot:
+
+```luau
+game.Players.LocalPlayer.PlayerGui.StandNameEditor:SetAttribute("DebugSelection", true)
+```
+
+Output tagged `[StandNameSelection]` records opening, focus gain/loss, Save,
+Skip, X, Escape/Button B, focus release, selection cleanup/hiding, and the next
+Heartbeat. Each entry includes SelectedObject, its full name, last/preferred
+input, and TextBox focus. Reproduce with mouse/keyboard (including a connected
+idle gamepad), touch, and active gamepad. Check that mouse/touch exits leave no
+stale HUD selection, controller exits restore only valid targets, and an
+independently opened menu keeps its selection. If the outline appears, compare
+its button to SelectedObject at that instant. Set the attribute to false after
+verification. No GUI authoring changes are required.
+
+`stand-editor` covers selection state and dismissal paths using engine doubles;
+it does not verify Roblox's visual selection rendering. Live Studio confirmation
+of the intermittent outline remains required.
+
 Focused integration: `stand-identity`, `plot-player-flow` pass. Separate presentation:
 `stand-sign`, `stand-editor`, `plot-identity` pass. The existing turbine camera
 runner also passes. These cover claim contention, live/assigned/physical gates,

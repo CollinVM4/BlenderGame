@@ -22,9 +22,10 @@ type Sequence = {
     Tween: Tween?,
     Closing: boolean,
     Saving: boolean,
+    FocusUsed: boolean,
 }
 local current: Sequence? = nil
-local ui: { Gui: ScreenGui, Box: TextBox, Status: TextLabel, Save: TextButton }
+local ui: Editor.View
 local remote: RemoteFunction
 local initialized = false
 local version = 0
@@ -55,8 +56,7 @@ function Controller.Close(immediate: boolean?)
     end
     local wasClosing = sequence.Closing
     sequence.Closing = true
-    ui.Gui.Enabled = false
-    ui.Box:ReleaseFocus()
+    ui.Hide(if immediate then "immediate cancellation" else "Close")
     if sequence.Tween then
         sequence.Tween:Cancel()
     end
@@ -141,6 +141,7 @@ function Controller.OpenNameEditor(plot: Instance)
         RootPosition = root.Position,
         Closing = false,
         Saving = false,
+        FocusUsed = false,
     }
     if not valid(sequence) then
         return
@@ -167,8 +168,19 @@ function Controller.OpenNameEditor(plot: Instance)
         end
         ui.Box.Text = tostring(plot:GetAttribute("StandName") or "")
         ui.Status.Text, ui.Save.Text = "", "SAVE"
-        ui.Gui.Enabled = true
-        ui.Box:CaptureFocus()
+        ui.Show()
+        task.delay(3, function()
+            if
+                token == version
+                and current == sequence
+                and not sequence.Closing
+                and not sequence.FocusUsed
+                and ui.Gui.Enabled
+                and valid(sequence)
+            then
+                ui.Box:CaptureFocus()
+            end
+        end)
     end)
 end
 
@@ -179,6 +191,7 @@ function Controller.Init()
     initialized = true
     remote = ReplicatedStorage.Shared.Events:WaitForChild("SetStandName") :: RemoteFunction
     ui = Editor.Create(player:WaitForChild("PlayerGui"), function()
+        ui.TraceSelection("Save requested")
         local sequence = current
         if not sequence or sequence.Closing or sequence.Saving or not ui.Gui.Enabled then
             return
@@ -212,8 +225,14 @@ function Controller.Init()
     end, function()
         Controller.Close()
     end)
+    ui.Box.Focused:Connect(function()
+        if current and ui.Gui.Enabled then
+            current.FocusUsed = true
+        end
+    end)
     UserInputService.InputBegan:Connect(function(input)
         if ui.Gui.Enabled and (input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB) then
+            ui.TraceSelection(if input.KeyCode == Enum.KeyCode.Escape then "Escape" else "Button B")
             Controller.Close()
         end
     end)

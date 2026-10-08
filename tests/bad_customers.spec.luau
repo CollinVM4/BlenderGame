@@ -57,6 +57,7 @@ services.RunService.Heartbeat.Once = function(_, fn)
     table.insert(pending, fn)
 end
 local function heartbeat()
+    services.RunService.Heartbeat:Fire()
     local batch = pending
     pending = {}
     for _, fn in batch do
@@ -576,18 +577,124 @@ for _, kind in { "regularTest", "legitimateTest" } do
         "button dismisses recovered legitimate special/regular"
     )
 end
--- Owner-only physical interaction validates button range and immutable plot association.
+-- The floor plate uses server-observed support, not prompt requests or limb touches.
+local savedCharacter, savedRaycast = owner.Character, workspaceFake.Raycast
+local character = instance("Model")
+character.Parent = workspaceFake
+local root = instance("Part")
+root.Name, root.Parent = "HumanoidRootPart", character
+root.Size = vec(2, 2, 1)
+root.AssemblyLinearVelocity = vec(0, 0, 0)
+local humanoid = instance("Humanoid")
+humanoid.Parent, humanoid.Health, humanoid.HipHeight = character, 100, 2
+owner.Character = character
+local support = button
+workspaceFake.Raycast = function(_, position, direction, params)
+    setup(
+        params.RespectCanCollide and params.FilterDescendantsInstances[1] == character,
+        "query excludes the owner's character and uses solid ground"
+    )
+    local top = button.CFrame.Position.Y + button.Size.Y / 2
+    if
+        math.abs(position.X - button.CFrame.Position.X) <= button.Size.X / 2
+        and math.abs(position.Z - button.CFrame.Position.Z) <= button.Size.Z / 2
+        and position.Y >= top
+        and position.Y + direction.Y <= top
+    then
+        return { Instance = support }
+    end
+    return nil
+end
+local function stand(on)
+    root.Position = button.CFrame.Position + vec(if on then 0 else 10, button.Size.Y / 2 + 3, 0)
+end
+stand(false)
 reset()
 normal = spawn()
-local prompt = button:FindFirstChild("RejectPrompt")
-prompt.MaxActivationDistance = 10
-prompt.Triggered:Fire(foreign)
+heartbeat()
+check(
+    customer.ResolveRejectTarget(owner) == normal,
+    "nearby owner and foreign occupants cannot activate the floor plate"
+)
+check(button:FindFirstChild("RejectPrompt") == nil, "floor plate has no keyboard or click activation")
+local display = button:FindFirstChild("RejectFloorDisplay")
+local line = display:FindFirstChild("Progress")
+check(
+    display.Adornee == origin and display:FindFirstChild("Action").Text == "STAND TO REJECT",
+    "shared floor display uses the existing attachment"
+)
+stand(true)
+heartbeat()
+advance(0.75)
+heartbeat()
+check(
+    math.abs(line.Size.X.Offset - 60) < 0.01 and line.Size.Y.Offset == 6,
+    "standing fills the shared thick red progress line halfway"
+)
+check(customer.ResolveRejectTarget(owner) == normal, "partial standing time cannot reject")
+stand(false)
+heartbeat()
+advance(1)
+heartbeat()
+check(line.Size.X.Offset == 0 and customer.ResolveRejectTarget(owner) == normal, "stepping off cancels progress")
+stand(true)
+heartbeat()
+advance(1.5)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == nil, "continuous standing rejects the authoritative front")
+local nextCustomer = spawn()
+advance(3)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == nextCustomer, "remaining on the floor plate never repeats rejection")
+stand(false)
+heartbeat()
+stand(true)
+heartbeat()
+advance(1.5)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == nil, "stepping off and back on rearms the floor plate")
+stand(false)
+reset()
+normal = spawn()
+stand(true)
+support = base
+heartbeat()
+advance(2)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == normal, "another support surface cannot substitute for the red button")
+support = button
+root.AssemblyLinearVelocity = vec(0, 12, 0)
+heartbeat()
+advance(2)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == normal, "jumping over the button cannot activate it")
+root.AssemblyLinearVelocity = vec(0, 0, 0)
+heartbeat()
+advance(0.75)
+humanoid.Health = 0
+heartbeat()
+advance(1)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == normal, "death cancels standing progress")
+humanoid.Health = 100
+heartbeat()
+advance(0.75)
 owner.Near = false
-prompt.Triggered:Fire(owner)
-check(customer.ResolveRejectTarget(owner) == normal, "foreign and distant physical presses are inert")
+heartbeat()
 owner.Near = true
-prompt.Triggered:Fire(owner)
-check(customer.ResolveRejectTarget(owner) == nil, "valid physical press resolves authoritative front")
+heartbeat()
+advance(0.75)
+heartbeat()
+check(customer.ResolveRejectTarget(owner) == normal, "loss of gameplay eligibility requires a fresh full stand")
+display = button:FindFirstChild("RejectFloorDisplay")
+customer.DeactivateForPlayer(owner)
+advance(2)
+heartbeat()
+check(
+    display.Destroyed or button:FindFirstChild("RejectFloorDisplay") == nil,
+    "flow cleanup removes the floor display and prevents late activation"
+)
+owner.Character, workspaceFake.Raycast = savedCharacter, savedRaycast
 -- Missing escape markers are additive failures; they never prevent logical removal.
 reset()
 thief = spawn("thief")

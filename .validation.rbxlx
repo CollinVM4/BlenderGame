@@ -116,7 +116,7 @@ return {
     ExitTimeout = 15,
     DismissalResponseHold = 2,
     Reject = {
-        LaunchVertical = 115,
+        LaunchVertical = 320,
         LaunchHorizontal = 12,
         TumbleSpeed = 8,
         MinimumFlight = 0.6,
@@ -275,8 +275,7 @@ local requests: { Request } = {
         DisplayText = "Anything's good. As long as it's free.",
         DisplayTexts = {
             "Anything's good. As long as it's free.",
-            "You pay ME to drink these, right?",
-            "Put it on my tab. My very imaginary tab.",
+            "Lemme get a free smoothie..",
         },
         GoodResponse = "Thanks! Here's your bill for my time.",
         RequiredTags = {},
@@ -430,7 +429,6 @@ local requests: { Request } = {
         SimilarityKeys = { "Protein" },
         DisplayTexts = {
             ".. PROTEIN!",
-            "gains aren't gonna make themselves. PROTEIN!",
             "load it up with PROTEIN!",
             "I need something for the gains!",
         },
@@ -652,18 +650,6 @@ local requests: { Request } = {
         SimilarityKeys = { "Sweet", "Fruit" },
     },
     {
-        Id = "RedNoFruit",
-        RequestGroup = "Restriction",
-        SimilarityKeys = { "Red", "NoFruit" },
-        DisplayText = "something RED... but NO FRUIT!",
-        GoodResponse = "Delicious!",
-        BadResponse = "WHY IS THERE FRUIT?!",
-        RequiredTags = { "Red" },
-        ForbiddenTags = { "Fruit" },
-        BasePayout = 750,
-        MinJumpTier = 2,
-    },
-    {
         Id = "ColdNoFruit",
         RequestGroup = "Restriction",
         SimilarityKeys = { "Cold", "NoFruit" },
@@ -690,25 +676,6 @@ local requests: { Request } = {
 
         RequestGroup = "Restriction",
         SimilarityKeys = { "Weird", "Seafood" },
-    },
-    {
-        Id = "ProteinNoSeafood",
-        GoodResponse = "All gains, no fish. Beautiful.",
-        BadResponse = "I said NO SEAFOOD!",
-        DisplayTexts = {
-            "I need PROTEIN, but NO SEAFOOD!",
-            "PROTEIN please just keep the SEAFOOD out of it.",
-            "something PROTEIN packed... just nothing from the OCEAN.",
-        },
-
-        RequiredTags = { "Protein" },
-        ForbiddenTags = { "Seafood" },
-
-        BasePayout = 750,
-        MinJumpTier = 1,
-
-        RequestGroup = "Restriction",
-        SimilarityKeys = { "Protein", "Seafood" },
     },
     {
         Id = "SweetColdNoSpicy",
@@ -1025,10 +992,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Caseoh",
-    DisplayText = "whats good cuh. I'm bout that PROTEIN action. SPICY too",
+    DisplayText = "whats good cuh, i'm bout that PROTEIN action, FAST FOOD & SPICY too",
     GoodResponse = "You're safe this time buster.",
     BadResponse = "Don't cross me again simpleton",
-    RequiredTags = { "Protein", "Spicy" },
+    RequiredTags = { "Protein", "Fast Food", "Spicy" },
     BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
@@ -1045,10 +1012,11 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Verity",
-    DisplayText = "LET ME TELL YOU SOMTHING..! I want it RED!",
-    GoodResponse = "Thanks, Daffodil!",
-    BadResponse = "This isnt what I asked for!",
-    RequiredTags = { "Red" },
+    DisplayText = "HEY ITS ME..! put in a player's head. AND MAKE IT YELLOW",
+    GoodResponse = "Oh how delightful!",
+    BadResponse = "You'll pay for that!",
+    RequiredTags = { "Yellow" },
+    RequiredIngredients = { "PLAYER_HEAD" },
     BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
@@ -1181,7 +1149,7 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.63,
+    RegularWildcardChance = 0.54,
     SpecialWildcardChance = 0.30,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {
@@ -1192,6 +1160,7 @@ local CustomerRequests = {
             "make me whatever!",
             "I'll try anything!",
             "Your choice!",
+            "I'm not picky..",
             "just blend me something!",
             "you pick. I trust the smoothie master!",
             "Throw whatever you want in there!",
@@ -1213,7 +1182,7 @@ local CustomerRequests = {
     NPCs = {
         thief = {
             Type = "Special",
-            DisplayName = "Robert Stealer",
+            DisplayName = "SUs Fella",
             RequestId = "Thief",
             Weight = BadCustomers.ThiefWeight,
             Rejectable = true,
@@ -1316,6 +1285,12 @@ local CustomerRequests = {
             DisplayName = "Bigroll",
             RequestId = "Nathan",
             Weight = 1,
+        },
+        brooke = {
+            Type = "Special",
+            DisplayName = "Brooke",
+            RequestId = "Brooke",
+            Weight = 0.7,
         },
         jeremy = {
             Type = "Special",
@@ -1707,6 +1682,16 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 2,
     },
 
+    Rainbow_Trout = {
+        Id = "Rainbow_Trout",
+        DisplayName = "Rainbow Trout",
+        Tags = { "Seafood", "Rainbow", "Protein" },
+        BlendColor = Color3.fromRGB(180, 200, 220),
+        Rarity = "Rare",
+        Value = 30000,
+        JumpLocation = 0,
+    },
+
     Cherries = {
         Id = "Cherries",
         DisplayName = "Cherries",
@@ -1723,7 +1708,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Tags = { "Veggie", "Spicy", "Red" },
         BlendColor = Color3.fromRGB(215, 45, 35),
         Rarity = "Common",
-        Value = 3000,
+        Value = 10000,
         JumpLocation = 1,
     },
 
@@ -1988,9 +1973,9 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 2,
     },
 
-    Potato = {
-        Id = "Potato",
-        DisplayName = "Potato",
+    Golden_Potato = {
+        Id = "Golden_Potato",
+        DisplayName = "Golden Potato",
         Tags = { "Vegetable", "Golden", "Cloud Garden" },
         BlendColor = Color3.fromRGB(247, 250, 61),
         Rarity = "Rare",
@@ -2028,13 +2013,23 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 0,
     },
 
-    Tomato = {
-        Id = "Tomato",
-        DisplayName = "Tomato",
+    Golden_Tomato = {
+        Id = "Golden_Tomato",
+        DisplayName = "Golden Tomato",
         Tags = { "Fruit", "Golden", "Cloud Garden" },
         BlendColor = Color3.fromRGB(236, 227, 59),
         Rarity = "Rare",
         Value = 60000,
+        JumpLocation = 3,
+    },
+
+    Cotton_Candy = {
+        Id = "Cotton_Candy",
+        DisplayName = "Cotton Candy",
+        Tags = { "Sweet", "Pink", "Candy"},
+        BlendColor = Color3.fromRGB(255, 182, 193),
+        Rarity = "Rare",
+        Value = 65000,
         JumpLocation = 3,
     },
 
@@ -2080,6 +2075,16 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 1,
     },
 
+    French_Fries = {
+        Id = "French_Fries",
+        DisplayName = "French Fries",
+        Tags = { "Weird", "Fast Food", "Potato" },
+        BlendColor = Color3.fromRGB(240, 200, 100),
+        Rarity = "Uncommon",
+        Value = 10000,
+        JumpLocation = 1,
+    },
+
     Sushi = {
         Id = "Sushi",
         DisplayName = "Sushi",
@@ -2118,16 +2123,6 @@ local Ingredients: { [string]: IngredientDefinition } = {
         Rarity = "Uncommon",
         Value = 12000,
         JumpLocation = 1,
-    },
-
-    GoldenTomato = {
-        Id = "GoldenTomato",
-        DisplayName = "Golden Tomato",
-        Tags = { "Fruit", "Sweet", "Healthy", "Yellow" },
-        BlendColor = Color3.fromRGB(255, 205, 55),
-        Rarity = "Rare",
-        Value = 100000,
-        JumpLocation = 3,
     },
 
     -- Mystery uses the same deterministic RGB mean as every other unit.
@@ -2271,6 +2266,106 @@ return SprintConfig
         </Item>
         <Item class="ModuleScript" referent="26">
           <Properties>
+            <string name="Name">StandIdentity</string>
+            <string name="Source"><![CDATA[--!strict
+local Config = {
+    MaxCharacters = 27,
+    -- Resource ceiling, separate from visible length: combined graphemes can be many bytes.
+    MaxInputBytes = 4096,
+    ZoneInterval = 0.15,
+    SaveCooldown = 1,
+    CameraInSeconds = 0.48,
+    CameraOutSeconds = 0.35,
+}
+
+function Config.Count(value: string): number?
+    if not utf8.len(value) then
+        return nil
+    end
+    local count = 0
+    for _first, _last in utf8.graphemes(value) do
+        count += 1
+    end
+    return count
+end
+
+-- Truncate editor input or trusted display transformations only. Normalize
+-- rejects oversized raw submissions before the server uses this helper.
+function Config.Truncate(value: string, maximum: number?): string
+    if not utf8.len(value) then
+        return ""
+    end
+    local count, last = 0, 0
+    for _first, finish in utf8.graphemes(value) do
+        count += 1
+        if count > (maximum or Config.MaxCharacters) then
+            return string.sub(value, 1, last)
+        end
+        last = finish
+    end
+    return value
+end
+
+function Config.DefaultName(displayName: string): string
+    local suffix = "'s Stand"
+    return Config.Truncate(displayName, Config.MaxCharacters - (Config.Count(suffix) or 0)) .. suffix
+end
+
+function Config.Normalize(value: any): string?
+    if type(value) ~= "string" or #value > Config.MaxInputBytes or not utf8.len(value) then
+        return nil
+    end
+    -- Preserve accents/emoji; Roblox has no general NFC normalizer. Canonicalize
+    -- Unicode horizontal spaces and reject controls, line breaks and bidi overrides.
+    for _, code in utf8.codes(value) do
+        if
+            code < 32
+            or (code >= 127 and code <= 159)
+            or code == 0x2028
+            or code == 0x2029
+            or (code >= 0x202A and code <= 0x202E)
+            or (code >= 0x2066 and code <= 0x2069)
+        then
+            return nil
+        end
+    end
+    local text = value
+    for _, code in
+        {
+            0xA0,
+            0x1680,
+            0x2000,
+            0x2001,
+            0x2002,
+            0x2003,
+            0x2004,
+            0x2005,
+            0x2006,
+            0x2007,
+            0x2008,
+            0x2009,
+            0x200A,
+            0x202F,
+            0x205F,
+            0x3000,
+        }
+    do
+        text = string.gsub(text, utf8.char(code), " ")
+    end
+    text = string.match(text, "^ *(.-) *$") or ""
+    local length = Config.Count(text)
+    if not length or length == 0 or length > Config.MaxCharacters then
+        return nil
+    end
+    return text
+end
+
+return Config
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="27">
+          <Properties>
             <string name="Name">Upgrades</string>
             <string name="Source"><![CDATA[--!strict
 return {
@@ -2324,11 +2419,11 @@ return {
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="27">
+      <Item class="Folder" referent="28">
         <Properties>
           <string name="Name">Events</string>
         </Properties>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">Hello</string>
             <string name="Source"><![CDATA[return function()
@@ -2337,7 +2432,7 @@ end
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="29">
+        <Item class="ModuleScript" referent="30">
           <Properties>
             <string name="Name">SprintEvents</string>
             <string name="Source"><![CDATA[--!strict
@@ -2368,7 +2463,7 @@ end
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">IngredientItem</string>
           <string name="Source"><![CDATA[--!strict
@@ -2463,7 +2558,7 @@ return Item
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">IngredientName</string>
           <string name="Source"><![CDATA[--!strict
@@ -2487,7 +2582,7 @@ return IngredientName
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">MoneyFormat</string>
           <string name="Source"><![CDATA[--!strict
@@ -2515,7 +2610,7 @@ return MoneyFormat
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Types</string>
           <string name="Source"><![CDATA[--!strict
@@ -2593,6 +2688,8 @@ export type PlotSessionState = {
     OwnerUserId: number,
     TeammateUserId: number?,
     JoinMode: string,
+    StandName: string,
+    StandNameRevision: number,
     SharedCash: number,
     SharedUpgrades: { [string]: number },
     Status: string,
@@ -2604,11 +2701,11 @@ return {}
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="34">
+  <Item class="ServerScriptService" referent="35">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Script" referent="35">
+    <Item class="Script" referent="36">
       <Properties>
         <string name="Name">Server</string>
         <token name="RunContext">0</token>
@@ -2646,6 +2743,7 @@ local services: { [string]: any } = {
 
 require(script.Services.FilmingUtil).Init()
 require(script.Services.GameplaySfxService).Init()
+require(script.Services.PlayerOnlyCollisionService).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
@@ -2793,6 +2891,8 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 services.GameplayService.Init(services)
+require(script.Services.StandIdentityService).Init(services)
+require(script.Services.PlotClaimZones).Init(services)
 local components: { { Init: (any) -> () } } = {
     require(script.Components.Dispenser),
     require(script.Components.BlenderInput),
@@ -2820,11 +2920,11 @@ StudioServices.Publish(services)
 print("[Be a Blender!] MVP services initialized. Persistence is in-memory; see docs/MVP_ARCHITECTURE.md.")
 ]]></string>
       </Properties>
-      <Item class="Folder" referent="36">
+      <Item class="Folder" referent="37">
         <Properties>
           <string name="Name">Components</string>
         </Properties>
-        <Item class="ModuleScript" referent="37">
+        <Item class="ModuleScript" referent="38">
           <Properties>
             <string name="Name">AnnouncedIngredientSpawn</string>
             <string name="Source"><![CDATA[--!strict
@@ -2847,7 +2947,7 @@ return AnnouncedIngredientSpawn
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="38">
+        <Item class="ModuleScript" referent="39">
           <Properties>
             <string name="Name">BlendProgressLights</string>
             <string name="Source"><![CDATA[--!strict
@@ -3020,7 +3120,7 @@ return BlendProgressLights
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="39">
+        <Item class="ModuleScript" referent="40">
           <Properties>
             <string name="Name">BlendVFX</string>
             <string name="Source"><![CDATA[--!strict
@@ -3484,7 +3584,7 @@ return BlendVFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">BlenderInput</string>
             <string name="Source"><![CDATA[--!strict
@@ -3528,7 +3628,7 @@ return BlenderInput
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="41">
+        <Item class="ModuleScript" referent="42">
           <Properties>
             <string name="Name">BlenderKillScript</string>
             <string name="Source">local CollectionService = game:GetService("CollectionService")
@@ -3572,7 +3672,7 @@ end
 return BlenderKill</string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="42">
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">BlenderReadyIndicator</string>
             <string name="Source"><![CDATA[--!strict
@@ -3663,7 +3763,7 @@ return BlenderReadyIndicator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="44">
           <Properties>
             <string name="Name">BlenderStatusPresentation</string>
             <string name="Source"><![CDATA[--!strict
@@ -3736,6 +3836,7 @@ function BlenderStatusPresentation.Init(services: any)
         local guis: { BillboardGui } = {}
         local countText: TextLabel? = nil
         local promptText: TextLabel? = nil
+        local promptGui: BillboardGui? = nil
         if countOrigin then
             local gui, text = billboard(countOrigin, "IngredientCountDisplay", COUNT_SIZE, COUNT_OFFSET)
             table.insert(guis, gui)
@@ -3745,6 +3846,7 @@ function BlenderStatusPresentation.Init(services: any)
             local gui, text = billboard(promptOrigin, "TurbineStatusDisplay", PROMPT_SIZE, PROMPT_OFFSET)
             table.insert(guis, gui)
             promptText = text
+            promptGui = gui
         end
         local owner: Player? = nil
         local ownerConnections: { RBXScriptConnection } = {}
@@ -3769,6 +3871,12 @@ function BlenderStatusPresentation.Init(services: any)
                         Economy.MaxIngredients
                     )
                     else "LOAD INGREDIENTS TO BLEND!"
+                local guidance = promptText.Text == "LOAD INGREDIENTS TO BLEND!"
+                promptText.TextSize = if guidance then TEXT_SIZE * 0.85 else TEXT_SIZE
+                if promptGui then
+                    promptGui.Size = if guidance then UDim2.fromOffset(323, 68) else PROMPT_SIZE
+                    promptGui.MaxDistance = if guidance then MAX_DISTANCE * 0.70 else MAX_DISTANCE
+                end
             end
         end
         local function disconnectOwner()
@@ -3811,7 +3919,7 @@ return BlenderStatusPresentation
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">BlenderVacuum</string>
             <string name="Source"><![CDATA[--!strict
@@ -3955,7 +4063,7 @@ return BlenderVacuum
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">DayButton</string>
             <string name="Source"><![CDATA[--!strict
@@ -3997,7 +4105,7 @@ return DayButton
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">DispenseButton</string>
             <string name="Source"><![CDATA[--!strict
@@ -4039,7 +4147,7 @@ return DispenseButton
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">Dispenser</string>
             <string name="Source"><![CDATA[--!strict
@@ -4056,7 +4164,7 @@ return Dispenser
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="48">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">IngredientPickup</string>
             <string name="Source"><![CDATA[--!strict
@@ -4088,7 +4196,7 @@ return IngredientPickup
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">IngredientSpawn</string>
             <string name="Source"><![CDATA[--!strict
@@ -4239,7 +4347,7 @@ return IngredientSpawn
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">MarketPedestal</string>
             <string name="Source"><![CDATA[--!strict
@@ -4271,7 +4379,7 @@ return MarketPedestal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Muncher</string>
             <string name="Source"><![CDATA[--!strict
@@ -4391,7 +4499,7 @@ return Component
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">MuncherPresentation</string>
             <string name="Source"><![CDATA[--!strict
@@ -4432,7 +4540,8 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
     bar.AnchorPoint = Vector2.new(0.5, 0.5)
     bar.Position = UDim2.fromOffset(88, 38)
     bar.Size = UDim2.fromOffset(156, 20)
-    bar.BackgroundColor3 = Color3.fromRGB(42, 48, 56)
+    bar.BackgroundColor3 = Style.White
+    bar.BackgroundTransparency = 0.30
     bar.BorderSizePixel = 0
     bar.Parent = gui
     local function round(object: GuiObject)
@@ -4617,7 +4726,7 @@ return Presentation
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">SmoothiePickup</string>
             <string name="Source"><![CDATA[--!strict
@@ -4647,7 +4756,7 @@ return SmoothiePickup
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">Stash</string>
             <string name="Source"><![CDATA[--!strict
@@ -4771,7 +4880,7 @@ return Stash
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">StashPresentation</string>
             <string name="Source"><![CDATA[--!strict
@@ -4786,6 +4895,61 @@ local IngredientName = require(Shared.IngredientName)
 local Item = require(Shared.IngredientItem)
 local RipenessStyle = require(Shared.Constants.RipenessPresentation)
 local Presentation = {}
+local FilledIndicatorColor = Color3.fromRGB(0, 255, 0)
+local EmptyIndicatorColor = Color3.fromRGB(117, 0, 0)
+
+local function refreshIndicators(slot: BasePart, state: any)
+    -- The resolver supplies the interaction base; authored indicators may be its
+    -- siblings inside the slot model, or descendants of a standalone slot part.
+    local parent = slot.Parent
+    local root: Instance = if parent
+            and parent:IsA("Model")
+            and (
+                parent.PrimaryPart == slot
+                or parent:FindFirstChild("SlotIndicator") ~= nil
+                or string.match(parent.Name, "^LockedSlot%d+$")
+                or string.match(parent.Name, "^Slot%d+$")
+            )
+        then parent
+        else slot
+    local indicators: { { Part: BasePart, X: number, Y: number, Z: number, Order: number } } = {}
+    for order, child in root:GetDescendants() do
+        if child:IsA("BasePart") and child.Name == "SlotIndicator" then
+            local offset = child.Position - slot.Position
+            table.insert(indicators, {
+                Part = child,
+                X = offset:Dot(slot.CFrame.RightVector),
+                Y = offset:Dot(slot.CFrame.UpVector),
+                Z = offset:Dot(slot.CFrame.LookVector * -1),
+                Order = order,
+            })
+        end
+    end
+    table.sort(indicators, function(a, b)
+        if a.X ~= b.X then
+            return a.X < b.X
+        elseif a.Y ~= b.Y then
+            return a.Y < b.Y
+        elseif a.Z ~= b.Z then
+            return a.Z < b.Z
+        end
+        return a.Order < b.Order
+    end)
+    local protected = (slot:GetAttribute("StashLogicalSlotIndex") or slot:GetAttribute("SlotIndex") or 0)
+        <= Config.Protected
+    local capacity = if state then state.Capacity else nil
+    if type(capacity) ~= "number" or capacity ~= capacity then
+        capacity = if protected then 1 else Config.IngredientCapacity
+    end
+    local occupied = if state and state.ItemType == "Smoothie"
+        then state.Count
+        elseif state and type(state.Ingredients) == "table" then #state.Ingredients
+        else 0
+    local filled = math.clamp(math.floor(occupied), 0, math.min(#indicators, math.max(0, math.floor(capacity))))
+    for index, indicator in indicators do
+        indicator.Part.Color = if index <= filled then FilledIndicatorColor else EmptyIndicatorColor
+    end
+end
 
 local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value: number)
     local gui = Instance.new("BillboardGui")
@@ -4879,8 +5043,31 @@ function Presentation.Clear(slot: BasePart)
         old:Destroy()
     end
 end
-function Presentation.Refresh(slot: BasePart, state: any, ingredients: any)
+function Presentation.Refresh(slot: BasePart?, state: any, ingredients: any)
+    if not slot then
+        return
+    end
+    if
+        type(state) ~= "table"
+        or type(state.Count) ~= "number"
+        or state.Count ~= state.Count
+        or state.Count < 0
+        or state.Count % 1 ~= 0
+        or (state.IngredientId and type(state.Ingredients) ~= "table")
+    then
+        state = nil
+    end
+    if state and state.IngredientId then
+        for index = 1, state.Count do
+            local unit = state.Ingredients[index]
+            if type(unit) ~= "table" or type(unit.IngredientId) ~= "string" then
+                state = nil
+                break
+            end
+        end
+    end
     Presentation.Clear(slot)
+    refreshIndicators(slot, state)
     slot:SetAttribute("StashIngredientId", state and state.IngredientId)
     slot:SetAttribute("StashItemType", state and state.ItemType)
     slot:SetAttribute("StashCapacity", state and state.Capacity or Config.IngredientCapacity)
@@ -4992,7 +5179,7 @@ return Presentation
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">TurbineWheel</string>
             <string name="Source"><![CDATA[--!strict
@@ -5050,11 +5237,11 @@ return TurbineWheel
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="57">
+      <Item class="Folder" referent="58">
         <Properties>
           <string name="Name">Services</string>
         </Properties>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">AnnouncementService</string>
             <string name="Source"><![CDATA[--!strict
@@ -5146,7 +5333,7 @@ return Service
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">AudioService</string>
             <string name="Source"><![CDATA[--!strict
@@ -5213,7 +5400,7 @@ return AudioService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">BadCustomerBehavior</string>
             <string name="Source"><![CDATA[--!strict
@@ -5370,7 +5557,7 @@ return Behavior
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">BatKnockback</string>
             <string name="Source"><![CDATA[--!strict
@@ -5406,7 +5593,7 @@ return BatKnockback
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">BlendService</string>
             <string name="Source"><![CDATA[--!strict
@@ -5811,7 +5998,7 @@ return require(script.Parent.StudioServices).Wrap("BlendService", BlendService)
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">BlenderVacuumPhysics</string>
             <string name="Source"><![CDATA[--!strict
@@ -5838,11 +6025,12 @@ return Physics
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">CharacterPhysicsService</string>
             <string name="Source"><![CDATA[--!strict
 local RunService = game:GetService("RunService")
+local PlayerOnlyCollisionService = require(script.Parent.PlayerOnlyCollisionService)
 local CharacterPhysicsService = {}
 
 -- Enable before spawning in Studio; never prints in live servers.
@@ -5917,12 +6105,14 @@ function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model
             if accessory:GetAttribute("PreserveGameplayPhysics") == true then
                 return
             end
+            instance.CollisionGroup = PlayerOnlyCollisionService.PlayerGroup
             instance.Massless = true
             instance.CanCollide = false
             instance.CanTouch = false
             instance.CanQuery = false
             instance.RootPriority = -127
         elseif instance.Parent == character and instance.Name == "HumanoidRootPart" then
+            instance.CollisionGroup = PlayerOnlyCollisionService.PlayerGroup
             instance.Size = ROOT_SIZE
             instance.Massless = false
             instance.RootPriority = 127
@@ -5931,6 +6121,7 @@ function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model
             instance.CanTouch = false
             instance.CanQuery = true
         elseif instance.Parent == character and BODY_NAMES[instance.Name] then
+            instance.CollisionGroup = PlayerOnlyCollisionService.PlayerGroup
             instance.Massless = true
             instance.RootPriority = 0
             instance.CustomPhysicalProperties = BODY_PHYSICS
@@ -6107,7 +6298,7 @@ return CharacterPhysicsService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">CombatService</string>
             <string name="Source"><![CDATA[--!strict
@@ -6740,7 +6931,7 @@ return require(script.Parent.StudioServices).Wrap("CombatService", CombatService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">CustomerOrderEvaluation</string>
             <string name="Source">--!strict
@@ -7004,7 +7195,7 @@ end
 return CustomerOrderEvaluation</string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">CustomerPlacement</string>
             <string name="Source"><![CDATA[--!strict
@@ -7045,7 +7236,7 @@ return CustomerPlacement
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">CustomerPresentation</string>
             <string name="Source"><![CDATA[--!strict
@@ -7312,7 +7503,7 @@ return CustomerPresentation
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">CustomerService</string>
             <string name="Source"><![CDATA[--!strict
@@ -7338,6 +7529,7 @@ local GameplaySfx = require(script.Parent.GameplaySfxService)
 local OrderEvaluation = require(script.Parent.CustomerOrderEvaluation)
 local BadCustomers = require(Shared.Constants.BadCustomers)
 local BadBehavior = require(script.Parent.BadCustomerBehavior)
+local RejectFloorButton = require(script.Parent.RejectFloorButton)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade?) -> ()
@@ -8292,10 +8484,11 @@ local function behaviorContext(record: any, queue: any): any
         if not transaction then
             return
         end
-        -- Claim before inventory publishes any presentation signals. The inventory
-        -- mutation is synchronous and permanent; later rejection never rolls it back.
+        -- Reserve the exact removed unit before inventory publishes stash signals.
         record.TheftAttempted = true
-        record.StolenIngredient = deps.InventoryService.RemoveThiefIngredient(owner, transaction)
+        deps.InventoryService.RemoveThiefIngredient(owner, transaction, function(unit)
+            record.StolenIngredient = unit
+        end)
         deps.TycoonService.EndTransaction(transaction)
         if record.StolenIngredient and context.Valid() and deps.IngredientService then
             pcall(function()
@@ -8317,32 +8510,43 @@ local function badCue(record: any, cue: string)
     end)
 end
 
--- Queue order is authoritative even during approach/recovery. Never filter by type.
+-- Revealed thieves are explicitly associated with this plot's lifetime registry.
+-- Hidden queue occupants never get discovered by the override.
 function CustomerService.ResolveRejectTarget(player: Player): Model?
     local queue = queues[key(player)]
     if not queue or not current(player, queue) or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= player then
         return nil
+    end
+    -- Escaping wins over Stealing; ties use the oldest encounter deterministically.
+    local fallback: any = nil
+    for _, record in queue.Records do
+        local humanoid = record.Model:FindFirstChildOfClass("Humanoid")
+        if
+            bad(record)
+            and record.BadCustomerType == "Thief"
+            and (record.State == "Stealing" or record.State == "Escaping")
+            and record.SessionId == queue.SessionId
+            and record.Model:IsDescendantOf(workspace)
+            and record.SpawnOwnerUserId == player.UserId
+            and (not humanoid or humanoid.Health > 0)
+            and (
+                not fallback
+                or (record.State == "Escaping" and fallback.State ~= "Escaping")
+                or (record.State == fallback.State and record.Sequence < fallback.Sequence)
+            )
+        then
+            fallback = record
+        end
+    end
+    if fallback then
+        return fallback.Model
     end
     for _, record in queue.Customers do
         if active(record) and record.SessionId == queue.SessionId and record.Model:IsDescendantOf(workspace) then
             return record.Model
         end
     end
-    -- Explicit plot association for thieves outside the normal queue. Oldest
-    -- encounter wins; a queued legitimate customer always took precedence above.
-    local fallback: any = nil
-    for _, record in queue.Records do
-        if
-            bad(record)
-            and (record.State == "Stealing" or record.State == "Escaping")
-            and record.SessionId == queue.SessionId
-            and record.Model:IsDescendantOf(workspace)
-            and (not fallback or record.Sequence < fallback.Sequence)
-        then
-            fallback = record
-        end
-    end
-    return if fallback then fallback.Model else nil
+    return nil
 end
 
 function CustomerService.DismissCustomer(player: Player, model: Model, _reason: string?, context: any): boolean
@@ -8360,6 +8564,7 @@ function CustomerService.DismissCustomer(player: Player, model: Model, _reason: 
     if not transaction then
         return false
     end
+    record.Bubble.MaxDistance = CUSTOMER_ORDER_MAX_DISTANCE
     record.State = "Dismissed" -- Claim before any Immediate signals/presentation.
     invalidate(record)
     releaseQueue(record, queue)
@@ -8402,10 +8607,22 @@ function CustomerService.RejectCustomer(player: Player, model: Model, _reason: s
     if not transaction then
         return false
     end
+    record.Bubble.MaxDistance = CUSTOMER_ORDER_MAX_DISTANCE
     record.State = "Rejected"
     invalidate(record)
     record.Recovering = true
     releaseQueue(record, queue)
+    local stolen = record.StolenIngredient
+    -- Rejected is the exclusive claim. Relinquish ownership and remove the inert
+    -- carried projection before world publication, audio, ragdoll or impulse.
+    record.StolenIngredient = nil
+    if record.StolenVisual then
+        record.StolenVisual:Destroy()
+        record.StolenVisual = nil
+    end
+    if stolen then
+        deps.InventoryService.ReleaseThiefIngredient(stolen, record.Root.CFrame * CFrame.new(0, 2, -4))
+    end
     badCue(record, "Reject")
     local runtime = behaviorContext(record, queue)
     deps.TycoonService.EndTransaction(transaction)
@@ -8451,23 +8668,21 @@ local function bindRejectButton(queue: any)
         end
         return
     end
-    local prompt = WorldUtil.Prompt(button, "RejectPrompt", "REJECT")
-    prompt.Style = Enum.ProximityPromptStyle.Custom
-    prompt:SetAttribute("RejectButtonPrompt", true)
-    prompt:SetAttribute("InteractionOrigin", "Attachment")
-    prompt:SetAttribute("InteractionActionText", "REJECT")
-    prompt:SetAttribute("InteractionMaxDistance", 40)
-    prompt:SetAttribute("InteractionOwnerUserId", deps.TycoonService.GetSessionOwner(queue.SessionId).UserId)
-    queue.RejectPrompt = prompt
-    deps.GameplayService.RegisterPlotInteraction(prompt, function(actor, context)
-        if
-            queues[queue.SessionId] == queue
-            and current(actor, queue)
-            and deps.TycoonService.GetSessionOwner(queue.SessionId) == actor
-            and WorldUtil.Near(actor, button, prompt.MaxActivationDistance)
-        then
-            CustomerService.RejectFront(actor, queue.Plot, context)
+    local oldPrompt = button:FindFirstChild("RejectPrompt")
+    if oldPrompt then
+        oldPrompt:Destroy()
+    end
+    queue.RejectCleanup = RejectFloorButton.Bind(button, origin, function()
+        return if queues[queue.SessionId] == queue then deps.TycoonService.GetSessionOwner(queue.SessionId) else nil
+    end, function(actor)
+        return current(actor, queue)
+            and WorldUtil.Near(actor, button, 10)
+            and CustomerService.ResolveRejectTarget(actor) ~= nil
+    end, function(actor)
+        if queues[queue.SessionId] ~= queue or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= actor then
+            return false
         end
+        return CustomerService.RejectFront(actor, queue.Plot, deps.TycoonService.GetRequestContext(actor))
     end)
 end
 
@@ -8887,6 +9102,10 @@ local function spawnForPlayer(player: Player, customerId: string?): Model?
     end)
     model.Destroying:Connect(function()
         record.State = "Destroyed"
+        -- Escape, death/reset and generic cleanup consume held loot; only the
+        -- successful rejection operation above is allowed to publish a drop.
+        record.StolenIngredient = nil
+        record.StolenVisual = nil
         record.RuntimeToken += 1
         Walk.Cancel(record)
         if deps.RagdollService then
@@ -8957,6 +9176,9 @@ function CustomerService.TakeOrder(player: Player, model: Model, context: any): 
             if not token then
                 return false
             end
+            record.Bubble.MaxDistance = if bad(record)
+                then CUSTOMER_ORDER_MAX_DISTANCE
+                else CUSTOMER_ORDER_MAX_DISTANCE * 1.25
             record.OrderTaken = true
             record.State = "OrderTaken"
             record.TakeOrderPrompt.Enabled = false
@@ -9060,6 +9282,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     end
     -- No yield between consumption, payout, and removal from active state.
     record.Served = true
+    record.Bubble.MaxDistance = CUSTOMER_ORDER_MAX_DISTANCE
     record.State = "Served"
     record.TakeOrderPrompt.Enabled = false
     record.Model:SetAttribute("OrderRevealed", true)
@@ -9260,8 +9483,8 @@ local function cleanupFlow(sessionId: string)
     if queue and queue.PlotConnection then
         queue.PlotConnection:Disconnect()
     end
-    if queue and queue.RejectPrompt then
-        queue.RejectPrompt:Destroy()
+    if queue and queue.RejectCleanup then
+        queue.RejectCleanup()
     end
     local models = ownedModels[sessionId]
     ownedModels[sessionId] = nil
@@ -9288,9 +9511,6 @@ function CustomerService.BindPlayer(player: Player)
     if queue then
         local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
         if owner then
-            if queue.RejectPrompt then
-                queue.RejectPrompt:SetAttribute("InteractionOwnerUserId", owner.UserId)
-            end
             for model, record in table.clone((ownedModels[queue.SessionId] or {}) :: { [Model]: any }) do
                 if bad(record) and record.SpawnOwnerUserId ~= owner.UserId then
                     model:Destroy()
@@ -9308,7 +9528,7 @@ return require(script.Parent.StudioServices).Wrap("CustomerService", CustomerSer
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">CustomerWalk</string>
             <string name="Source"><![CDATA[--!strict
@@ -9869,7 +10089,7 @@ return CustomerWalk
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="71">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">DevContentService</string>
             <string name="Source"><![CDATA[--!strict
@@ -10210,7 +10430,7 @@ return require(script.Parent.StudioServices).Wrap("DevContentService", DevConten
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">DiscoveryService</string>
             <string name="Source"><![CDATA[--!strict
@@ -10294,7 +10514,7 @@ return require(script.Parent.StudioServices).Wrap("DiscoveryService", DiscoveryS
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">FallDamageService</string>
             <string name="Source"><![CDATA[--!strict
@@ -10549,7 +10769,7 @@ return require(script.Parent.StudioServices).Wrap("FallDamageService", FallDamag
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">FarmService</string>
             <string name="Source"><![CDATA[--!strict
@@ -10961,7 +11181,7 @@ return FarmService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">FilmingUtil</string>
             <string name="Source"><![CDATA[--!strict
@@ -11004,7 +11224,7 @@ return FilmingUtil
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">GameService</string>
             <string name="Source"><![CDATA[--!strict
@@ -11081,7 +11301,7 @@ return require(script.Parent.StudioServices).Wrap("GameService", GameService)
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">GameplayService</string>
             <string name="Source"><![CDATA[--!strict
@@ -11105,6 +11325,10 @@ function GameplayService.HandlePlotRequest(
     value: any,
     context: any
 ): boolean
+    -- Claims/joins originate exclusively from server-authored zone detection now.
+    if action == "ClaimPlot" or action == "JoinTeam" then
+        return false
+    end
     if not MovementService.CanPerformGameplayAction(player) then
         return false
     end
@@ -11121,11 +11345,6 @@ function GameplayService.HandlePlotRequest(
         return false
     end
     local authority = services.TycoonService
-    if action == "ClaimPlot" then
-        return authority.ClaimPlot(player, plot, context)
-    elseif action == "JoinTeam" then
-        return authority.RequestJoin(player, plot, context)
-    end
     if authority.GetPlot(player) ~= plot or not authority.ValidateActor(player, context) then
         return false
     end
@@ -11280,7 +11499,7 @@ return require(script.Parent.StudioServices).Wrap("GameplayService", GameplaySer
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="78">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">GameplaySfxService</string>
             <string name="Source"><![CDATA[--!strict
@@ -11316,7 +11535,7 @@ return GameplaySfx
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="79">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">HealthRegenService</string>
             <string name="Source"><![CDATA[--!strict
@@ -11412,7 +11631,7 @@ return require(script.Parent.StudioServices).Wrap("HealthRegenService", HealthRe
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="80">
+        <Item class="ModuleScript" referent="81">
           <Properties>
             <string name="Name">IngredientCarryPresentation</string>
             <string name="Source"><![CDATA[--!strict
@@ -11593,7 +11812,7 @@ return Presentation
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">IngredientGeometry</string>
             <string name="Source"><![CDATA[--!strict
@@ -11728,7 +11947,7 @@ return Geometry
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">IngredientService</string>
             <string name="Source"><![CDATA[--!strict
@@ -11909,7 +12128,7 @@ return require(script.Parent.StudioServices).Wrap("IngredientService", Ingredien
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">IngredientThrow</string>
             <string name="Source"><![CDATA[--!strict
@@ -11947,7 +12166,7 @@ return IngredientThrow
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">InventoryService</string>
             <string name="Source"><![CDATA[--!strict
@@ -12898,9 +13117,13 @@ local function clearSlot(slot: Types.StashSlot)
     slot.Ingredients = {}
     slot.Count, slot.Capacity = 0, ingredientSlotCapacity(slot.Protected)
 end
--- Server-only irreversible NPC theft. Caller holds the plot transaction and claims
+-- Server-only NPC theft. Caller holds the plot transaction and claims
 -- its one theft attempt before entering. Never transfers the unit to another inventory.
-function InventoryService.RemoveThiefIngredient(owner: Player, sessionId: string): Types.IngredientItem?
+function InventoryService.RemoveThiefIngredient(
+    owner: Player,
+    sessionId: string,
+    committed: ((Types.IngredientItem) -> ())?
+): Types.IngredientItem?
     local plot = deps.TycoonService.GetPlot(owner)
     if
         not plot
@@ -12930,15 +13153,31 @@ function InventoryService.RemoveThiefIngredient(owner: Player, sessionId: string
     local chosen = candidates[math.random(1, #candidates)]
     local slot = chosen.Slot
     -- No yield or presentation event between selection and removal: this is commit.
-    local unit = table.remove(slot.Ingredients, chosen.UnitIndex)
+    local unit = assert(table.remove(slot.Ingredients, chosen.UnitIndex))
+    Item.ExitStash(unit, workspace:GetServerTimeNow())
     slot.Count = #slot.Ingredients
     if slot.Count == 0 then
         clearSlot(slot)
     else
         slot.IngredientId = slot.Ingredients[1].IngredientId
     end
+    -- Transfer the exact unit before Immediate stash listeners can reject/destroy
+    -- the thief. This callback must not yield or publish presentation.
+    if committed then
+        committed(unit)
+    end
     stashChanged:Fire(owner)
     return unit
+end
+
+-- The caller relinquishes its exclusive thief reservation before publishing.
+-- This uses the same registry, pickup and cleanup path as ordinary held drops.
+function InventoryService.ReleaseThiefIngredient(item: Types.IngredientItem, at: CFrame): Instance?
+    local object = deps.IngredientService.Spawn(item.IngredientId, at, nil, true, { Item = item })
+    if object and deps.AnnouncementService then
+        deps.AnnouncementService.TrackWorld(object, item.AnnouncementOwnership)
+    end
+    return object
 end
 local function depositSelected(player: Player, itemType: string, key: string, index: number, owner: Player): boolean
     local record = resolveActionItem(player)
@@ -13136,7 +13375,7 @@ return require(script.Parent.StudioServices).Wrap("InventoryService", InventoryS
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">JackedNoobLogic</string>
             <string name="Source"><![CDATA[--!strict
@@ -13181,7 +13420,7 @@ return Logic
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">JackedNoobService</string>
             <string name="Source"><![CDATA[--!strict
@@ -13194,6 +13433,7 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local Service = {}
 local deadlines: Logic.State = {}
 local busy: { [Player]: boolean } = {}
+local talkDeadlines: { [Player]: number } = {}
 local active: Model? = nil
 local template: Model? = nil
 local spawn: CFrame? = nil
@@ -13264,8 +13504,13 @@ bind = function(model: Model)
         if not WorldUtil.Near(player, head, Config.InteractionDistance) then
             return
         end
+        local now = workspace:GetServerTimeNow()
+        if now < (talkDeadlines[player] or 0) then
+            return
+        end
+        talkDeadlines[player] = now + 1
         busy[player] = true
-        local ok, line = pcall(Logic.TryReward, deadlines, player, workspace:GetServerTimeNow(), function()
+        local ok, line = pcall(Logic.TryReward, deadlines, player, now, function()
             return inventory.GetCarryCount(player) < inventory.GetCarryCapacity(player)
         end, function()
             return inventory.GrantIngredient(player, Config.ProteinIngredientId)
@@ -13329,6 +13574,7 @@ function Service.Init(services: any)
     response.Parent = ReplicatedStorage
     Players.PlayerRemoving:Connect(function(player)
         deadlines[player] = nil
+        talkDeadlines[player] = nil
         busy[player] = nil
     end)
     workspace.DescendantAdded:Connect(function(object)
@@ -13348,7 +13594,7 @@ return Service
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">MarketService</string>
             <string name="Source"><![CDATA[--!strict
@@ -13434,7 +13680,7 @@ return require(script.Parent.StudioServices).Wrap("MarketService", MarketService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">MovementService</string>
             <string name="Source"><![CDATA[--!strict
@@ -13588,7 +13834,7 @@ return require(script.Parent.StudioServices).Wrap("MovementService", MovementSer
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">MuncherService</string>
             <string name="Source"><![CDATA[--!strict
@@ -13739,7 +13985,7 @@ return Service
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="90">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">PhysicsService</string>
             <string name="Source"><![CDATA[--!strict
@@ -13769,7 +14015,7 @@ return PhysicsService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="92">
           <Properties>
             <string name="Name">PlayerDataService</string>
             <string name="Source"><![CDATA[--!strict
@@ -13917,7 +14163,7 @@ return require(script.Parent.StudioServices).Wrap("PlayerDataService", PlayerDat
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="92">
+        <Item class="ModuleScript" referent="93">
           <Properties>
             <string name="Name">PlayerHeadDropService</string>
             <string name="Source"><![CDATA[--!strict
@@ -14029,7 +14275,244 @@ return require(script.Parent.StudioServices).Wrap("PlayerHeadDropService", Servi
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="93">
+        <Item class="ModuleScript" referent="94">
+          <Properties>
+            <string name="Name">PlayerOnlyCollisionService</string>
+            <string name="Source"><![CDATA[--!strict
+local CollectionService = game:GetService("CollectionService")
+local PhysicsService = game:GetService("PhysicsService")
+
+local PlayerOnlyCollisionService = { PlayerGroup = "Players" }
+local HELPER_GROUP = "PlayerOnly"
+local TAG = "PlayerOnlyCollision"
+local initialized = false
+
+local function configurePart(instance: Instance)
+    if instance:IsA("BasePart") then
+        instance.CollisionGroup = HELPER_GROUP
+        instance.CanCollide = true
+    end
+end
+
+function PlayerOnlyCollisionService.Init()
+    if initialized then
+        return
+    end
+    for _, name in { PlayerOnlyCollisionService.PlayerGroup, HELPER_GROUP } do
+        if not PhysicsService:IsCollisionGroupRegistered(name) then
+            PhysicsService:RegisterCollisionGroup(name)
+        end
+    end
+    -- Only the new helper's relationships change; all existing pairs stay intact.
+    -- This includes any ingredient/world-item groups authored in Studio.
+    for _, group in PhysicsService:GetRegisteredCollisionGroups() do
+        PhysicsService:CollisionGroupSetCollidable(HELPER_GROUP, group.name, false)
+    end
+    PhysicsService:CollisionGroupSetCollidable(HELPER_GROUP, PlayerOnlyCollisionService.PlayerGroup, true)
+    initialized = true
+
+    CollectionService:GetInstanceAddedSignal(TAG):Connect(configurePart)
+    for _, instance in CollectionService:GetTagged(TAG) do
+        configurePart(instance)
+    end
+end
+
+return PlayerOnlyCollisionService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="95">
+          <Properties>
+            <string name="Name">PlotClaimZones</string>
+            <string name="Source"><![CDATA[--!strict
+-- Server samples live character roots in authored oriented boxes. No client entry
+-- report or Touched callback can authorize a claim. Session creation never yields.
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage.Shared.Constants.StandIdentity)
+local Sign = require(script.Parent.StandSignPresentation)
+local MovementService = require(script.Parent.MovementService)
+local Zones = {}
+local authority: any
+local claimed: RemoteEvent
+local visuals: { [BasePart]: number } = setmetatable({}, { __mode = "k" }) :: any
+local styled: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local entered: { [BasePart]: { [Player]: Model } } = {}
+local pendingEntry: { [Player]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+function Zones.Inside(zone: BasePart, position: Vector3): boolean
+    local point = zone.CFrame:PointToObjectSpace(position)
+    local half = zone.Size * 0.5
+    return math.abs(point.X) <= half.X and math.abs(point.Y) <= half.Y and math.abs(point.Z) <= half.Z
+end
+
+function Zones.Enter(player: Player, plot: Instance, zone: BasePart): boolean
+    local identity = plot:FindFirstChild("PlotIdentity")
+    local character = player.Character
+    local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+    local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+    if
+        not MovementService.CanPerformGameplayAction(player)
+        or not player:IsDescendantOf(Players)
+        or not character
+        or not character:IsDescendantOf(workspace)
+        or not humanoid
+        or humanoid.Health <= 0
+        or not root
+        or not root:IsA("BasePart")
+        or not CollectionService:HasTag(plot, "PlayerPlot")
+        or not plot:IsDescendantOf(workspace)
+        or not identity
+        or zone.Parent ~= identity
+        or not Zones.Inside(zone, root.Position)
+    then
+        return false
+    end
+    if identity:FindFirstChild("ClaimZone") == zone then
+        local success =
+            authority.ClaimPlot(player, plot, { ClaimRevision = plot:GetAttribute("PlotClaimRevision") or 0 })
+        if success and authority.GetOwner(plot) == player then
+            local context = authority.GetRequestContext(player)
+            claimed:FireClient(player, plot, context.PlotSessionId, context.MembershipRevision)
+        end
+        return success
+    elseif identity:FindFirstChild("TeammateZone") == zone then
+        local owner = authority.GetOwner(plot)
+        return owner ~= nil
+            and owner ~= player
+            and authority.RequestJoin(player, plot, authority.GetRequestContext(owner))
+    end
+    return false
+end
+
+local function showVisual(object: Instance?, active: boolean)
+    if not object then
+        return
+    end
+    local parts = object:GetDescendants()
+    table.insert(parts, object)
+    for _, part in parts do
+        if part:IsA("BasePart") then
+            if visuals[part] == nil then
+                -- Hidden authored pads still need a visible active appearance.
+                -- ActiveTransparency also lets nested invisible helpers stay invisible.
+                local authored = part:GetAttribute("ActiveTransparency")
+                visuals[part] = if type(authored) == "number"
+                        and authored >= 0
+                        and authored <= 1
+                    then authored
+                    elseif part.Transparency < 1 then part.Transparency
+                    else 0
+            end
+            part.Transparency = if active then visuals[part] else 1
+        end
+    end
+end
+
+function Zones.Refresh(plot: Instance)
+    local occupancy = plot:GetAttribute("PlotOccupancy") or 0
+    local identity = plot:FindFirstChild("PlotIdentity")
+    if identity then
+        for _, role in { "Claim", "Teammate" } do
+            local active = if role == "Claim" then occupancy == 0 else occupancy == 1
+            local zone = identity:FindFirstChild(role .. "Zone")
+            if zone and zone:IsA("BasePart") then
+                zone.Transparency, zone.CanCollide, zone.CanTouch, zone.CanQuery = 1, false, false, false
+                zone:SetAttribute("PlotZoneActive", active)
+            end
+            showVisual(identity:FindFirstChild(role .. "Visual"), active)
+        end
+    end
+    local area = plot:FindFirstChild("Customer Area")
+    local sign = if area then area:FindFirstChild("Dynamic Sign Text") else nil
+    if sign then
+        local gui = sign:FindFirstChild("SurfaceGui")
+        if gui and not styled[gui] then
+            Sign.Style(sign)
+            styled[gui] = true
+        end
+        Sign.SetStandName(sign, tostring(plot:GetAttribute("StandName") or ""))
+    end
+end
+
+function Zones.Step()
+    local live: { [BasePart]: boolean } = {}
+    for _, plot in CollectionService:GetTagged("PlayerPlot") do
+        if not plot:IsDescendantOf(workspace) then
+            continue
+        end
+        Zones.Refresh(plot)
+        local identity = plot:FindFirstChild("PlotIdentity")
+        if not identity then
+            continue
+        end
+        for _, name in { "ClaimZone", "TeammateZone" } do
+            local zone = identity:FindFirstChild(name)
+            if not zone or not zone:IsA("BasePart") then
+                continue
+            end
+            live[zone] = true
+            local previous = entered[zone] or {}
+            local current: { [Player]: Model } = {}
+            local arrivals: { Player } = {}
+            for _, player in Players:GetPlayers() do
+                local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                if root and root:IsA("BasePart") and Zones.Inside(zone, root.Position) then
+                    current[player] = player.Character :: Model
+                    if previous[player] ~= player.Character and zone:GetAttribute("PlotZoneActive") then
+                        table.insert(arrivals, player)
+                    end
+                end
+            end
+            entered[zone] = current
+            -- Record entry before dispatch. Friendship policies can yield; the
+            -- heartbeat must keep sampling without launching duplicate joins.
+            for _, player in arrivals do
+                if not pendingEntry[player] then
+                    pendingEntry[player] = true
+                    task.spawn(function()
+                        local ok, message = pcall(Zones.Enter, player, plot, zone)
+                        pendingEntry[player] = nil
+                        if not ok then
+                            warn("[PlotClaimZones] " .. tostring(message))
+                        end
+                        if plot:IsDescendantOf(workspace) then
+                            Zones.Refresh(plot)
+                        end
+                    end)
+                end
+            end
+        end
+    end
+    for zone in entered do
+        if not live[zone] then
+            entered[zone] = nil
+        end
+    end
+end
+
+function Zones.Init(services: any)
+    authority = services.TycoonService
+    claimed = Instance.new("RemoteEvent")
+    claimed.Name = "PlotClaimed"
+    claimed.Parent = ReplicatedStorage.Shared.Events
+    local elapsed = 0
+    RunService.Heartbeat:Connect(function(dt)
+        elapsed += dt
+        if elapsed >= Config.ZoneInterval then
+            elapsed = 0
+            Zones.Step()
+        end
+    end)
+end
+
+return Zones
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">RagdollService</string>
             <string name="Source"><![CDATA[--!strict
@@ -14430,7 +14913,129 @@ return require(script.Parent.StudioServices).Wrap("RagdollService", RagdollServi
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="94">
+        <Item class="ModuleScript" referent="97">
+          <Properties>
+            <string name="Name">RejectFloorButton</string>
+            <string name="Source"><![CDATA[--!strict
+local RunService = game:GetService("RunService")
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
+local FloorButton = {}
+
+-- A downward ground query verifies actual support, rather than counting limb
+-- touches from someone brushing past the plate or standing beside it.
+local function standing(actor: Player, button: BasePart): boolean
+    local character = actor.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not root:IsA("BasePart") or not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+    if root.AssemblyLinearVelocity.Y > 2 then
+        return false
+    end
+    local leg = character and character:FindFirstChild("Left Leg")
+    local legHeight = if leg and leg:IsA("BasePart") then leg.Size.Y else 0
+    local distance = root.Size.Y / 2 + humanoid.HipHeight + legHeight + 0.5
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { character :: Model }
+    params.RespectCanCollide = true
+    local hit = workspace:Raycast(root.Position, Vector3.new(0, -distance, 0), params)
+    return hit ~= nil and hit.Instance == button
+end
+
+function FloorButton.Bind(
+    button: BasePart,
+    origin: Attachment,
+    getOwner: () -> Player?,
+    canActivate: (Player) -> boolean,
+    activate: (Player) -> boolean
+): () -> ()
+    local display = Instance.new("BillboardGui")
+    display.Name = "RejectFloorDisplay"
+    display.Adornee = origin
+    display.Size = UDim2.fromOffset(220, 56)
+    display.AlwaysOnTop = true
+    display.MaxDistance = 20
+    display.Parent = button
+    local label = Instance.new("TextLabel")
+    label.Name = "Action"
+    label.Size = UDim2.fromOffset(260, 48)
+    label.BackgroundTransparency = 1
+    label.Text = "REJECT"
+    TextStyle.Apply(label, 22)
+    label.TextColor3 = Color3.fromRGB(255, 95, 95)
+    label.Parent = display
+    local line = Instance.new("Frame")
+    line.Name = "Progress"
+    line.Position = UDim2.fromOffset(50, 44)
+    line.Size = UDim2.fromOffset(0, 6)
+    line.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    line.BorderSizePixel = 0
+    line.Parent = display
+
+    local holdDuration = 2.5
+    local actor: Player? = nil
+    local character: Model? = nil
+    local started: number? = nil
+    local latched = false
+    local function reset()
+        started = nil
+        line.Size = UDim2.fromOffset(0, 6)
+        label.Text = "REJECT"
+    end
+    local connection = RunService.Heartbeat:Connect(function()
+        local owner = getOwner()
+        if owner ~= actor or (owner and owner.Character ~= character) then
+            actor = owner
+            character = if owner then owner.Character else nil
+            latched = false
+            reset()
+        end
+        if not button:IsDescendantOf(workspace) or not owner or not standing(owner, button) then
+            latched = false
+            reset()
+            return
+        end
+        if latched then
+            return
+        end
+        if not canActivate(owner) then
+            reset()
+            return
+        end
+        local holdStarted = started or os.clock()
+        started = holdStarted
+        local progress = math.clamp((os.clock() - holdStarted) / holdDuration, 0, 1)
+        line.Size = UDim2.fromOffset(120 * progress, 6)
+        if progress >= 1 then
+            -- Latch before gameplay callbacks, which can synchronously change
+            -- the queue. Staying on the plate never rejects multiple customers.
+            latched = true
+            if activate(owner) then
+                label.Text = "STEP OFF"
+            else
+                latched = false
+                reset()
+            end
+        end
+    end)
+    local cleaned = false
+    return function()
+        if cleaned then
+            return
+        end
+        cleaned = true
+        connection:Disconnect()
+        display:Destroy()
+    end
+end
+
+return FloorButton
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">SmoothieGeometry</string>
             <string name="Source"><![CDATA[--!strict
@@ -14513,7 +15118,7 @@ return Geometry
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">SmoothieItem</string>
             <string name="Source"><![CDATA[--!strict
@@ -14579,7 +15184,7 @@ return SmoothieItem
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">SmoothieWorldItemService</string>
             <string name="Source"><![CDATA[--!strict
@@ -14649,7 +15254,7 @@ return Service
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">SprintService</string>
             <string name="Source"><![CDATA[--!strict
@@ -14818,7 +15423,210 @@ return require(script.Parent.StudioServices).Wrap("SprintService", SprintService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="102">
+          <Properties>
+            <string name="Name">StandIdentityService</string>
+            <string name="Source"><![CDATA[--!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextService = game:GetService("TextService")
+local Config = require(ReplicatedStorage.Shared.Constants.StandIdentity)
+local Sanitizer = require(script.Parent.StandNameSanitizer)
+local Service = {}
+local authority: any
+local pending: { [Player]: boolean } = {}
+local nextSave: { [Player]: number } = {}
+
+local function valid(player: Player, plot: any, context: any): boolean
+    return player.Parent ~= nil
+        and typeof(plot) == "Instance"
+        and authority.GetPlot(player) == plot
+        and authority.GetOwner(plot) == player
+        and authority.ValidateActor(player, context)
+        and type(context) == "table"
+        and context.StandNameRevision == plot:GetAttribute("StandNameRevision")
+end
+
+function Service.RequestName(player: Player, plot: any, value: any, context: any): (boolean, string)
+    local text = Config.Normalize(value)
+    if not text then
+        return false, string.format("Enter a name of 1–%d characters.", Config.MaxCharacters)
+    end
+    if not valid(player, plot, context) then
+        return false, "Stand ownership changed."
+    end
+    if pending[player] or os.clock() < (nextSave[player] or 0) then
+        return false, "Please wait before saving again."
+    end
+    -- Copy submitted context across the yielding filter, never repair it afterward.
+    local captured = table.clone(context)
+    pending[player] = true
+    nextSave[player] = os.clock() + Config.SaveCooldown
+    local ok, result = pcall(function()
+        -- Four stars can expand a short token. Fit only after raw validation;
+        -- this never lets an oversized client submission bypass the limit.
+        return TextService:FilterStringAsync(
+            Config.Truncate(Sanitizer.Mask(text)),
+            player.UserId,
+            Enum.TextFilterContext.PublicChat
+        ):GetNonChatStringForBroadcastAsync()
+    end)
+    pending[player] = nil
+    local filtered = if ok
+            and type(result) == "string"
+            and #result <= Config.MaxInputBytes
+        then Config.Normalize(Config.Truncate(Sanitizer.BroadcastDisplay(result)))
+        else nil
+    if not filtered then
+        return false, "Name unavailable. Try another name."
+    end
+    if not valid(player, plot, captured) or not authority.CommitFilteredStandName(player, plot, filtered, captured) then
+        return false, "Stand ownership changed."
+    end
+    return true, filtered
+end
+
+function Service.Init(services: any)
+    authority = services.TycoonService
+    local remote = Instance.new("RemoteFunction")
+    remote.Name = "SetStandName"
+    remote.OnServerInvoke = Service.RequestName
+    remote.Parent = ReplicatedStorage.Shared.Events
+    game:GetService("Players").PlayerRemoving:Connect(function(player)
+        pending[player], nextSave[player] = nil, nil
+    end)
+end
+
+return Service
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="103">
+          <Properties>
+            <string name="Name">StandNameSanitizer</string>
+            <string name="Source"><![CDATA[--!strict
+-- Conservative presentation mask; Roblox TextService remains the moderation authority.
+local Sanitizer = {}
+local terms = {
+    "fuck",
+    "fucks",
+    "fucked",
+    "fucker",
+    "fuckers",
+    "fucking",
+    "shit",
+    "shits",
+    "shitty",
+    "bullshit",
+    "bitch",
+    "bitches",
+    "ass",
+    "asshole",
+    "assholes",
+    "bastard",
+    "bastards",
+    "cunt",
+    "cunts",
+    "dick",
+    "dicks",
+    "cock",
+    "cocks",
+    "motherfucker",
+    "motherfucking",
+}
+-- Match inflections before their shorter roots, including separated spellings.
+table.sort(terms, function(a, b)
+    return #a > #b
+end)
+
+function Sanitizer.Mask(text: string): string
+    for _, term in terms do
+        -- ASCII token boundaries include digits/underscore/non-ASCII bytes to
+        -- avoid masking inside longer names. Only punctuation, never spaces,
+        -- may separate letters (f.u.c.k); do not join unrelated words.
+        local letters = {}
+        for index = 1, #term do
+            local letter = string.sub(term, index, index)
+            table.insert(letters, "[" .. letter .. string.upper(letter) .. "]")
+        end
+        local pattern = "%f[%w_\128-\255]" .. table.concat(letters, "[%p]*") .. "%f[^%w_\128-\255]"
+        text = string.gsub(text, pattern, "****")
+    end
+    return text
+end
+
+function Sanitizer.BroadcastDisplay(text: string): string
+    return (string.gsub(text, "#+", "****"))
+end
+
+return Sanitizer
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="104">
+          <Properties>
+            <string name="Name">StandSignPresentation</string>
+            <string name="Source"><![CDATA[--!strict
+-- Only the editable Customer Area/Dynamic Sign Text SurfaceGui is touched.
+local Style = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
+local Presentation = {}
+local layers = { "Shadow", "Depth2", "Depth1", "Main" }
+local colors = {
+    Color3.fromRGB(38, 31, 43),
+    Color3.fromRGB(128, 119, 150),
+    Color3.fromRGB(195, 187, 211),
+    Style.White,
+}
+
+function Presentation.SetStandName(signRoot: Instance, text: string)
+    local gui = signRoot:FindFirstChild("SurfaceGui")
+    local root = if gui and gui:IsA("SurfaceGui") then gui:FindFirstChild("TextRoot") else nil
+    if not root then
+        return
+    end
+    for _, name in layers do
+        local label = root:FindFirstChild(name)
+        if label and label:IsA("TextLabel") then
+            label.Text = text
+        end
+    end
+end
+
+-- Shared with the Studio authoring helper; no letter geometry is generated.
+function Presentation.Style(signRoot: Instance)
+    local gui = signRoot:FindFirstChild("SurfaceGui")
+    local root = if gui and gui:IsA("SurfaceGui") then gui:FindFirstChild("TextRoot") else nil
+    if not root or not root:IsA("Frame") then
+        return
+    end
+    root.BackgroundTransparency = 1
+    root.Position = UDim2.fromOffset(16, 16)
+    root.Size = UDim2.new(1, -38, 1, -38)
+    for index, name in layers do
+        local label = root:FindFirstChild(name)
+        if label and label:IsA("TextLabel") then
+            label.Font = Style.Font
+            label.BackgroundTransparency = 1
+            label.TextColor3 = colors[index]
+            label.TextScaled, label.TextWrapped, label.RichText = true, true, false
+            label.Size = UDim2.fromScale(1, 1)
+            label.Position = UDim2.fromOffset((4 - index) * 2, (4 - index) * 2)
+            label.ZIndex = index
+            local constraint = label:FindFirstChildOfClass("UITextSizeConstraint")
+                or Instance.new("UITextSizeConstraint")
+            constraint.MinTextSize, constraint.MaxTextSize = 20, 96
+            constraint.Parent = label
+            local stroke = Style.Outline(label)
+            stroke.Color = colors[1]
+            stroke.Thickness = 3
+        end
+    end
+end
+
+return Presentation
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="105">
           <Properties>
             <string name="Name">StashExpansionService</string>
             <string name="Source"><![CDATA[--!strict
@@ -15041,7 +15849,7 @@ return Service
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="99">
+        <Item class="ModuleScript" referent="106">
           <Properties>
             <string name="Name">StashSlots</string>
             <string name="Source"><![CDATA[--!strict
@@ -15102,7 +15910,7 @@ return Slots
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="107">
           <Properties>
             <string name="Name">StashValue</string>
             <string name="Source"><![CDATA[--!strict
@@ -15128,7 +15936,7 @@ return StashValue
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="108">
           <Properties>
             <string name="Name">StudioServices</string>
             <string name="Source"><![CDATA[--!strict
@@ -15200,7 +16008,7 @@ return StudioServices
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="109">
           <Properties>
             <string name="Name">TycoonService</string>
             <string name="Source"><![CDATA[--!strict
@@ -15210,6 +16018,7 @@ local TycoonService = {}
 local HttpService = game:GetService("HttpService")
 local Upgrades = require(game:GetService("ReplicatedStorage").Shared.Constants.Upgrades)
 local FarmConfig = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
+local StandIdentity = require(game:GetService("ReplicatedStorage").Shared.Constants.StandIdentity)
 local Types = require(game:GetService("ReplicatedStorage").Shared.Types)
 type Session =
     Types.PlotSessionState
@@ -15288,6 +16097,8 @@ function TycoonService.GetSession(player: Player): Types.PlotSessionState?
         OwnerUserId = session.OwnerUserId,
         TeammateUserId = session.TeammateUserId,
         JoinMode = session.JoinMode,
+        StandName = session.StandName,
+        StandNameRevision = session.StandNameRevision,
         SharedCash = session.SharedCash,
         SharedUpgrades = table.clone(session.SharedUpgrades),
         Status = session.Status,
@@ -15330,6 +16141,8 @@ function TycoonService.EndTransaction(id: string)
     end
 end
 local function publishIdentity(plot: Instance, session: Session?)
+    plot:SetAttribute("StandName", if session then session.StandName else nil)
+    plot:SetAttribute("StandNameRevision", if session then session.StandNameRevision else nil)
     plot:SetAttribute("PlotOwnerName", if session then session.Owner.Name else nil)
     plot:SetAttribute("PlotTeammateName", if session and session.Teammate then session.Teammate.Name else nil)
     plot:SetAttribute("TeammateUserId", if session then session.TeammateUserId else nil)
@@ -15808,7 +16621,10 @@ function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Ins
                 OwnerUserId = player.UserId,
                 Teammate = nil,
                 TeammateUserId = nil,
-                JoinMode = "FriendsOnly",
+                JoinMode = "Open",
+                -- DisplayName is platform moderated; custom submissions use StandIdentityService.
+                StandName = StandIdentity.DefaultName(player.DisplayName or player.Name),
+                StandNameRevision = 1,
                 SharedCash = 0,
                 SharedUpgrades = upgrades,
                 Status = "Active",
@@ -15890,6 +16706,35 @@ function TycoonService.SetJoinMode(player: Player, mode: any, context: any): boo
     TycoonService.EndTransaction(session.PlotSessionId)
     return true
 end
+-- TODO(Settings): Expose teammate access in Settings > Stand.
+-- Planned policies: Anyone / FriendsOnly. Access checks stay server-authoritative
+-- in RequestJoin; this adapter retains the existing Open wire value.
+function TycoonService.SetTeammateAccess(player: Player, mode: string, context: any): boolean
+    return TycoonService.SetJoinMode(player, if mode == "Anyone" then "Open" else mode, context)
+end
+
+-- Trusted server-only commit. Never expose this method directly to a remote.
+function TycoonService.CommitFilteredStandName(player: Player, plot: Instance, text: string, context: any): boolean
+    local session = sessionFor(player)
+    if
+        not session
+        or session.Owner ~= player
+        or session.Plot ~= plot
+        or type(context) ~= "table"
+        or context.StandNameRevision ~= session.StandNameRevision
+    then
+        return false
+    end
+    local id = TycoonService.BeginTransaction(player, context)
+    if not id then
+        return false
+    end
+    session.StandName = text
+    session.StandNameRevision += 1
+    publishIdentity(plot, session)
+    TycoonService.EndTransaction(id)
+    return true
+end
 function TycoonService.LeaveTeam(player: Player, context: any): boolean
     local session = sessionFor(player)
     if
@@ -15907,7 +16752,7 @@ return require(script.Parent.StudioServices).Wrap("TycoonService", TycoonService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="110">
           <Properties>
             <string name="Name">WorldUtil</string>
             <string name="Source"><![CDATA[--!strict
@@ -16011,25 +16856,26 @@ return WorldUtil
       </Item>
     </Item>
   </Item>
-  <Item class="ServerStorage" referent="104">
+  <Item class="ServerStorage" referent="111">
     <Properties>
       <string name="Name">ServerStorage</string>
     </Properties>
-    <Item class="Folder" referent="105">
+    <Item class="Folder" referent="112">
       <Properties>
         <string name="Name">CustomerNPCs</string>
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="106">
+  <Item class="StarterPlayer" referent="113">
     <Properties>
       <string name="Name">StarterPlayer</string>
+      <bool name="AutoJumpEnabled">false</bool>
     </Properties>
-    <Item class="StarterCharacterScripts" referent="107">
+    <Item class="StarterCharacterScripts" referent="114">
       <Properties>
         <string name="Name">StarterCharacterScripts</string>
       </Properties>
-      <Item class="Script" referent="108">
+      <Item class="Script" referent="115">
         <Properties>
           <string name="Name">Health</string>
           <token name="RunContext">0</token>
@@ -16040,14 +16886,16 @@ return WorldUtil
         </Properties>
       </Item>
     </Item>
-    <Item class="StarterPlayerScripts" referent="109">
+    <Item class="StarterPlayerScripts" referent="116">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="110">
+      <Item class="LocalScript" referent="117">
         <Properties>
           <string name="Name">Client</string>
-          <string name="Source"><![CDATA[require(script.Controllers.GameplayAudioController).Init()
+          <string name="Source"><![CDATA[-- Subscribe to committed claims before other controller initialization can yield.
+require(script.Controllers.StandIdentityController).Init()
+require(script.Controllers.GameplayAudioController).Init()
 require(script.Controllers.SmoothiePickupPromptController).Init()
 require(script.Controllers.InteractionPromptController).Init()
 require(script.Controllers.CustomerOrderController).Init()
@@ -16083,11 +16931,11 @@ require(script.Controllers.ScrapbookController).Init()
 require(script.Controllers.RespawnPresentationController).Init()
 ]]></string>
         </Properties>
-        <Item class="Folder" referent="111">
+        <Item class="Folder" referent="118">
           <Properties>
             <string name="Name">Controllers</string>
           </Properties>
-          <Item class="ModuleScript" referent="112">
+          <Item class="ModuleScript" referent="119">
             <Properties>
               <string name="Name">BatController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16400,7 +17248,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="113">
+          <Item class="ModuleScript" referent="120">
             <Properties>
               <string name="Name">BlenderStatusDistanceController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16408,10 +17256,10 @@ local TweenService = game:GetService("TweenService")
 local Controller = {}
 local started = false
 
--- Preserve the existing visibility ranges; Roblox performs camera-distance culling.
+-- Scoped visibility ranges; Roblox performs camera-distance culling.
 local MAX_DISTANCES: { [string]: number } = {
     IngredientCountDisplay = 60,
-    TurbineStatusDisplay = 40,
+    TurbineStatusDisplay = 28,
 }
 
 function Controller.Init()
@@ -16432,7 +17280,20 @@ function Controller.Init()
         if not maxDistance then
             return
         end
-        gui.MaxDistance = maxDistance
+        if gui.Name == "TurbineStatusDisplay" then
+            local function guidanceRange()
+                gui.MaxDistance = if object.Text == "LOAD INGREDIENTS TO BLEND!" then maxDistance else 40
+            end
+            guidanceRange()
+            if not cleanups[object] then
+                local changed = object:GetPropertyChangedSignal("Text"):Connect(guidanceRange)
+                cleanups[object] = function()
+                    changed:Disconnect()
+                end
+            end
+        else
+            gui.MaxDistance = maxDistance
+        end
         if gui.Name == "IngredientCountDisplay" then
             -- Retain the label's existing centered layout inside the pixel canvas.
             object.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -16496,7 +17357,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="114">
+          <Item class="ModuleScript" referent="121">
             <Properties>
               <string name="Name">CarryInputController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16546,13 +17407,14 @@ function Controller.Init()
     end
     ContextActionService:BindAction("ThrowHeld", throw, true, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
     ContextActionService:SetTitle("ThrowHeld", "Throw")
+    ContextActionService:SetPosition("ThrowHeld", UDim2.new(1, -85, 0, -60))
 end
 
 return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="115">
+          <Item class="ModuleScript" referent="122">
             <Properties>
               <string name="Name">CustomerOrderController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16619,7 +17481,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="116">
+          <Item class="ModuleScript" referent="123">
             <Properties>
               <string name="Name">FarmPresentationController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16751,6 +17613,7 @@ function Controller.Init()
             if pad and pad:IsA("BasePart") and price then
                 row.Pad = pad
                 local padGui = billboard(pad, playerGui, 64)
+                padGui.MaxDistance = 28 -- Purchase signage only; growing/ready displays retain 40.
                 row.PadGui = padGui
                 label(padGui, 0, "FARM ROW")
                 local amount = tostring(price):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
@@ -16856,7 +17719,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="117">
+          <Item class="ModuleScript" referent="124">
             <Properties>
               <string name="Name">GameplayAudioController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16950,7 +17813,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="118">
+          <Item class="ModuleScript" referent="125">
             <Properties>
               <string name="Name">GameplayPresentationController</string>
               <string name="Source"><![CDATA[--!strict
@@ -16981,7 +17844,7 @@ return GameplayPresentationController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="119">
+          <Item class="ModuleScript" referent="126">
             <Properties>
               <string name="Name">IngredientPickupPromptController</string>
               <string name="Source"><![CDATA[--!strict
@@ -17114,7 +17977,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="120">
+          <Item class="ModuleScript" referent="127">
             <Properties>
               <string name="Name">InteractionPromptController</string>
               <string name="Source"><![CDATA[--!strict
@@ -17268,13 +18131,6 @@ function Controller.Init()
         end
         local customerAction = prompt:GetAttribute("InteractionCustomerAction")
         if
-            prompt:GetAttribute("RejectButtonPrompt") == true
-            and prompt:GetAttribute("InteractionOwnerUserId") ~= Players.LocalPlayer.UserId
-        then
-            origin = nil
-            reason = "Reject button belongs to another player"
-        end
-        if
             customerAction
             and (
                 prompt:GetAttribute("PlotSessionId") == nil
@@ -17381,7 +18237,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="121">
+          <Item class="ModuleScript" referent="128">
             <Properties>
               <string name="Name">JackedNoobResponseController</string>
               <string name="Source"><![CDATA[--!strict
@@ -17446,7 +18302,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="122">
+          <Item class="ModuleScript" referent="129">
             <Properties>
               <string name="Name">PlotIdentityController</string>
               <string name="Source"><![CDATA[--!strict
@@ -17462,24 +18318,8 @@ local player = Players.LocalPlayer
 local portraits: { [number]: string } = {}
 local pending: { [number]: boolean } = {}
 local displays: { [Instance]: BillboardGui } = {}
+local padLabels: { [Instance]: BillboardGui } = {}
 local initialized = false
-local friends: { [number]: boolean } = {}
-local checkingFriends: { [number]: boolean } = {}
-local nextFriendCheck: { [number]: number } = {}
-local function isFriend(id: number): boolean
-    if os.clock() >= (nextFriendCheck[id] or 0) and not checkingFriends[id] then
-        checkingFriends[id] = true
-        task.spawn(function()
-            local ok, result = pcall(function()
-                return player:IsFriendsWithAsync(id)
-            end)
-            friends[id] = ok and result == true
-            nextFriendCheck[id] = os.clock() + 30
-            checkingFriends[id] = nil
-        end)
-    end
-    return friends[id] == true
-end
 local function portrait(id: number): string
     if not portraits[id] and not pending[id] then
         pending[id] = true
@@ -17654,11 +18494,35 @@ function Controller.Init()
         local assigned = player:GetAttribute("PlotSessionId") ~= nil
         status.Text = if os.clock() < failureUntil
             then "Plot action unavailable. Move closer or try again."
-            elseif not assigned then "UNASSIGNED - Walk to a plot to claim or join"
+            elseif not assigned then "Claim an available PLOT!"
             else ""
+        status.TextSize = if not assigned and os.clock() >= failureUntil then 20 else 17
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         local live: { [Instance]: boolean } = {}
+        local liveLabels: { [Instance]: boolean } = {}
         for _, plot in CollectionService:GetTagged("PlayerPlot") do
+            local identity = plot:FindFirstChild("PlotIdentity")
+            if identity and plot:IsDescendantOf(workspace) then
+                for _, role in { "Claim", "Teammate" } do
+                    local labelOrigin = identity:FindFirstChild(role .. "LabelOrigin")
+                    if labelOrigin and (labelOrigin:IsA("BasePart") or labelOrigin:IsA("Attachment")) then
+                        liveLabels[labelOrigin] = true
+                        local display = padLabels[labelOrigin]
+                        if not display then
+                            local created = Instance.new("BillboardGui")
+                            created.Name = role .. "ZoneLabel"
+                            created.Size = UDim2.fromOffset(180, 32)
+                            created.AlwaysOnTop, created.MaxDistance, created.Active = true, 22, false
+                            created.Adornee, created.Parent = labelOrigin, gui
+                            label(created, if role == "Claim" then "CLAIM PLOT" else "JOIN STAND", 0)
+                            padLabels[labelOrigin] = created
+                            display = created
+                        end
+                        local occupancy = plot:GetAttribute("PlotOccupancy") or 0
+                        display.Enabled = if role == "Claim" then occupancy == 0 else occupancy == 1
+                    end
+                end
+            end
             local origin = plot:FindFirstChild("PlotIdentityOrigin", true)
             if
                 not plot:IsDescendantOf(workspace)
@@ -17681,24 +18545,14 @@ function Controller.Init()
             display.Adornee = origin
             local owner = plot:GetAttribute("OwnerUserId")
             local teammate = plot:GetAttribute("TeammateUserId")
+            display.MaxDistance = if type(owner) == "number" then 160 else 80
             local position = if origin:IsA("Attachment") then origin.WorldPosition else (origin :: BasePart).Position
             local nearby = root and root:IsA("BasePart") and (root.Position - position).Magnitude <= 32
             local action = if not nearby
                 then nil
                 elseif owner == player.UserId then "MANAGE PLOT"
                 elseif teammate == player.UserId then "LEAVE TEAM"
-                elseif not assigned and not owner then "CLAIM PLOT"
-                elseif
-                    not assigned
-                    and not teammate
-                    and type(owner) == "number"
-                    and (
-                        plot:GetAttribute("JoinMode") == "Open"
-                        or (plot:GetAttribute("JoinMode") == "FriendsOnly" and isFriend(owner))
-                    )
-                then "JOIN TEAM"
                 else nil
-            -- Local friendship only controls visibility; the server checks independently.
             local signature = tostring(owner)
                 .. tostring(teammate)
                 .. tostring(plot:GetAttribute("PlotMembershipRevision"))
@@ -17741,15 +18595,7 @@ function Controller.Init()
                         if action == "MANAGE PLOT" then
                             openManage(plot)
                         else
-                            send(
-                                plot,
-                                if action == "CLAIM PLOT"
-                                    then "ClaimPlot"
-                                    elseif action == "JOIN TEAM" then "JoinTeam"
-                                    else "LeaveTeam",
-                                nil,
-                                captured
-                            )
+                            send(plot, "LeaveTeam", nil, captured)
                         end
                     end)
                 end
@@ -17759,6 +18605,12 @@ function Controller.Init()
             if not live[plot] then
                 display:Destroy()
                 displays[plot] = nil
+            end
+        end
+        for origin, display in padLabels do
+            if not liveLabels[origin] then
+                display:Destroy()
+                padLabels[origin] = nil
             end
         end
         if managed then
@@ -17777,7 +18629,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="123">
+          <Item class="ModuleScript" referent="130">
             <Properties>
               <string name="Name">RareIngredientPresentationController</string>
               <string name="Source"><![CDATA[--!strict
@@ -17891,7 +18743,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="124">
+          <Item class="ModuleScript" referent="131">
             <Properties>
               <string name="Name">RespawnPresentationController</string>
               <string name="Source"><![CDATA[--!strict
@@ -17998,7 +18850,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="125">
+          <Item class="ModuleScript" referent="132">
             <Properties>
               <string name="Name">RipenessPresentationController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18224,7 +19076,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="126">
+          <Item class="ModuleScript" referent="133">
             <Properties>
               <string name="Name">ScrapbookController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18341,7 +19193,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="127">
+          <Item class="ModuleScript" referent="134">
             <Properties>
               <string name="Name">SessionInteractionController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18375,7 +19227,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="128">
+          <Item class="ModuleScript" referent="135">
             <Properties>
               <string name="Name">SmoothiePickupPromptController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18506,11 +19358,12 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="129">
+          <Item class="ModuleScript" referent="136">
             <Properties>
               <string name="Name">SprintController</string>
               <string name="Source"><![CDATA[--!strict
--- Detects sprint input (keyboard Shift) and requests sprint start/stop from the server
+-- Detects held sprint input (keyboard Shift or mobile button) and requests it from the server.
+local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -18521,6 +19374,7 @@ local SprintController = {}
 local started = false
 local requested = false
 local heldShift: { [Enum.KeyCode]: boolean } = {}
+local heldTouch = false
 
 local function requestSprint(sprintEvent: RemoteEvent, wantsToSprint: boolean)
     wantsToSprint = wantsToSprint and player:GetAttribute("Stunned") ~= true
@@ -18540,6 +19394,7 @@ function SprintController.Init()
     player:GetAttributeChangedSignal("Stunned"):Connect(function()
         if player:GetAttribute("Stunned") == true then
             table.clear(heldShift)
+            heldTouch = false
             requestSprint(sprintEvent, false)
         end
     end)
@@ -18557,17 +19412,30 @@ function SprintController.Init()
     UserInputService.InputEnded:Connect(function(input: InputObject)
         if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
             heldShift[input.KeyCode] = nil
-            requestSprint(sprintEvent, next(heldShift) ~= nil)
+            requestSprint(sprintEvent, heldTouch or next(heldShift) ~= nil)
         end
     end)
 
     UserInputService.WindowFocusReleased:Connect(function()
         table.clear(heldShift)
+        heldTouch = false
         requestSprint(sprintEvent, false)
     end)
 
-    -- TODO: mobile onscreen sprint button and console/gamepad input (e.g. thumbstick click) should
-    -- also call requestSprint(sprintEvent, true/false) here once those input modalities are built
+    local function sprintTouch(_action: string, state: Enum.UserInputState): Enum.ContextActionResult
+        if state == Enum.UserInputState.Begin then
+            heldTouch = player:GetAttribute("Stunned") ~= true
+        elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+            heldTouch = false
+        else
+            return Enum.ContextActionResult.Sink
+        end
+        requestSprint(sprintEvent, heldTouch or next(heldShift) ~= nil)
+        return Enum.ContextActionResult.Sink
+    end
+    ContextActionService:BindAction("SprintHeld", sprintTouch, true)
+    ContextActionService:SetTitle("SprintHeld", "Sprint")
+    ContextActionService:SetPosition("SprintHeld", UDim2.new(1, -85, 0, 30))
 
     -- Presentation reads the server-replicated StaminaCurrent/StaminaMax/IsSprinting attributes.
 end
@@ -18576,7 +19444,302 @@ return SprintController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="130">
+          <Item class="ModuleScript" referent="137">
+            <Properties>
+              <string name="Name">StandIdentityController</string>
+              <string name="Source"><![CDATA[--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Config = require(ReplicatedStorage.Shared.Constants.StandIdentity)
+local Editor = require(script.Parent.Parent.UI.StandNameEditor)
+local TurbineCamera = require(script.Parent.TurbineCameraController)
+local Controller = {}
+local player = Players.LocalPlayer
+type Sequence = {
+    Plot: Instance,
+    Marker: BasePart,
+    Character: Model,
+    Camera: Camera,
+    Context: any,
+    CameraType: Enum.CameraType,
+    Subject: (Humanoid | BasePart)?,
+    From: CFrame,
+    RootPosition: Vector3,
+    Tween: Tween?,
+    Closing: boolean,
+    Saving: boolean,
+    FocusUsed: boolean,
+}
+local current: Sequence? = nil
+local ui: { Gui: ScreenGui, Box: TextBox, Status: TextLabel, Save: TextButton }
+local remote: RemoteFunction
+local initialized = false
+local version = 0
+
+local function humanoid(): Humanoid?
+    return if player.Character then player.Character:FindFirstChildOfClass("Humanoid") else nil
+end
+
+local function restore(sequence: Sequence)
+    if sequence.Tween then
+        sequence.Tween:Cancel()
+    end
+    sequence.Camera:SetAttribute("StandNameEditorActive", nil)
+    local subject = humanoid()
+    sequence.Camera.CameraSubject = subject or sequence.Subject
+    -- Never restore a borrowed Scriptable camera after this editor owns it.
+    sequence.Camera.CameraType = if sequence.CameraType == Enum.CameraType.Scriptable
+        then Enum.CameraType.Custom
+        else sequence.CameraType
+end
+
+function Controller.Close(immediate: boolean?)
+    version += 1
+    local token = version
+    local sequence = current
+    if not sequence then
+        return
+    end
+    local wasClosing = sequence.Closing
+    sequence.Closing = true
+    ui.Gui.Enabled = false
+    ui.Box:ReleaseFocus()
+    if sequence.Tween then
+        sequence.Tween:Cancel()
+    end
+    if immediate or wasClosing then
+        current = nil
+        restore(sequence)
+        return
+    end
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local offset = if root and root:IsA("BasePart") then root.Position - sequence.RootPosition else Vector3.zero
+    local tween = TweenService:Create(
+        sequence.Camera,
+        TweenInfo.new(Config.CameraOutSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { CFrame = sequence.From + offset }
+    )
+    sequence.Tween = tween
+    tween:Play()
+    task.spawn(function()
+        tween.Completed:Wait()
+        if token ~= version or current ~= sequence then
+            return
+        end
+        current = nil
+        restore(sequence)
+    end)
+end
+
+local function valid(sequence: Sequence): boolean
+    local subject = humanoid()
+    return type(sequence.Context.PlotSessionId) == "string"
+        and type(sequence.Context.MembershipRevision) == "number"
+        and type(sequence.Context.StandNameRevision) == "number"
+        and player.Parent ~= nil
+        and player.Character == sequence.Character
+        and sequence.Character:IsDescendantOf(workspace)
+        and subject ~= nil
+        and subject.Health > 0
+        and workspace.CurrentCamera == sequence.Camera
+        and sequence.Plot:IsDescendantOf(workspace)
+        and sequence.Marker.Parent == sequence.Plot
+        and sequence.Plot:FindFirstChild("SignCamera") == sequence.Marker
+        and sequence.Plot:GetAttribute("OwnerUserId") == player.UserId
+        and sequence.Plot:GetAttribute("PlotSessionId") == sequence.Context.PlotSessionId
+        and player:GetAttribute("PlotSessionId") == sequence.Context.PlotSessionId
+        and sequence.Plot:GetAttribute("PlotMembershipRevision") == sequence.Context.MembershipRevision
+end
+
+-- TODO(Settings): Reuse OpenNameEditor from Settings > Stand so the owner
+-- can rename the stand after the initial claim sequence.
+function Controller.OpenNameEditor(plot: Instance)
+    Controller.Close(true)
+    if not initialized then
+        return
+    end
+    TurbineCamera.ReleaseCamera()
+    local marker = plot:FindFirstChild("SignCamera")
+    local camera, character = workspace.CurrentCamera, player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if
+        not camera
+        or not character
+        or not root
+        or not root:IsA("BasePart")
+        or not marker
+        or not marker:IsA("BasePart")
+    then
+        return
+    end
+    local sequence: Sequence = {
+        Plot = plot,
+        Marker = marker,
+        Camera = camera,
+        Character = character,
+        Context = {
+            PlotSessionId = plot:GetAttribute("PlotSessionId"),
+            MembershipRevision = plot:GetAttribute("PlotMembershipRevision"),
+            StandNameRevision = plot:GetAttribute("StandNameRevision"),
+        },
+        CameraType = camera.CameraType,
+        Subject = camera.CameraSubject,
+        From = camera.CFrame,
+        RootPosition = root.Position,
+        Closing = false,
+        Saving = false,
+        FocusUsed = false,
+    }
+    if not valid(sequence) then
+        return
+    end
+    current = sequence
+    local token = version
+    camera:SetAttribute("StandNameEditorActive", true)
+    camera.CameraType = Enum.CameraType.Scriptable
+    local tween = TweenService:Create(
+        camera,
+        TweenInfo.new(Config.CameraInSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+        { CFrame = marker.CFrame }
+    )
+    sequence.Tween = tween
+    tween:Play()
+    task.spawn(function()
+        tween.Completed:Wait()
+        if token ~= version or current ~= sequence then
+            return
+        end
+        if not valid(sequence) then
+            Controller.Close(true)
+            return
+        end
+        ui.Box.Text = tostring(plot:GetAttribute("StandName") or "")
+        ui.Status.Text, ui.Save.Text = "", "SAVE"
+        ui.Gui.Enabled = true
+        task.delay(3, function()
+            if
+                token == version
+                and current == sequence
+                and not sequence.Closing
+                and not sequence.FocusUsed
+                and ui.Gui.Enabled
+                and valid(sequence)
+            then
+                ui.Box:CaptureFocus()
+            end
+        end)
+    end)
+end
+
+function Controller.Init()
+    if initialized then
+        return
+    end
+    initialized = true
+    remote = ReplicatedStorage.Shared.Events:WaitForChild("SetStandName") :: RemoteFunction
+    ui = Editor.Create(player:WaitForChild("PlayerGui"), function()
+        local sequence = current
+        if not sequence or sequence.Closing or sequence.Saving or not ui.Gui.Enabled then
+            return
+        end
+        local raw = ui.Box.Text
+        local text = Config.Normalize(raw)
+        if not text then
+            ui.Status.Text = string.format("Enter a name of 1–%d characters.", Config.MaxCharacters)
+            return
+        end
+        sequence.Saving = true
+        ui.Save.Text = "SAVING…"
+        task.spawn(function()
+            local ok, success, message = pcall(function()
+                return remote:InvokeServer(sequence.Plot, raw, sequence.Context)
+            end)
+            if current ~= sequence or sequence.Closing then
+                return
+            end
+            sequence.Saving = false
+            ui.Save.Text = "SAVE"
+            if ok and success then
+                if type(message) == "string" then
+                    ui.Box.Text = message
+                end
+                Controller.Close()
+            else
+                ui.Status.Text = if ok and type(message) == "string" then message else "Could not save. Try again."
+            end
+        end)
+    end, function()
+        Controller.Close()
+    end)
+    ui.Box.Focused:Connect(function()
+        if current and ui.Gui.Enabled then
+            current.FocusUsed = true
+        end
+    end)
+    UserInputService.InputBegan:Connect(function(input)
+        if ui.Gui.Enabled and (input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB) then
+            Controller.Close()
+        end
+    end)
+    local function cancel()
+        Controller.Close(true)
+    end
+    player.CharacterRemoving:Connect(cancel)
+    player.CharacterAdded:Connect(cancel)
+    player.AncestryChanged:Connect(function()
+        if player.Parent == nil then
+            cancel()
+        end
+    end)
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(cancel)
+    ui.Gui.AncestryChanged:Connect(function()
+        if not ui.Gui:IsDescendantOf(player) then
+            cancel()
+        end
+    end)
+    ui.Gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if current and not current.Closing and not ui.Gui.Enabled then
+            Controller.Close()
+        end
+    end)
+    RunService.Heartbeat:Connect(function()
+        if current and not valid(current) then
+            cancel()
+        end
+    end)
+    local claimed = ReplicatedStorage.Shared.Events:WaitForChild("PlotClaimed") :: RemoteEvent
+    claimed.OnClientEvent:Connect(function(plot: Instance, id: string, revision: number)
+        Controller.Close(true)
+        local token = version
+        -- Remote events and replicated attributes can arrive on different frames.
+        task.spawn(function()
+            local deadline = os.clock() + 3
+            repeat
+                if token ~= version or not plot:IsDescendantOf(workspace) then
+                    return
+                end
+                if
+                    plot:GetAttribute("PlotSessionId") == id
+                    and player:GetAttribute("PlotSessionId") == id
+                    and plot:GetAttribute("PlotMembershipRevision") == revision
+                then
+                    Controller.OpenNameEditor(plot)
+                    return
+                end
+                RunService.Heartbeat:Wait()
+            until os.clock() >= deadline
+        end)
+    end)
+end
+
+return Controller
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="138">
             <Properties>
               <string name="Name">StashExpansionController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18602,7 +19765,7 @@ function Controller.Init()
         end
         local gui = Instance.new("BillboardGui")
         gui.Name, gui.Adornee = "SecondStorageDisplay", object
-        Style.ApplyBillboard(gui, { Width = 340, Height = 64, MaxDistance = 40 })
+        Style.ApplyBillboard(gui, { Width = 340, Height = 64, MaxDistance = 28 })
         gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
         local price =
             tostring(Upgrades.SecondStorage[2].Cost):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
@@ -18637,7 +19800,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="131">
+          <Item class="ModuleScript" referent="139">
             <Properties>
               <string name="Name">StashPromptController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18701,7 +19864,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="132">
+          <Item class="ModuleScript" referent="140">
             <Properties>
               <string name="Name">TurbineCameraController</string>
               <string name="Source"><![CDATA[--!strict
@@ -18714,6 +19877,13 @@ local DURATION = 0.3
 local BEFORE_CAMERA = "TurbineCameraPrepare"
 local AFTER_CAMERA = "TurbineCameraRender"
 local cleanup: (() -> ())? = nil
+local releaseCamera: (() -> ())? = nil
+
+function Controller.ReleaseCamera()
+    if releaseCamera then
+        releaseCamera()
+    end
+end
 
 type View = {
     Camera: Camera,
@@ -18779,6 +19949,8 @@ function Controller.Init()
         current.Camera.CFrame = current.Normal
         current.Camera.Focus = current.NormalFocus
     end
+
+    releaseCamera = restore
 
     local function resolvePlot()
         local assigned: Instance? = nil
@@ -18860,6 +20032,9 @@ function Controller.Init()
         local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
         local subject = humanoid()
         local camera = workspace.CurrentCamera
+        if camera and camera:GetAttribute("StandNameEditorActive") then
+            return
+        end
         local assigned = plot
         local blender = if assigned and assigned:IsDescendantOf(workspace)
             then assigned:FindFirstChild("Blender")
@@ -19005,7 +20180,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="133">
+          <Item class="ModuleScript" referent="141">
             <Properties>
               <string name="Name">UIController</string>
               <string name="Source"><![CDATA[-- Handles customer speech bubbles for smoothie orders 
@@ -19013,7 +20188,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="134">
+          <Item class="ModuleScript" referent="142">
             <Properties>
               <string name="Name">UpgradesController</string>
               <string name="Source"><![CDATA[--!strict
@@ -19174,7 +20349,7 @@ return Controller
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="135">
+          <Item class="ModuleScript" referent="143">
             <Properties>
               <string name="Name">WorldTextController</string>
               <string name="Source"><![CDATA[--!strict
@@ -19280,11 +20455,11 @@ return Controller
             </Properties>
           </Item>
         </Item>
-        <Item class="Folder" referent="136">
+        <Item class="Folder" referent="144">
           <Properties>
             <string name="Name">UI</string>
           </Properties>
-          <Item class="ModuleScript" referent="137">
+          <Item class="ModuleScript" referent="145">
             <Properties>
               <string name="Name">IngredientPickupPromptPresentation</string>
               <string name="Source"><![CDATA[--!strict
@@ -19427,7 +20602,7 @@ return Presentation
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="138">
+          <Item class="ModuleScript" referent="146">
             <Properties>
               <string name="Name">IngredientPickupPromptStyle</string>
               <string name="Source"><![CDATA[--!strict
@@ -19478,7 +20653,7 @@ return Style
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="139">
+          <Item class="ModuleScript" referent="147">
             <Properties>
               <string name="Name">InteractionPromptPresentation</string>
               <string name="Source"><![CDATA[--!strict
@@ -19541,12 +20716,6 @@ function Presentation.Create(
         TextStyle.Outline(text)
     end
     text.AutoButtonColor = false
-    local rejectPrompt = prompt:GetAttribute("RejectButtonPrompt") == true
-    if rejectPrompt then
-        TextStyle.Apply(text, 24)
-        text.TextColor3 = Color3.fromRGB(255, 95, 95)
-        gui.MaxDistance = 40
-    end
     text.Parent = gui
     gui.Parent = parent
 
@@ -19572,9 +20741,6 @@ function Presentation.Create(
             if holding then "HOLD " else "",
             config.ActionText or prompt.ActionText
         )
-        if rejectPrompt then
-            text.Text = "REJECT"
-        end
         if config.InputOnly then
             text.Text = string.format("%s[%s]", if holding then "HOLD " else "", key or "")
         end
@@ -19638,7 +20804,7 @@ return Presentation
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="140">
+          <Item class="ModuleScript" referent="148">
             <Properties>
               <string name="Name">RadialProgress</string>
               <string name="Source"><![CDATA[--!strict
@@ -19713,7 +20879,7 @@ return RadialProgress
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="141">
+          <Item class="ModuleScript" referent="149">
             <Properties>
               <string name="Name">RipenessDisplayState</string>
               <string name="Source"><![CDATA[--!strict
@@ -19765,7 +20931,7 @@ return State
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="142">
+          <Item class="ModuleScript" referent="150">
             <Properties>
               <string name="Name">RipenessTutorialText</string>
               <string name="Source"><![CDATA[--!strict
@@ -19783,7 +20949,7 @@ return Text
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="143">
+          <Item class="ModuleScript" referent="151">
             <Properties>
               <string name="Name">ScrapbookPresentation</string>
               <string name="Source"><![CDATA[--!strict
@@ -20030,16 +21196,17 @@ return Presentation
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="144">
+          <Item class="ModuleScript" referent="152">
             <Properties>
               <string name="Name">ScreenGuis</string>
-              <string name="Source">-- Main HUD
+              <string name="Source"><![CDATA[-- Main HUD
 
--- TODO: stamina bar synced to Player:GetAttribute("StaminaCurrent"/"StaminaMax"), plus an
--- onscreen sprint button for mobile/console modalities (see SprintController.luau)</string>
+-- TODO: stamina bar synced to Player:GetAttribute("StaminaCurrent"/"StaminaMax").
+-- SprintController owns the mobile hold-to-sprint button.
+]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="145">
+          <Item class="ModuleScript" referent="153">
             <Properties>
               <string name="Name">SmoothiePickupPromptPresentation</string>
               <string name="Source"><![CDATA[--!strict
@@ -20164,7 +21331,200 @@ return Presentation
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="146">
+          <Item class="ModuleScript" referent="154">
+            <Properties>
+              <string name="Name">StandNameEditor</string>
+              <string name="Source"><![CDATA[--!strict
+local Style = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
+local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.StandIdentity)
+local Input = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local UI = {}
+
+function UI.Create(parent: Instance, save: () -> (), close: () -> ())
+    local gui = Instance.new("ScreenGui")
+    gui.Name, gui.ResetOnSpawn, gui.Enabled = "StandNameEditor", false, false
+    gui.DisplayOrder = 30
+    gui.Parent = parent
+    local area = Instance.new("Frame")
+    area.Name, area.BackgroundTransparency = "UsableArea", 1
+    area.Size, area.Parent = UDim2.fromScale(1, 1), gui
+    local panel = Instance.new("Frame")
+    panel.Name = "RenameCard"
+    panel.AnchorPoint = Vector2.new(0.5, 1)
+    panel.Position = UDim2.new(0.5, 0, 1, -20)
+    panel.Size = UDim2.new(0.9, 0, 0, 154)
+    panel.BackgroundColor3 = Color3.fromRGB(25, 29, 38)
+    panel.BackgroundTransparency = 0.28
+    panel.BorderSizePixel = 0
+    panel.Parent = area
+    local scale = Instance.new("UIScale")
+    scale.Parent = panel
+    local size = Instance.new("UISizeConstraint")
+    size.MaxSize = Vector2.new(320, 154)
+    size.Parent = panel
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 12)
+    local border = Instance.new("UIStroke")
+    border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    border.Color, border.Thickness, border.Transparency = Color3.fromRGB(170, 180, 198), 1, 0.7
+    border.Parent = panel
+    local function label(text: string, y: number): TextLabel
+        local result = Instance.new("TextLabel")
+        result.Size, result.Position = UDim2.new(1, -24, 0, 24), UDim2.fromOffset(12, y)
+        result.BackgroundTransparency = 1
+        Style.Apply(result, 18)
+        Style.Outline(result).Thickness = 1
+        result.Text, result.Parent = text, panel
+        return result
+    end
+    local title = label("NAME YOUR STAND", 10)
+    title.Size = UDim2.new(1, -60, 0, 24)
+    local box = Instance.new("TextBox")
+    box.Name = "StandName"
+    box.Size, box.Position = UDim2.new(1, -24, 0, 36), UDim2.fromOffset(12, 38)
+    box.BackgroundColor3 = Color3.fromRGB(244, 243, 248)
+    box.BackgroundTransparency = 0.06
+    box.BorderSizePixel = 0
+    box.TextColor3, box.Font, box.TextSize = Style.Dark, Style.Font, 18
+    box.ClearTextOnFocus, box.MultiLine = false, false
+    box.Selectable = true
+    box.Text, box.Parent = "", panel
+    local selection = Instance.new("Frame")
+    selection.Name = "InputSelection"
+    selection.BackgroundTransparency, selection.BorderSizePixel = 1, 0
+    selection.Size, selection.Parent = UDim2.fromScale(1, 1), box
+    box.SelectionImageObject = selection
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
+    local function button(text: string, callback: () -> ()): TextButton
+        local result = Instance.new("TextButton")
+        -- Slim visual face inside a larger transparent tap/controller target.
+        result.BackgroundTransparency, result.BorderSizePixel = 1, 0
+        result.Size, result.ZIndex = UDim2.fromOffset(40, 40), 2
+        Style.Apply(result, 16)
+        Style.Outline(result).Thickness = 1
+        result.Text, result.Parent = text, panel
+        result.Activated:Connect(callback)
+        return result
+    end
+    local function face(buttonObject: TextButton, color: Color3, transparency: number)
+        local fill = Instance.new("Frame")
+        fill.Name = "ButtonFace"
+        fill.Size = UDim2.new(buttonObject.Size.X.Scale, buttonObject.Size.X.Offset, 0, 28)
+        fill.Position = UDim2.new(
+            buttonObject.Position.X.Scale,
+            buttonObject.Position.X.Offset,
+            buttonObject.Position.Y.Scale,
+            buttonObject.Position.Y.Offset + 6
+        )
+        fill.BackgroundColor3, fill.BackgroundTransparency = color, transparency
+        fill.BorderSizePixel, fill.ZIndex, fill.Parent = 0, 1, panel
+        Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 8)
+    end
+    local saveButton = button("SAVE", save)
+    saveButton.Size, saveButton.Position = UDim2.new(0.6, -16, 0, 40), UDim2.fromOffset(12, 90)
+    face(saveButton, Color3.fromRGB(92, 116, 102), 0.12)
+    -- Both dismissal controls call the same callback: keep name, close, return camera.
+    local skip = button("SKIP", close)
+    skip.Size, skip.Position = UDim2.new(0.4, -16, 0, 40), UDim2.new(0.6, 4, 0, 90)
+    skip.TextColor3 = Color3.fromRGB(211, 215, 223)
+    face(skip, Color3.fromRGB(135, 144, 159), 0.85)
+    local x = button("X", close)
+    x.Size, x.Position = UDim2.fromOffset(36, 36), UDim2.new(1, -40, 0, 4)
+    x.TextColor3 = Color3.fromRGB(211, 215, 223)
+    local status = label("", 132)
+    status.Size = UDim2.new(1, -24, 0, 20)
+    status.TextSize, status.TextWrapped = 12, true
+    local counter = label("", 74)
+    counter.Name, counter.TextSize = "CharacterCounter", 11
+    counter.Size = UDim2.new(1, -24, 0, 16)
+    counter.TextXAlignment = Enum.TextXAlignment.Right
+    local editing = false
+    local function updateText()
+        if editing then
+            return
+        end
+        editing = true
+        local limited = Config.Truncate(box.Text)
+        if limited ~= box.Text then
+            local cursor, selection = box.CursorPosition, box.SelectionStart
+            box.Text = limited
+            -- TextBox caret/selection offsets are bytes, even for Unicode text.
+            box.CursorPosition = math.min(cursor, #limited + 1)
+            box.SelectionStart = math.min(selection, #limited + 1)
+        end
+        local count = Config.Count(limited) or 0
+        counter.Text = string.format("%d/%d", count, Config.MaxCharacters)
+        counter.TextTransparency = if count == Config.MaxCharacters then 0.05 else 0.35
+        editing = false
+    end
+    box:GetPropertyChangedSignal("Text"):Connect(updateText)
+    updateText()
+
+    local controls: { GuiObject } = { box, saveButton, skip, x }
+    for _, control in controls do
+        control.Selectable = true
+    end
+    box.NextSelectionDown, box.NextSelectionUp = saveButton, x
+    saveButton.NextSelectionUp, saveButton.NextSelectionRight = box, skip
+    saveButton.NextSelectionDown, saveButton.NextSelectionLeft = x, skip
+    skip.NextSelectionUp, skip.NextSelectionLeft = box, saveButton
+    skip.NextSelectionDown, skip.NextSelectionRight = x, saveButton
+    x.NextSelectionDown, x.NextSelectionUp = box, skip
+    x.NextSelectionLeft, x.NextSelectionRight = box, box
+    local previousSelection: GuiObject? = nil
+    local function placePanel()
+        local height = area.AbsoluteSize.Y
+        local bottom = height - 20
+        if gui.Enabled and Input.OnScreenKeyboardVisible then
+            local keyboard = Input.OnScreenKeyboardPosition
+            local keyboardSize = Input.OnScreenKeyboardSize
+            if keyboardSize.Y > 0 then
+                local keyboardTop = if keyboard.Y > 0
+                    then keyboard.Y
+                    else area.AbsolutePosition.Y + height - keyboardSize.Y
+                bottom = math.min(bottom, keyboardTop - area.AbsolutePosition.Y - 8)
+            end
+        end
+        if gui.Enabled and Input.OnScreenKeyboardVisible then
+            scale.Scale = math.clamp((bottom - 8) / 154, 0.1, 1)
+            panel.Position = UDim2.new(0.5, 0, 0, math.max(8, bottom))
+        else
+            scale.Scale = 1
+            panel.Position = UDim2.new(0.5, 0, 1, -20)
+        end
+    end
+    for _, property in { "OnScreenKeyboardVisible", "OnScreenKeyboardPosition", "OnScreenKeyboardSize" } do
+        Input:GetPropertyChangedSignal(property):Connect(placePanel)
+    end
+    area:GetPropertyChangedSignal("AbsoluteSize"):Connect(placePanel)
+    area:GetPropertyChangedSignal("AbsolutePosition"):Connect(placePanel)
+    gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if gui.Enabled then
+            previousSelection = GuiService.SelectedObject
+            if Input.GamepadEnabled then
+                GuiService.SelectedObject = box
+            end
+        elseif GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(gui) then
+            GuiService.SelectedObject = if previousSelection and previousSelection.Parent
+                then previousSelection
+                else nil
+        end
+        placePanel()
+    end)
+    box.FocusLost:Connect(function(enter)
+        if enter then
+            save()
+        end
+    end)
+    box.ReturnPressedFromOnScreenKeyboard:Connect(save)
+    return { Gui = gui, Box = box, Status = status, Save = saveButton }
+end
+
+return UI
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="155">
             <Properties>
               <string name="Name">UpgradeDisplay</string>
               <string name="Source"><![CDATA[--!strict
@@ -20238,7 +21598,7 @@ return Display
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="147">
+          <Item class="ModuleScript" referent="156">
             <Properties>
               <string name="Name">UpgradesGui</string>
               <string name="Source"><![CDATA[--!strict
@@ -20398,7 +21758,7 @@ return Gui
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="148">
+          <Item class="ModuleScript" referent="157">
             <Properties>
               <string name="Name">WorldBillboardStyle</string>
               <string name="Source"><![CDATA[--!strict
@@ -20441,11 +21801,12 @@ return Style
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="149">
+          <Item class="ModuleScript" referent="158">
             <Properties>
               <string name="Name">WorldTextPresentation</string>
               <string name="Source"><![CDATA[--!strict
 local Style = require(script.Parent.WorldBillboardStyle)
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local Presentation = {}
 
 export type Settings = Style.Settings & {
@@ -20484,7 +21845,34 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
     Style.ApplyText(text, config)
     text.Active = false
     text.Selectable = false
-    text.Text = config.Text or ""
+    local function setText(value: string)
+        local tier = string.match(value, "^JUMP ([123]) ZONE$")
+            or ({ I = "1", II = "2", III = "3" })[string.match(value, "^JUMP (I+) ZONE$") or ""]
+        Style.ApplyText(text, config)
+        text.RichText = tier ~= nil
+        if tier then
+            TextStyle.Apply(text, config.TextSize or 24)
+            if tier == "3" then
+                -- Per-letter pastels keep the rainbow confined to JUMP 3; ZONE stays white.
+                text.Text = '<font color="rgb(255,188,202)">J</font><font color="rgb(255,213,177)">U</font>'
+                    .. '<font color="rgb(255,237,177)">M</font><font color="rgb(184,231,206)">P</font> '
+                    .. '<font color="rgb(187,208,247)">'
+                    .. (string.match(value, "^JUMP (.+) ZONE$") or "3")
+                    .. "</font> ZONE"
+            else
+                local color = if tier == "1" then "rgb(226,193,139)" else "rgb(133,208,235)"
+                local jump = string.match(value, "^(JUMP .+) ZONE$") or ""
+                text.Text = '<font color="' .. color .. '">' .. jump .. "</font> ZONE"
+            end
+        else
+            local outline = text:FindFirstChild("DialogueOutline")
+            if outline then
+                outline:Destroy()
+            end
+            text.Text = value
+        end
+    end
+    setText(config.Text or "")
     text.Parent = gui
     -- Client-created child: no server replication; origin destruction owns cleanup.
     gui.Parent = origin
@@ -20504,7 +21892,7 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
     local handle: Handle = {
         SetText = function(_self: Handle, value: string)
             if not destroyed then
-                text.Text = value
+                setText(value)
             end
         end,
         SetVisible = function(_self: Handle, visible: boolean)

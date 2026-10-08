@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Display = require(script.Parent.Parent.UI.UpgradeDisplay)
 local Gui = require(script.Parent.Parent.UI.UpgradesGui)
+local MoneyFormat = require(ReplicatedStorage.Shared.MoneyFormat)
 local Controller = {}
 local started = false
 
@@ -14,10 +15,12 @@ function Controller.Init()
     task.spawn(function()
         local player = Players.LocalPlayer
         local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
-        local view = Gui.Create(playerGui)
+        local view: Gui.View? = nil
         local remote: RemoteEvent? = nil
         local pending: string? = nil
         local generation = 0
+        local membershipGeneration = 0
+        local membershipUpdating = false
         local feedback: { [string]: string } = {}
         local feedbackVersion: { [string]: number } = {}
         local serverMax: { [string]: boolean } = {}
@@ -27,43 +30,52 @@ function Controller.Init()
             return if typeof(value) == "number" then value else nil
         end
         local function rowState(track: { Id: string, Name: string, Attribute: string })
-            return Display.Row(
-                track.Id,
-                numberAttribute(track.Id .. (if track.Id == "CarryCapacity" then "Level" else "PurchasedLevel")),
-                numberAttribute(track.Attribute)
-            )
+            return if membershipUpdating
+                then nil
+                else Display.Row(
+                    track.Id,
+                    numberAttribute(track.Id .. (if track.Id == "CarryCapacity" then "Level" else "PurchasedLevel")),
+                    numberAttribute(track.Attribute)
+                )
         end
         local function refresh()
+            local currentView = view
+            if not currentView then
+                return
+            end
             local cash = numberAttribute("playerCash")
-            view.Cash.Text = if cash then "$ " .. tostring(cash) else "$ —"
+            currentView.Cash.Text = if cash then MoneyFormat.Full(cash) else "$\u{2014}"
             for _, track in Display.Tracks do
-                local row = view.Rows[track.Id]
+                local row = currentView.Rows[track.Id]
                 local state = rowState(track)
                 local isMax = serverMax[track.Id] or (state ~= nil and state.Max)
-                local enabled = remote ~= nil and pending == nil and state ~= nil and not isMax
-                row.Level.Text = if state
-                    then "Level " .. tostring(state.Level + (if track.Id == "CarryCapacity" then 1 else 0))
-                    else "Loading…"
-                row.Stat.Text = if state then state.Stat else "—"
-                row.Purchase.Text = if pending == track.Id
-                    then "UPGRADING…"
+                local enabled = remote ~= nil
+                    and pending == nil
+                    and state ~= nil
+                    and not isMax
+                    and feedback[track.Id] ~= "PURCHASED!"
+                row.Title.Text = track.Name
+                row.Current.Text = if state then state.Current else "LOADING..."
+                row.Next.Text = if isMax then "MAX" elseif state then state.Next else "-"
+                row.Price.Text = if state and state.Price and not isMax then MoneyFormat.Compact(state.Price) else ""
+                row.BuyLabel.Text = if remote == nil
+                        or state == nil
+                        or pending == track.Id
+                    then "..."
+                    elseif feedback[track.Id] == "PURCHASED!" then "PURCHASED!"
                     elseif isMax then "MAX"
                     elseif feedback[track.Id] then feedback[track.Id]
-                    elseif state and state.Price then "$" .. tostring(state.Price) .. " UPGRADE"
-                    else "LOADING…"
+                    else "BUY"
                 row.Purchase.Interactable = enabled
-                row.Purchase.AutoButtonColor = enabled
-                row.Purchase.BackgroundColor3 = if enabled
-                    then Color3.fromRGB(57, 119, 83)
-                    else Color3.fromRGB(66, 76, 90)
             end
         end
         local function showFeedback(id: string, message: string)
             local version = (feedbackVersion[id] or 0) + 1
             feedbackVersion[id] = version
             feedback[id] = message
-            task.delay(2, function()
-                if feedbackVersion[id] == version then
+            local membershipToken = membershipGeneration
+            task.delay(if message == "PURCHASED!" then 0.8 else 1.5, function()
+                if membershipGeneration == membershipToken and feedbackVersion[id] == version then
                     feedback[id] = nil
                     refresh()
                 end
@@ -73,9 +85,19 @@ function Controller.Init()
         local function membershipChanged()
             generation += 1
             pending = nil
+            membershipGeneration += 1
+            local token = membershipGeneration
+            membershipUpdating = true
             table.clear(serverMax)
             table.clear(feedback)
             refresh()
+            -- Membership identity is published before the upgrade projection.
+            task.defer(function()
+                if membershipGeneration == token then
+                    membershipUpdating = false
+                    refresh()
+                end
+            end)
         end
         player:GetAttributeChangedSignal("PlotSessionId"):Connect(membershipChanged)
         player:GetAttributeChangedSignal("PlotMembershipRevision"):Connect(membershipChanged)
@@ -91,30 +113,52 @@ function Controller.Init()
             if track.Attribute ~= track.Id .. (if track.Id == "CarryCapacity" then "Level" else "PurchasedLevel") then
                 player:GetAttributeChangedSignal(track.Attribute):Connect(refresh)
             end
-            view.Rows[track.Id].Purchase.Activated:Connect(function()
-                local state = rowState(track)
-                local request = remote
-                if not request or pending or not state or state.Max or serverMax[track.Id] then
-                    return
-                end
-                pending = track.Id
-                generation += 1
-                local token = generation
-                refresh()
-                request:FireServer("PurchaseUpgrade", track.Id, state.Level + 2, {
-                    PlotSessionId = player:GetAttribute("PlotSessionId"),
-                    MembershipRevision = player:GetAttribute("PlotMembershipRevision"),
-                })
-                -- The shared server throttle can drop a request without a response.
-                task.delay(5, function()
-                    if generation == token and pending == track.Id then
-                        pending = nil
-                        showFeedback(track.Id, "PLEASE TRY AGAIN")
-                        refresh()
-                    end
-                end)
-            end)
         end
+        Gui.Observe(playerGui, function(nextView)
+            view = nextView
+            refresh()
+        end, function(id)
+            local track
+            for _, candidate in Display.Tracks do
+                if candidate.Id == id then
+                    track = candidate
+                    break
+                end
+            end
+            if not track or not view then
+                return
+            end
+            local state = rowState(track)
+            local request = remote
+            if
+                not request
+                or pending
+                or not state
+                or state.Max
+                or serverMax[track.Id]
+                or feedback[track.Id] == "PURCHASED!"
+            then
+                return
+            end
+            feedbackVersion[track.Id] = (feedbackVersion[track.Id] or 0) + 1
+            feedback[track.Id] = nil
+            pending = track.Id
+            generation += 1
+            local token = generation
+            refresh()
+            request:FireServer("PurchaseUpgrade", track.Id, state.Level + 2, {
+                PlotSessionId = player:GetAttribute("PlotSessionId"),
+                MembershipRevision = player:GetAttribute("PlotMembershipRevision"),
+            })
+            -- The shared server throttle can drop a request without a response.
+            task.delay(5, function()
+                if generation == token and pending == track.Id then
+                    pending = nil
+                    showFeedback(track.Id, "TRY AGAIN")
+                    refresh()
+                end
+            end)
+        end)
         refresh()
         local events = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Events")
         local request = events:WaitForChild("GameplayRequest")
@@ -133,13 +177,14 @@ function Controller.Init()
                 warn("Upgrade purchase rejected: InvalidUpgrade")
             end
             local id = result.upgradeId
-            if type(id) ~= "string" or not view.Rows[id] or type(result.success) ~= "boolean" then
+            if type(id) ~= "string" or not Display.Row(id, 0) or type(result.success) ~= "boolean" then
                 return
             end
-            if pending == id then
-                pending = nil
-                generation += 1
+            if pending ~= id then
+                return
             end
+            pending = nil
+            generation += 1
             if result.reason == "MaxLevel" then
                 serverMax[id] = true
             end

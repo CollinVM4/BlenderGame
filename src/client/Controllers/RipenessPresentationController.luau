@@ -4,9 +4,9 @@ local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Shared = game:GetService("ReplicatedStorage").Shared
-local TextStyle = require(Shared.Constants.DialogueTextStyle)
 local DisplayState = require(script.Parent.Parent.UI.RipenessDisplayState)
 local RadialProgress = require(script.Parent.Parent.UI.RadialProgress)
+local Tooltip = require(script.Parent.Parent.UI.TutorialTooltip)
 local TutorialText = require(script.Parent.Parent.UI.RipenessTutorialText)
 local RipenessStyle = require(Shared.Constants.RipenessPresentation)
 
@@ -55,44 +55,7 @@ local function renderPip(view: Pip, amount: number, ripe: boolean)
 end
 
 local function showTutorial(playerGui: PlayerGui)
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "RipenessTutorial"
-    gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true
-    gui.DisplayOrder = 15
-    gui.Parent = playerGui
-    local card = Instance.new("Frame")
-    card.AnchorPoint = Vector2.new(0.5, 0.5)
-    card.Position = UDim2.fromScale(0.5, 0.72)
-    card.Size = UDim2.fromOffset(320, 78)
-    card.BackgroundColor3 = TextStyle.Dark
-    card.BackgroundTransparency = 1
-    card.BorderSizePixel = 0
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 12)
-    card.Parent = gui
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -20, 1, 0)
-    label.Position = UDim2.fromOffset(10, 0)
-    label.RichText = true
-    label.TextWrapped = true
-    label.Text = TutorialText.Rich()
-    TextStyle.Apply(label, 20)
-    label.TextWrapped = true
-    label.TextTransparency = 1
-    label.Parent = card
-    TweenService:Create(card, TweenInfo.new(0.18), { BackgroundTransparency = 0.18 }):Play()
-    TweenService:Create(label, TweenInfo.new(0.18), { TextTransparency = 0 }):Play()
-    task.delay(4.3, function()
-        if not gui.Parent then
-            return
-        end
-        TweenService:Create(card, TweenInfo.new(0.45), { BackgroundTransparency = 1 }):Play()
-        TweenService:Create(label, TweenInfo.new(0.45), { TextTransparency = 1 }):Play()
-        task.delay(0.5, function()
-            gui:Destroy()
-        end)
-    end)
+    Tooltip.Show(playerGui, "RipenessTutorial", TutorialText.Rich())
 end
 
 function Controller.Init()

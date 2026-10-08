@@ -59,7 +59,11 @@ function Controller.Init()
         local function drain()
             while #queue > 0 do
                 local message = assert(table.remove(queue, 1))
-                banner.Text = message.Text
+                local text = Format.VisibleText(message, workspace:GetServerTimeNow())
+                if not text then
+                    continue -- Expired countdowns must not replay after a backlog.
+                end
+                banner.Text = text
                 banner.Position = resting - UDim2.fromOffset(0, 14)
                 banner.TextTransparency = 1
                 stroke.Transparency = 1
@@ -80,7 +84,13 @@ function Controller.Init()
                 local holdUntil = os.clock() + 0.24 + message.Duration
                 repeat
                     task.wait(0.1)
-                until os.clock() >= holdUntil or Format.ShouldInterrupt(queue)
+                    text = Format.VisibleText(message, workspace:GetServerTimeNow())
+                    if text then
+                        banner.Text = text
+                    end
+                until not text
+                    or (message.CountdownEndsAt == nil and os.clock() >= holdUntil)
+                    or Format.ShouldInterrupt(queue)
                 local exit = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
                 TweenService
                     :Create(banner, exit, { Position = resting - UDim2.fromOffset(0, 10), TextTransparency = 1 })

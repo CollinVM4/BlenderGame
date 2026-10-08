@@ -28,13 +28,18 @@ these objects. This pass uses no physical button animation, so rapid input canno
 drift the button, base, attachment, label, or text size.
 
 No manually created ClickDetector, ProximityPrompt, or GUI is needed.
-CustomerService generates a Custom RejectPrompt on Button and registers it with
-the existing GameplayService/SessionInteractionController adapter. The custom
-view uses red, outlined Fredoka `REJECT`, fixed 24px lettering and a 40-stud
-MaxDistance. Native proximity input uses the existing 10-stud activation range;
-keyboard/gamepad/touch/click operate through the existing prompt architecture.
-Only the plot owner sees this interaction view and the server independently
-validates owner, membership revision, plot, and proximity.
+CustomerService binds a server-authoritative floor plate on Button. Keep Button
+and BlackBase anchored, and keep Button collidable so players can stand on it.
+Position the existing sibling Attachment where the shared lettering should appear.
+The generated Workspace billboard shows red, outlined Fredoka `STAND TO REJECT`
+and a 6px progress line, visible to everyone within 40 studs, including teammates.
+The plot owner must stand on Button continuously for 1.5 seconds. A downward
+support ray ignores their character and requires the red Button itself as solid
+ground; brushing against the side, standing nearby, jumping over it, or standing
+on BlackBase cannot activate it. Stepping off, dying, or losing gameplay eligibility
+cancels progress. One rejection occurs per stand; step off and back on to rearm.
+Keyboard, gamepad, click, and touch prompts are no longer used. The same queue,
+owner, and current membership transaction checks protect the rejection outcome.
 
 CustomerThiefPoint participates in TycoonService's existing marker tagging and
 unique reference resolution. It never resolves a marker from another plot.
@@ -203,8 +208,8 @@ All new behavior/physics/dialogue/audio tuning is in
 | Existing special selection chance | 0.55, unchanged |
 | Existing special cooldown | 300 seconds, unchanged |
 | Existing initial spawn delay | 2?5 seconds, unchanged |
-| Existing successful spawn cadence | 35?65 seconds, unchanged |
-| Existing full/missing-template retry | 5?10 seconds, unchanged |
+| Successful spawn cadence | 25-45 seconds |
+| Full/missing-template retry | 3-5 seconds |
 | Existing queue capacity | 3, unchanged |
 | Freeloader nominal outcome | -50 dollars |
 | Theft windup | 1.2 seconds |

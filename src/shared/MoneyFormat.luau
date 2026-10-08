@@ -1,6 +1,13 @@
 --!strict
 local MoneyFormat = {}
 
+-- Full whole-dollar cash HUD display; never abbreviates large balances.
+function MoneyFormat.Full(value: number): string
+    local digits = string.format("%.0f", math.floor(math.abs(value)))
+    local grouped = digits:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    return (if value < 0 then "-$" else "$") .. grouped
+end
+
 -- Announcement precision is independent of the established world-label rounding.
 function MoneyFormat.Announcement(value: number): string
     local magnitude = math.abs(value)

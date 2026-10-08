@@ -149,13 +149,6 @@ function Controller.Init()
         end
         local customerAction = prompt:GetAttribute("InteractionCustomerAction")
         if
-            prompt:GetAttribute("RejectButtonPrompt") == true
-            and prompt:GetAttribute("InteractionOwnerUserId") ~= Players.LocalPlayer.UserId
-        then
-            origin = nil
-            reason = "Reject button belongs to another player"
-        end
-        if
             customerAction
             and (
                 prompt:GetAttribute("PlotSessionId") == nil

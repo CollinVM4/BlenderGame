@@ -194,8 +194,23 @@ local function instance(class)
         clone.Attributes = table.clone(self.Attributes)
         clone.Size = self.Size
         clone.Color = self.Color
-        for _, property in { "MeshId", "TextureID", "TextureId", "MeshType", "Scale", "Offset", "Texture", "Face",
-            "Transparency", "Material", "CollisionGroup", "PivotOffset", "Transform" } do
+        for _, property in
+            {
+                "MeshId",
+                "TextureID",
+                "TextureId",
+                "MeshType",
+                "Scale",
+                "Offset",
+                "Texture",
+                "Face",
+                "Transparency",
+                "Material",
+                "CollisionGroup",
+                "PivotOffset",
+                "Transform",
+            }
+        do
             clone[property] = self[property]
         end
         clone.CFrame = self.CFrame
@@ -309,7 +324,14 @@ local function instance(class)
     end
     return object
 end
-local shared = { IngredientName = "IngredientName", IngredientItem = "IngredientItem", Constants = {}, Types = "Types", MoneyFormat = "MoneyFormat", Events = instance("Folder") }
+local shared = {
+    IngredientName = "IngredientName",
+    IngredientItem = "IngredientItem",
+    Constants = {},
+    Types = "Types",
+    MoneyFormat = "MoneyFormat",
+    Events = instance("Folder"),
+}
 for name in sources do
     shared.Constants[name] = name
 end
@@ -497,6 +519,7 @@ local cache = {
         Prompt = function(root, name)
             local prompt = instance("ProximityPrompt")
             prompt.Name = name
+            prompt.Enabled = true
             prompt.Parent = root
             return prompt
         end,

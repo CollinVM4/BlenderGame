@@ -1,5 +1,6 @@
 --!strict
 local RunService = game:GetService("RunService")
+local PlayerOnlyCollisionService = require(script.Parent.PlayerOnlyCollisionService)
 local CharacterPhysicsService = {}
 
 -- Enable before spawning in Studio; never prints in live servers.
@@ -74,12 +75,14 @@ function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model
             if accessory:GetAttribute("PreserveGameplayPhysics") == true then
                 return
             end
+            instance.CollisionGroup = PlayerOnlyCollisionService.PlayerGroup
             instance.Massless = true
             instance.CanCollide = false
             instance.CanTouch = false
             instance.CanQuery = false
             instance.RootPriority = -127
         elseif instance.Parent == character and instance.Name == "HumanoidRootPart" then
+            instance.CollisionGroup = PlayerOnlyCollisionService.PlayerGroup
             instance.Size = ROOT_SIZE
             instance.Massless = false
             instance.RootPriority = 127
@@ -88,6 +91,7 @@ function CharacterPhysicsService.ApplyCharacter(player: Player, character: Model
             instance.CanTouch = false
             instance.CanQuery = true
         elseif instance.Parent == character and BODY_NAMES[instance.Name] then
+            instance.CollisionGroup = PlayerOnlyCollisionService.PlayerGroup
             instance.Massless = true
             instance.RootPriority = 0
             instance.CustomPhysicalProperties = BODY_PHYSICS

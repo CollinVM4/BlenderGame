@@ -25,6 +25,13 @@
       }
     },
     
+    "StarterGui": {
+      "$className": "StarterGui",
+      "$ignoreUnknownInstances": true,
+      "Framewisp_CCVVMF": {
+        "$path": "Framewisp_CCWMF.rbxmx"
+      }
+    },
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "$properties": {

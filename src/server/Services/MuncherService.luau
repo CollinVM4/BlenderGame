@@ -4,7 +4,15 @@ local WorldUtil = require(script.Parent.WorldUtil)
 local MovementService = require(script.Parent.MovementService)
 local Service = {}
 local deps: any
-type State = { Progress: number, Goal: number, Multiplier: number, ExpiresAt: number }
+type State = {
+    Progress: number,
+    Multiplier: number,
+    ExpiresAt: number,
+    ActiveBuff: string?,
+    Purchased: boolean,
+    Revealed: boolean,
+    ReadyAt: number,
+}
 local states: { [string]: State } = {}
 local nextFeed: { [Player]: number } = {}
 local random = Random.new()
@@ -16,7 +24,7 @@ end
 function Service.Reset(player: Player)
     local id = deps.TycoonService.GetSessionId(player)
     if id then
-        states[id] = { Progress = 0, Goal = random:NextInteger(1, #Config.Goals), Multiplier = 1, ExpiresAt = 0 }
+        states[id] = { Progress = 0, Multiplier = 1, ExpiresAt = 0, Purchased = false, Revealed = false, ReadyAt = 0 }
     end
 end
 
@@ -28,23 +36,88 @@ function Service.RemovePlayer(player: Player)
     nextFeed[player] = nil
 end
 
-function Service.GetSnapshot(
-    player: Player
-): { Progress: number, Target: number, Multiplier: number, ExpiresAt: number }?
+local function activate(state: State)
+    local buff = Config.Buffs[random:NextInteger(1, #Config.Buffs)]
+    state.ActiveBuff = buff.Id
+    state.Multiplier = buff.CashMultiplier
+    state.ExpiresAt = workspace:GetServerTimeNow() + Config.BuffDuration
+    state.Progress = 0
+end
+
+local function expire(state: State)
+    if state.ActiveBuff and workspace:GetServerTimeNow() >= state.ExpiresAt then
+        state.ActiveBuff, state.Multiplier, state.ExpiresAt = nil, 1, 0
+        if state.Progress == Config.Required then
+            activate(state)
+        end
+    end
+end
+
+function Service.GetSnapshot(player: Player): any
     local id = deps.TycoonService.GetSessionId(player)
     local state = if id then states[id] else nil
     if not state then
         return nil
     end
-    if workspace:GetServerTimeNow() >= state.ExpiresAt then
-        state.Multiplier, state.ExpiresAt = 1, 0
-    end
+    expire(state)
     return {
         Progress = state.Progress,
-        Target = Config.Goals[state.Goal].Required,
+        Target = Config.Required,
         Multiplier = state.Multiplier,
         ExpiresAt = state.ExpiresAt,
+        ActiveBuff = state.ActiveBuff,
+        BuffExpiresAt = state.ExpiresAt,
+        Purchased = state.Purchased,
+        Active = state.Revealed,
+        ReadyAt = state.ReadyAt,
     }
+end
+
+-- Reuse the existing shared-cash cost/callback transaction adapter. Its name is
+-- historical; it debits the plot session ledger, including for teammates.
+function Service.TryPurchase(player: Player, pad: BasePart, context: any): (boolean, string?)
+    local plot = deps.TycoonService.GetPlot(player)
+    local model = plot and plot:FindFirstChild("Muncher")
+    local id = deps.TycoonService.GetSessionId(player)
+    local state = if id then states[id] else nil
+    if
+        not state
+        or not model
+        or model:FindFirstChild("PurchasePoint1") ~= pad
+        or not WorldUtil.Near(player, pad, Config.FeedDistance)
+    then
+        return false, "InvalidPurchase"
+    end
+    if state.Purchased then
+        return false, "AlreadyPurchased"
+    end
+    return deps.TycoonService.PurchasePersonalUpgrade(
+        player,
+        context or deps.TycoonService.GetRequestContext(player),
+        Config.PurchaseCost,
+        function()
+            state.Purchased = true
+            state.ReadyAt = workspace:GetServerTimeNow() + Config.RevealSeconds
+        end
+    )
+end
+
+-- Called only by the server assembly presenter after placing every part at rest.
+function Service.CompleteReveal(player: Player, model: Instance): boolean
+    local plot = deps.TycoonService.GetPlot(player)
+    local id = deps.TycoonService.GetSessionId(player)
+    local state = if id then states[id] else nil
+    if
+        not state
+        or not plot
+        or plot:FindFirstChild("Muncher") ~= model
+        or not state.Purchased
+        or workspace:GetServerTimeNow() < state.ReadyAt
+    then
+        return false
+    end
+    state.Revealed = true
+    return true
 end
 
 function Service.GetCashMultiplier(player: Player): number
@@ -61,12 +134,8 @@ end
 
 local function advance(state: State)
     state.Progress += 1
-    local goal = Config.Goals[state.Goal]
-    if state.Progress == goal.Required then
-        state.Multiplier = goal.CashMultiplier
-        state.ExpiresAt = workspace:GetServerTimeNow() + goal.Duration
-        state.Progress = 0
-        state.Goal = random:NextInteger(1, #Config.Goals)
+    if state.Progress == Config.Required and not state.ActiveBuff then
+        activate(state)
     end
 end
 
@@ -75,9 +144,14 @@ end
 function Service.TryFeed(player: Player, input: BasePart, object: Instance?, context: any): (boolean, string?, CFrame?)
     local id = deps.TycoonService.GetSessionId(player)
     local state = if id then states[id] else nil
+    if state then
+        expire(state)
+    end
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if
         not state
+        or not state.Revealed
+        or state.Progress >= Config.Required
         or inputFor(player) ~= input
         or not MovementService.CanPerformGameplayAction(player)
         or not humanoid

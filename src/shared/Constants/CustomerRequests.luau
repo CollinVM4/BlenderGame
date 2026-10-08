@@ -208,7 +208,6 @@ local requests: { Request } = {
         SimilarityKeys = { "Protein" },
         DisplayTexts = {
             ".. PROTEIN!",
-            "gains aren't gonna make themselves. PROTEIN!",
             "load it up with PROTEIN!",
             "I need something for the gains!",
         },
@@ -430,18 +429,6 @@ local requests: { Request } = {
         SimilarityKeys = { "Sweet", "Fruit" },
     },
     {
-        Id = "RedNoFruit",
-        RequestGroup = "Restriction",
-        SimilarityKeys = { "Red", "NoFruit" },
-        DisplayText = "something RED... but NO FRUIT!",
-        GoodResponse = "Delicious!",
-        BadResponse = "WHY IS THERE FRUIT?!",
-        RequiredTags = { "Red" },
-        ForbiddenTags = { "Fruit" },
-        BasePayout = 750,
-        MinJumpTier = 2,
-    },
-    {
         Id = "ColdNoFruit",
         RequestGroup = "Restriction",
         SimilarityKeys = { "Cold", "NoFruit" },
@@ -468,25 +455,6 @@ local requests: { Request } = {
 
         RequestGroup = "Restriction",
         SimilarityKeys = { "Weird", "Seafood" },
-    },
-    {
-        Id = "ProteinNoSeafood",
-        GoodResponse = "All gains, no fish. Beautiful.",
-        BadResponse = "I said NO SEAFOOD!",
-        DisplayTexts = {
-            "I need PROTEIN, but NO SEAFOOD!",
-            "PROTEIN please just keep the SEAFOOD out of it.",
-            "something PROTEIN packed... just nothing from the OCEAN.",
-        },
-
-        RequiredTags = { "Protein" },
-        ForbiddenTags = { "Seafood" },
-
-        BasePayout = 750,
-        MinJumpTier = 1,
-
-        RequestGroup = "Restriction",
-        SimilarityKeys = { "Protein", "Seafood" },
     },
     {
         Id = "SweetColdNoSpicy",
@@ -803,10 +771,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Caseoh",
-    DisplayText = "whats good cuh. I'm bout that PROTEIN action. SPICY too",
+    DisplayText = "whats good cuh, i'm bout that PROTEIN action, FAST FOOD & SPICY too",
     GoodResponse = "You're safe this time buster.",
     BadResponse = "Don't cross me again simpleton",
-    RequiredTags = { "Protein", "Spicy" },
+    RequiredTags = { "Protein", "Fast Food", "Spicy" },
     BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
@@ -823,10 +791,11 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Verity",
-    DisplayText = "LET ME TELL YOU SOMTHING..! I want it RED!",
-    GoodResponse = "Thanks, Daffodil!",
-    BadResponse = "This isnt what I asked for!",
-    RequiredTags = { "Red" },
+    DisplayText = "HEY ITS ME..! put in a player's head. AND MAKE IT YELLOW",
+    GoodResponse = "Oh how delightful!",
+    BadResponse = "You'll pay for that!",
+    RequiredTags = { "Yellow" },
+    RequiredIngredients = { "PLAYER_HEAD" },
     BasePayout = 1050,
     MinJumpTier = 0,
     NPCOnly = true,
@@ -959,8 +928,8 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.63,
-    SpecialWildcardChance = 0.30,
+    RegularWildcardChance = 0.54,
+    SpecialWildcardChance = 0,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {
         Id = "Wildcard",
@@ -992,7 +961,7 @@ local CustomerRequests = {
     NPCs = {
         thief = {
             Type = "Special",
-            DisplayName = "Robert Stealer",
+            DisplayName = "SUs Fella",
             RequestId = "Thief",
             Weight = BadCustomers.ThiefWeight,
             Rejectable = true,

@@ -5,6 +5,7 @@ local StudioServices = require(script.Services.StudioServices)
 StudioServices.BeginBootstrap()
 Players.RespawnTime = RespawnConfig.RespawnDelaySeconds
 local services: { [string]: any } = {
+    AdminService = require(script.Admin.AdminService),
     AnnouncementService = require(script.Services.AnnouncementService),
     DiscoveryService = require(script.Services.DiscoveryService),
     PlayerDataService = require(script.Services.PlayerDataService),
@@ -15,6 +16,8 @@ local services: { [string]: any } = {
     CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
+    InitialSpawnService = require(script.Services.InitialSpawnService),
+    TutorialService = require(script.Services.TutorialService),
     IngredientService = require(script.Services.IngredientService),
     PlayerHeadDropService = require(script.Services.PlayerHeadDropService),
     FarmService = require(script.Services.FarmService),
@@ -32,6 +35,7 @@ local services: { [string]: any } = {
 
 require(script.Services.FilmingUtil).Init()
 require(script.Services.GameplaySfxService).Init()
+require(script.Services.PlayerOnlyCollisionService).Init()
 
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
@@ -41,20 +45,27 @@ services.DiscoveryService.Init(services)
 services.MovementService.Init(services)
 services.SprintService.Init(services)
 services.PlayerDataService.BindRuntimeAuthority(services.TycoonService)
+services.InitialSpawnService.Init(services)
+services.TutorialService.Init(services)
 services.TycoonService.Init({
     SessionStarted = function(player)
         services.FarmService.StartSession(player)
         services.BlendService.Reset(player)
         services.MuncherService.Reset(player)
-        services.CustomerService.ActivateForPlayer(player)
+        services.InventoryService.InitializeTutorialStash(player)
+        services.CustomerService.ActivateForPlayer(player, true)
+        services.TutorialService.MembershipChanged(player)
     end,
     MemberChanged = function(player)
+        services.InitialSpawnService.ClearReservation(player)
+        services.TutorialService.MembershipChanged(player)
         services.MovementService.RefreshPlayer(player)
         services.CombatService.RefreshPlayer(player)
         services.BlendService.BindPlayer(player)
         services.CustomerService.BindPlayer(player)
     end,
     MemberRemoved = function(player)
+        services.TutorialService.MembershipChanged(player)
         services.MovementService.RefreshPlayer(player)
         services.CombatService.RefreshPlayer(player)
         services.BlendService.RemovePlayer(player)
@@ -84,6 +95,7 @@ do
     services[name].Init(services)
 end
 services.HealthRegenService.Init()
+services.AdminService.Init(services)
 services.CustomerService.Init(services, services.GameService.CustomerServed, services.GameService.IsServing)
 
 -- Migrate existing named plot fixtures to tags without yielding for absent assets.
@@ -112,6 +124,7 @@ local function addPlayer(player: Player)
         return
     end
     initialized[player] = true
+    services.TutorialService.AddPlayer(player)
     services.PlayerDataService.AddPlayer(player)
     services.DiscoveryService.PlayerAdded(player)
     services.TycoonService.RefreshUpgradeAttributes(player)
@@ -119,6 +132,8 @@ local function addPlayer(player: Player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
     local function onCharacterAdded(character: Model)
+        services.InitialSpawnService.ApplyCharacter(player, character)
+        services.TutorialService.ApplyCharacter(player, character)
         services.PlayerHeadDropService.ApplyCharacter(player, character)
         services.CharacterPhysicsService.ApplyCharacter(player, character, services.RagdollService.PrepareCharacter)
         services.InventoryService.CleanupCharacter(player)
@@ -140,6 +155,8 @@ for _, player in Players:GetPlayers() do
 end
 require(script.Services.JackedNoobService).Init(services)
 Players.PlayerRemoving:Connect(function(player)
+    services.InitialSpawnService.RemovePlayer(player)
+    services.TutorialService.RemovePlayer(player)
     services.TycoonService.RemovePlayer(player, function()
         if characterConnections[player] then
             characterConnections[player]:Disconnect()

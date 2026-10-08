@@ -20,7 +20,7 @@ All three customers receive requests when queued and keep their owner-visible or
 
 ## Scheduling and lifecycle
 
-Economy config sets a maximum of 3, an initial delay of 2-5 seconds, normal arrivals 35-65 seconds apart, and full/failed-spawn retries every 5-10 seconds. A full queue retains a pending arrival through short retries. Serving does not spawn an instant replacement or reset the arrival timer.
+Economy config sets a maximum of 3, an initial delay of 2-5 seconds, normal arrivals 25-45 seconds apart, and full/failed-spawn retries every 3-5 seconds. The normal interval averages 35 seconds, down from 50 seconds, so customers arrive more steadily. A full queue retains a pending arrival through short retries. Serving does not spawn an instant replacement or reset the arrival timer. Tutorial arrivals retain their authored schedule; subsequent normal arrivals use this cadence.
 
 `ActivateForPlayer` is idempotent for the current owned plot. A delayed callback captures the queue session itself and revalidates both its identity and plot ownership. `DeactivateForPlayer` invalidates that session before removing waiting and departing NPCs. Plot release, removal from Workspace, reset, and player departure stop the flow. Explicit reactivation starts a new initial delay. Stale callbacks cannot populate a replacement session.
 

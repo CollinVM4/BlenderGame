@@ -1,3 +1,4 @@
+require(script.Controllers.TutorialGleamController).Init()
 -- Subscribe to committed claims before other controller initialization can yield.
 require(script.Controllers.StandIdentityController).Init()
 require(script.Controllers.GameplayAudioController).Init()
@@ -34,3 +35,5 @@ require(script.Controllers.StashExpansionController).Init()
 require(script.Controllers.RipenessPresentationController).Init()
 require(script.Controllers.ScrapbookController).Init()
 require(script.Controllers.RespawnPresentationController).Init()
+
+require(script.Controllers.MuncherPresentationController).Init()

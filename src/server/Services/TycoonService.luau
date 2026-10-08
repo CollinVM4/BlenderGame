@@ -565,6 +565,33 @@ function TycoonService.GetReference(player: Player, name: string): (BasePart?, s
     end
     return nil
 end
+-- Shared stable order for arrival routing and trusted automatic assignment.
+function TycoonService.GetOrderedPlots(): { Instance }
+    local candidates = CollectionService:GetTagged("PlayerPlot")
+    local folder = workspace:FindFirstChild("Plots")
+    if folder then
+        for _, plot in folder:GetChildren() do
+            if not table.find(candidates, plot) then
+                table.insert(candidates, plot)
+            end
+        end
+    end
+    table.sort(candidates, function(a, b)
+        local ao, bo = a:GetAttribute("SpawnOrder"), b:GetAttribute("SpawnOrder")
+        if type(ao) == "number" and type(bo) == "number" and ao ~= bo then
+            return ao < bo
+        elseif type(ao) == "number" and type(bo) ~= "number" then
+            return true
+        elseif type(bo) == "number" and type(ao) ~= "number" then
+            return false
+        end
+        return a:GetFullName() < b:GetFullName()
+    end)
+    return candidates
+end
+function TycoonService.IsPlotAvailable(plot: Instance): boolean
+    return plot:IsDescendantOf(workspace) and sessions[plot] == nil
+end
 -- Trusted compatibility API. Runtime arrivals never call this; claims select an exact plot.
 function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Instance?
     if TycoonService.GetPlot(player) then
@@ -576,33 +603,26 @@ function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Ins
             return nil
         end
     end
-    local candidates = CollectionService:GetTagged("PlayerPlot")
-    local folder = workspace:FindFirstChild("Plots")
-    if folder then
-        for _, plot in folder:GetChildren() do
-            if not table.find(candidates, plot) then
-                TycoonService.AutoTagLegacyPlot(plot)
-                table.insert(candidates, plot)
-            end
+    local candidates = TycoonService.GetOrderedPlots()
+    for _, plot in candidates do
+        if not CollectionService:HasTag(plot, "PlayerPlot") then
+            TycoonService.AutoTagLegacyPlot(plot)
         end
     end
-    table.sort(candidates, function(a, b)
-        return a.Name < b.Name
-    end)
     for _, plot in candidates do
         if plot:IsDescendantOf(workspace) and not sessions[plot] and (not requestedPlot or plot == requestedPlot) then
             plots[player] = plot
             local id = HttpService:GenerateGUID(false)
-            if type(plot:GetAttribute("PlotId")) ~= "string" then
-                plot:SetAttribute("PlotId", HttpService:GenerateGUID(false))
-            end
+            local authoredId = plot:GetAttribute("PlotId")
+            local plotId = if type(authoredId) == "string" then authoredId else HttpService:GenerateGUID(false)
+            plot:SetAttribute("PlotId", plotId)
             local upgrades: { [string]: number } = {}
             for upgrade in shared do
                 upgrades[upgrade] = 1
             end
             local session: Session = {
                 Plot = plot,
-                PlotId = plot:GetAttribute("PlotId") or plot.Name,
+                PlotId = plotId,
                 PlotSessionId = id,
                 Owner = player,
                 OwnerUserId = player.UserId,

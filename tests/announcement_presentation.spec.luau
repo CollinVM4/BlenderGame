@@ -48,3 +48,37 @@ check(
     "cleanup warning interrupts hold and bypasses backlog"
 )
 check(not format.ShouldInterrupt(queue) and queue[1] == acquired, "pending mystery notices retain order after warning")
+
+local countdown = format.Build({ Type = "IngredientCleanupCountdown", EndsAt = 105, Priority = 100 })
+setup(countdown ~= nil, "valid countdown deadline")
+for seconds = 5, 1, -1 do
+    local text = format.VisibleText(countdown, 105 - seconds)
+    check(
+        text
+            == '<font color="#FF6666">LOOSE INGREDIENTS</font> CLEAR IN <font color="#FF6666">'
+                .. tostring(seconds)
+                .. (if seconds == 1 then " SECOND" else " SECONDS")
+                .. "</font>!",
+        "countdown highlights ingredients and remaining time in red"
+    )
+end
+check(
+    format.VisibleText(countdown, 101.6) == format.CleanupCountdownText(4),
+    "delayed countdown catches up to server deadline"
+)
+check(
+    format.VisibleText(countdown, 105) == nil and format.VisibleText(countdown, 106) == nil,
+    "expired countdown disappears and cannot replay"
+)
+check(format.VisibleText(ordinary, 106) == ordinary.Text, "ordinary notices retain their text")
+format.Enqueue(queue, countdown)
+check(
+    format.ShouldInterrupt(queue) and table.remove(queue, 1) == countdown,
+    "final countdown bypasses backlog and interrupts ordinary hold"
+)
+for _, deadline in { "105", 0 / 0, math.huge, -math.huge } do
+    check(
+        format.Build({ Type = "IngredientCleanupCountdown", EndsAt = deadline }) == nil,
+        "invalid countdown deadline rejected"
+    )
+end

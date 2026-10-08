@@ -20,6 +20,8 @@ local stashes: { [Player]: { [number]: Types.StashSlot } } = {}
 local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
+local starterSessions: { [string]: boolean } = {}
+local thrownIngredients: { [Player]: { { Object: Instance, ObserveAfter: number, SessionId: string? } } } = {}
 local StashConfig = Economy.NormalStash
 local StashSlots = require(script.Parent.StashSlots)
 local StashValue = require(script.Parent.StashValue)
@@ -241,6 +243,16 @@ local function releaseHeld(
         local part = WorldUtil.Part(object)
         if part then
             part.AssemblyLinearVelocity = at.LookVector * 25 + Vector3.new(0, 18, 0)
+        end
+        if player:GetAttribute("TutorialActive") == true then
+            InventoryService.HasIngredientInFlight(player)
+            local pending = thrownIngredients[player] or {}
+            thrownIngredients[player] = pending
+            table.insert(pending, {
+                Object = object,
+                ObserveAfter = os.clock() + 0.25,
+                SessionId = deps.TycoonService.GetSessionId(player),
+            })
         end
         return object
     end
@@ -683,6 +695,86 @@ function InventoryService.GetHeldIngredientId(player: Player): string?
     local record = resolveActionItem(player)
     return if record and record.ItemType == "Ingredient" and not record.Releasing then record.Id else nil
 end
+function InventoryService.HasCarriedIngredient(player: Player): boolean
+    local stack: { HeldItem } = held[player] or {}
+    for _, record in stack do
+        if
+            record.ItemType == "Ingredient"
+            and not record.Releasing
+            and not record.Destroying
+            and record.Tool.Parent
+        then
+            return true
+        end
+    end
+    return false
+end
+-- Copies of owned cups, including stored cups, for server guidance reconciliation.
+function InventoryService.GetSmoothieInventory(player: Player): { any }
+    local result = {}
+    local stack: { HeldItem } = held[player] or {}
+    for _, record in stack do
+        if record.Smoothie and not record.Releasing and not record.Destroying and record.Tool.Parent then
+            table.insert(result, { Data = SmoothieItem.Copy(record.Smoothie) })
+        end
+    end
+    local plot = deps.TycoonService.GetPlot(player)
+    local owner = if plot then deps.TycoonService.GetOwner(plot) else nil
+    local stash: { [number]: Types.StashSlot } = (if owner then stashes[owner] else nil) or {}
+    for index, slot in stash do
+        if slot.Smoothie then
+            table.insert(result, { Data = SmoothieItem.Copy(slot.Smoothie), Slot = index })
+        end
+    end
+    return result
+end
+-- Guide-only query. In-flight throws never count as accepted blender ingredients.
+function InventoryService.HasIngredientInFlight(player: Player): boolean
+    local pending = thrownIngredients[player]
+    if not pending then
+        return false
+    end
+    for index = #pending, 1, -1 do
+        local entry = pending[index]
+        local part = WorldUtil.Part(entry.Object)
+        local settled = os.clock() >= entry.ObserveAfter and (not part or part.AssemblyLinearVelocity.Magnitude < 1)
+        if
+            entry.SessionId ~= deps.TycoonService.GetSessionId(player)
+            or settled
+            or not deps.IngredientService.GetRecord(entry.Object)
+        then
+            table.remove(pending, index)
+        end
+    end
+    return #pending > 0
+end
+-- Called only for a newly created authoritative plot session, never from a client.
+function InventoryService.InitializeTutorialStash(player: Player)
+    local id = deps.TycoonService.GetSessionId(player)
+    if not id or starterSessions[id] or deps.TycoonService.GetSessionOwner(id) ~= player then
+        return
+    end
+    local stash = stashes[player]
+    if not stash then
+        return
+    end
+    starterSessions[id] = true
+    for _, order in require(Shared.Constants.TutorialOrders) do
+        local slot = stash[order.Slot]
+        if not slot or slot.Count ~= 0 or #slot.Ingredients > 0 or slot.Smoothie then
+            continue
+        end
+        for _, ingredientId in order.Ingredients do
+            local unit = Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false))
+            Item.EnterStash(unit, workspace:GetServerTimeNow())
+            table.insert(slot.Ingredients, unit)
+        end
+        slot.ItemType, slot.Count, slot.Capacity =
+            "Ingredient", #slot.Ingredients, ingredientSlotCapacity(slot.Protected)
+        slot.IngredientId = slot.Ingredients[#slot.Ingredients].IngredientId
+    end
+    stashChanged:Fire(player)
+end
 -- Server-only consumption of the same selected/fallback carry record as throw.
 -- Remove the reservation before destroying its Tool so reentrant actions cannot
 -- consume it twice. Attributes and caller-provided ingredient IDs grant no rights.
@@ -723,6 +815,17 @@ function InventoryService.GetStashRaidState(owner: Player)
     }
 end
 function InventoryService.CleanupSession(sessionId: string)
+    starterSessions[sessionId] = nil
+    for player, pending in thrownIngredients do
+        for index = #pending, 1, -1 do
+            if pending[index].SessionId == sessionId then
+                table.remove(pending, index)
+            end
+        end
+        if #pending == 0 then
+            thrownIngredients[player] = nil
+        end
+    end
     raids[sessionId] = nil
     for player, intent in stashIntents do
         if intent.SessionId == sessionId then
@@ -1127,6 +1230,9 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
             }
         end
     end
+    if not smoothie and friendly(player, owner) and deps.TutorialService then
+        deps.TutorialService.Mark(player, "TookStashItem")
+    end
     stashChanged:Fire(owner)
     return true
 end
@@ -1192,6 +1298,7 @@ function InventoryService.InteractStash(player: Player, index: number, owner: Pl
     return success
 end
 function InventoryService.RemovePlayer(player: Player)
+    thrownIngredients[player] = nil
     stashIntents[player] = nil
     InventoryService.DropHeld(player)
     InventoryService.ClearHeld(player)

@@ -42,7 +42,7 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
     bar.Parent = gui
     local function round(object: GuiObject)
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0.5, 0)
+        corner.CornerRadius = UDim.new(1, 0)
         corner.Parent = object
     end
     round(bar)
@@ -85,6 +85,7 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
 
     local tweens: { [string]: Tween } = {}
     local revision = 0
+    local fillRevision = 0
     local alive = true
     local previousProgress: number? = nil
     local previousTarget: number? = nil
@@ -135,6 +136,7 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
             if not alive then
                 return
             end
+            gui.Enabled = snapshot ~= nil
             local progress = if snapshot then snapshot.Progress else nil
             local target = if snapshot then snapshot.Target else nil
             local changed = progress ~= previousProgress or target ~= previousTarget
@@ -148,16 +150,29 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
                 then math.clamp(snapshot.Progress / snapshot.Target, 0, 1)
                 else 0
             count.Text = if snapshot then string.format("%d / %d", snapshot.Progress, snapshot.Target) else "0 / —"
-            if changed then
+            if changed or completed then
+                fillRevision += 1
+                local currentFillRevision = fillRevision
                 cancel("Fill")
-                if snapshot and previousProgress ~= nil then
+                local function animate(amount: number, duration: number)
                     local tween = TweenService:Create(
                         fill,
-                        TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                        { Size = UDim2.fromScale(ratio, 1) }
+                        TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                        { Size = UDim2.fromScale(amount, 1) }
                     )
                     tweens.Fill = tween
                     tween:Play()
+                end
+                if completed then
+                    animate(1, 0.12)
+                    task.delay(0.18, function()
+                        if alive and fillRevision == currentFillRevision then
+                            cancel("Fill")
+                            animate(ratio, 0.2)
+                        end
+                    end)
+                elseif snapshot and previousProgress ~= nil then
+                    animate(ratio, 0.2)
                 else
                     fill.Size = UDim2.fromScale(ratio, 1)
                 end
@@ -168,6 +183,7 @@ function Presentation.Display(origin: BasePart | Attachment): (BillboardGui, (an
                 showTemporaryTitle(if completed then "FULL!" else "YUM!", if completed then 0.85 else 0.55)
             elseif not snapshot then
                 revision += 1
+                fillRevision += 1
                 cancel("Fill")
                 cancel("Count")
                 cancel("Bar")
