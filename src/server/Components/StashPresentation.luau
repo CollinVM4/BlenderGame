@@ -50,11 +50,9 @@ local function refreshIndicators(slot: BasePart, state: any)
         end
         return a.Order < b.Order
     end)
-    local protected = (slot:GetAttribute("StashLogicalSlotIndex") or slot:GetAttribute("SlotIndex") or 0)
-        <= Config.Protected
     local capacity = if state then state.Capacity else nil
     if type(capacity) ~= "number" or capacity ~= capacity then
-        capacity = if protected then 1 else Config.IngredientCapacity
+        capacity = Config.IngredientCapacity
     end
     local occupied = if state and state.ItemType == "Smoothie"
         then state.Count

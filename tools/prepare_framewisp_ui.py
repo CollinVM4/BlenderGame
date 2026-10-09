@@ -3,6 +3,7 @@
 Run after replacing Framewisp_CCWMF.rbxmx, before Rojo sync/build. Fail on an
 unknown generated wiring contract rather than installing competing handlers.
 """
+import argparse
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -26,9 +27,10 @@ def prepare(path: Path) -> None:
     source = source.replace(hook, "")
     if source.count("local gui = script.Parent\n") != 1 or source.count("local function wire(btn)\n") != 1:
         raise ValueError("Framewisp action wiring changed; review before applying menu policy")
-    module = (ROOT / "src/client/UI/FramewispMenus.luau").read_text(encoding="utf-8")
-    block = (BEGIN + "\nlocal blenderMenus = (function()\n" + module
-             + "\nend)().Attach(gui, game:GetService(\"Players\").LocalPlayer)\n" + END + "\n")
+    block = (BEGIN + '\nlocal player = game:GetService("Players").LocalPlayer\n'
+             + 'local client = player:WaitForChild("PlayerScripts"):WaitForChild("Client")\n'
+             + 'local menus = require(client:WaitForChild("UI"):WaitForChild("FramewispMenus"))\n'
+             + 'local blenderMenus = menus.Attach(gui, player)\n' + END + '\n')
     source = source.replace("local gui = script.Parent\n", "local gui = script.Parent\n" + block)
     source = source.replace("local function wire(btn)\n", "local function wire(btn)\n" + hook)
     # CDATA keeps generated Luau intact; only this LocalScript source changes.
@@ -54,12 +56,12 @@ def prepare(path: Path) -> None:
         name = item.findtext("./Properties/string[@name='Name']", "")
         parent = parents.get(item)
         parent_name = parent.findtext("./Properties/string[@name='Name']", "") if parent is not None else ""
-        if (item.attrib["class"] == "Frame" and name.removesuffix("_panel") in
-                ("Settings", "Upgrades", "Shop", "Index") and parent_name in
-                ("Be a Blender! Desktop", "Be a Blender! DesktopContent")):
+        if (item.attrib["class"] in ("Frame", "CanvasGroup") and name.removesuffix("_panel") in
+                ("Settings", "Upgrades", "Shop", "Index", "Cosmetics") and parent_name in
+                ("Be a Blender! Desktop", "Be a Blender! DesktopContent", "DesktopContent")):
             panel_refs.add(item.attrib["referent"])
     for ref in panel_refs:
-        pattern = r'(<Item class="Frame" referent="' + re.escape(ref) + r'">\s*<Properties>)(.*?)(</Properties>)'
+        pattern = r'(<Item class="(?:Frame|CanvasGroup)" referent="' + re.escape(ref) + r'">\s*<Properties>)(.*?)(</Properties>)'
         text, count = re.subn(pattern, lambda m: m[1] + m[2].replace(
             '<bool name="Visible">true</bool>', '<bool name="Visible">false</bool>') + m[3], text, flags=re.S)
         if count != 1:
@@ -69,5 +71,7 @@ def prepare(path: Path) -> None:
 
 
 if __name__ == "__main__":
-    prepare(ROOT / "Framewisp_CCWMF.rbxmx")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("path", nargs="?", type=Path, default=ROOT / "Framewisp_CCWMF.rbxmx")
+    prepare(parser.parse_args().path)
 

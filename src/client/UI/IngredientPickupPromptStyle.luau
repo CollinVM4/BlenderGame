@@ -19,6 +19,11 @@ local Style = {
     InputSpacing = 6,
     BillboardSize = Vector2.new(320, 142),
     PromptStudsOffset = Vector3.new(0, 0.35, 0),
+    MobileTouchSize = 80,
+    MobileCanvasHeight = 184,
+    MobileLowerFraction = 0.30,
+    MobileMaxLowerStuds = 2.5,
+    MobileGroundClearance = 0.15,
     -- Camera-distance cull only; Roblox still owns prompt activation range.
     MaxDistance = math.huge,
     HideMysteryNames = true,

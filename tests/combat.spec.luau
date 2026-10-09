@@ -310,7 +310,7 @@ check(
 )
 check(not blend.Dispense(victim), "stunned victim cannot dispense")
 check(
-    inventory.ThrowHeld(victim) == nil and not inventory.InteractStash(victim, 3),
+    inventory.ThrowHeld(victim) == nil and not inventory.InteractStash(victim, 3, victim, nil, "STORE"),
     "stunned victim cannot throw or stash"
 )
 check(not blend.AddProgress(victim, references[victim].TurbineWheel, 1), "stunned victim cannot operate blender")

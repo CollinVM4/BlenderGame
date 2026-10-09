@@ -44,9 +44,14 @@ function Controller.Init()
                 return
             end
             local cash = numberAttribute("playerCash")
-            currentView.Cash.Text = if cash then MoneyFormat.Full(cash) else "$\u{2014}"
+            if currentView.Cash then
+                currentView.Cash.Text = if cash then MoneyFormat.Full(cash) else "$\u{2014}"
+            end
             for _, track in Display.Tracks do
                 local row = currentView.Rows[track.Id]
+                if not row then
+                    continue
+                end
                 local state = rowState(track)
                 local isMax = serverMax[track.Id] or (state ~= nil and state.Max)
                 local enabled = remote ~= nil
@@ -54,6 +59,17 @@ function Controller.Init()
                     and state ~= nil
                     and not isMax
                     and feedback[track.Id] ~= "PURCHASED!"
+                local affordable = cash ~= nil and state ~= nil and state.Price ~= nil and cash >= state.Price
+                -- Keep authored colors, backgrounds, typography and FX. Dim only
+                -- price/BUY text, retaining server rejection feedback on activation.
+                row.Price.TextTransparency = if state
+                        and not isMax
+                        and not affordable
+                    then math.max(row.PriceTransparency, 0.4)
+                    else row.PriceTransparency
+                row.BuyLabel.TextTransparency = if enabled and not affordable
+                    then math.max(row.BuyTransparency, 0.4)
+                    else row.BuyTransparency
                 row.Title.Text = track.Name
                 row.Current.Text = if state then state.Current else "LOADING..."
                 row.Next.Text = if isMax then "MAX" elseif state then state.Next else "-"

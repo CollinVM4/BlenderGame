@@ -54,6 +54,27 @@ do
             and presentation.Response({ GoodResponse = "good" }, "D") == nil,
         "missing response uses default behavior"
     )
+    local originalMath = env.math
+    env.math = table.clone(math)
+    for _, index in { 1, 2, 3 } do
+        env.math.random = function()
+            return index
+        end
+        local responses = { "Delicious!", "Great choice!", "What a surprise!" }
+        check(
+            presentation.Response({ GoodResponse = "fallback", GoodResponses = responses }, "A") == responses[index],
+            "success response pool can select each authored line"
+        )
+    end
+    env.math = originalMath
+    check(
+        presentation.Response({ GoodResponse = "fallback", GoodResponses = {} }, "B") == "fallback",
+        "empty success response pool preserves legacy fallback"
+    )
+    check(
+        presentation.Response({ GoodResponses = { "Delicious!" }, BadResponse = "bad" }, "D") == "bad",
+        "success response pool does not change failure dialogue"
+    )
     local model = instance("Model")
     model.Name = "AuthoredModel"
     local humanoid = instance("Humanoid")

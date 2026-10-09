@@ -25,18 +25,13 @@ local thrownIngredients: { [Player]: { { Object: Instance, ObserveAfter: number,
 local StashConfig = Economy.NormalStash
 local StashSlots = require(script.Parent.StashSlots)
 local StashValue = require(script.Parent.StashValue)
-local function ingredientSlotCapacity(protected: boolean): number
-    return if protected then 1 else StashConfig.IngredientCapacity
+local function ingredientSlotCapacity(): number
+    return StashConfig.IngredientCapacity
 end
 
-local STASH_BURST_TIMEOUT = 0.6
 local raids: { [string]: { RaidEndsAt: number, ProtectionEndsAt: number } } = {}
-type StashIntent = {
-    Direction: "STORE" | "TAKE",
-    LastInteraction: number,
-    SessionId: string,
-}
-local stashIntents: { [Player]: StashIntent } = {}
+local stashBusy: { [Player]: boolean } = {}
+local stashRequests: { [Player]: { Id: number, NextAt: number } } = {}
 type HeldItem = {
     Item: Types.IngredientItem?,
     AnnouncementOwnership: Types.AnnouncementOwnership?,
@@ -640,6 +635,13 @@ end
 local ripenessConnection: RBXScriptConnection? = nil
 function InventoryService.Init(services)
     deps = services
+    local events = Shared.Events
+    if events and not events:FindFirstChild("StashAction") then
+        local remote = Instance.new("RemoteFunction")
+        remote.Name = "StashAction"
+        remote.OnServerInvoke = InventoryService.RequestStash
+        remote.Parent = events
+    end
     if ripenessConnection then
         ripenessConnection:Disconnect()
     end
@@ -668,7 +670,6 @@ function InventoryService.Init(services)
     end)
 end
 function InventoryService.AddPlayer(player: Player)
-    stashIntents[player] = nil
     player:SetAttribute("RipenessTutorialShown", false)
     carried[player] = {}
     syncHeld(player)
@@ -678,7 +679,7 @@ function InventoryService.AddPlayer(player: Player)
             SlotIndex = index,
             Ingredients = {},
             Count = 0,
-            Capacity = ingredientSlotCapacity(index <= StashConfig.Protected),
+            Capacity = ingredientSlotCapacity(),
             Protected = index <= StashConfig.Protected,
         }
     end
@@ -769,8 +770,7 @@ function InventoryService.InitializeTutorialStash(player: Player)
             Item.EnterStash(unit, workspace:GetServerTimeNow())
             table.insert(slot.Ingredients, unit)
         end
-        slot.ItemType, slot.Count, slot.Capacity =
-            "Ingredient", #slot.Ingredients, ingredientSlotCapacity(slot.Protected)
+        slot.ItemType, slot.Count, slot.Capacity = "Ingredient", #slot.Ingredients, ingredientSlotCapacity()
         slot.IngredientId = slot.Ingredients[#slot.Ingredients].IngredientId
     end
     stashChanged:Fire(player)
@@ -827,13 +827,6 @@ function InventoryService.CleanupSession(sessionId: string)
         end
     end
     raids[sessionId] = nil
-    for player, intent in stashIntents do
-        if intent.SessionId == sessionId then
-            stashIntents[player] = nil
-            player:SetAttribute("StashDirection", nil)
-            player:SetAttribute("StashDirectionExpiresAt", nil)
-        end
-    end
 end
 function InventoryService.GetSnapshot(player: Player)
     local stash = {}
@@ -1041,13 +1034,10 @@ end
 local function heldKey(record: HeldItem): string?
     return if record.Smoothie then record.Smoothie.BlendId else record.Id
 end
-local function slotKey(slot: Types.StashSlot): string?
-    return if slot.Smoothie then slot.Smoothie.BlendId else slot.IngredientId
-end
 local function clearSlot(slot: Types.StashSlot)
     slot.ItemType, slot.IngredientId, slot.Smoothie = nil, nil, nil
     slot.Ingredients = {}
-    slot.Count, slot.Capacity = 0, ingredientSlotCapacity(slot.Protected)
+    slot.Count, slot.Capacity = 0, ingredientSlotCapacity()
 end
 -- Server-only NPC theft. Caller holds the plot transaction and claims
 -- its one theft attempt before entering. Never transfers the unit to another inventory.
@@ -1136,7 +1126,7 @@ local function depositSelected(player: Player, itemType: string, key: string, in
         slot.Smoothie = SmoothieItem.Copy(record.Smoothie)
         slot.Count, slot.Capacity = 1, 1
     else
-        local capacity = ingredientSlotCapacity(slot.Protected)
+        local capacity = ingredientSlotCapacity()
         if slot.Count >= capacity or (slot.Count > 0 and slot.ItemType ~= "Ingredient") then
             return false
         end
@@ -1239,67 +1229,140 @@ end
 function InventoryService.Steal(player: Player, owner: Player, index: number): boolean
     return not friendly(player, owner) and InventoryService.Withdraw(player, index, owner)
 end
--- Prompt direction is server-owned and survives changes caused by each transfer.
--- Direction follows the player across slots/items; failed transfers preserve it
--- until the idle timeout after the last successful transfer.
-function InventoryService.InteractStash(player: Player, index: number, owner: Player?, fixture: Instance?): boolean
-    if not MovementService.CanPerformGameplayAction(player) then
-        return false
+-- Both directions use the existing item ledger and synchronous transfer paths.
+function InventoryService.InteractStash(
+    player: Player,
+    index: number,
+    owner: Player?,
+    fixture: Instance?,
+    action: any
+): (boolean, string?)
+    if action ~= "STORE" and action ~= "TAKE" then
+        return false, "INVALID ACTION!"
     end
-    local now = workspace:GetServerTimeNow()
     local part = if owner then getSlotPart(owner, index) else nil
-    local intent: StashIntent? = stashIntents[player]
-    local sessionId = deps.TycoonService.GetSessionId(player)
-    if intent and (now - intent.LastInteraction >= STASH_BURST_TIMEOUT or intent.SessionId ~= sessionId) then
-        intent = nil
-        stashIntents[player] = nil
-    end
-    if not owner or not part or not sessionId or (fixture and part ~= fixture and not part:IsDescendantOf(fixture)) then
-        return false
+    if
+        not owner
+        or not part
+        or not deps.TycoonService.GetSessionId(player)
+        or (fixture and part ~= fixture and not part:IsDescendantOf(fixture))
+        or not accessible(player, owner, index)
+    then
+        return false, "UNAVAILABLE!"
     end
     local slot = stashes[owner] and stashes[owner][index]
     if not slot then
-        return false
+        return false, "UNAVAILABLE!"
     end
-    if not friendly(player, owner) then
-        return InventoryService.Steal(player, owner, index)
+    if
+        (action == "STORE" and not friendly(player, owner))
+        or (action == "TAKE" and not InventoryService.CanWithdraw(player, owner, index))
+    then
+        return false, "PROTECTED!"
     end
-    if not intent then
-        local selected = resolveActionItem(player)
-        local key = if selected then heldKey(selected) else slotKey(slot)
-        local itemType: ("Ingredient" | "Smoothie")? = if selected then selected.ItemType else slot.ItemType
-        if not key or not itemType then
-            return false
+    if stashBusy[player] or stashBusy[owner] then
+        return false, "PLEASE WAIT!"
+    end
+    local selected = resolveActionItem(player)
+    if action == "STORE" then
+        if not selected or not heldKey(selected) then
+            return false, "NOTHING TO STORE!"
         end
-        intent = {
-            Direction = if selected then "STORE" else "TAKE",
-            LastInteraction = now,
-            SessionId = sessionId,
-        }
-    end
-    assert(intent)
-    local success = false
-    if intent.Direction == "STORE" then
-        local selected = resolveActionItem(player)
-        local key = if selected then heldKey(selected) else nil
-        if selected and key then
-            success = depositSelected(player, selected.ItemType, key, index, owner)
+        if
+            slot.Count >= slot.Capacity
+            or (slot.Count > 0 and (selected.ItemType == "Smoothie" or slot.ItemType == "Smoothie"))
+        then
+            return false, "SLOT FULL!"
         end
     else
-        success = InventoryService.Withdraw(player, index, owner)
+        if slot.Count == 0 then
+            return false, "SLOT EMPTY!"
+        end
+        if InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player) then
+            return false, "CARRY FULL!"
+        end
     end
-    if success then
-        intent.LastInteraction = now
-        stashIntents[player] = intent
-        player:SetAttribute("StashDirection", intent.Direction)
-        player:SetAttribute("StashDirectionSessionId", sessionId)
-        player:SetAttribute("StashDirectionExpiresAt", now + STASH_BURST_TIMEOUT)
+    -- Lock actor and target sessions against reentrant transfers and membership changes.
+    local transactions = {}
+    if deps.TycoonService.BeginTransaction then
+        local actors: { Player } = if deps.TycoonService.GetSessionId(player)
+                == deps.TycoonService.GetSessionId(owner)
+            then { player }
+            else { player, owner }
+        for _, actor in actors do
+            local token = deps.TycoonService.BeginTransaction(actor, deps.TycoonService.GetRequestContext(actor))
+            if not token then
+                for _, previous in transactions do
+                    deps.TycoonService.EndTransaction(previous)
+                end
+                return false, "PLEASE WAIT!"
+            end
+            table.insert(transactions, token)
+        end
     end
-    return success
+    stashBusy[player], stashBusy[owner] = true, true
+    local ok, success = pcall(function()
+        if action == "STORE" then
+            return depositSelected(player, assert(selected).ItemType, assert(heldKey(assert(selected))), index, owner)
+        end
+        return InventoryService.Withdraw(player, index, owner)
+    end)
+    stashBusy[player], stashBusy[owner] = nil, nil
+    for _, token in transactions do
+        deps.TycoonService.EndTransaction(token)
+    end
+    if not ok then
+        warn("Stash transfer failed: " .. tostring(success))
+    end
+    return ok and success == true, if ok and success then nil else "UNAVAILABLE!"
+end
+
+-- Network requests identify only an authored prompt, explicit action and session revision.
+function InventoryService.RequestStash(player: Player, prompt: any, action: any, context: any): (boolean, string?)
+    if
+        type(context) ~= "table"
+        or not deps.TycoonService.ValidateActor(player, context)
+        or (action ~= "STORE" and action ~= "TAKE")
+        or typeof(prompt) ~= "Instance"
+        or not prompt:IsA("ProximityPrompt")
+        or not prompt.Enabled
+        or not prompt:IsDescendantOf(workspace)
+        or prompt.Name ~= "StashPrompt"
+        or prompt:GetAttribute("PlayerStashPrompt") ~= true
+    then
+        return false, "UNAVAILABLE!"
+    end
+    local part = prompt.Parent
+    local owner = if part then deps.TycoonService.GetOwner(part) else nil
+    local index = if part then part:GetAttribute("StashLogicalSlotIndex") else nil
+    if
+        not owner
+        or not part
+        or part:FindFirstChild("StashPrompt") ~= prompt
+        or type(index) ~= "number"
+        or getSlotPart(owner, index) ~= part
+        or context.TargetSessionId ~= deps.TycoonService.GetSessionId(owner)
+    then
+        return false, "UNAVAILABLE!"
+    end
+    local id = context.RequestId
+    if type(id) ~= "number" or id ~= id or id % 1 ~= 0 or id < 1 or id > 2 ^ 53 then
+        return false, "UNAVAILABLE!"
+    end
+    local previous = stashRequests[player]
+    if previous and id <= previous.Id then
+        return false, "PLEASE WAIT!"
+    end
+    local now = workspace:GetServerTimeNow()
+    stashRequests[player] = { Id = id, NextAt = now + 0.06 }
+    if previous and now < previous.NextAt then
+        return false, "PLEASE WAIT!"
+    end
+    return InventoryService.InteractStash(player, index, owner, part, action)
 end
 function InventoryService.RemovePlayer(player: Player)
     thrownIngredients[player] = nil
-    stashIntents[player] = nil
+    stashRequests[player] = nil
     InventoryService.DropHeld(player)
     InventoryService.ClearHeld(player)
     carried[player] = nil

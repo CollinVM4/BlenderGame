@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
+local PanelManager = require(script.Parent.Parent.UI.PanelManager)
 local Controller = {}
 local player = Players.LocalPlayer
 local portraits: { [number]: string } = {}
@@ -74,6 +75,16 @@ function Controller.Init()
     Instance.new("UICorner", panel)
     local managed: Instance? = nil
     local managedRevision: any = nil
+    local menu = PanelManager.Register("PlotManagement", {
+        Open = function()
+            panel.Visible = true
+        end,
+        Close = function()
+            panel.Visible = false
+            managed = nil
+        end,
+    })
+    gui.Destroying:Connect(menu.Destroy)
     local modeRows: { [string]: TextButton } = {}
     local selectionTweens: { Tween } = {}
     local selectedMode: any = nil
@@ -166,10 +177,9 @@ function Controller.Init()
             end)
         end
         button(panel, "CLOSE", 252, function()
-            managed = nil
-            panel.Visible = false
+            menu.Close()
         end)
-        panel.Visible = true
+        menu.Open()
     end
     local failureUntil = 0
     remote.OnClientEvent:Connect(function(action, result)
@@ -308,8 +318,7 @@ function Controller.Init()
         end
         if managed then
             if not live[managed] or managed:GetAttribute("OwnerUserId") ~= player.UserId then
-                managed = nil
-                panel.Visible = false
+                menu.Close()
             elseif managed:GetAttribute("PlotMembershipRevision") ~= managedRevision then
                 openManage(managed)
             elseif managed:GetAttribute("JoinMode") ~= selectedMode then

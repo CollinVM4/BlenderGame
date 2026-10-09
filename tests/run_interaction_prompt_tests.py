@@ -12,6 +12,8 @@ parser.add_argument("--customer-only", action="store_true", help="Shared prompt 
 parser.add_argument("--view-only", action="store_true", help="Shared prompt input and visual presentation without gameplay adapters")
 args = parser.parse_args()
 paths = {
+    "MobilePromptDebug": "src/shared/MobilePromptDebug.luau",
+    "MobilePromptTouchTargets": "src/client/UI/MobilePromptTouchTargets.luau",
     "DialogueTextStyle": "src/shared/Constants/DialogueTextStyle.luau",
     "WorldBillboardStyle": "src/client/UI/WorldBillboardStyle.luau",
     "Presentation": "src/client/UI/InteractionPromptPresentation.luau",

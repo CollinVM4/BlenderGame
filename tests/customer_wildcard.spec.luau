@@ -149,7 +149,10 @@ for _, sample in { { 0, true }, { 0.2999, true }, { 0.30, false }, { 0.9999, fal
         check(model:GetAttribute("Reaction") == "Disgust", "special forced reaction remains independent")
         flush()
         check(
-            model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text == wildcard.GoodResponse,
+            table.find(
+                wildcard.GoodResponses,
+                model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text
+            ) ~= nil,
             "neutral grade uses success dialogue"
         )
         check(not customer.Serve(owner, model) and data.GetCash(owner) == before + expected, "wildcard pays only once")

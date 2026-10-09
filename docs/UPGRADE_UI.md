@@ -1,3 +1,5 @@
+> Current export/recovery contract: [FRAMEWISP_REIMPORT.md](FRAMEWISP_REIMPORT.md). The historical audits below describe older exports. The current asset has four panels and CanvasGroup cards.
+
 # Framewisp upgrades and cash
 
 The inspected `Framewisp_CCWMF.rbxmx` export is mapped into StarterGui by
@@ -253,8 +255,8 @@ rather than leaving the adapter to guess which visible import owns the UI.
 
 ## Main menus closed by default (2026-10-07)
 
-`src/client/UI/FramewispMenus.luau` supplies the focused menu policy, embedded
-inside the existing FramewispActions LocalScript by
+`src/client/UI/FramewispMenus.luau` supplies the focused menu policy, loaded
+through a hook in the existing FramewispActions LocalScript by
 `python tools/prepare_framewisp_ui.py`. Its existing `wire` function delegates
 main navigation and X buttons to that policy and returns before connecting the
 generated open/close handler. Buy buttons, upgrade bindings, cash subscriptions,
@@ -266,8 +268,8 @@ visible menus during rapid switching.
 Run the preparation command **after replacing the export and before Rojo sync or
 build**. It writes `Visible=false` into the existing Settings, Upgrades, Shop, and
 Index panel properties so clones are hidden before any LocalScript runs. It also
-embeds the current policy in FramewispActions, preserving unrelated generated
-source. The command is idempotent and fails if the expected generated wiring
+loads the canonical policy module from FramewispActions, preserving unrelated
+generated source. The command is idempotent and fails if the expected generated wiring
 contract changes. A raw new export that bypasses this step does not carry the
 startup guarantee. Figma artwork does not need edits.
 

@@ -18,23 +18,13 @@ function Stash.Init(services: any)
         local connections = {}
         for index, slot in slots do
             slot:SetAttribute("StashLogicalSlotIndex", index)
-            local prompt = WorldUtil.Prompt(slot, "StashPrompt", "STORE")
+            local prompt = WorldUtil.Prompt(slot, "StashPrompt", "STASH")
             prompt.Style = Enum.ProximityPromptStyle.Custom
-            prompt:SetAttribute("InteractionOrigin", "StashPromptOrigin")
             prompt:SetAttribute("PlayerStashPrompt", true)
             prompts[index] = prompt
-            table.insert(
-                connections,
-                prompt.Triggered:Connect(function(player)
-                    local owner = services.TycoonService.GetOwner(object)
-                    services.InventoryService.InteractStash(
-                        player,
-                        index,
-                        owner,
-                        if index > Config.Slots then expansion else object
-                    )
-                end)
-            )
+            prompt.KeyboardKeyCode = Enum.KeyCode.E
+            prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
+            prompt.Exclusivity = Enum.ProximityPromptExclusivity.OneGlobally
         end
         local function refresh()
             local owner = services.TycoonService.GetOwner(object)
@@ -61,7 +51,7 @@ function Stash.Init(services: any)
                 end
                 Presentation.Refresh(slot, state, services.IngredientService)
                 prompts[index].ObjectText = (if index <= Config.Protected then "Protected slot " else "Slot ") .. index
-                prompts[index].ActionText = if state and state.Count > 0 then "TAKE" else "STORE"
+                prompts[index].ActionText = "STASH"
             end
         end
         table.insert(

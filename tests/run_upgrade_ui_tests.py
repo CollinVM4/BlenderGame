@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "UIRegistry": "src/client/UI/UIRegistry.luau",
     "Upgrades": "src/shared/Constants/Upgrades.luau",
     "MoneyFormat": "src/shared/MoneyFormat.luau",
     "UpgradesGui": "src/client/UI/UpgradesGui.luau",

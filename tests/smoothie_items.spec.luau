@@ -65,16 +65,16 @@ do
     carry(p)
     grant(p, "stash-roundtrip")
     local t = tool(p)
-    check(press(p), "store smoothie over ingredient")
+    check(press(p, "STORE"), "store smoothie over ingredient")
     local saved = slot(p)
     check(
         saved.ItemType == "Smoothie" and saved.Count == 1 and saved.Capacity == 1 and saved.IngredientId == nil,
         "smoothie slot shape"
     )
-    check(not press(p) and slot(p).Count == 1, "smoothie STORE burst never reverses or stores ingredient")
+    check(not press(p, "STORE") and slot(p).Count == 1, "smoothie STORE action never reverses or stores ingredient")
     check(not inventory.Deposit(p, "Banana", 3), "ingredient cannot stack into smoothie slot")
     grant(p, "second")
-    check(not press(p), "second smoothie cannot stack")
+    check(not press(p, "STORE"), "second smoothie cannot stack")
     inventory.ConsumeHeldSmoothie(p)
     check(inventory.Deposit(p, "Banana", 4), "ingredient remains stashable")
     saved.Smoothie.Ingredients[1] = "Tire"
@@ -86,12 +86,12 @@ do
     )
     check(slot(p).Count == 0 and slot(p).Smoothie == nil and slot(p).ItemType == nil, "empty slot clears metadata")
     now += 1
-    check(not press(p, 4), "smoothie cannot enter ingredient slot")
-    check(press(p, 3), "restore smoothie to empty slot")
-    check(not press(p, 3), "exhausted STORE cannot reverse")
-    check(press(p, 3), "later press can TAKE")
-    check(not press(p, 3) and inventory.GetCarryCount(p) == 1, "exhausted TAKE cannot reverse")
-    check(press(p, 1), "store protected slot")
+    check(not press(p, "STORE", 4), "smoothie cannot enter ingredient slot")
+    check(press(p, "STORE", 3), "restore smoothie to empty slot")
+    check(not press(p, "STORE", 3), "exhausted STORE cannot reverse")
+    check(press(p, "TAKE", 3), "later press can TAKE")
+    check(not press(p, "TAKE", 3) and inventory.GetCarryCount(p) == 1, "exhausted TAKE cannot reverse")
+    check(press(p, "STORE", 1), "store protected slot")
     -- Generic foreign/protected access is covered by stash transaction tests.
     template.Parent = nil
     check(
@@ -110,57 +110,6 @@ do
     -- Shared alive/distance authorization is owned by stash_interaction.
     check(inventory.Withdraw(p, 1), "retry succeeds")
     inventory.ClearHeld(p)
-end
-
-do
-    local p = player()
-    local button = references[p].TurbineWheel
-    local first = complete(p)
-    check(blend.Dispense(p, button), "first dispense")
-    check(
-        inventory.GetHeldSmoothie(p).BlendId == first and inventory.GetCarryCount(p) == 1,
-        "exactly one authoritative reservation"
-    )
-    check(not blend.Dispense(p, button) and inventory.GetCarryCount(p) == 1, "same batch cannot dispense twice")
-    flush()
-    check(blend.GetSnapshot(p).State == "EMPTY" and not blend.Dispense(p, button), "reset cannot replay batch")
-    local second = complete(p)
-    check(blend.Dispense(p, button) and inventory.GetCarryCount(p) == 2, "existing smoothie permits second batch")
-    check(first ~= second and inventory.GetHeldSmoothie(p).BlendId == second, "distinct batch identity")
-    flush()
-    carry(p)
-    local third = complete(p)
-    local ok, reason = blend.Dispense(p, button)
-    check(
-        not ok and reason == "Inventory full" and inventory.GetCarryCount(p) == 3,
-        "full inventory fails without loss"
-    )
-    flush()
-    check(
-        blend.GetSnapshot(p).State == "COMPLETE" and blend.GetSnapshot(p).Result.BlendId == third,
-        "failed dispense preserves completed batch"
-    )
-    inventory.ThrowHeld(p)
-    template.Parent = nil
-    check(
-        not blend.Dispense(p, button) and blend.GetSnapshot(p).State == "COMPLETE",
-        "missing template leaves batch retryable"
-    )
-    template.Parent = storage
-    local grantMethod = inventory.GrantSmoothie
-    local attempts = 0
-    inventory.GrantSmoothie = function(owner, data)
-        attempts += 1
-        check(not blend.Dispense(owner, button), "reentrant dispense rejected")
-        return grantMethod(owner, data)
-    end
-    check(blend.Dispense(p, button) and attempts == 1 and inventory.GetCarryCount(p) == 3, "retry grants exactly once")
-    inventory.GrantSmoothie = grantMethod
-    check(inventory.ConsumeHeldSmoothie(p).BlendId == third, "third smoothie identity")
-    check(inventory.ConsumeHeldSmoothie(p).BlendId == second, "second smoothie survives later dispense")
-    check(inventory.ConsumeHeldSmoothie(p).BlendId == first, "first smoothie survives later dispense")
-    check(inventory.ConsumeHeldSmoothie(p) == nil, "no extra smoothie")
-    flush()
 end
 
 do

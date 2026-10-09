@@ -10,6 +10,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "PanelManager": "src/client/UI/PanelManager.luau",
+    "BadCustomers": "src/shared/Constants/BadCustomers.luau",
     "Ingredients": "src/shared/Constants/Ingredients.luau",
     "CustomerRequests": "src/shared/Constants/CustomerRequests.luau",
     "DiscoveryCatalog": "src/shared/Constants/DiscoveryCatalog.luau",

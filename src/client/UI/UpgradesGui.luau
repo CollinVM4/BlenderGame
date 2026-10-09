@@ -1,6 +1,7 @@
 --!strict
 -- Presentation adapter for the inspected Framewisp export. Never creates UI or
 -- changes generated action/FX/layout behavior.
+local Registry = require(script.Parent.UIRegistry)
 local Gui = {}
 export type Row = {
     Current: TextLabel,
@@ -9,8 +10,17 @@ export type Row = {
     Purchase: GuiButton,
     BuyLabel: TextLabel,
     Title: TextLabel,
+    PriceTransparency: number,
+    BuyTransparency: number,
 }
-export type View = { Root: ScreenGui, Cash: TextLabel, Rows: { [string]: Row } }
+export type View = { Root: ScreenGui, Cash: TextLabel?, Rows: { [string]: Row } }
+local transparency: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+local function originalTransparency(label: TextLabel): number
+    if transparency[label] == nil then
+        transparency[label] = label.TextTransparency
+    end
+    return transparency[label]
+end
 local cards: { [string]: string } = {
     Jump = "JumpCard",
     Bat = "BatCard",
@@ -20,73 +30,29 @@ local cards: { [string]: string } = {
 }
 
 local function child(parent: Instance?, name: string, class: string): Instance?
-    local found: Instance? = nil
-    if parent then
-        for _, candidate in parent:GetChildren() do
-            if candidate.Name == name and candidate:IsA(class) then
-                if found then
-                    return nil -- An ambiguous named contract must not pick a stale copy.
-                end
-                found = candidate
-            end
-        end
-    end
-    return found
+    return Registry.Child(parent, name, { name }, class)
 end
-
--- Framewisp exports may retain tags or translate them to properties. These are
--- explicit named contracts, not generated object IDs or recursive leaf searches.
 local function importedChild(parent: Instance?, tagged: string, exported: string, class: string): Instance?
-    local taggedChild = child(parent, tagged, class)
-    local exportedChild = child(parent, exported, class)
-    if taggedChild and exportedChild then
-        return nil
-    end
-    return taggedChild or exportedChild
+    return Registry.Child(parent, exported, { tagged, exported }, class)
 end
-
-local function desktops(playerGui: PlayerGui): { Instance }
-    local result: { Instance } = {}
-    for _, instance in playerGui:GetDescendants() do
-        if instance.Name == "Be a Blender! Desktop" and (instance:IsA("Frame") or instance:IsA("ScreenGui")) then
-            table.insert(result, instance)
-        end
-    end
-    return result
-end
-
-local function activeRoot(desktop: Instance, playerGui: PlayerGui): ScreenGui?
-    local ancestor: Instance? = desktop
-    local root: ScreenGui? = nil
-    while ancestor and ancestor ~= playerGui do
-        if ancestor:IsA("ScreenGui") then
-            if not ancestor.Enabled then
-                return nil
-            end
-            root = ancestor
-        elseif ancestor:IsA("GuiObject") and not ancestor.Visible then
-            return nil
-        end
-        ancestor = ancestor.Parent
-    end
-    return if ancestor == playerGui then root else nil
-end
+local desktops = Registry.Desktops
+local activeRoot = Registry.ActiveRoot
 
 local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
-    local content = child(desktop, "Be a Blender! DesktopContent", "CanvasGroup") or desktop
-    local panel = importedChild(content, "Upgrades_panel", "Upgrades", "Frame")
+    local content = Registry.Content(desktop)
+    local panel = Registry.Child(content, "Panel:Upgrades", { "Upgrades_panel", "Upgrades" }, "GuiObject")
     local scroll = importedChild(panel, "UpgradeScroll_scroll", "UpgradeScroll", "ScrollingFrame")
-    local list = importedChild(scroll, "UpgradeList_list", "UpgradeList", "Frame")
-    local top = child(content, "TOP", "Frame")
-    local cashDisplay = child(top, "CashDisplay", "Frame")
-    local cash = child(cashDisplay, "{Coins}", "TextLabel")
-    if not root or not list or not cash then
+    local list = importedChild(scroll, "UpgradeList_list", "UpgradeList", "GuiObject")
+    local top = child(content, "TOP", "GuiObject")
+    local cashDisplay = child(top, "CashDisplay", "GuiObject")
+    local cash = Registry.Child(cashDisplay, "Cash", { "{Coins}", "Cash" }, "TextLabel")
+    if not content then
         return nil
     end
     local rows: { [string]: Row } = {}
     for id, name in cards do
-        local card = child(list, name, "Frame")
-        local level = child(card, "LevelContainer", "Frame")
+        local card = Registry.Child(list, "Upgrade:" .. id, { name }, "GuiObject")
+        local level = child(card, "LevelContainer", "GuiObject")
         local current = child(level, "CurrentValue", "TextLabel")
         local nextValue = child(level, "NextValue", "TextLabel")
         local price = child(card, "PurchasePrice", "TextLabel")
@@ -94,7 +60,7 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
         local label = child(purchase, "BuyLabel", "TextLabel")
         local title = child(card, "UpgradeTitle", "TextLabel")
         if not current or not nextValue or not price or not purchase or not label or not title then
-            return nil
+            continue
         end
         rows[id] = {
             Current = current :: TextLabel,
@@ -103,9 +69,11 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
             Purchase = purchase :: GuiButton,
             BuyLabel = label :: TextLabel,
             Title = title :: TextLabel,
+            PriceTransparency = originalTransparency(price :: TextLabel),
+            BuyTransparency = originalTransparency(label :: TextLabel),
         }
     end
-    return { Root = root :: ScreenGui, Cash = cash :: TextLabel, Rows = rows }
+    return { Root = root :: ScreenGui, Cash = cash :: TextLabel?, Rows = rows }
 end
 
 function Gui.Resolve(playerGui: PlayerGui): View?
@@ -131,6 +99,7 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
     local rootConnections: { RBXScriptConnection } = {}
     local stopped, queued = false, false
     local ambiguous = false
+    local lastIssue = ""
     local schedule: () -> ()
     local function clear()
         for _, connection in connections do
@@ -147,6 +116,9 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
         end
         for id, row in view.Rows do
             local nextRow = nextView.Rows[id]
+            if not nextRow then
+                return false
+            end
             if
                 row.Current ~= nextRow.Current
                 or row.Next ~= nextRow.Next
@@ -155,6 +127,11 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
                 or row.BuyLabel ~= nextRow.BuyLabel
                 or row.Title ~= nextRow.Title
             then
+                return false
+            end
+        end
+        for id in nextView.Rows do
+            if not view.Rows[id] then
                 return false
             end
         end
@@ -194,6 +171,24 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
         end
         ambiguous = active > 1
         local nextView = Gui.Resolve(playerGui)
+        local issues: { string } = {}
+        if nextView then
+            if not nextView.Cash then
+                table.insert(issues, "TOP.CashDisplay.Cash/{Coins}")
+            end
+            for _, id in { "Jump", "Bat", "MovementSpeed", "CarryCapacity", "SprintStamina" } do
+                if not nextView.Rows[id] then
+                    table.insert(issues, cards[id] .. " (card or required control)")
+                end
+            end
+        elseif active == 1 then
+            table.insert(issues, "DesktopContent (missing, wrong class or ambiguous)")
+        end
+        local issue = table.concat(issues, ", ")
+        if issue ~= "" and issue ~= lastIssue then
+            warn("UpgradesGui: missing, wrong-class or ambiguous binding in active desktop: " .. issue)
+        end
+        lastIssue = issue
         if same(nextView) then
             return
         end
@@ -227,7 +222,9 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
             schedule()
             return
         end
-        local affected = instance == current.Root or instance == current.Cash or current.Cash:IsDescendantOf(instance)
+        local affected = instance == current.Root
+            or instance == current.Cash
+            or (current.Cash ~= nil and current.Cash:IsDescendantOf(instance))
         for _, row in current.Rows do
             local bindings: { Instance } = { row.Current, row.Next, row.Price, row.Purchase, row.BuyLabel, row.Title }
             for _, bound in bindings do

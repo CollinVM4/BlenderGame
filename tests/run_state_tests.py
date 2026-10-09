@@ -79,6 +79,7 @@ SUITES = {
     "stash-integration": ("integration", ("fixtures/smoothie.luau", "stash_integration.spec.luau")),
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
     "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
+    "smoothie-dispense": ("state", ("fixtures/smoothie.luau", "smoothie_dispense.spec.luau")),
     "customer-payout": ("state", ("customer_payout.spec.luau",)),
     "customer-payout-serve": ("integration", ("customer_payout_serve.spec.luau",)),
     "customer-result": ("presentation", ("customer_result.spec.luau",)),
@@ -140,7 +141,7 @@ focused = {
     "customer_presentation_only": ("customer-order-text", "customer-orders", "customer-placement", "customer-walk"),
     "customer_walk_only": ("customer-walk", "customer-routing"),
     "stash_only": ("stash", "stash-integration", "stash-presentation", "stash-capacity-indicators", "stash-prompts"),
-    "smoothie_only": ("smoothie-world", "smoothie", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
+    "smoothie_only": ("smoothie-world", "smoothie", "smoothie-dispense", "smoothie-roundtrip", "smoothie-survivors", "smoothie-geometry"),
 }
 selected = args.suite or next((names for flag, names in focused.items() if getattr(args, flag)), None)
 if selected is None:
@@ -176,6 +177,8 @@ sources["StashComponent"] = (ROOT / "src/server/Components/Stash.luau").read_tex
 sources["BlendVFX"] = (ROOT / "src/server/Components/BlendVFX.luau").read_text(encoding="utf-8")
 sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encoding="utf-8")
 sources["InteractionPromptPresentation"] = (ROOT / "src/client/UI/InteractionPromptPresentation.luau").read_text(encoding="utf-8")
+sources["MobilePromptDebug"] = (ROOT / "src/shared/MobilePromptDebug.luau").read_text(encoding="utf-8")
+sources["MobilePromptTouchTargets"] = (ROOT / "src/client/UI/MobilePromptTouchTargets.luau").read_text(encoding="utf-8")
 sources["WorldBillboardStyle"] = (ROOT / "src/client/UI/WorldBillboardStyle.luau").read_text(encoding="utf-8")
 sources["Types"] = (ROOT / "src/shared/Types.luau").read_text(encoding="utf-8")
 sources["BlenderInputComponent"] = (ROOT / "src/server/Components/BlenderInput.luau").read_text(encoding="utf-8")
@@ -191,6 +194,7 @@ sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputCont
 sources["SessionInteractionController"] = (ROOT / "src/client/Controllers/SessionInteractionController.luau").read_text(encoding="utf-8")
 sources["StandIdentityController"] = (ROOT / "src/client/Controllers/StandIdentityController.luau").read_text(encoding="utf-8")
 sources["StandNameEditor"] = (ROOT / "src/client/UI/StandNameEditor.luau").read_text(encoding="utf-8")
+sources["PanelManager"] = (ROOT / "src/client/UI/PanelManager.luau").read_text(encoding="utf-8")
 sources["PlotIdentityController"] = (ROOT / "src/client/Controllers/PlotIdentityController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (

@@ -1860,9 +1860,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     if record.TutorialIndex then
         record.TutorialFulfilled = success and evaluation.IsValid
     end
-    local response = if evaluation.IsWildcard
-        then record.Request.GoodResponse
-        else Presentation.Response(record.Request, grade :: Types.Grade)
+    local response = Presentation.Response(record.Request, if evaluation.IsWildcard then "A" else grade :: Types.Grade)
     local reaction = record.ForcedReaction
         or (
             if evaluation.IsWildcard

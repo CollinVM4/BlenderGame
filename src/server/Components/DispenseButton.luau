@@ -1,6 +1,7 @@
 --!strict
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local AudioService = require(script.Parent.Parent.Services.AudioService)
+local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
 local DispenseButton = {}
 function DispenseButton.Init(services: any)
     WorldUtil.BindTag("DispenseButton", function(object)
@@ -15,9 +16,12 @@ function DispenseButton.Init(services: any)
         prompt.Style = Enum.ProximityPromptStyle.Custom
         local audio = AudioService.CreateBlendGroup(part)
         services.GameplayService.RegisterPlotInteraction(prompt, function(player, context)
+            Debug.Log(prompt, "TRIGGERED", "server dispenser")
             if not services.TycoonService.IsMember(player, part) then
+                Debug.Log(prompt, "REJECTED", "server: not a member of this blender")
                 return
             end
+            Debug.Log(prompt, "ACTION DISPATCHED", "server BlendService.Dispense")
             local success = services.BlendService.Dispense(player, part, context)
             if success then
                 audio.pourSound:Play()

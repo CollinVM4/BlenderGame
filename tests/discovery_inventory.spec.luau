@@ -10,7 +10,7 @@ check(inventory.CarryWorldItem(p, loose) and discovery.HasIngredient(p, "Strawbe
 local other = player(3)
 discovery.PlayerAdded(other)
 check(not discovery.HasIngredient(other, "Strawberry"), "nearby player does not discover")
-check(press(p, 3), "deposit acquired ingredient")
+check(press(p, "STORE", 3), "deposit acquired ingredient")
 check(
     inventory.Withdraw(other, 3, p) and discovery.HasIngredient(other, "Strawberry"),
     "stash theft discovers for acquirer"

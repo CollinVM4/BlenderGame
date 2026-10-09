@@ -35,7 +35,7 @@ setup(inventory.Deposit(p, "Banana", 1), "protected stash ingredient")
 carry(p, "Strawberry")
 setup(inventory.Deposit(p, "Strawberry", 3), "ordinary stash ingredient")
 grant(p, "stored-smoothie")
-setup(press(p, 2), "stash smoothie")
+setup(press(p, "STORE", 2), "stash smoothie")
 local input = references[p].BlenderInput
 local accepted = ingredients.Spawn("Milk", frame(), nil, true)
 input.Overlaps = { accepted }

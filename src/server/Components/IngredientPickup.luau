@@ -1,5 +1,6 @@
 --!strict
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
+local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
 local IngredientPickup = {}
 function IngredientPickup.Init(services: any)
     WorldUtil.BindTag("IngredientWorldItem", function(object)
@@ -15,6 +16,8 @@ function IngredientPickup.Init(services: any)
         prompt:SetAttribute("IngredientPickupPrompt", true)
         prompt.ObjectText = record.Id
         local connection = prompt.Triggered:Connect(function(player)
+            Debug.Log(prompt, "TRIGGERED", "server ingredient")
+            Debug.Log(prompt, "ACTION DISPATCHED", "server CarryWorldItem")
             services.InventoryService.CarryWorldItem(player, object)
         end)
         return function()

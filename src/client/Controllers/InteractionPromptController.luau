@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
 local Presentation = require(script.Parent.Parent.UI.InteractionPromptPresentation)
+local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
 local Controller = {}
 local started = false
 
@@ -177,12 +178,23 @@ function Controller.Init()
                     .. " | InteractionActionText="
                     .. tostring(action)
             )
+            local dispenser = origin.Name == "DispenserTextOrigin" and not customerAction
+            local touch = dispenser and entry.InputType == Enum.ProximityPromptInputType.Touch
             local cleanup, gui = Presentation.Create(prompt, origin, playerGui, entry.InputType, {
+                Height = if touch then 80 else nil,
+                TouchWidth = if touch then 220 else nil,
+                TouchHeight = if touch then 80 else nil,
+                TouchCenterY = if touch then 40 else nil,
                 CustomerAction = if typeof(customerAction) == "string" then customerAction else nil,
                 ActionText = if typeof(action) == "string" then action else nil,
                 KeyText = if typeof(key) == "string" then key else nil,
                 MaxDistance = if typeof(distance) == "number" and distance > 0 then distance else nil,
             })
+            if touch then
+                local text = gui:FindFirstChild("Action") :: TextLabel
+                text.Size = UDim2.new(1, 0, 0, 56)
+                text.Position = UDim2.fromOffset(0, 12)
+            end
             entry.Cleanup = cleanup
             log(prompt, "BillboardGui created=" .. gui:GetFullName() .. " | Adornee=" .. origin:GetFullName())
         end
@@ -193,6 +205,15 @@ function Controller.Init()
         end
     end)
     ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
+        if prompt:GetAttribute("PlayerStashPrompt") == true then
+            return
+        end
+        if
+            inputType == Enum.ProximityPromptInputType.Touch
+            and prompt:GetAttribute("InteractionOrigin") == "DispenserTextOrigin"
+        then
+            Debug.Log(prompt, "SHOWN", "client dispenser")
+        end
         shownCounts[prompt] = (shownCounts[prompt] or 0) + 1
         log(prompt, "PromptShown received by controller | InputType=" .. tostring(inputType))
         snapshot(prompt)

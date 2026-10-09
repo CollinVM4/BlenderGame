@@ -1,3 +1,5 @@
+-- Input contracts are independent of the separately tested touch layout.
+cache.MobileControlLayout = { Register = function() end }
 env.UDim2.new = function(xScale, xOffset, yScale, yOffset)
     return { X = { Scale = xScale, Offset = xOffset }, Y = { Scale = yScale, Offset = yOffset } }
 end
@@ -25,7 +27,7 @@ end
 function shared.Events:WaitForChild(name)
     return self:FindFirstChild(name)
 end
-local action, bindings, touchEnabled = nil, 0, false
+local action, mouseAction, bindings, touchEnabled = nil, nil, 0, false
 services.Players.LocalPlayer = player
 local textFocused = false
 services.UserInputService = {
@@ -35,10 +37,14 @@ services.UserInputService = {
 }
 services.ContextActionService = {
     BindAction = function(_, name, callback, createTouchButton)
-        setup(name == "ThrowHeld", "central action bound")
-        action = callback
+        if name == "ThrowHeld" then
+            action = callback
+            touchEnabled = createTouchButton
+        elseif name == "ThrowHeldMouse" then
+            mouseAction = callback
+            setup(not createTouchButton, "mouse action does not create mobile UI")
+        end
         bindings += 1
-        touchEnabled = createTouchButton
     end,
     SetTitle = function() end,
     SetPosition = function() end,
@@ -50,7 +56,7 @@ env.Enum.KeyCode = { ButtonR2 = "ButtonR2" }
 local controller = loadModule("CarryInputController")
 controller.Init()
 controller.Init()
-check(bindings == 1, "controller startup cannot duplicate throw action")
+check(bindings == 2, "controller startup cannot duplicate throw bindings")
 for _, id in { "Banana", "Ice", "Cherries" } do
     setup(inventory.CarryWorldItem(player, ingredients.Spawn(id, translate(), nil, true)), "input fixture pickup")
 end

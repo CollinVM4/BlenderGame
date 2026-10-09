@@ -51,7 +51,7 @@ for _, action in { "throw", "stash" } do
     if action == "throw" then
         setup(inventory.ThrowHeld(p, tools[1]:GetAttribute("CarryItemId")), "throw first duplicate")
     else
-        setup(inventory.InteractStash(p, 3, p), "stash first duplicate")
+        setup(inventory.InteractStash(p, 3, p, nil, "STORE"), "stash first duplicate")
         check(slot(p).IngredientId == "Apple" and slot(p).Count == 1, "stash receives one duplicate")
     end
     check(
@@ -86,7 +86,7 @@ for _, selected in { true, false } do
     if not selected then
         unequip(p)
     end
-    check(inventory.InteractStash(p, 3, p), "stash stores with selection or fallback")
+    check(inventory.InteractStash(p, 3, p, nil, "STORE"), "stash stores with selection or fallback")
     check(
         slot(p).IngredientId == (if selected then "Carrot" else "Cherries"),
         "stash uses same selection precedence as throw"

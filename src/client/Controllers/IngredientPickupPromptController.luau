@@ -5,6 +5,7 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
 local Definitions = require(game:GetService("ReplicatedStorage").Shared.Constants.Ingredients)
 local Presentation = require(script.Parent.Parent.UI.IngredientPickupPromptPresentation)
+local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
 local Controller = {}
 local started = false
 
@@ -61,6 +62,11 @@ function Controller.Init()
             return
         end
         local object = Controller.Resolve(prompt)
+        local owner = object and object:GetAttribute("OwnerUserId")
+        if typeof(owner) == "number" and owner ~= 0 and owner ~= Players.LocalPlayer.UserId then
+            clear(entry)
+            return
+        end
         local id = object and object:GetAttribute("IngredientId")
         local definition = if typeof(id) == "string" then Definitions[id] else nil
         if object and object:IsA("Model") and not object:FindFirstChildWhichIsA("BasePart", true) then
@@ -89,6 +95,9 @@ function Controller.Init()
         -- Track shown prompts only. No distance checks, pickup remotes, or scans.
         if prompt:GetAttribute("IngredientPickupPrompt") ~= true and prompt.Name ~= "CarryPrompt" then
             return
+        end
+        if inputType == Enum.ProximityPromptInputType.Touch then
+            Debug.Log(prompt, "SHOWN", "client ingredient")
         end
         local entry: Entry = { InputType = inputType, Connections = {} }
         visible[prompt] = entry

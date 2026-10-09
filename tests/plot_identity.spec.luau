@@ -145,6 +145,27 @@ friends.Activated:Fire()
 check(requests[#requests][3] == "FriendsOnly", "FRIENDS retains original wire value")
 private.Activated:Fire()
 check(requests[#requests][3] == "Closed", "PRIVATE retains original wire value")
+local otherVisible = false
+local other = loadModule("PanelManager").Register("Index", {
+    Open = function()
+        otherVisible = true
+    end,
+    Close = function()
+        otherVisible = false
+    end,
+})
+other.Open()
+check(otherVisible and not findText("Empty Slot"), "major menu opening closes plot management")
+tick()
+check(not findText("Empty Slot"), "management refresh does not resurrect the closed panel")
+check(findText("MANAGE PLOT"), "world management prompt remains available")
+findText("MANAGE PLOT").Activated:Fire({ UserInputType = "Touch" })
+check(not otherVisible and findText("Empty Slot"), "touch opens management exclusively")
+findText("CLOSE").Activated:Fire({ UserInputType = "Touch" })
+check(not findText("Empty Slot"), "management close still dismisses")
+findText("MANAGE PLOT").Activated:Fire()
+check(findText("Empty Slot"), "management can reopen after close")
+other.Destroy()
 local fetched = thumbnails
 tick()
 tick()

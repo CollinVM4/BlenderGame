@@ -325,6 +325,7 @@ local function instance(class)
     return object
 end
 local shared = {
+    MobilePromptDebug = "MobilePromptDebug",
     IngredientName = "IngredientName",
     IngredientItem = "IngredientItem",
     Constants = {},
@@ -338,7 +339,14 @@ end
 local studio = false
 local now = 100
 local storage = instance("Folder")
+local workspaceAttributes = {}
 local workspaceFake = {
+    GetAttribute = function(_, name)
+        return workspaceAttributes[name]
+    end,
+    SetAttribute = function(_, name, value)
+        workspaceAttributes[name] = value
+    end,
     GetServerTimeNow = function()
         return now
     end,
@@ -544,7 +552,7 @@ local parent = setmetatable({}, {
         return key
     end,
 })
-parent.Parent = { Services = parent }
+parent.Parent = { Services = parent, UI = parent }
 -- Specific-order suites disable wildcard randomness; its suite restores authored defaults.
 local authoredWildcardChances
 local function loadModule(name)

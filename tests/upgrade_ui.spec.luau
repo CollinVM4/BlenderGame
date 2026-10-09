@@ -25,7 +25,7 @@ local function signal()
     }
 end
 local function instance(class, name, parent)
-    local properties = { Enabled = true, Visible = true }
+    local properties = { Enabled = true, Visible = true, TextTransparency = 0 }
     local propertySignals = {}
     local object = {
         ClassName = class,
@@ -36,6 +36,7 @@ local function instance(class, name, parent)
         DescendantRemoving = signal(),
         Activated = signal(),
         TextWrites = 0,
+        attributes = {},
     }
     setmetatable(object, {
         __index = properties,
@@ -70,6 +71,9 @@ local function instance(class, name, parent)
                     }, self.ClassName)
                     ~= nil
             )
+    end
+    function object:GetAttribute(key)
+        return self.attributes[key]
     end
     function object:GetChildren()
         return table.clone(self.children)
@@ -214,7 +218,10 @@ local function load(name)
                 end,
             },
             script = {
-                Parent = { Parent = { UI = { UpgradeDisplay = "UpgradeDisplay", UpgradesGui = "UpgradesGui" } } },
+                Parent = {
+                    UIRegistry = "UIRegistry",
+                    Parent = { UI = { UpgradeDisplay = "UpgradeDisplay", UpgradesGui = "UpgradesGui" } },
+                },
             },
             require = load,
             Color3 = {
@@ -289,6 +296,13 @@ view = assert(gui.Resolve(playerGui), "actual exported hierarchy resolves")
 check(view.Cash.Text == "$425", "initial authoritative cash")
 set("playerCash", 800)
 check(view.Cash.Text == "$800", "cash replication")
+check(view.Rows.Jump.Price.TextTransparency == 0.4, "unaffordable price dims")
+set("playerCash", 10000)
+check(
+    view.Rows.Jump.Price.TextTransparency == 0 and view.Rows.Jump.BuyLabel.TextTransparency == 0,
+    "cash at price restores authored text opacity"
+)
+set("playerCash", 800)
 local function click(id)
     view.Rows[id].Purchase.Activated:Fire()
 end
@@ -324,11 +338,11 @@ for _, id in { "MovementSpeed", "SprintStamina", "Jump", "CarryCapacity", "Bat" 
     check(#sent == before + 1, "global pending guard")
     result(id, false, "InsufficientCash")
     check(
-        view.Rows[id].BuyLabel.Text == "NOT ENOUGH $" and view.Rows[id].Purchase.Interactable,
+        view.Rows[id].BuyLabel.Text == "NOT ENOUGH" and view.Rows[id].Purchase.Interactable,
         "insufficient cash feedback allows retry"
     )
     advance(1.49)
-    check(view.Rows[id].BuyLabel.Text == "NOT ENOUGH $", "cash failure lasts 1.5 seconds")
+    check(view.Rows[id].BuyLabel.Text == "NOT ENOUGH", "cash failure lasts 1.5 seconds")
     advance(0.01)
     check(view.Rows[id].BuyLabel.Text == "BUY", "cash failure expires")
 end
@@ -494,7 +508,13 @@ for _, timer in table.clone(timers) do
 end
 before = #sent
 oldButton.Activated:Fire()
-check(#sent == before and gui.Resolve(playerGui) == nil, "incomplete card cannot purchase")
+check(#sent == before and gui.Resolve(playerGui).Rows.Bat == nil, "incomplete card cannot purchase")
+set("playerCash", 125001)
+local partial = assert(gui.Resolve(playerGui))
+check(
+    partial.Cash.Text == "$125,001" and partial.Rows.Jump.Next.Text == "MAX",
+    "missing card preserves cash and other upgrade rendering"
+)
 local newLabel = instance("TextLabel", "BuyLabel", oldButton)
 playerGui.DescendantAdded:Fire(newLabel)
 for _, timer in table.clone(timers) do
@@ -676,3 +696,74 @@ check(
 advance(1.5)
 check(view.Rows.MovementSpeed.BuyLabel.Text == "BUY", "timeout feedback expires after 1.5 seconds")
 print(string.format("PASS: %d total upgrade UI assertions including purchase feedback timing.", count))
+
+-- Semantic identities support a renamed design without changing controller paths.
+advance(2)
+playerGui.DescendantRemoving:Fire(root)
+playerGui.children = {}
+root.Parent = nil
+root = import()
+local semanticDesktop = root:FindFirstChild("Be a Blender! Desktop")
+local content = semanticDesktop:FindFirstChild("Be a Blender! DesktopContent")
+semanticDesktop.attributes.BlenderUI = "Desktop"
+semanticDesktop.Name = "New Design"
+content.attributes.BlenderUI = "Content"
+content.Name = "Content V2"
+local semanticPanel = content:FindFirstChild("Upgrades")
+semanticPanel.attributes.BlenderUI = "Panel:Upgrades"
+semanticPanel.Name = "Upgrade Window"
+local scroll = semanticPanel:FindFirstChild("UpgradeScroll")
+scroll.attributes.BlenderUI = "UpgradeScroll"
+scroll.Name = "Viewport"
+local list = scroll:FindFirstChild("UpgradeList")
+list.attributes.BlenderUI = "UpgradeList"
+list.Name = "Rows"
+for _, track in display.Tracks do
+    local card = list:FindFirstChild(track.Id .. "Card")
+    card.attributes.BlenderUI = "Upgrade:" .. track.Id
+    card.Name = "Card " .. track.Id
+    card.ClassName = "Frame" -- Both prior Frames and current CanvasGroups work.
+    local level = card:FindFirstChild("LevelContainer")
+    for _, parent in { card, level, card:FindFirstChild("Buy") } do
+        for _, control in parent:GetChildren() do
+            control.attributes.BlenderUI = control.Name
+            control.Name = "Custom " .. control.Name
+        end
+    end
+end
+local cashContainer = content:FindFirstChild("TOP"):FindFirstChild("CashDisplay")
+local cashLabel = cashContainer:FindFirstChild("{Coins}")
+cashLabel.attributes.BlenderUI = "Cash"
+cashLabel.Name = "Balance"
+playerGui.DescendantAdded:Fire(root)
+flushDeferred()
+view = assert(gui.Resolve(playerGui))
+check(
+    view.Cash.Text == load("MoneyFormat").Full(attributes.playerCash) and view.Rows.Bat.Current.Text == "BIG BAT",
+    "semantic design restores latest state"
+)
+local requestCount = #sent
+click("MovementSpeed")
+check(#sent == requestCount + 1, "semantic purchase sends one existing request")
+result("MovementSpeed", false, "InsufficientCash")
+advance(1.5)
+-- Cash removal affects the HUD locally; upgrade actions continue to bind.
+playerGui.DescendantRemoving:Fire(cashLabel)
+cashContainer.children = {}
+cashLabel.Parent = nil
+flushDeferred()
+view = assert(gui.Resolve(playerGui))
+check(view.Cash == nil and view.Rows.Bat ~= nil, "missing cash does not disable upgrades")
+requestCount = #sent
+click("MovementSpeed")
+check(#sent == requestCount + 1, "missing cash control preserves server purchase path")
+result("MovementSpeed", false, "Busy")
+local newCash = instance("TextLabel", "Cash", cashContainer)
+playerGui.DescendantAdded:Fire(newCash)
+flushDeferred()
+view = assert(gui.Resolve(playerGui))
+check(
+    view.Cash.Text == load("MoneyFormat").Full(attributes.playerCash),
+    "replacement cash label restores balance without mutation"
+)
+print("PASS: independent cash/card recovery, affordability and semantic design bindings")

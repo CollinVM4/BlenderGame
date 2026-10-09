@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
+local MobileControlLayout = require(script.Parent.Parent.UI.MobileControlLayout)
 local Controller = {}
 local started = false
 
@@ -43,9 +44,19 @@ function Controller.Init()
         end
         return Enum.ContextActionResult.Sink
     end
-    ContextActionService:BindAction("ThrowHeld", throw, true, Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2)
+    -- The existing CAS Throw button and console trigger share this intentional path.
+    -- Do not bind touch-world/primary mouse input to the mobile button's action.
+    ContextActionService:BindAction("ThrowHeld", throw, true, Enum.KeyCode.ButtonR2)
+    ContextActionService:BindAction("ThrowHeldMouse", function(action, state)
+        if UserInputService.TouchEnabled then
+            -- Touch may also generate primary mouse input. UI, joystick and camera
+            -- gestures must never turn that synthesized input into a throw.
+            return Enum.ContextActionResult.Pass
+        end
+        return throw(action, state)
+    end, false, Enum.UserInputType.MouseButton1)
     ContextActionService:SetTitle("ThrowHeld", "Throw")
-    ContextActionService:SetPosition("ThrowHeld", UDim2.new(1, -85, 0, -60))
+    MobileControlLayout.Register("ThrowHeld")
 end
 
 return Controller

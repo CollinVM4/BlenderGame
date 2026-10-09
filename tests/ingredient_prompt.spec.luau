@@ -1,8 +1,3 @@
-env.Vector2 = {
-    new = function(x, y)
-        return { X = x, Y = y }
-    end,
-}
 env.UDim2.new = function(xs, xo, ys, yo)
     return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } }
 end
@@ -92,12 +87,18 @@ check(
 )
 check(label("Action").Text == "[F]", "actual keyboard key, no pickup action or income text")
 check(label("IngredientValue").Text == "$3K", "common pickup shows definition value")
-check(label("Rarity").RichText and string.find(label("Rarity").Text, "•", 1, true) ~= nil, "rarity and freshness share one line")
+check(
+    label("Rarity").RichText and string.find(label("Rarity").Text, "•", 1, true) ~= nil,
+    "rarity and freshness share one line"
+)
 item:SetAttribute("IsRipe", true)
 item:SetAttribute("EffectiveIngredientValue", 3750)
 services.RunService.RenderStepped:Fire()
-check(string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
-    and string.find(label("Rarity").Text, "Ripe", 1, true) ~= nil, "ripe world item keeps rarity and warm state")
+check(
+    string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
+        and string.find(label("Rarity").Text, "Ripe", 1, true) ~= nil,
+    "ripe world item keeps rarity and warm state"
+)
 check(label("IngredientValue").Text == "$4K", "ripe Strawberry uses replicated effective value and shared formatter")
 item:SetAttribute("IsRipe", false)
 item:SetAttribute("EffectiveIngredientValue", nil)
@@ -163,8 +164,7 @@ definitions.Future = { Id = "Future", DisplayName = "Future Fruit", Value = 1200
 item:SetAttribute("IngredientId", "Future")
 show()
 check(
-    string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
-        and label("IngredientName").Text == "Future Fruit",
+    string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil and label("IngredientName").Text == "Future Fruit",
     "missing rarity and explicit display name"
 )
 check(label("IngredientValue").Text == "$12K", "individual definition value is used without rarity pricing")
@@ -174,8 +174,12 @@ show("Gamepad")
 check(label("Action").Text == "[ButtonY]", "actual gamepad binding")
 show("Touch")
 check(label("Action").Text == "[TAP]", "mobile hint")
-local finger = { UserInputType = "Touch" }
-label("Action").InputBegan:Fire(finger)
+local targets = load("MobilePromptTouchTargets")
+local target = gui():FindFirstChild("TouchTarget")
+check(target.Size.X.Offset == 80 and target.Size.Y.Offset == 80, "actual 80px mobile touch target")
+local center = renderedCenter(gui(), target)
+local finger = { UserInputType = "Touch", Position = vec(center.X + 35, center.Y + 35, 0) }
+target.InputBegan:Fire(finger)
 prompt.PromptButtonHoldBegan:Fire()
 check(begins == 1 and label("Action").Text == "HOLD [TAP]", "touch hold forwards to engine with feedback")
 prompts.PromptHidden:Fire(prompt)
@@ -232,7 +236,10 @@ setfenv(
     chunk,
     setmetatable({
         script = { Parent = { Parent = { Services = { WorldUtil = "WorldUtil" } } } },
-        require = function()
+        require = function(key)
+            if key == "MobilePromptDebug" then
+                return load("MobilePromptDebug")
+            end
             return {
                 BindTag = function(tag, callback)
                     check(tag == "IngredientWorldItem", "original registration tag")

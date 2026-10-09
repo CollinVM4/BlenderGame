@@ -1,3 +1,5 @@
+-- Input contracts are independent of the separately tested touch layout.
+cache.MobileControlLayout = { Register = function() end }
 env.UDim2.new = function(xScale, xOffset, yScale, yOffset)
     return { X = { Scale = xScale, Offset = xOffset }, Y = { Scale = yScale, Offset = yOffset } }
 end

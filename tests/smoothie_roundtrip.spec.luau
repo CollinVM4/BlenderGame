@@ -7,10 +7,9 @@ requests[1] = { Id = "RoundTripRed", DisplayText = "Red", RequiredTags = { "Red"
 local id = complete(p)
 setup(blend.Dispense(p, references[p].TurbineWheel), "dispense completed batch")
 flush()
-setup(press(p), "store dispensed smoothie")
+setup(press(p, "STORE"), "store dispensed smoothie")
 check(inventory.GetCarryCount(p) == 0 and slot(p).Smoothie.BlendId == id, "stash owns the dispensed identity")
-now += 1 -- End STORE burst before establishing TAKE.
-setup(press(p), "take stored smoothie")
+setup(press(p, "TAKE"), "take stored smoothie")
 local held = inventory.GetHeldSmoothie(p)
 check(
     held.BlendId == id and table.concat(held.Ingredients, ",") == "Strawberry,Banana,Strawberry" and slot(p).Count == 0,

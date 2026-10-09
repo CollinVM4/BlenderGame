@@ -81,6 +81,7 @@ do
     table.insert(motors, motor)
 end
 local player = instance("Player")
+player.Name, player.DisplayName = "CarryTester", "CarryTester"
 player.Character, player.Near = character, true
 local humanoid = instance("Humanoid")
 humanoid.Parent, humanoid.Health, humanoid.Died = character, 100, signal()

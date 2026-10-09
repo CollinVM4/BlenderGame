@@ -1,3 +1,8 @@
+env.typeof = function(value)
+    return if type(value) == "table" and value.ClassName then "Instance" else type(value)
+end
+env.Enum.KeyCode = { E = "E", ButtonX = "ButtonX" }
+env.Enum.ProximityPromptExclusivity = { OneGlobally = "OneGlobally" }
 -- Physical pad -> shared ledger -> existing stash paths, with engine boundaries mocked.
 local tycoon = dependency.TycoonService
 local owner, teammate, enemy = player(), player(), player()
@@ -100,7 +105,7 @@ for index = 6, 10 do
     check(
         not inventory.Deposit(owner, "Milk", index)
             and not inventory.Withdraw(owner, index)
-            and not press(owner, index, owner),
+            and not press(owner, "TAKE", index, owner),
         "all locked expansion transfer paths reject"
     )
 end
@@ -155,7 +160,12 @@ for _, object in structure do
     check(object.CFrame == authored[object], "revealed structure finishes at exact authored transforms")
 end
 carry(owner, "Milk")
-expanded[6]:FindFirstChild("StashPrompt").Triggered:Fire(owner)
+local requestContext = tycoon.GetRequestContext(owner)
+requestContext.TargetSessionId, requestContext.RequestId = tycoon.GetSessionId(owner), 1
+setup(
+    inventory.RequestStash(owner, expanded[6]:FindFirstChild("StashPrompt"), "STORE", requestContext),
+    "expanded explicit request"
+)
 check(slot(owner, 6).Count == 1, "authored Slot6 prompt routes to logical slot six")
 setup(inventory.Withdraw(teammate, 6, owner), "empty expanded prompt test slot")
 inventory.ClearHeld(teammate)
@@ -173,7 +183,7 @@ check(
 -- Smoothies reuse the same expanded slot, with the original identity.
 grant(owner, "expanded-smoothie")
 now += 2
-setup(press(owner, 8, owner), "stash smoothie in expanded row")
+setup(press(owner, "STORE", 8, owner), "stash smoothie in expanded row")
 check(slot(owner, 8).Smoothie.BlendId == "expanded-smoothie", "expanded smoothie identity retained")
 check(inventory.Steal(enemy, owner, 8), "expanded unprotected slot uses existing theft path")
 local oldContext = tycoon.GetRequestContext(owner)

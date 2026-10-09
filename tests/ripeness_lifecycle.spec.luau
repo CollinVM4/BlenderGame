@@ -11,7 +11,7 @@ owner.SetAttribute = function(self, name, value)
     setAttribute(self, name, value)
 end
 grant(owner, "tutorial-smoothie")
-setup(press(owner, 1), "store smoothie")
+setup(press(owner, "STORE", 1), "store smoothie")
 check(signals == 0, "smoothie store does not signal ripeness")
 carry(owner, "Strawberry")
 check(not inventory.Deposit(owner, "Strawberry", 1) and signals == 0, "failed store does not signal")
@@ -44,17 +44,23 @@ check(not slot(owner).Ingredients[2].IsRipe, "snapshot cannot mutate authoritati
 setup(inventory.Withdraw(enemy, 3, owner), "steal ripe item first")
 local carryRoot = enemy.Character:FindFirstChild("HumanoidRootPart")
 local heldValue = carryRoot:FindFirstChild("CarryValue")
-check(heldValue:FindFirstChild("Value").Text == "$4K" and not heldValue:FindFirstChild("RipenessDetails"),
-    "stolen ripe ingredient shows only formatted effective value")
+check(
+    heldValue:FindFirstChild("Value").Text == "$4K" and not heldValue:FindFirstChild("RipenessDetails"),
+    "stolen ripe ingredient shows only formatted effective value"
+)
 local thrown = inventory.ThrowHeld(enemy)
 local ripe = ingredients.GetRecord(thrown).Item
 check(ripe.ItemId == first and ripe.IsRipe and ripe.RipenessStoredAt == nil, "steal and throw preserve ripe identity")
-check(thrown:GetAttribute("IsRipe") == true and thrown:GetAttribute("EffectiveIngredientValue") == 3750,
-    "thrown ripe ingredient exposes persistent world metadata and effective value")
+check(
+    thrown:GetAttribute("IsRipe") == true and thrown:GetAttribute("EffectiveIngredientValue") == 3750,
+    "thrown ripe ingredient exposes persistent world metadata and effective value"
+)
 setup(inventory.CarryWorldItem(enemy, thrown), "pick ripe item back up")
-check(carryRoot:FindFirstChild("CarryValue"):FindFirstChild("Value").Text == "$4K"
-    and not carryRoot:FindFirstChild("CarryValue"):FindFirstChild("RipenessDetails"),
-    "world pickup restores ripe carried value without metadata")
+check(
+    carryRoot:FindFirstChild("CarryValue"):FindFirstChild("Value").Text == "$4K"
+        and not carryRoot:FindFirstChild("CarryValue"):FindFirstChild("RipenessDetails"),
+    "world pickup restores ripe carried value without metadata"
+)
 setup(inventory.Deposit(enemy, "Strawberry", 3), "store ripe item with new owner")
 check(slot(enemy).Ingredients[1].IsRipe and slot(enemy).Value == 3750, "new stash retains ripe value")
 setup(inventory.Withdraw(enemy, 3, owner), "steal most-aged fresh next")
@@ -110,7 +116,7 @@ local wildPayout, wildRaw =
     customer.CalculateOrderPayout(enemy, result, wildcard, customer.EvaluateOrder(result, wildcard))
 check(wildRaw == 9750 and wildPayout == 10000, "wildcard keeps 1.0 grade multiplier")
 now += 1
-setup(press(enemy, 5), "store mixed smoothie")
+setup(press(enemy, "TAKE", 5), "store mixed smoothie")
 check(slot(enemy, 5).Value == 9750, "smoothie stash value uses same helper")
 setup(inventory.Withdraw(owner, 5, enemy), "steal mixed smoothie")
 check(inventory.GetHeldSmoothie(owner).IngredientItems[1].IsRipe, "smoothie transfer keeps per-unit ripeness")

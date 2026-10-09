@@ -7,7 +7,7 @@ without executing. No presentation suite is a prerequisite for gameplay tests.
 
 | Group | Suites | Intended responsibility |
 |---|---|---|
-| `--group state` | carry, stash, smoothie, customer-compatibility, sprint | Authoritative service contracts: capacity, ownership, order, cleanup, transfer rollback, burst direction, dispense/serve replay. Compatibility helpers are explicitly separate from current serving. |
+| `--group state` | carry, stash, smoothie, customer-compatibility, sprint | Authoritative service contracts: capacity, ownership, order, cleanup, transfer rollback, explicit STORE/TAKE, dispense/serve replay. Compatibility helpers are explicitly separate from current serving. |
 | `--group integration` | legacy-state, legacy-movement, requests, world, smoothie-roundtrip, smoothie-survivors | Service/component wiring, request selection, physical-ingredient registry and station lifecycle, cross-system flows. |
 | `--group presentation` | vfx, carry-presentation, smoothie-geometry, customer-placement, client-presentation, blend-presentation, stash-presentation | Cosmetic lifecycle, geometry, placement, client startup and progress notification throttling. |
 
@@ -239,3 +239,32 @@ duplicate SAVE/on-screen Return/FocusLost events, controller navigation and keyb
 placement calculations. `fixtures/stand_graphemes.luau` is a limited CLI Unicode
 double; engine segmentation, native keyboards and rendered readability require the
 Device Simulator checks documented in that guide.
+
+## Mobile action layout
+
+`python tests/run_mobile_control_layout_tests.py --luau <luau.exe>` runs the
+separate mobile presentation/input suite with the real layout helper and both
+controllers. It owns screen geometry, safe bounds, native/CAS recreation,
+initialization and layout teardown; gameplay authority remains in the existing
+carry-input and sprint suites. It is not a prerequisite for gameplay suites.
+Manual Device Emulator checks and the baseline fixture blockers are recorded in
+`docs/MOBILE_CONTROLS.md`.
+
+## Explicit stash interactions
+
+Stash state covers explicit STORE/TAKE across pauses and rapid taps, immediate
+action switching, protected/exposed capacity three, permissions, ripest ordering,
+rollback, replay/throttle rejection, and unchanged raid deadlines. Stash integration
+covers real teammates and smoothie exclusivity/identity; expansion covers the
+authored expanded prompt and unlock. Stash-prompts executes the real controller
+for touch, keyboard, and controller dispatch, focus/navigation, availability and
+server feedback. Presentation checks run independently of state checks.
+
+See [Player stash](../docs/PLAYER_STASH.md) for Studio/device smoke checks.
+
+## Mobile pickup and dispensing
+
+Use `run_mobile_prompt_tests.py` for touch geometry, overlap routing and input
+isolation, plus `--suite smoothie-dispense` for the independent authoritative
+dispense contracts. See [mobile pickup validation](../docs/MOBILE_PICKUP.md)
+for commands, baseline failures and physical-device checks.

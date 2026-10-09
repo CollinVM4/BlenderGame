@@ -249,8 +249,15 @@ function CustomerPresentation.DisplayName(
         or template.Name
 end
 
-function CustomerPresentation.Response(request: { GoodResponse: string?, BadResponse: string? }, grade: string): string?
+function CustomerPresentation.Response(
+    request: { GoodResponse: string?, GoodResponses: { string }?, BadResponse: string? },
+    grade: string
+): string?
     if grade == "A" or grade == "B" then
+        local responses = request.GoodResponses
+        if responses and #responses > 0 then
+            return nonempty(responses[math.random(1, #responses)]) or nonempty(request.GoodResponse)
+        end
         return nonempty(request.GoodResponse)
     elseif grade == "C" or grade == "D" or grade == "F" then
         return nonempty(request.BadResponse)

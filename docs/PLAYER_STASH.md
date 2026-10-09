@@ -1,64 +1,95 @@
-# PlayerStash V1
+# Player stash
 
-Implemented as physical storage, with no persistence, stealing, VIP capacity, or inventory UI.
+InventoryService owns stash contents and carried items. STORE and TAKE are explicit
+commands: neither command becomes the other after a pause, an equip change, an empty
+slot, or a rejection. There is no direction timer.
 
-## Authoritative state and API
+## Controls
 
-`InventoryService` owns a per-Player table with five permanent slot records:
+Approach a slot using the existing proximity-prompt focus convention. Only the
+focused slot is outlined and has a compact Fredoka panel showing STASH 2/3 and
+separate STORE and TAKE buttons.
 
-```luau
-stashes[player][index] = {
-    SlotIndex = index,
-    IngredientId = nil, -- string while occupied
-    Count = 0,
-    Capacity = 5,
-    Protected = index <= 2,
-}
-```
+- Mobile: separate 138 × 56 touch buttons.
+- Desktop: E stores one item; R takes one item. Both keys appear on the buttons.
+  E uses the native focused prompt activation; R uses the separate TAKE action.
+  STORE does not bind E a second time, so the native prompt cannot swallow a
+  competing STORE callback.
+- Console: ButtonX stores; ButtonY takes. Platform controller icons appear on the
+  buttons. Focus starts on STORE; left/right navigates; normal controller GUI
+  activation activates the selected action.
 
-Empty slots retain protection and capacity. `GetSnapshot(player)` returns copied records; replicated attributes and display Instances are presentation only. Slots 1?2 are protected; 3?5 are unprotected regardless of names or client attributes. Reset preserves stash contents; disconnect clears them.
+The panel occupies the center lane at 72% of screen height, away from right-hand
+Jump/Throw/Sprint controls. Positions and meanings stay fixed. It dismisses when
+focus changes, the prompt hides, the character dies, membership ends, or the player
+moves out of range. Values, ripeness displays, and ingredient proxies keep their
+existing world presentation. Unavailable actions dim and give a short reason when
+pressed. Server rejection messages appear briefly, with no persistent instructions.
 
-APIs in `src/server/Services/InventoryService.luau`:
+## Authoritative behavior
 
-- `Deposit(player, id, index)` validates the held server reservation, equipped state, alive state, uniquely tagged owned stash, unique actual slot, distance to that slot, matching type, and fixed capacity. The legacy id argument must match the reservation. It consumes the held Tool exactly once.
-- `Withdraw(player, index, stashOwner?)` validates empty hands, authorization, alive state, fixture, and slot distance. It decrements one unit and uses the same private equip path as world pickup. No loose world item is created; failed equip restores the slot.
-- `CanWithdraw(player, owner, index)` is the context-aware authorization seam. Owners may access all five slots. Both protected and unprotected non-owner access are currently denied; future stealing belongs here. The legacy `Steal` entry point returns false.
-- `GetHeldIngredientId(player)` reads the reservation; `StashChanged` notifies presentation after changes and player cleanup.
+- Protected and exposed slots hold three mixed ingredient records. Only slots 1–2
+  are permanently protected; second storage keeps its existing unlock and layout.
+- A smoothie occupies an entire slot (1/1). Clearing it restores ingredient capacity
+  (0/3). Blend identity and ordered ingredients survive a round trip.
+- STORE uses the existing equipped selection and newest carried ingredient fallback.
+  TAKE uses ripest-first ordering and the existing carry/equip path.
+- Actual plot membership, teammates, fixture identity, character health/action state,
+  proximity, carry capacity, and raid protection are validated by the server.
+- Enemies cannot STORE or TAKE protected slots. Explicit TAKE from exposed slots
+  retains the six-second shared raid window and thirty-second subsequent protection.
+- Failed visual creation or equip restores exact stored records. Replicated counts,
+  highlights, and availability are cosmetic; clients never edit contents.
 
-## Presentation and interactions
+The server creates Shared.Events.StashAction (RemoteFunction). Requests contain the
+canonical authored StashPrompt, exactly STORE or TAKE, the actor session/revision,
+the target session, and a monotonically increasing request ID. Stale contexts,
+replays, invalid actions, and wrong prompts fail closed. A 60 ms request throttle
+and synchronous actor/target transaction guards protect repeated input. The client
+keeps one request pending until acknowledgement, animates the button immediately,
+and waits for authoritative inventory replication.
 
-`Stash.luau` binds one contextual ProximityPrompt per uniquely indexed slot. `StashPromptController.luau` adjusts that same prompt locally using replicated cosmetic metadata. Invalid interactions show a reason and still reject on the server.
+InventoryService.InteractStash(player, index, owner, fixture, action) returns success
+and an optional short rejection reason. Deposit, Withdraw, CanWithdraw, and Steal
+retain their existing server APIs. StashChanged continues to drive displays.
 
-`StashPresentation.luau` rebuilds a `StashDisplay` folder after changes. `IngredientService.CreateVisual` clones `ServerStorage.Ingredients/<IngredientId>` when it is a usable Model/BasePart; otherwise it creates a BlendColor part. Displays are at most 55% scale, additionally fitted to the slot. Four copies use a square arrangement, with the fifth raised in the center; a single copy is centered. The bounding box is placed above the slot surface.
+## Studio setup and smoke checks
 
-Display descendants have all tags removed, including IngredientWorldItem. Prompts, click detectors, and scripts are removed before parenting into Workspace. Every BasePart is anchored, noncolliding, nonqueryable, and nontouchable. No display enters IngredientService's world records. Old displays are destroyed before rebuilding. Tag removal/unbinding destroys prompts and displays and disconnects component listeners.
+Rojo sync and start a fresh play session. No manually authored remotes or new assets
+are needed. Keep one PlayerStash fixture per plot, unique base SlotIndex values 1–5,
+and the existing authored expansion. Existing StashPromptOrigin attachments can stay;
+the new panel uses screen UI and the canonical slot part for focus. For three physical
+occupancy lights, provide three SlotIndicator parts in each locked-slot model;
+missing lights do not change gameplay capacity.
 
-## Required Studio setup
+Run a local server with an owner, teammate, and enemy. In device emulation, verify
+both touch targets, portrait/landscape placement, controller icons/navigation, and
+keyboard hints. TAKE twice with a pause longer than 0.6 seconds; STORE twice with a
+pause; switch immediately; tap rapidly. Confirm three mixed ingredients in each
+protected/exposed slot, one smoothie, ripest-first TAKE, failure preservation, team
+access, theft timing, and second-storage focus. Real Studio/network/device smoke
+checks remain necessary; CLI tests mock Roblox boundaries.
 
-1. Keep the plot as an assigned `PlayerPlot` tagged object, or a child of `Workspace.Plots` supported by the existing plot assignment.
-2. Put exactly one object tagged `PlayerStash` under that plot. A Model or Folder containing the slots works; no PrimaryPart is required for stash binding.
-3. Provide five actual descendant BaseParts, each with a unique numeric integer `SlotIndex` attribute from 1 through 5. Existing `LockedSlot1`, `LockedSlot2`, `Slot3`, `Slot4`, `Slot5` names are fine. Set slot parts Anchored=true.
-4. Do not manually add a second slot prompt or tag display objects as IngredientWorldItem. No authored protection, count, capacity, or owner attributes are needed.
-5. Optional display/carry templates: `ServerStorage > Ingredients > Strawberry` (and other exact ingredient IDs), each a BasePart or Model containing a BasePart. Without templates the color fallback works.
-6. Rojo sync the updated client bootstrap and new StashPromptController, StashPresentation modules along with existing changed modules. No new remotes or server bootstrap setup is required.
+## Automated checks
 
-Runtime slot metadata is `StashOwnerUserId`, `StashIngredientId`, `StashCount`, `StashProtected`. The server publishes `HeldIngredientId` on the Player. None authorizes gameplay.
+Run python tests/run_state_tests.py --luau <luau.exe> --stash-only, then select
+stash-expansion, carry-selection, ingredient-slots, and bad-customer-stash using
+repeatable --suite flags. State, integration, and presentation report separately.
+Also run Roblox-aware typecheck, StyLua on changed Luau files, and Rojo build.
 
-## Exact live Studio test (not yet executed)
+## Validation results for this pass
 
-1. Start a two-player local server. Confirm Player 1 owns Plot1 and stand within 10 studs of Slot3.
-2. Pick up Strawberry from its IngredientSpawn station. Approach Slot3: expect ?Store Strawberry?. Interact once: hands empty, one miniature Strawberry visible.
-3. Repeat pickup/store four times. Expect five display copies and Count=5. Pick up a sixth Strawberry and interact: expect ?Slot full (5/5)?, five copies, and the sixth still held.
-4. Throw the sixth away from the stash/blender and leave it loose. With empty hands, interact with Slot3: expect ?Take Strawberry (5/5)? before activation, one held Strawberry afterward, and four display copies.
-5. Deposit the withdrawn Strawberry, then withdraw it again. Counts must alternate 5/4 without extra Tools or loose items. With it held, direct Withdraw must reject; contextual interaction stores it.
-6. Throw the held Strawberry away. Pick up Banana and try the occupied slot: reject with Banana still held. Store Banana in empty Slot4 to empty hands. Withdraw Slot3 repeatedly, throwing each away; the last withdrawal clears IngredientId and removes the display folder. The next withdrawal rejects.
-7. Player 2 tries Plot1 slots 1 and 3: both reject. Repeat storage/withdrawal in slot 1 as the owner; it works and is labeled protected.
-8. Inspect display descendants in Explorer: no IngredientWorldItem tags, pickup prompts, or scripts; all BaseParts anchored with CanCollide/CanQuery/CanTouch=false. Try clicking/picking up a display: no effect.
-9. Reset while holding a withdrawn item: it drops through the existing held cleanup, stash counts stay correct. Disconnect Player 1: displays clear. A newly assigned owner starts with empty slots.
-10. Recheck loose pickup, throw, another player's pickup of that loose item, and thrown ingredient ingestion through BlenderInput/RPM blending.
+All five stash-focused suites and stash-expansion, carry-selection, ingredient-slots,
+and bad-customer-stash pass. Changed-runtime Roblox-aware typecheck, StyLua, Rojo
+build, and whitespace checks pass. Whole-source typecheck has exactly the same
+diagnostics as the pre-change workspace; no new diagnostics were introduced.
 
-## Verification
+Additional smoothie, smoothie-roundtrip, and ripeness-lifecycle suites still fail
+on baseline: old carry-tier/capacity assumptions, a missing HasEntitlement method
+in the customer fixture, and stale ripeness value expectations respectively. These
+failures are isolated from the passing stash suites. Unrelated production code was
+left unchanged. The old stash value expectations were updated to configured
+ingredient values after their failures were reproduced on baseline.
 
-`python tests/run_state_tests.py --luau <path-to-luau>` exercises real service modules against the repository's mocked Roblox boundary. Added cases cover stacking, type/capacity rejection, no duplicate transfers, empty hands, authorization, distance/death/index validation, duplicate slot indices, snapshot isolation, failed visual/equip rollback, fallback/template displays, inert proxies, reset, and disconnect cleanup. Existing pickup/throw/BlenderInput cases remain in the suite.
-
-This pass changes InventoryService, IngredientService, Stash, shared Types, client bootstrap, and the test runner/spec; adds StashPresentation, StashPromptController, and this guide. Other pre-existing workspace edits are retained.
+Studio device layout/navigation, real network latency, and multiplayer raid smoke
+checks have not been executed.

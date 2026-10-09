@@ -88,7 +88,7 @@ do
     local function textValue()
         return pad:FindFirstChild("StashDisplay"):FindFirstChild("SlotValue"):FindFirstChild("Value").Text
     end
-    for _, count in { 1, 5, 2 } do
+    for _, count in { 1, 3, 2 } do
         local state = {
             ItemType = "Ingredient",
             IngredientId = "Apple",
@@ -98,8 +98,10 @@ do
         state.Value = values.Calculate(state)
         display.Refresh(pad, state, visuals)
         check(textValue() == formatter.Compact(definitions.Apple.Value * count), "slot value follows stack quantity")
-        check(pad:FindFirstChild("StashDisplay"):FindFirstChild("SlotValue").MaxDistance == ripenessStyle.StashMaxDistance,
-            "stash value uses nearby visibility range")
+        check(
+            pad:FindFirstChild("StashDisplay"):FindFirstChild("SlotValue").MaxDistance == ripenessStyle.StashMaxDistance,
+            "stash value uses nearby visibility range"
+        )
     end
     local mixed = {
         ItemType = "Ingredient",
@@ -107,10 +109,13 @@ do
         Count = 2,
         Ingredients = { unit("Mango"), unit("Banana") },
     }
-    check(values.Calculate(mixed) == 22000, "existing $20K plus Banana totals $22K")
+    check(
+        values.Calculate(mixed) == definitions.Mango.Value + definitions.Banana.Value,
+        "mixed ingredients sum configured values"
+    )
     mixed.Value = values.Calculate(mixed)
     display.Refresh(pad, mixed, visuals)
-    check(textValue() == "$22K", "slot label uses complete mixed total")
+    check(textValue() == formatter.Compact(mixed.Value), "slot label uses complete mixed total")
     check(values.Calculate({
         ItemType = "Ingredient",
         Ingredients = {
@@ -118,15 +123,18 @@ do
             unit("Banana"),
             unit("Banana"),
         },
-    }) == 6000, "three physical Bananas total $6K")
-    check(values.Calculate({
-        ItemType = "Ingredient",
-        Ingredients = {
-            unit("Starfruit"),
-            unit("Tire"),
-            unit("Banana"),
-        },
-    }) == 20000, "mixed $10K, $8K and $2K items total $20K")
+    }) == definitions.Banana.Value * 3, "three physical Bananas total $6K")
+    check(
+        values.Calculate({
+            ItemType = "Ingredient",
+            Ingredients = {
+                unit("Starfruit"),
+                unit("Tire"),
+                unit("Banana"),
+            },
+        }) == definitions.Starfruit.Value + definitions.Tire.Value + definitions.Banana.Value,
+        "mixed $10K, $8K and $2K items total $20K"
+    )
     local ripe = {
         ItemType = "Ingredient",
         IngredientId = "Strawberry",
@@ -137,10 +145,13 @@ do
             unit("Strawberry"),
         },
     }
-    check(values.Calculate(ripe) == 9750, "individual effective values sum before rounding")
+    check(
+        values.Calculate(ripe) == definitions.Strawberry.Value * 3.25,
+        "individual effective values sum before rounding"
+    )
     ripe.Value = values.Calculate(ripe)
     display.Refresh(pad, ripe, visuals)
-    check(textValue() == "$10K", "ripe and fresh values round once after summing")
+    check(textValue() == formatter.Compact(ripe.Value), "ripe and fresh values round once after summing")
     for _, sample in { { 9740, "$9.5K" }, { 9750, "$10K" }, { 10249, "$10K" }, { 10250, "$10.5K" } } do
         check(formatter.Compact(sample[1]) == sample[2], "nearest $500 boundary")
     end

@@ -1,21 +1,29 @@
-﻿# Stash stealing and protection
+# Stash stealing and protection
 
-Each stash has five slots. Slots 1–2 always reject enemy withdrawal. Slots 3–5 allow enemy withdrawal until carry capacity is full. The first successful theft starts one six-second window for the whole stash; later thefts do not extend it. At the deadline, all exposed slots reject enemies for thirty seconds. Owners and current teammates can store and take throughout both phases.
+Slots 1–2 always reject enemy TAKE. Exposed slots allow enemy TAKE while carry has
+room. The first successful theft starts one six-second window for the whole stash;
+later thefts do not extend it. At the deadline, exposed slots reject enemies for
+thirty seconds. Owners and current teammates can STORE and TAKE during both phases.
+Second storage retains its existing unlock and exposed-slot behavior.
 
-`Economy.NormalStash` configures `IngredientCapacity` (3), `RaidWindowSeconds` (6), and `RaidProtectionSeconds` (30). Ingredients are individual records in insertion order; withdrawals take the last record. A smoothie occupies one entire slot and retains its blend identity and ingredient list. Snapshot records are copied. Failed visual creation or equip leaves the exact stash contents intact and does not start a raid.
+Both protected and exposed slots hold three mixed ingredients. TAKE selects the
+ripest item first, preserving identity and cumulative stored ripeness. A smoothie
+occupies one whole slot and keeps its blend identity and ingredient order. Failed
+visual creation or equip restores exact contents and does not start a raid.
 
-`InventoryService` validates active plot membership, canonical fixture and slot identity, character health, action eligibility, proximity, and carry capacity. Enemy interactions always take. Friendly interactions retain the existing 1.2-second successful-transfer burst direction. Replicated direction and session-scoped raid deadlines only drive presentation; the server never accepts client ownership, direction, protection, or capacity claims.
+Every request explicitly names STORE or TAKE. Enemy STORE is rejected; it never
+turns into theft. There is no direction inference, burst timer, or replicated
+direction state. InventoryService validates actual plot membership, canonical
+prompt/fixture/slot identity, character health/action state, proximity, permissions,
+and capacity. Actor revisions and target-session identity prevent stale requests
+from reaching recycled plots. Replicated deadlines only drive presentation.
 
-Raid state is keyed by the authoritative plot session ID and removed through the bootstrap's `SessionEnded` hook. Deadlines are evaluated when needed, with no delayed tasks. The existing prompt heartbeat evaluates replicated deadlines so protection starts and ends without rebuilding displays or scheduling per-slot timers. `StashPresentation` creates each mixed ingredient proxy independently using the existing anchored, noninteractive geometry path.
+Raid state is keyed by the authoritative plot session ID and removed through the
+SessionEnded hook. Deadlines are evaluated on demand, without delayed mutation of
+recycled plots. Client availability evaluates replicated deadlines so protection
+begins and ends without rebuilding displays or scheduling per-slot timers.
 
-## Validation
-
-Run `python tests/run_state_tests.py --luau <luau.exe> --stash-only` for authoritative stash contracts, real plot/smoothie integration, display geometry, and client prompts in separate processes. All four suites pass. Runner contracts, focused runtime typecheck, StyLua, Rojo build, and whitespace validation pass.
-
-Full-source typecheck has the same 26 unique pre-existing `CustomerRequests` missing-`DisplayText` diagnostics as baseline. Existing `smoothie` and `smoothie-roundtrip` suites fail on baseline as well: outdated carry-capacity expectations and a one-second wait for the 1.2-second burst. These unrelated tests and production systems were left unchanged; the new stash integration suite covers dispensed smoothie theft and rollback directly.
-
-## Studio smoke test
-
-No new assets, tags, remotes, or authored attributes are required. Keep one `PlayerStash` fixture per plot with five uniquely indexed BaseParts (`SlotIndex` 1–5). Sync through Rojo and start a fresh play session.
-
-Use three clients with two on one team. Store three different ingredients in one slot and a smoothie in another. Verify teammate access, permanent protection, repeated enemy theft while already carrying an item, shared raid timing across exposed slots, protection expiry, full-carry rejection, and team access during protection. Leave/reassign the plot during a raid and confirm the new session is unprotected. Check replicated labels and mixed displays from both teams. Automated tests mock Roblox boundaries; this multiplayer Studio smoke test has not been run.
+See [Player stash](PLAYER_STASH.md) for controls, validation, and Studio setup.
+Test with three clients: two teammates and an enemy. Check mixed exposed-slot theft,
+protected rejection, team access during protection, shared deadlines, and plot
+reassignment. Studio multiplayer checks have not been run for this pass.

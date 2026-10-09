@@ -146,9 +146,9 @@ end
 local function carry(p, id)
     setup(inventory.CarryWorldItem(p, ingredients.Spawn(id or "Banana", frame(), nil, true)), "ingredient pickup")
 end
-local function press(p, index, owner)
+local function press(p, action, index, owner)
     now += 0.1
-    return inventory.InteractStash(p, index or 3, owner or p)
+    return inventory.InteractStash(p, index or 3, owner or p, nil, action)
 end
 local function slot(p, index)
     return inventory.GetSnapshot(p).Stash[index or 3]

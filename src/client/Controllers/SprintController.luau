@@ -4,6 +4,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local MobileControlLayout = require(script.Parent.Parent.UI.MobileControlLayout)
 local getSprintEvent = require(ReplicatedStorage.Shared.Events.SprintEvents)
 
 local player = game:GetService("Players").LocalPlayer
@@ -72,7 +73,7 @@ function SprintController.Init()
     end
     ContextActionService:BindAction("SprintHeld", sprintTouch, true)
     ContextActionService:SetTitle("SprintHeld", "Sprint")
-    ContextActionService:SetPosition("SprintHeld", UDim2.new(1, -85, 0, 30))
+    MobileControlLayout.Register("SprintHeld")
 
     -- Presentation reads the server-replicated StaminaCurrent/StaminaMax/IsSprinting attributes.
 end

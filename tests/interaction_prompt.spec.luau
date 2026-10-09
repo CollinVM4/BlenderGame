@@ -1,6 +1,33 @@
+-- Minimal rendered-pixel/projection boundary for the scoped mobile targets.
+local v2 = {}
+v2.__index = v2
+local function vec2(x, y)
+    return setmetatable({ X = x, Y = y }, v2)
+end
+v2.__add = function(a, b)
+    return vec2(a.X + b.X, a.Y + b.Y)
+end
+v2.__sub = function(a, b)
+    return vec2(a.X - b.X, a.Y - b.Y)
+end
+v2.__div = function(a, b)
+    return vec2(a.X / b, a.Y / b)
+end
+env.Vector2 = { new = vec2 }
+workspaceFake.CurrentCamera = {
+    ViewportSize = vec2(400, 600),
+    CFrame = { RightVector = vec(1, 0, 0), UpVector = vec(0, 1, 0), LookVector = vec(0, 0, -1) },
+    WorldToViewportPoint = function(self, point)
+        return vec(self.ViewportSize.X / 2 + point.X * 20, self.ViewportSize.Y / 2 - point.Y * 20, 10), true
+    end,
+}
 local function uiInstance(class, name, parentObject)
     local object = instance(class)
     object.Name, object.Parent = name, parentObject
+    object.Enabled, object.Active, object.Visible, object.ZIndex = true, true, true, 1
+    object.WorldPosition = vec(0, 0, 0)
+    object.StudsOffset, object.StudsOffsetWorldSpace = vec(0, 0, 0), vec(0, 0, 0)
+    object.SizeOffset = vec2(0, 0)
     object.Changed, object.AttributeChanged, object.InputBegan = signal(), signal(), signal()
     object.PromptButtonHoldBegan, object.PromptButtonHoldEnded = signal(), signal()
     local properties = {}
@@ -25,9 +52,10 @@ end
 env.Enum.ProximityPromptStyle = { Custom = "Custom", Default = "Default" }
 env.Enum.ProximityPromptInputType = { Keyboard = "Keyboard", Gamepad = "Gamepad", Touch = "Touch" }
 env.Enum.UserInputType = { Touch = "Touch", MouseButton1 = "MouseButton1" }
+env.Enum.UserInputState = { Begin = "Begin", End = "End", Cancel = "Cancel", Change = "Change" }
 env.Enum.TextXAlignment = { Center = "Center" }
 env.Enum.TextYAlignment = { Center = "Center" }
-local input = { InputEnded = signal(), WindowFocusReleased = signal() }
+local input = { InputEnded = signal(), InputChanged = signal(), WindowFocusReleased = signal() }
 function input:GetStringForKeyCode(key)
     return key.Name
 end
@@ -55,6 +83,26 @@ services.Players.LocalPlayer = {
         return playerGui
     end,
 }
+-- Test-only visual projection for the existing layout assertions. Never chooses
+-- whether an InputBegan event is valid; Roblox's GUI hit-test is a Studio boundary.
+local function renderedCenter(gui, button)
+    local origin = gui.Adornee
+    local world = if origin:IsA("Attachment") then origin.WorldPosition else origin.Position
+    world += gui.StudsOffsetWorldSpace
+    local point = workspaceFake.CurrentCamera:WorldToViewportPoint(world)
+    return vec2(
+        point.X
+            + gui.SizeOffset.X * gui.Size.X.Offset
+            - gui.Size.X.Offset / 2
+            + button.Position.X.Scale * gui.Size.X.Offset
+            + button.Position.X.Offset,
+        point.Y
+            - gui.SizeOffset.Y * gui.Size.Y.Offset
+            - gui.Size.Y.Offset / 2
+            + button.Position.Y.Scale * gui.Size.Y.Offset
+            + button.Position.Y.Offset
+    )
+end
 local function module(name, requires)
     local chunk = assert(loadstring(sources[name], name))
     setfenv(
@@ -63,6 +111,7 @@ local function module(name, requires)
             script = {
                 Parent = {
                     WorldBillboardStyle = "WorldBillboardStyle",
+                    MobilePromptTouchTargets = "MobilePromptTouchTargets",
                     Parent = { UI = { InteractionPromptPresentation = "Presentation" }, Services = parent },
                 },
             },
@@ -74,9 +123,14 @@ local function module(name, requires)
     return chunk()
 end
 local style = module("WorldBillboardStyle", {})
-local view =
-    module("Presentation", { WorldBillboardStyle = style, DialogueTextStyle = loadModule("DialogueTextStyle") })
-local controller = module("Controller", { Presentation = view })
+local debug = module("MobilePromptDebug", {})
+local view = module("Presentation", {
+    WorldBillboardStyle = style,
+    DialogueTextStyle = loadModule("DialogueTextStyle"),
+    MobilePromptTouchTargets = module("MobilePromptTouchTargets", { MobilePromptDebug = debug }),
+    MobilePromptDebug = debug,
+})
+local controller = module("Controller", { Presentation = view, MobilePromptDebug = debug })
 controller.Init()
 controller.Init()
 local object = uiInstance("Model", "Dispenser", workspaceFake)
@@ -130,9 +184,9 @@ show()
 check(
     gui():IsA("BillboardGui")
         and gui().Adornee == stashOrigin
-        and gui().StudsOffsetWorldSpace == nil
-        and gui().StudsOffset == nil
-        and gui().SizeOffset == nil
+        and gui().StudsOffsetWorldSpace.Y == 0
+        and gui().StudsOffset.Y == 0
+        and gui().SizeOffset.Y == 0
         and gui().Size.X.Offset == 300
         and gui().Size.Y.Offset == 56
         and gui().Size.X.Scale == 0
@@ -169,11 +223,14 @@ show("Gamepad")
 check(label().Text == "[ButtonX] DISPENSE", "gamepad key comes from prompt")
 show("Touch")
 check(label().Text == "[TAP] DISPENSE", "touch hint")
-local finger = { UserInputType = "Touch" }
-label().InputBegan:Fire(finger)
+local finger = { UserInputType = "Touch", Position = vec(200, 300, 0) }
+local touchTarget = gui():FindFirstChild("TouchTarget")
+check(touchTarget.Size.X.Offset == 220 and touchTarget.Size.Y.Offset == 80, "dispenser has actual padded target")
+touchTarget.InputBegan:Fire(finger)
 input.InputEnded:Fire(finger)
 check(begins == 1 and ends == 1, "touch forwards begin/end through prompt")
-label().InputBegan:Fire(finger)
+finger = { UserInputType = "Touch", Position = vec(200, 300, 0) }
+touchTarget.InputBegan:Fire(finger)
 prompts.PromptHidden:Fire(prompt)
 check(ends == 2 and #playerGui:GetChildren() == 0, "hide releases input and destroys view")
 prompt.PromptButtonHoldBegan:Fire()
@@ -215,6 +272,7 @@ local attach, serverPrompt
 local owner = {}
 local dispenseCalls = 0
 local server = module("DispenseButton", {
+    MobilePromptDebug = debug,
     WorldUtil = {
         BindTag = function(tag, callback)
             check(tag == "DispenseButton", "existing button tag retained")

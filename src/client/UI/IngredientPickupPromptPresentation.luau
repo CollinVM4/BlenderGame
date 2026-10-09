@@ -5,11 +5,13 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local Ingredients = require(Shared.Constants.Ingredients)
 local MoneyFormat = require(Shared.MoneyFormat)
 local IngredientName = require(Shared.IngredientName)
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local Presentation = {}
 
 -- Rotated-part extents keep the label above the actual visible geometry,
 -- excluding the invisible pivot root created for multipart ingredients.
-function Presentation.Top(object: BasePart | Model): Vector3
+function Presentation.Bounds(object: BasePart | Model): (Vector3, Vector3)
     local minimum = Vector3.new(math.huge, math.huge, math.huge)
     local maximum = Vector3.new(-math.huge, -math.huge, -math.huge)
     local parts = object:GetDescendants()
@@ -24,9 +26,30 @@ function Presentation.Top(object: BasePart | Model): Vector3
             found = true
         end
     end
-    return if found
-        then Vector3.new((minimum.X + maximum.X) / 2, maximum.Y, (minimum.Z + maximum.Z) / 2)
-        else object:GetPivot().Position
+    if not found then
+        minimum = object:GetPivot().Position
+        maximum = minimum
+    end
+    return minimum, maximum
+end
+
+function Presentation.Top(object: BasePart | Model): Vector3
+    local minimum, maximum = Presentation.Bounds(object)
+    return Vector3.new((minimum.X + maximum.X) / 2, maximum.Y, (minimum.Z + maximum.Z) / 2)
+end
+
+function Presentation.MobilePosition(minimum: Vector3, maximum: Vector3): Vector3
+    local center = (minimum + maximum) / 2
+    local height = maximum.Y - minimum.Y
+    local clearance = math.min(Style.MobileGroundClearance, height / 2)
+    return Vector3.new(
+        center.X,
+        math.max(
+            minimum.Y + clearance,
+            center.Y - math.min(height * Style.MobileLowerFraction, Style.MobileMaxLowerStuds)
+        ),
+        center.Z
+    )
 end
 
 function Presentation.Create(
@@ -36,6 +59,10 @@ function Presentation.Create(
     parent: Instance,
     inputType: Enum.ProximityPromptInputType
 ): (() -> (), () -> ())
+    local mobile = inputType == Enum.ProximityPromptInputType.Touch
+    local inputY = Style.TitleHeight + Style.NameHeight + Style.ValueHeight + 2 * Style.RowSpacing + Style.InputSpacing
+    local inputCenter = inputY + Style.InputHeight / 2
+    local canvasHeight = if mobile then Style.MobileCanvasHeight else Style.BillboardSize.Y
     local rarity, name = Style.Resolve(definition)
     local palette = (Style.RarityStyles :: any)[rarity]
     local anchor = if object:IsA("BasePart")
@@ -46,12 +73,22 @@ function Presentation.Create(
     local cleanup, gui = InputPresentation.Create(prompt, anchor, parent, inputType, {
         InputOnly = true,
         Width = Style.BillboardSize.X,
-        Height = Style.BillboardSize.Y,
+        Height = canvasHeight,
+        Available = function()
+            local owner = object:GetAttribute("OwnerUserId")
+            return object:IsDescendantOf(workspace)
+                and CollectionService:HasTag(object, "IngredientWorldItem")
+                and object:GetAttribute("IngredientId") == definition.Id
+                and (typeof(owner) ~= "number" or owner == 0 or owner == Players.LocalPlayer.UserId)
+        end,
+        TouchWidth = if mobile then Style.MobileTouchSize else nil,
+        TouchHeight = if mobile then Style.MobileTouchSize else nil,
+        TouchCenterY = if mobile then inputCenter else nil,
         TextSize = Style.InputTextSize,
         MaxDistance = Style.MaxDistance,
     })
     gui.Name = "IngredientPickupPromptDisplay"
-    gui.SizeOffset = Vector2.new(0, 0.5)
+    gui.SizeOffset = Vector2.new(0, if mobile then (inputCenter - canvasHeight / 2) / canvasHeight else 0.5)
     local function formatText(
         text: TextLabel | TextButton,
         y: number,
@@ -107,7 +144,7 @@ function Presentation.Create(
     local valueY = nameY + Style.NameHeight + Style.RowSpacing
     formatText(value, valueY, Style.ValueHeight, Style.ValueTextSize, Style.ValueColor, Style.StrokeColor)
     value.Parent = gui
-    local input = gui:FindFirstChild("Action") :: TextButton
+    local input = gui:FindFirstChild("Action") :: TextLabel
     formatText(
         input,
         valueY + Style.ValueHeight + Style.InputSpacing,
@@ -128,7 +165,25 @@ function Presentation.Create(
         title.Text = rarityText()
         value.Text =
             MoneyFormat.Compact((object:GetAttribute("EffectiveIngredientValue") :: number?) or definition.Value)
-        gui.StudsOffsetWorldSpace = Presentation.Top(object) - anchor.Position + Style.PromptStudsOffset
+        if mobile then
+            local minimum, maximum = Presentation.Bounds(object)
+            local position = Presentation.MobilePosition(minimum, maximum)
+            gui.StudsOffsetWorldSpace = position - anchor.Position
+            -- Keep the visible row above the ingredient's bottom/contact plane even
+            -- when a tiny ingredient or a steep camera angle compresses its height.
+            local lift = 0
+            local camera = workspace.CurrentCamera
+            if camera then
+                local point, visible = camera:WorldToViewportPoint(position)
+                local bottom = camera:WorldToViewportPoint(Vector3.new(position.X, minimum.Y, position.Z))
+                if visible and bottom.Z > 0 then
+                    lift = math.max(0, point.Y + Style.InputHeight / 2 + 2 - bottom.Y)
+                end
+            end
+            gui.SizeOffset = Vector2.new(0, (inputCenter - canvasHeight / 2 + lift) / canvasHeight)
+        else
+            gui.StudsOffsetWorldSpace = Presentation.Top(object) - anchor.Position + Style.PromptStudsOffset
+        end
     end
     update()
     return cleanup, update

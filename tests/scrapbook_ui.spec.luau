@@ -47,6 +47,7 @@ local function node(class, name, parent)
             AbsoluteSize = { X = 600, Y = 200 },
             AbsoluteContentSize = { X = 600, Y = 200 },
             Activated = signal(),
+            Destroying = signal(),
         },
         children = {},
     }, meta)
@@ -163,9 +164,10 @@ local function load(name)
             },
             script = {
                 Parent = {
+                    BadCustomers = "BadCustomers",
                     Ingredients = "Ingredients",
                     CustomerRequests = "CustomerRequests",
-                    Parent = { UI = { ScrapbookPresentation = "ScrapbookPresentation" } },
+                    Parent = { UI = { ScrapbookPresentation = "ScrapbookPresentation", PanelManager = "PanelManager" } },
                 },
             },
             require = load,
@@ -209,8 +211,16 @@ local controller = load("ScrapbookController")
 local catalog = load("DiscoveryCatalog")
 local artwork = load("ScrapbookArtwork")
 for value, expected in
-    { [250] = "$250", [500] = "$500", [1000] = "$1K", [1500] = "$1.5K", [12000] = "$12K",
-        [165000] = "$165K", [1e6] = "$1M", [1.2e6] = "$1.2M" }
+    {
+        [250] = "$250",
+        [500] = "$500",
+        [1000] = "$1K",
+        [1500] = "$1.5K",
+        [12000] = "$12K",
+        [165000] = "$165K",
+        [1e6] = "$1M",
+        [1.2e6] = "$1.2M",
+    }
 do
     check(presentation.FormatValue(value) == expected, "compact value formatting")
 end
@@ -395,6 +405,24 @@ for _, uiFirst in { true, false } do
         get(live, "Window.Pages.CustomersPage").Visible and not get(live, "Window.Pages.IngredientsPage").Visible,
         "reopen retains selected tab"
     )
+    local otherVisible = false
+    local other = load("PanelManager").Register("Upgrades", {
+        Open = function()
+            otherVisible = true
+        end,
+        Close = function()
+            otherVisible = false
+        end,
+    })
+    other.Open()
+    check(not get(live, "Window").Visible and otherVisible, "another major menu closes Scrapbook")
+    get(live, "Window.Tabs.IngredientsButton").Activated:Fire()
+    check(not get(live, "Window").Visible, "tab refresh cannot reopen an externally closed Scrapbook")
+    get(live, "OpenButton").Activated:Fire({ UserInputType = "Touch" })
+    check(get(live, "Window").Visible and not otherVisible, "touch reopens Scrapbook exclusively")
+    get(live, "Window.CloseButton").Activated:Fire({ UserInputType = "Touch" })
+    check(not get(live, "Window").Visible, "touch X closes Scrapbook")
+    other.Destroy()
     check(#warnings == 0, "valid UI startup has no warnings")
 end
 print(

@@ -146,3 +146,10 @@ Live Studio rendering/input verification has not been performed.
 
 The lifecycle/input approach follows the
 [Roblox proximity prompt documentation](https://create.roblox.com/docs/ui/proximity-prompts).
+
+## Stash action panel
+
+Stash focus prompts are handled by StashPromptController and excluded from the
+shared one-action billboard. Their compact screen panel provides explicit STORE
+and TAKE with fixed touch targets, E/R keys, and platform controller icons. See
+[Player stash](PLAYER_STASH.md). Other world prompts keep their existing presentation.

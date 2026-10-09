@@ -3,7 +3,8 @@
 `StashPresentation.Refresh` colors the authored `SlotIndicator` BaseParts from
 the existing authoritative slot snapshot. Stored ingredient entries fill indicators
 green (`0, 255, 0`); unused indicators remain red (`117, 0, 0`). Smoothie occupancy
-uses its existing snapshot count and capacity. No gameplay rules are changed.
+uses its snapshot count and capacity. Both protected and exposed ingredient slots
+have capacity three; a smoothie has capacity one.
 
 Indicators are collected beneath the resolved slot part or its containing slot
 model, including duplicate names and nested parts. Fill order follows local X,
@@ -22,14 +23,10 @@ This presentation suite covers protected/base/expanded slots, empty/partial/full
 transitions, mismatched indicator counts, rotated ordering, geometry preservation,
 separate slot isolation, missing parts, and malformed snapshots.
 
-Indicator, stash-prompt, stash-expansion, and bad-customer-stash suites pass.
-Production typecheck, StyLua, and Rojo build pass. The existing stash and
-stash-presentation suites fail their $20K-plus-$2K value expectations; both failures
-reproduce with the original StashPresentation module in the current workspace.
-
 ## Studio smoke checks (not run)
 
-1. For LockedSlot1 and LockedSlot2, confirm empty red, deposit green, withdrawal red.
+1. For LockedSlot1 and LockedSlot2, confirm three ingredients fill three lights,
+   successive withdrawals clear them, and a fourth ingredient is rejected.
 2. For a regular slot with matching capacity, deposit successive ingredients and
    confirm local left-to-right green fill; withdraw and confirm unused units turn red.
 3. Trigger bad-customer theft and ordinary stealing; confirm the affected slot

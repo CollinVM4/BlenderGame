@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Types = require(Shared.Types)
 local Presentation = require(script.Parent.Parent.UI.ScrapbookPresentation)
+local PanelManager = require(script.Parent.Parent.UI.PanelManager)
 local Controller = {}
 local started = false
 
@@ -36,6 +37,7 @@ function Controller.Init()
     started = true
     local state: Types.DiscoveryState = { Ingredients = {}, SpecialCustomers = {} }
     local view: Presentation.View? = nil
+    local panel: PanelManager.Handle? = nil
     local isOpen = false
     local tab: Presentation.Tab = "Ingredients"
     local function refreshWindow()
@@ -86,12 +88,14 @@ function Controller.Init()
         local ok, result = pcall(function()
             return Presentation.Create(gui, state, {
                 Open = function()
-                    isOpen = true
-                    refreshWindow()
+                    if panel then
+                        panel.Open()
+                    end
                 end,
                 Close = function()
-                    isOpen = false
-                    refreshWindow()
+                    if panel then
+                        panel.Close()
+                    end
                 end,
                 SelectTab = function(selected: Presentation.Tab)
                     tab = selected
@@ -104,6 +108,21 @@ function Controller.Init()
             return
         end
         view = result
+        local handle = PanelManager.Register("Scrapbook", {
+            Open = function()
+                isOpen = true
+                refreshWindow()
+            end,
+            Close = function()
+                isOpen = false
+                refreshWindow()
+            end,
+        })
+        panel = handle
+        gui.Destroying:Connect(function()
+            handle.Destroy()
+            view = nil
+        end)
         refreshWindow()
     end)
 end

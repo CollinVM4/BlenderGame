@@ -38,6 +38,7 @@ local function instance(class, name, parent, attributes)
         DescendantAdded = signal(),
         DescendantRemoving = signal(),
         Destroying = signal(),
+        AncestryChanged = signal(),
     }
     function self:IsA(want)
         return want == class
@@ -86,7 +87,17 @@ local function instance(class, name, parent, attributes)
     end
     return self
 end
-local player = { CharacterAdded = signal() }
+function playerWait(self, name)
+    return self:FindFirstChild(name)
+end
+local player = instance("Player", "Player")
+player.CharacterAdded = signal()
+player.WaitForChild = playerWait
+local playerScripts = instance("PlayerScripts", "PlayerScripts", player)
+local client = instance("LocalScript", "Client", playerScripts)
+local ui = instance("Folder", "UI", client)
+playerScripts.WaitForChild, client.WaitForChild, ui.WaitForChild = playerWait, playerWait, playerWait
+instance("ModuleScript", "FramewispMenus", ui)
 local tweenService = {
     Create = function()
         error("Main menus must not run a second visibility tween")
@@ -103,9 +114,26 @@ local tweenInfo = {
     end,
 }
 local enum = { EasingStyle = { Back = 1, Quad = 2 }, EasingDirection = { Out = 1, In = 2 } }
-local ids = { "Settings", "Upgrades", "Shop", "Index" }
+local ids = { "Settings", "Upgrades", "Shop", "Index", "Cosmetics" }
+local modules = {}
+local function loadModule(module)
+    local name = if type(module) == "string" then module else module.Name
+    if not modules[name] then
+        local chunk = assert(loadstring(sources[name], name))
+        setfenv(
+            chunk,
+            setmetatable({
+                script = { Parent = { PanelManager = "PanelManager", UIRegistry = "UIRegistry" } },
+                require = loadModule,
+            }, { __index = getfenv() })
+        )
+        modules[name] = chunk()
+    end
+    return modules[name]
+end
+local manager = loadModule("PanelManager")
 
-local function run(tagged, wrapped)
+local function run(tagged, wrapped, semantic)
     local gui = instance("ScreenGui", "Framewisp")
     local desktop = instance("Frame", "Be a Blender! Desktop", gui, { FW_Owned = true })
     local content = if wrapped then instance("CanvasGroup", "Be a Blender! DesktopContent", desktop) else desktop
@@ -115,10 +143,23 @@ local function run(tagged, wrapped)
     local nav = instance("Frame", "LeftMenu", content)
     local panels, buttons, closes = {}, {}, {}
     local function panel(id)
-        local p = instance("Frame", id .. (if tagged then "_panel" else ""), content, { FigmaAction = "panel" })
+        local p = instance(
+            if semantic then "CanvasGroup" else "Frame",
+            id .. (if tagged then "_panel" else ""),
+            content,
+            { FigmaAction = "panel" }
+        )
+        if semantic then
+            p.attributes.BlenderUI = "Panel:" .. id
+            p.Name = "Window " .. id
+        end
         local header = instance("Frame", "Header", p)
         local close =
             instance("ImageButton", if tagged then "Close_close" else "Close", header, { FigmaAction = "close" })
+        if semantic then
+            close.attributes.BlenderUI = "Close"
+            close.Name = "Dismiss"
+        end
         return p, close
     end
     for _, id in ids do
@@ -130,18 +171,34 @@ local function run(tagged, wrapped)
             if tagged then {} else { FigmaAction = "open", FigmaActionParam = id }
         )
     end
+    if semantic then
+        desktop.attributes.BlenderUI = "Desktop"
+        desktop.Name = "Redesigned Desktop"
+        if content ~= desktop then
+            content.attributes.BlenderUI = "Content"
+            content.Name = "Redesigned Content"
+        end
+        nav.attributes.BlenderUI = "LeftMenu"
+        nav.Name = "Navigation"
+        for id, button in buttons do
+            button.attributes.BlenderUI = "Toggle:" .. id
+            button.Name = "Navigate " .. id
+        end
+    end
     local buy = instance("TextButton", "Buy", panels.Upgrades)
     local purchases = 0
     buy.Activated:Connect(function()
         purchases += 1
     end)
     local env = setmetatable(
-        { script = { Parent = gui }, game = game, TweenInfo = tweenInfo, Enum = enum },
+        { script = { Parent = gui }, game = game, TweenInfo = tweenInfo, Enum = enum, require = loadModule },
         { __index = getfenv() }
     )
     local actions = assert(loadstring(actionSource))
     setfenv(actions, env)
     actions()
+    -- Repeated initialization must not stack navigation handlers.
+    loadModule("FramewispMenus").Attach(gui, player)
     local function only(id)
         for _, candidate in ids do
             check(panels[candidate].Visible == (candidate == id), candidate .. " visibility")
@@ -202,6 +259,37 @@ local function run(tagged, wrapped)
     only(nil)
     buttons.Settings.Activated:Fire()
     only("Settings")
+    -- Script-generated menus share the singleton used by the imported script.
+    local generatedVisible = false
+    local generated = manager.Register("Generated", {
+        Open = function()
+            generatedVisible = true
+        end,
+        Close = function()
+            generatedVisible = false
+        end,
+    })
+    generated.Open()
+    only(nil)
+    check(generatedVisible, "generated menu closes imported menu")
+    buttons.Index.Activated:Fire({ UserInputType = "Touch" })
+    only("Index")
+    check(not generatedVisible, "touch opening closes generated menu")
+    for i = 1, 50 do
+        buttons.Upgrades.Activated:Fire({ UserInputType = "Touch" })
+        buttons.Index.Activated:Fire({ UserInputType = "Touch" })
+        buttons.Cosmetics.Activated:Fire({ UserInputType = "Touch" })
+    end
+    only("Cosmetics")
+    closes.Cosmetics.Activated:Fire({ UserInputType = "Touch" })
+    only(nil)
+    generated.Destroy()
+    player.CharacterAdded:Fire()
+    only(nil)
+    -- Detaching a root without Destroy must retire its old actions too.
+    gui.AncestryChanged:Fire(gui, nil)
+    buttons.Upgrades.Activated:Fire()
+    only(nil)
     player.CharacterAdded:Fire()
     only(nil)
     gui.Destroying:Fire()
@@ -211,4 +299,5 @@ run(false, true)
 run(true, false)
 -- A reconstructed GUI must start closed with fresh functioning navigation.
 run(false, false)
+run(false, true, true)
 print("Framewisp menus: " .. count .. " checks passed")

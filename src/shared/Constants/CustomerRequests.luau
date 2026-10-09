@@ -11,6 +11,7 @@ export type Request = {
     RequestGroup: string?,
     SimilarityKeys: { string }?,
     GoodResponse: string?,
+    GoodResponses: { string }?,
     BadResponse: string?,
     RequiredTags: { string }, -- All must match; "*" matches any ingredient tag.
     ForbiddenTags: { string }?, -- None may be present; omitted means empty.
@@ -928,7 +929,7 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.54,
+    RegularWildcardChance = 0.25,
     SpecialWildcardChance = 0,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {
@@ -944,7 +945,14 @@ local CustomerRequests = {
             "you pick. I trust the smoothie master!",
             "Throw whatever you want in there!",
         },
-        GoodResponse = "Now THAT'S a smoothie! Thanks!",
+        GoodResponses = {
+            "Now THAT'S a smoothie! Thanks!",
+            "Best smoothie ever!",
+            "You blended the perfect smoothie!",
+            "I knew I could trust the smoothie master!",
+            "Wow, that's actually good!",
+            "Mmm... your choice was a good choice!",
+        },
         BadResponse = "I still wanted a smoothie!",
         RequiredTags = {},
         BasePayout = 250,

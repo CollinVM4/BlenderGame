@@ -77,7 +77,7 @@ print(
     "Selected runtime ScreenGui",
     if view then view.Root:GetFullName() else "NONE: incomplete, inactive, or ambiguous contract"
 )
-print("Selected cash", if view then view.Cash:GetFullName() else "NONE")
+print("Selected cash", if view and view.Cash then view.Cash:GetFullName() else "NONE")
 local connections = {}
 for _, name in
     {

@@ -41,7 +41,7 @@ do
         pad.Position = pad.CFrame.Position
         pad.CFrame.RightVector = vec(0, 0, -1)
         pad.CFrame.LookVector = vec(-1, 0, 0)
-        local capacity = if slotIndex <= 2 then 1 else 3
+        local capacity = 3
         local indicators, authored = {}, {}
         -- Reverse creation order and rotate the base to exercise visual sorting.
         for index = capacity + 1, 1, -1 do

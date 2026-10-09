@@ -1,3 +1,5 @@
+-- Input contracts are independent of the separately tested touch layout.
+cache.MobileControlLayout = { Register = function() end }
 -- Local presentation/input boundary. Combat authority lives in the combat integration suite.
 local config = loadModule("BatConfig")
 env.Enum.AnimationPriority = { Idle = "Idle", Action = "Action" }

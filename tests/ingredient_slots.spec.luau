@@ -109,13 +109,13 @@ inventory.ClearHeld(p)
 -- Shared slot changes preserve smoothie stash metadata and capacity rejection.
 grant(p, "stash-smoothie")
 local storedTool = tool(p)
-setup(inventory.InteractStash(p, 4, p), "stash smoothie")
+setup(inventory.InteractStash(p, 4, p, nil, "STORE"), "stash smoothie")
 check(
     storedTool.Destroyed and inventory.GetSnapshot(p).Stash[4].Smoothie.BlendId == "stash-smoothie",
     "smoothie stash keeps server metadata"
 )
 now += 1.3
-setup(inventory.InteractStash(p, 4, p), "take smoothie")
+setup(inventory.InteractStash(p, 4, p, nil, "TAKE"), "take smoothie")
 check(
     inventory.GetHeldSmoothie(p).BlendId == "stash-smoothie" and inventory.GetSnapshot(p).Stash[4].Count == 0,
     "smoothie withdrawal preserves identity"
