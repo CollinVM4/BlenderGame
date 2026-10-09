@@ -246,7 +246,10 @@ check(
     dependency.TycoonService.GetSessionId(q) ~= sessionBefore and #customer.GetQueueSnapshot(q) == 1,
     "reassignment creates exactly one fresh tutorial queue"
 )
-check(slot(q, 3).Ingredients[1].ItemId == itemId, "reassignment does not overwrite an occupied stash slot")
+check(
+    slot(q, 3).Ingredients[1].ItemId ~= itemId,
+    "released session retires old units before fresh tutorial initialization"
+)
 local teammate = player()
 dependency.TycoonService.RemovePlayer(teammate)
 local queueCount = #customer.GetQueueSnapshot(q)

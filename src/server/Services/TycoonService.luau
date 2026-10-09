@@ -641,11 +641,19 @@ function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Ins
             }
             sessions[plot], byId[id] = session, session
             publish(session)
+            local ok, started = true, nil
             if hooks.SessionStarted then
-                hooks.SessionStarted(player)
+                ok, started = pcall(hooks.SessionStarted, player)
             end
             TycoonService.EndTransaction(id)
-            return plot
+            if not ok or started == false then
+                warn("[TycoonService] Session initialization failed session=" .. id .. " reason=" .. tostring(started))
+                if TycoonService.GetSessionId(player) == id then
+                    TycoonService.RemovePlayer(player)
+                end
+                return nil
+            end
+            return if TycoonService.GetSessionId(player) == id then plot else nil
         end
     end
     warn("[TycoonService] No free PlayerPlot / workspace.Plots child for " .. player.Name)

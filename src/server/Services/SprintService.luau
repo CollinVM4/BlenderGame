@@ -53,12 +53,12 @@ end
 
 function SprintService.ApplySpeed(player: Player)
     local humanoid = getHumanoid(player)
-    if movement.IsStunned(player) then
+    if movement.IsMovementLocked(player) then
         isSprinting[player] = false
         player:SetAttribute("IsSprinting", false)
     end
     if humanoid then
-        humanoid.WalkSpeed = if movement.IsStunned(player)
+        humanoid.WalkSpeed = if movement.IsMovementLocked(player)
             then 0
             elseif isSprinting[player] then movement.GetSprintWalkSpeed(player)
             else movement.GetBaseWalkSpeed(player)
@@ -123,7 +123,7 @@ function SprintService.Init(dependencies)
             ensurePlayer(player)
 
             local humanoid = getHumanoid(player)
-            if not humanoid or humanoid.Health <= 0 or movement.IsStunned(player) then
+            if not humanoid or humanoid.Health <= 0 or movement.IsMovementLocked(player) then
                 isSprinting[player] = false
             end
             if isSprinting[player] then

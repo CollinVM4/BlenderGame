@@ -205,6 +205,18 @@ function Controller.Init()
         end
     end)
     ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
+        if prompt:GetAttribute("IceGunPurchase") == true then
+            if
+                RunService:IsStudio()
+                and playerGui:GetAttribute("DebugIceGunPrompt") == true
+                and playerGui:GetAttribute("IceGunPromptRendererRegistered") ~= true
+            then
+                warn(
+                    "[IceGunPrompt] Engine PromptShown received, but IceGunDisplayController renderer is not registered"
+                )
+            end
+            return
+        end
         if prompt:GetAttribute("PlayerStashPrompt") == true then
             return
         end

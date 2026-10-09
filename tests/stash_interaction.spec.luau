@@ -156,18 +156,16 @@ do
     )
 
     local protectedOwner = player()
-    for index = 1, 3 do
-        carry(protectedOwner, if index == 2 then "Banana" else "Milk")
-        check(press(protectedOwner, "STORE", 1), "protected slot accepts mixed ingredient")
-    end
+    carry(protectedOwner, "Milk")
+    check(press(protectedOwner, "STORE", 1), "protected slot accepts one ingredient")
     check(
-        stored(protectedOwner, 1) == 3 and inventory.GetSnapshot(protectedOwner).Stash[1].Capacity == 3,
-        "protected ingredient capacity is three"
+        stored(protectedOwner, 1) == 1 and inventory.GetSnapshot(protectedOwner).Stash[1].Capacity == 1,
+        "protected ingredient capacity is one"
     )
     carry(protectedOwner, "Banana")
     check(
         not press(protectedOwner, "STORE", 1) and inventory.GetCarryCount(protectedOwner) == 1,
-        "fourth protected ingredient rejected without loss"
+        "second protected ingredient rejected without loss"
     )
     check(press(protectedOwner, "STORE", 3), "exposed slot retains capacity three")
     check(inventory.GetSnapshot(protectedOwner).Stash[3].Capacity == 3, "exposed capacity remains three")

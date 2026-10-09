@@ -20,13 +20,14 @@ local stashes: { [Player]: { [number]: Types.StashSlot } } = {}
 local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
-local starterSessions: { [string]: boolean } = {}
+local starterSessions: { [string]: Player } = {}
+local TutorialOrders = require(Shared.Constants.TutorialOrders)
 local thrownIngredients: { [Player]: { { Object: Instance, ObserveAfter: number, SessionId: string? } } } = {}
 local StashConfig = Economy.NormalStash
 local StashSlots = require(script.Parent.StashSlots)
 local StashValue = require(script.Parent.StashValue)
-local function ingredientSlotCapacity(): number
-    return StashConfig.IngredientCapacity
+local function ingredientSlotCapacity(protected: boolean?): number
+    return if protected then 1 else StashConfig.IngredientCapacity
 end
 
 local raids: { [string]: { RaidEndsAt: number, ProtectionEndsAt: number } } = {}
@@ -669,20 +670,41 @@ function InventoryService.Init(services)
         end
     end)
 end
-function InventoryService.AddPlayer(player: Player)
-    player:SetAttribute("RipenessTutorialShown", false)
-    carried[player] = {}
-    syncHeld(player)
+local function ensureStash(player: Player)
+    if stashes[player] then
+        return
+    end
     stashes[player] = {}
     for index = 1, Upgrades.SecondStorage[2].Value do
         stashes[player][index] = {
             SlotIndex = index,
             Ingredients = {},
             Count = 0,
-            Capacity = ingredientSlotCapacity(),
+            Capacity = ingredientSlotCapacity(index <= StashConfig.Protected),
             Protected = index <= StashConfig.Protected,
         }
     end
+end
+function InventoryService.AddPlayer(player: Player)
+    if carried[player] then
+        return
+    end
+    player:SetAttribute("RipenessTutorialShown", false)
+    carried[player] = {}
+    syncHeld(player)
+    ensureStash(player)
+    stashChanged:Fire(player)
+end
+-- Membership publication runs before departing-player cleanup. Transfer the same
+-- authoritative stash, including withdrawals, to the promoted session owner.
+function InventoryService.BindPlayer(player: Player)
+    local id = deps.TycoonService.GetSessionId(player)
+    local previous = if id then starterSessions[id] else nil
+    if not id or not previous or previous == player or deps.TycoonService.GetSessionOwner(id) ~= player then
+        return
+    end
+    stashes[player], stashes[previous] = stashes[previous], nil
+    starterSessions[id] = player
     stashChanged:Fire(player)
 end
 function InventoryService.GetStackCap(player: Player): number
@@ -750,30 +772,54 @@ function InventoryService.HasIngredientInFlight(player: Player): boolean
     return #pending > 0
 end
 -- Called only for a newly created authoritative plot session, never from a client.
-function InventoryService.InitializeTutorialStash(player: Player)
+function InventoryService.InitializeTutorialStash(player: Player): (boolean, string?)
     local id = deps.TycoonService.GetSessionId(player)
-    if not id or starterSessions[id] or deps.TycoonService.GetSessionOwner(id) ~= player then
-        return
+    if not id or deps.TycoonService.GetSessionOwner(id) ~= player then
+        return false, "NotSessionOwner"
     end
+    if starterSessions[id] then
+        return true
+    end
+    ensureStash(player)
     local stash = stashes[player]
-    if not stash then
-        return
-    end
-    starterSessions[id] = true
-    for _, order in require(Shared.Constants.TutorialOrders) do
-        local slot = stash[order.Slot]
-        if not slot or slot.Count ~= 0 or #slot.Ingredients > 0 or slot.Smoothie then
-            continue
+    -- Prepare everything before touching live slots or recording success. No yield
+    -- occurs here; a failed preparation leaves legitimate stash contents intact.
+    local prepared: { [number]: { Types.IngredientItem } } = {}
+    local now = workspace:GetServerTimeNow()
+    local ok, problem = pcall(function()
+        for _, order in TutorialOrders do
+            local slot = stash[order.Slot]
+            if not slot or slot.Count ~= 0 or #slot.Ingredients > 0 or slot.Smoothie then
+                error("StarterSlotUnavailable slot=" .. tostring(order.Slot))
+            end
+            if #order.Ingredients > ingredientSlotCapacity(slot.Protected) then
+                error("StarterSlotCapacity slot=" .. tostring(order.Slot))
+            end
+            local units: { Types.IngredientItem } = {}
+            for _, ingredientId in order.Ingredients do
+                if not deps.IngredientService.GetDefinition(ingredientId) then
+                    error("InvalidIngredient id=" .. ingredientId)
+                end
+                local unit = Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false))
+                Item.EnterStash(unit, now)
+                table.insert(units, unit)
+            end
+            prepared[order.Slot] = units
         end
-        for _, ingredientId in order.Ingredients do
-            local unit = Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false))
-            Item.EnterStash(unit, workspace:GetServerTimeNow())
-            table.insert(slot.Ingredients, unit)
-        end
-        slot.ItemType, slot.Count, slot.Capacity = "Ingredient", #slot.Ingredients, ingredientSlotCapacity()
-        slot.IngredientId = slot.Ingredients[#slot.Ingredients].IngredientId
+    end)
+    if not ok then
+        warn("[TutorialInit] SeedFailed session=" .. id .. " reason=" .. tostring(problem))
+        return false, tostring(problem)
     end
+    for index, units in prepared do
+        local slot = stash[index]
+        slot.Ingredients = units
+        slot.ItemType, slot.Count, slot.Capacity = "Ingredient", #units, ingredientSlotCapacity(slot.Protected)
+        slot.IngredientId = units[#units].IngredientId
+    end
+    starterSessions[id] = player
     stashChanged:Fire(player)
+    return true
 end
 -- Server-only consumption of the same selected/fallback carry record as throw.
 -- Remove the reservation before destroying its Tool so reentrant actions cannot
@@ -815,7 +861,13 @@ function InventoryService.GetStashRaidState(owner: Player)
     }
 end
 function InventoryService.CleanupSession(sessionId: string)
+    local owner = starterSessions[sessionId]
     starterSessions[sessionId] = nil
+    if owner then
+        stashes[owner] = nil
+        ensureStash(owner)
+        stashChanged:Fire(owner)
+    end
     for player, pending in thrownIngredients do
         for index = #pending, 1, -1 do
             if pending[index].SessionId == sessionId then
@@ -1037,7 +1089,7 @@ end
 local function clearSlot(slot: Types.StashSlot)
     slot.ItemType, slot.IngredientId, slot.Smoothie = nil, nil, nil
     slot.Ingredients = {}
-    slot.Count, slot.Capacity = 0, ingredientSlotCapacity()
+    slot.Count, slot.Capacity = 0, ingredientSlotCapacity(slot.Protected)
 end
 -- Server-only NPC theft. Caller holds the plot transaction and claims
 -- its one theft attempt before entering. Never transfers the unit to another inventory.
@@ -1126,7 +1178,7 @@ local function depositSelected(player: Player, itemType: string, key: string, in
         slot.Smoothie = SmoothieItem.Copy(record.Smoothie)
         slot.Count, slot.Capacity = 1, 1
     else
-        local capacity = ingredientSlotCapacity()
+        local capacity = ingredientSlotCapacity(slot.Protected)
         if slot.Count >= capacity or (slot.Count > 0 and slot.ItemType ~= "Ingredient") then
             return false
         end

@@ -93,6 +93,8 @@ end
 local player = instance("Player", "Player")
 player.CharacterAdded = signal()
 player.WaitForChild = playerWait
+local playerGui = instance("PlayerGui", "PlayerGui", player)
+local detachedContainer = instance("Folder", "DetachedImports")
 local playerScripts = instance("PlayerScripts", "PlayerScripts", player)
 local client = instance("LocalScript", "Client", playerScripts)
 local ui = instance("Folder", "UI", client)
@@ -133,14 +135,17 @@ local function loadModule(module)
 end
 local manager = loadModule("PanelManager")
 
-local function run(tagged, wrapped, semantic)
-    local gui = instance("ScreenGui", "Framewisp")
+local function run(tagged, wrapped, semantic, detachMode)
+    local mount = instance("Folder", "ImportMount", playerGui)
+    local gui = instance("ScreenGui", "Framewisp", mount)
     local desktop = instance("Frame", "Be a Blender! Desktop", gui, { FW_Owned = true })
     local content = if wrapped then instance("CanvasGroup", "Be a Blender! DesktopContent", desktop) else desktop
     local top = instance("Frame", "TOP", content)
     local cash = instance("TextLabel", "{Coins}", top)
     cash.Text = "$1,234"
     local nav = instance("Frame", "LeftMenu", content)
+    local rightNav = instance("CanvasGroup", "RightMenu", content)
+    top.attributes.BlenderUI = "Panel:TOP" -- TOP stays excluded even with a panel tag.
     local panels, buttons, closes = {}, {}, {}
     local function panel(id)
         local p = instance(
@@ -203,9 +208,16 @@ local function run(tagged, wrapped, semantic)
         for _, candidate in ids do
             check(panels[candidate].Visible == (candidate == id), candidate .. " visibility")
         end
-        check(desktop.Visible and top.Visible and nav.Visible and cash.Text == "$1,234", "HUD preserved")
+        check(
+            desktop.Visible and top.Visible and nav.Visible and rightNav.Visible and cash.Text == "$1,234",
+            "HUD preserved"
+        )
     end
     only(nil)
+    buttons.Shop.Activated:Fire()
+    only("Shop")
+    buttons.Index.Activated:Fire()
+    only("Index")
     buttons.Upgrades.Activated:Fire()
     only("Upgrades")
     buttons.Settings.Activated:Fire()
@@ -286,18 +298,102 @@ local function run(tagged, wrapped, semantic)
     generated.Destroy()
     player.CharacterAdded:Fire()
     only(nil)
-    -- Detaching a root without Destroy must retire its old actions too.
-    gui.AncestryChanged:Fire(gui, nil)
+    -- Detach an OPEN root without Destroy. Check real parent relationships,
+    -- including a move to a non-nil parent and removal of its ancestor.
+    buttons.Upgrades.Activated:Fire()
+    only("Upgrades")
+    -- Moving within the owning PlayerGui must preserve the open menu.
+    local nextMount = instance("Folder", "ReplacementMount", playerGui)
+    table.remove(mount.children, table.find(mount.children, gui))
+    gui.Parent = nextMount
+    table.insert(nextMount.children, gui)
+    mount = nextMount
+    gui.AncestryChanged:Fire(gui, mount)
+    only("Upgrades")
+    if detachMode == "ancestor" or detachMode == "ancestorNil" then
+        mount.Parent = if detachMode == "ancestor" then detachedContainer else nil
+        if mount.Parent then
+            table.insert(mount.Parent.children, mount)
+        end
+        table.remove(playerGui.children, table.find(playerGui.children, mount))
+        gui.AncestryChanged:Fire(mount, mount.Parent)
+    else
+        table.remove(mount.children, table.find(mount.children, gui))
+        gui.Parent = if detachMode == "reparent" then detachedContainer else nil
+        if gui.Parent then
+            table.insert(gui.Parent.children, gui)
+        end
+        gui.AncestryChanged:Fire(gui, gui.Parent)
+    end
+    only(nil)
+    check(manager.GetActive() == nil, "detach releases active panel ownership")
+    buttons.Upgrades.Activated:Fire()
+    closes.Upgrades.Activated:Fire()
+    only(nil)
+    -- Retired roots must not participate in respawn or initialize inserted UI.
+    panels.Upgrades.Visible = true
+    player.CharacterAdded:Fire()
+    check(panels.Upgrades.Visible, "respawn leaves detached root untouched")
+    panels.Upgrades.Visible = false
+    local inserted = panel("Settings")
+    gui.DescendantAdded:Fire(inserted)
+    check(inserted.Visible, "detached root no longer initializes UI descendants")
+    local replacementVisible = true
+    local replacement = manager.Register("Replacement", {
+        Open = function()
+            replacementVisible = true
+        end,
+        Close = function()
+            replacementVisible = false
+        end,
+    })
+    replacement.Open()
+    buttons.Upgrades.Activated:Fire()
+    player.CharacterAdded:Fire()
+    check(
+        replacementVisible and manager.GetActive() == "Replacement",
+        "old navigation and respawn cannot close replacement menu"
+    )
+    -- Reattachment is explicit: bind this root again and resume its existing
+    -- Framewisp delegation hook without running generated scripts a second time.
+    if gui.Parent then
+        table.remove(gui.Parent.children, table.find(gui.Parent.children, gui))
+    end
+    gui.Parent = playerGui
+    table.insert(playerGui.children, gui)
+    table.remove(content.children, table.find(content.children, inserted))
+    inserted.Parent = nil
+    loadModule("FramewispMenus").Attach(gui, player)
+    loadModule("FramewispMenus").Attach(gui, player)
+    only(nil)
+    buttons.Upgrades.Activated:Fire()
+    only("Upgrades")
+    check(not replacementVisible, "reattached root shares panel ownership")
     buttons.Upgrades.Activated:Fire()
     only(nil)
+    -- The retained generated hook also handles later inserted buttons once,
+    -- rather than falling through to generated, independent visibility tweens.
+    local newNavigation =
+        instance("TextButton", "Upgrades", nav, { FigmaAction = "open", FigmaActionParam = "Upgrades" })
+    gui.DescendantAdded:Fire(newNavigation)
+    newNavigation.Activated:Fire()
+    only("Upgrades")
+    newNavigation.Activated:Fire()
+    only(nil)
+    buttons.Settings.Activated:Fire()
+    only("Settings")
     player.CharacterAdded:Fire()
     only(nil)
+    replacement.Destroy()
     gui.Destroying:Fire()
+    buttons.Upgrades.Activated:Fire()
+    only(nil)
     return gui
 end
 run(false, true)
-run(true, false)
+run(true, false, false, "reparent")
 -- A reconstructed GUI must start closed with fresh functioning navigation.
 run(false, false)
-run(false, true, true)
+run(false, true, true, "ancestor")
+run(false, true, false, "ancestorNil")
 print("Framewisp menus: " .. count .. " checks passed")

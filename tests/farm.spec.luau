@@ -146,8 +146,8 @@ check(
     state(1) == "GROWING" and inventory.GetCarryCount(owner) == 1 and selected.Destroyed,
     "plant consumes exactly the selected authoritative instance"
 )
-check(timers[#timers].Seconds == 30, "common duration")
-check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 30, "client receives synchronized growth deadline")
+check(timers[#timers].Seconds == 60, "common duration")
+check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 60, "client receives synchronized growth deadline")
 check(
     #sounds == 1 and sounds[1].Id == "IngredientPlant" and sounds[1].Position == rows[1].Plant.WorldPosition,
     "plant sound only follows successful consumption"
@@ -190,9 +190,120 @@ check(
 check(state(1) == "EMPTY", "last legitimate removal empties row")
 ingredients.Spawn = realSpawn
 inventory.ClearHeld(owner)
+-- Farm lifetime contracts use the real shared sweep, with no farm polling.
+local pending = {}
+env.task.delay = function(seconds, callback)
+    local entry = { At = now + seconds, Seconds = seconds, Run = callback }
+    table.insert(pending, entry)
+    table.insert(timers, entry)
+end
+local function advance(target)
+    while true do
+        table.sort(pending, function(a, b)
+            return a.At < b.At
+        end)
+        if not pending[1] or pending[1].At > target then
+            break
+        end
+        local entry = table.remove(pending, 1)
+        now = entry.At
+        entry.Run()
+    end
+    now = target
+end
+local function crops()
+    local result = {}
+    for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
+        local record = ingredients.GetRecord(object)
+        if record and (record.FarmManaged or object:GetAttribute("SpawnSource") == "Farm") then
+            table.insert(result, object)
+        end
+    end
+    return result
+end
+local epoch = now
+ingredients.Init({ AnnouncementService = { Publish = function() end } })
+local commonSeconds = config.GrowSeconds.Common
+config.GrowSeconds.Common = 420
+carry(owner, "Apple")
+plantRow(1, owner)
+advance(epoch + 360)
+check(state(1) == "GROWING" and #crops() == 0, "growing row survives six-minute sweep before products exist")
+advance(epoch + 420)
+config.GrowSeconds.Common = commonSeconds
+carry(owner, "Banana")
+plantRow(2, owner)
+carry(owner, "Strawberry")
+plantRow(3, owner)
+advance(epoch + 480)
+local waiting = crops()
+setup(#waiting == 9, "three complete harvests")
+-- Names and presentation attributes cannot grant or revoke cleanup protection.
+waiting[1]:SetAttribute("SpawnSource", nil)
+waiting[1]:SetAttribute("FarmState", "EMPTY")
+waiting[1].Name = "LooseIngredient"
+local impostor = ingredients.Spawn("Apple", frame(), nil, true)
+impostor:SetAttribute("SpawnSource", "Farm")
+impostor:SetAttribute("FarmState", "READY")
+advance(epoch + 2520)
+check(
+    #crops() == 9 and state(1) == "READY" and state(2) == "READY" and state(3) == "READY",
+    "all READY rows survive more than thirty minutes and repeated sweeps"
+)
+check(ingredients.GetRecord(impostor) == nil, "farm presentation metadata does not exempt loose ingredients")
+-- Failed harvest retains both farm membership and cleanup protection.
+humanoid.Health = 0
+check(not inventory.CarryWorldItem(owner, waiting[1]), "dead actor cannot harvest")
+advance(epoch + 2880)
+check(
+    ingredients.GetRecord(waiting[1]) ~= nil and #crops() == 9,
+    "failed harvest remains protected through the next sweep"
+)
+humanoid.Health = 100
+inventory.ClearHeld(owner)
+local originalItem = ingredients.GetRecord(waiting[1]).Item
+-- A loose removal callback harvests while ClearLooseIngredients is traversing
+-- its snapshot: farm crops must never enter that expiration snapshot.
+local trigger = ingredients.Spawn("Banana", frame(), nil, true)
+trigger.Destroying:Connect(function()
+    setup(inventory.CarryWorldItem(owner, waiting[1]), "harvest during sweep")
+end)
+advance(epoch + 3240)
+check(
+    inventory.GetCarryCount(owner) == 1 and ingredients.GetRecord(waiting[1]) == nil and #crops() == 8,
+    "sweep racing harvest transfers ownership exactly once"
+)
+local dropped = inventory.DropHeld(owner)
+setup(dropped ~= nil, "drop harvested ingredient")
+local droppedRecord = ingredients.GetRecord(dropped)
+check(
+    not droppedRecord.FarmManaged
+        and droppedRecord.Item.ItemId == originalItem.ItemId
+        and droppedRecord.Id == originalItem.IngredientId
+        and droppedRecord.Item.IsRipe == originalItem.IsRipe
+        and droppedRecord.Item.RipenessStoredSeconds == originalItem.RipenessStoredSeconds,
+    "harvest/drop preserves item identity without inheriting farm protection"
+)
+advance(epoch + 3599)
+check(ingredients.GetRecord(dropped) ~= nil, "old planting time cannot expire a newly dropped crop early")
+advance(epoch + 3600)
+check(
+    ingredients.GetRecord(dropped) == nil and #crops() == 8,
+    "dropped harvest expires at the normal shared sweep while farm crops survive"
+)
+farm.CleanupSession(tycoon.GetSessionId(owner))
+check(#crops() == 0, "plot reset retires every protected crop record")
+farm.StartSession(owner)
+for _, row in rows do
+    check(row.Object:GetAttribute("FarmState") == "EMPTY", "reset farm reactivates unlocked rows")
+end
+-- Existing duration tests below drive callbacks manually. Retire their scheduled
+-- copies so no stale manually-run growth is replayed by this clock.
+table.clear(pending)
+
 local definition = ingredients.GetDefinition("Apple")
 local originalRarity = definition.Rarity
-for rarity, seconds in { Uncommon = 45, Rare = 90, Mystery = 180, Unknown = 30 } do
+for rarity, seconds in { Uncommon = 90, Rare = 120, Mystery = 210, Unknown = 60 } do
     definition.Rarity = rarity
     carry(owner, "Apple")
     plantRow(1, owner)
@@ -212,13 +323,15 @@ plantRow(1, owner)
 check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "nonfarmable ingredient is retained")
 definition.Farmable = nil
 inventory.ClearHeld(owner)
-for _, id in { "Potato", "Tomato", "GoldenTomato" } do
+for _, id in { "Golden_Potato", "Golden_Tomato" } do
     carry(owner, id)
     plantRow(1, owner)
     check(state(1) == "GROWING", id .. " remains plantable")
     timers[#timers].Run()
     for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
-        if ingredients.GetRecord(object) then object:Destroy() end
+        if ingredients.GetRecord(object) then
+            object:Destroy()
+        end
     end
     inventory.ClearHeld(owner)
 end
@@ -269,7 +382,37 @@ check(spawnCount == 0 and state(1) == "LOCKED", "stale timer cannot spawn into r
 check(tycoon.GetUpgrade(owner, "FarmRows") == 1, "new session clears row upgrades")
 tycoon.SetCash(owner, 20000)
 touch(1, owner)
+carry(owner, "Apple")
+plantRow(1, owner)
+timers[#timers].Run()
+local removedRowProducts = crops()
+setup(#removedRowProducts == 3, "row-removal harvest")
+tycoon.SetCash(owner, 100000)
+touch(2, owner)
+carry(owner, "Banana")
+plantRow(2, owner)
+timers[#timers].Run()
+rows[1].Object.Parent = nil
+rows[1].Object.AncestryChanged:Fire()
+for _, object in removedRowProducts do
+    check(
+        object.Destroyed and ingredients.GetRecord(object) == nil,
+        "removed row destroys crops and retires protected records"
+    )
+end
+rows[1].Object.Parent = folder
+local detachedProducts = crops()
+setup(#detachedProducts == 3, "plot-detach harvest")
+detachedProducts[1].Parent = nil
+detachedProducts[1].AncestryChanged:Fire()
+check(
+    detachedProducts[1].Destroyed and ingredients.GetRecord(detachedProducts[1]) == nil and state(2) == "READY",
+    "crop leaving workspace retires its farm and registry references without emptying remaining harvest"
+)
 detach()
+for _, object in detachedProducts do
+    check(object.Destroyed and ingredients.GetRecord(object) == nil, "plot detachment retires protected crop records")
+end
 for _, motion in motions do
     motion:Finish()
 end

@@ -1,0 +1,1521 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<Meta name="ExplicitAutoJoints">true</Meta>
+	<External>null</External>
+	<External>nil</External>
+	<Item class="Tool" referent="RBX2D2C485707AD4A4D95BBE45C2031CA57">
+		<Properties>
+			<bool name="CanBeDropped">true</bool>
+			<bool name="Enabled">true</bool>
+			<CoordinateFrame name="Grip">
+				<X>-0.200000003</X>
+				<Y>-1.64999998</Y>
+				<Z>-0.400000006</Z>
+				<R00>1</R00>
+				<R01>0</R01>
+				<R02>0</R02>
+				<R10>0</R10>
+				<R11>0</R11>
+				<R12>-1</R12>
+				<R20>0</R20>
+				<R21>1</R21>
+				<R22>0</R22>
+			</CoordinateFrame>
+			<bool name="ManualActivationOnly">false</bool>
+			<bool name="RequiresHandle">true</bool>
+			<string name="ToolTip">winter best season</string>
+			<Content name="TextureId"><url>http://www.roblox.com/asset/?id=20518488</url></Content>
+			<token name="LevelOfDetail">0</token>
+			<CoordinateFrame name="ModelMeshCFrame">
+				<X>0</X>
+				<Y>0</Y>
+				<Z>0</Z>
+				<R00>1</R00>
+				<R01>0</R01>
+				<R02>0</R02>
+				<R10>0</R10>
+				<R11>1</R11>
+				<R12>0</R12>
+				<R20>0</R20>
+				<R21>0</R21>
+				<R22>1</R22>
+			</CoordinateFrame>
+			<SharedString name="ModelMeshData">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			<Vector3 name="ModelMeshSize">
+				<X>0</X>
+				<Y>0</Y>
+				<Z>0</Z>
+			</Vector3>
+			<token name="ModelStreamingMode">0</token>
+			<bool name="NeedsPivotMigration">false</bool>
+			<Ref name="PrimaryPart">null</Ref>
+			<float name="ScaleFactor">1</float>
+			<SharedString name="SlimHash">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			<OptionalCoordinateFrame name="WorldPivotData">
+				<CFrame>
+					<X>-2.13378549</X>
+					<Y>3.03572106</Y>
+					<Z>17.0001011</Z>
+					<R00>0.999391675</R00>
+					<R01>8.43392627e-07</R01>
+					<R02>0.0348828062</R02>
+					<R10>-0.0348615982</R10>
+					<R11>0.0348993614</R11>
+					<R12>0.998782754</R12>
+					<R20>-0.00121643895</R20>
+					<R21>-0.999391019</R21>
+					<R22>0.0348781496</R22>
+				</CFrame>
+			</OptionalCoordinateFrame>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+			<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+			<bool name="DefinesCapabilities">true</bool>
+			<string name="Name">IcicleGun</string>
+			<BinaryString name="SerializedOverrides"></BinaryString>
+			<int64 name="SourceAssetId">7127826632</int64>
+			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+		</Properties>
+		<Item class="Part" referent="RBX7E3E061021CD4A8CA6A6747E163FED45">
+			<Properties>
+				<token name="shape">1</token>
+				<token name="formFactorRaw">2</token>
+				<bool name="Anchored">true</bool>
+				<bool name="AudioCanCollide">true</bool>
+				<float name="BackParamA">-0.5</float>
+				<float name="BackParamB">0.5</float>
+				<token name="BackSurface">0</token>
+				<token name="BackSurfaceInput">0</token>
+				<float name="BottomParamA">-0.5</float>
+				<float name="BottomParamB">0.5</float>
+				<token name="BottomSurface">0</token>
+				<token name="BottomSurfaceInput">0</token>
+				<CoordinateFrame name="CFrame">
+					<X>-0.953548133</X>
+					<Y>2.45954895</Y>
+					<Z>17.9258823</Z>
+					<R00>0.308885276</R00>
+					<R01>-0.950457633</R01>
+					<R02>0.0348828733</R02>
+					<R10>0.0224158708</R10>
+					<R11>0.0439411588</R11>
+					<R12>0.998782635</R12>
+					<R20>-0.950833499</R20>
+					<R21>-0.307727665</R21>
+					<R22>0.0348782092</R22>
+				</CoordinateFrame>
+				<bool name="CanCollide">true</bool>
+				<bool name="CanQuery">true</bool>
+				<bool name="CanTouch">true</bool>
+				<bool name="CastShadow">true</bool>
+				<string name="CollisionGroup">Default</string>
+				<int name="CollisionGroupId">0</int>
+				<Color3uint8 name="Color3uint8">4288914085</Color3uint8>
+				<PhysicalProperties name="CustomPhysicalProperties">
+					<CustomPhysics>false</CustomPhysics>
+				</PhysicalProperties>
+				<bool name="EnableFluidForces">true</bool>
+				<float name="FrontParamA">-0.5</float>
+				<float name="FrontParamB">0.5</float>
+				<token name="FrontSurface">0</token>
+				<token name="FrontSurfaceInput">0</token>
+				<float name="LeftParamA">-0.5</float>
+				<float name="LeftParamB">0.5</float>
+				<token name="LeftSurface">0</token>
+				<token name="LeftSurfaceInput">0</token>
+				<bool name="Locked">false</bool>
+				<bool name="Massless">false</bool>
+				<token name="Material">256</token>
+				<string name="MaterialVariantSerialized"></string>
+				<CoordinateFrame name="PivotOffset">
+					<X>0</X>
+					<Y>0</Y>
+					<Z>0</Z>
+					<R00>1</R00>
+					<R01>0</R01>
+					<R02>0</R02>
+					<R10>0</R10>
+					<R11>1</R11>
+					<R12>0</R12>
+					<R20>0</R20>
+					<R21>0</R21>
+					<R22>1</R22>
+				</CoordinateFrame>
+				<float name="Reflectance">0</float>
+				<float name="RightParamA">-0.5</float>
+				<float name="RightParamB">0.5</float>
+				<token name="RightSurface">0</token>
+				<token name="RightSurfaceInput">0</token>
+				<int name="RootPriority">0</int>
+				<Vector3 name="RotVelocity">
+					<X>0</X>
+					<Y>0</Y>
+					<Z>0</Z>
+				</Vector3>
+				<float name="TopParamA">-0.5</float>
+				<float name="TopParamB">0.5</float>
+				<token name="TopSurface">0</token>
+				<token name="TopSurfaceInput">0</token>
+				<float name="Transparency">0</float>
+				<Vector3 name="Velocity">
+					<X>0</X>
+					<Y>0</Y>
+					<Z>0</Z>
+				</Vector3>
+				<Vector3 name="size">
+					<X>1</X>
+					<Y>3.20000005</Y>
+					<Z>1</Z>
+				</Vector3>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">Handle</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+			<Item class="SpecialMesh" referent="RBX32801C5828D54B09B563F6FAA58DB563">
+				<Properties>
+					<token name="MeshType">5</token>
+					<Content name="MeshId"><url>http://www.roblox.com/asset/?id=19280156</url></Content>
+					<Content name="TextureId"><url>http://www.roblox.com/asset/?id=19280155</url></Content>
+					<Vector3 name="Offset">
+						<X>0</X>
+						<Y>0</Y>
+						<Z>0</Z>
+					</Vector3>
+					<Vector3 name="Scale">
+						<X>0.800000012</X>
+						<Y>0.800000012</Y>
+						<Z>0.800000012</Z>
+					</Vector3>
+					<Vector3 name="VertexColor">
+						<X>1</X>
+						<Y>1</Y>
+						<Z>1</Z>
+					</Vector3>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Mesh</string>
+					<BinaryString name="SerializedOverrides"></BinaryString>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+			</Item>
+			<Item class="Sound" referent="RBXDE5EAE6610684DF2AADF15E2DD9EDD60">
+				<Properties>
+					<bool name="AcousticSimulationEnabled">true</bool>
+					<NumberRange name="LoopRegion">0 60000 </NumberRange>
+					<bool name="Looped">false</bool>
+					<bool name="PlayOnRemove">false</bool>
+					<NumberRange name="PlaybackRegion">0 60000 </NumberRange>
+					<bool name="PlaybackRegionsEnabled">false</bool>
+					<float name="PlaybackSpeed">1</float>
+					<bool name="Playing">false</bool>
+					<float name="RollOffMaxDistance">10000</float>
+					<float name="RollOffMinDistance">10</float>
+					<token name="RollOffMode">0</token>
+					<Ref name="SoundGroup">null</Ref>
+					<Content name="SoundId"><url>http://www.roblox.com/asset/?id=11900833</url></Content>
+					<double name="TimePosition">0</double>
+					<float name="Volume">1</float>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">Launch</string>
+					<BinaryString name="SerializedOverrides"></BinaryString>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+				<Item class="SpecialMesh" referent="RBX8E64BCF0E8424FA38E28347F9EBC981D">
+					<Properties>
+						<token name="MeshType">5</token>
+						<Content name="MeshId"><url>http://www.roblox.com/asset/?id=20518365</url></Content>
+						<Content name="TextureId"><url>http://www.roblox.com/asset/?id=19287687</url></Content>
+						<Vector3 name="Offset">
+							<X>0</X>
+							<Y>0</Y>
+							<Z>0</Z>
+						</Vector3>
+						<Vector3 name="Scale">
+							<X>1</X>
+							<Y>1</Y>
+							<Z>1</Z>
+						</Vector3>
+						<Vector3 name="VertexColor">
+							<X>1</X>
+							<Y>1</Y>
+							<Z>1</Z>
+						</Vector3>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Mesh</string>
+						<BinaryString name="SerializedOverrides"></BinaryString>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+			</Item>
+			<Item class="Attachment" referent="RBX4FFAF74C6F4A49DC88081FF6A078804A">
+				<Properties>
+					<CoordinateFrame name="CFrame">
+						<X>-0.280000001</X>
+						<Y>1.79999995</Y>
+						<Z>0.400000006</Z>
+						<R00>6.31088724e-30</R00>
+						<R01>0</R01>
+						<R02>-1</R02>
+						<R10>0</R10>
+						<R11>1</R11>
+						<R12>0</R12>
+						<R20>1</R20>
+						<R21>0</R21>
+						<R22>6.31088724e-30</R22>
+					</CoordinateFrame>
+					<bool name="Visible">false</bool>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">GunBarrel</string>
+					<BinaryString name="SerializedOverrides"></BinaryString>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+				<Item class="ParticleEmitter" referent="RBX9E12F7DF12AE47AD920247A8B4C51649">
+					<Properties>
+						<Vector3 name="Acceleration">
+							<X>0</X>
+							<Y>0</Y>
+							<Z>0</Z>
+						</Vector3>
+						<float name="Brightness">1</float>
+						<ColorSequence name="Color">0 0 1 1 0 1 0 1 1 0 </ColorSequence>
+						<float name="Drag">0</float>
+						<token name="EmissionDirection">1</token>
+						<bool name="Enabled">false</bool>
+						<bool name="FlipbookBlendFrames">true</bool>
+						<NumberRange name="FlipbookFramerate">1 1 </NumberRange>
+						<string name="FlipbookIncompatible">Particle texture must be 1024 by 1024 to use flipbooks.</string>
+						<token name="FlipbookLayout">0</token>
+						<token name="FlipbookMode">0</token>
+						<int name="FlipbookSizeX">1</int>
+						<int name="FlipbookSizeY">1</int>
+						<bool name="FlipbookStartRandom">false</bool>
+						<NumberRange name="Lifetime">0.8 0.8 </NumberRange>
+						<float name="LightEmission">1</float>
+						<float name="LightInfluence">0</float>
+						<bool name="LockedToPart">false</bool>
+						<token name="Orientation">0</token>
+						<float name="Rate">100</float>
+						<NumberRange name="RotSpeed">0 0 </NumberRange>
+						<NumberRange name="Rotation">-180 180 </NumberRange>
+						<token name="Shape">0</token>
+						<token name="ShapeInOut">0</token>
+						<float name="ShapePartial">1</float>
+						<token name="ShapeStyle">0</token>
+						<NumberSequence name="Size">0 0.3 0 1 0.5 0 </NumberSequence>
+						<NumberRange name="Speed">4 6 </NumberRange>
+						<Vector2 name="SpreadAngle">
+							<X>-180</X>
+							<Y>180</Y>
+						</Vector2>
+						<NumberSequence name="Squash">0 0 0 1 0 0 </NumberSequence>
+						<Content name="Texture"><url>http://www.roblox.com/asset/?id=254711773</url></Content>
+						<float name="TimeScale">1</float>
+						<NumberSequence name="Transparency">0 1 0 0.102823 0.238095 0.0465 0.703629 0.272727 0.143 1 1 0 </NumberSequence>
+						<float name="VelocityInheritance">0.5</float>
+						<bool name="WindAffectsDrag">false</bool>
+						<float name="ZOffset">0.5</float>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Smoke</string>
+						<BinaryString name="SerializedOverrides"></BinaryString>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+		<Item class="RemoteFunction" referent="RBX75BE77A97A5B48DF98841A5ED07B93CC">
+			<Properties>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+				<bool name="DefinesCapabilities">true</bool>
+				<string name="Name">MouseInput</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="RBX87EB4C79F06A4D4DA19167B3368FA0F1">
+			<Properties>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+				<bool name="DefinesCapabilities">true</bool>
+				<string name="Name">Remote</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+		</Item>
+		<Item class="Folder" referent="RBX5700BBAED3B14C1FAA8A53D2FA9E5A16">
+			<Properties>
+				<Color3 name="IconTint">
+					<R>0</R>
+					<G>0</G>
+					<B>0</B>
+				</Color3>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">Animations</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+			<Item class="Folder" referent="RBXEDECE651D6F4482B9C12742D34D5BE9E">
+				<Properties>
+					<Color3 name="IconTint">
+						<R>0</R>
+						<G>0</G>
+						<B>0</B>
+					</Color3>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">R6</string>
+					<BinaryString name="SerializedOverrides"></BinaryString>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+			</Item>
+			<Item class="Folder" referent="RBX3A4020DB474F4B49952867E79CF80EC6">
+				<Properties>
+					<Color3 name="IconTint">
+						<R>0</R>
+						<G>0</G>
+						<B>0</B>
+					</Color3>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+					<bool name="DefinesCapabilities">false</bool>
+					<string name="Name">R15</string>
+					<BinaryString name="SerializedOverrides"></BinaryString>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+			</Item>
+		</Item>
+		<Item class="Camera" referent="RBX66F932BFFF7A4478A5E9169D0B41236A">
+			<Properties>
+				<CoordinateFrame name="CFrame">
+					<X>-2.63716555</X>
+					<Y>6.46979809</Y>
+					<Z>-2.39844513</Z>
+					<R00>-0.681233346</R00>
+					<R01>0.267799914</R01>
+					<R02>-0.681325436</R02>
+					<R10>-0</R10>
+					<R11>0.930688083</R11>
+					<R12>0.365813732</R12>
+					<R20>0.732066333</R20>
+					<R21>0.249204516</R21>
+					<R22>-0.634015739</R22>
+				</CoordinateFrame>
+				<Ref name="CameraSubject">null</Ref>
+				<token name="CameraType">0</token>
+				<float name="FieldOfView">70</float>
+				<token name="FieldOfViewMode">0</token>
+				<CoordinateFrame name="Focus">
+					<X>-1.27451468</X>
+					<Y>5.73817062</Y>
+					<Z>-1.13041365</Z>
+					<R00>1</R00>
+					<R01>0</R01>
+					<R02>0</R02>
+					<R10>0</R10>
+					<R11>1</R11>
+					<R12>0</R12>
+					<R20>0</R20>
+					<R21>0</R21>
+					<R22>1</R22>
+				</CoordinateFrame>
+				<bool name="HeadLocked">true</bool>
+				<float name="HeadScale">1</float>
+				<token name="OrthographicMode">0</token>
+				<float name="OrthographicSize">300</float>
+				<token name="ProjectionType">0</token>
+				<bool name="VRTiltAndRollEnabled">false</bool>
+				<float name="ViewStretch">1</float>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">ThumbnailCamera</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+		</Item>
+		<Item class="LocalScript" referent="RBX075D45D527A24CB88A1ACBF4C316C572">
+			<Properties>
+				<ProtectedString name="Source"><![CDATA[--majority of code by TakeoHonorable
+local Tool = script.Parent
+
+local Remote = Tool:WaitForChild("Remote",10)
+
+local MouseInput = Tool:WaitForChild("MouseInput",10)
+
+local Services = {
+	Players = (game:FindService("Players") or game:GetService("Players")),
+	TweenService = (game:FindService("TweenService") or game:GetService("TweenService")),
+	RunService = (game:FindService("RunService") or game:GetService("RunService")),
+	Input = (game:FindService("ContextActionService") or game:GetService("ContextActionService"))
+}
+
+local Player,Character,Humanoid
+
+function StaffPrimary(actionName, inputState, inputObj)
+	if inputState == Enum.UserInputState.Begin then 
+		Remote:FireServer(Enum.KeyCode.Q)
+	end
+end
+
+function StaffSecondary(actionName, inputState, inputObj)
+	if inputState == Enum.UserInputState.Begin then 
+		Remote:FireServer(Enum.KeyCode.E)
+	end
+end
+
+function StaffTertiary(actionName, inputState, inputObj)
+	if inputState == Enum.UserInputState.Begin then 
+		Remote:FireServer(Enum.KeyCode.X)
+	end
+end
+
+function Equipped()
+	Player = Services.Players.LocalPlayer
+	Character = Player.Character
+	Humanoid = Character:FindFirstChildOfClass("Humanoid")
+	if not Humanoid or not Humanoid.Parent or Humanoid.Health <= 0 then return end
+
+	--Services.Input:BindAction("StaffPrimary",StaffPrimary,true,Enum.KeyCode.Q,Enum.KeyCode.ButtonX)
+	--Services.Input:BindAction("StaffSecondary",StaffSecondary,true,Enum.KeyCode.E,Enum.KeyCode.ButtonY)
+	--Services.Input:BindAction("StaffTertiary",StaffTertiary,true,Enum.KeyCode.X,Enum.KeyCode.ButtonL1)
+	--Services.Input:SetTitle("StaffPrimary","none")
+	--Services.Input:SetTitle("StaffSecondary","none")
+	--Services.Input:SetTitle("StaffTertiary","none")
+	--Services.Input:SetPosition("StaffPrimary",UDim2.new(.5,0,-.5,0))
+	--Services.Input:SetPosition("StaffSecondary",UDim2.new(.5,0,-.25,0))
+	--Services.Input:SetPosition("StaffTertiary",UDim2.new(.5,0,0,0))
+end
+
+function Unequipped()
+	--Services.Input:UnbindAction("StaffPrimary")
+	--Services.Input:UnbindAction("StaffSecondary")	
+	--Services.Input:UnbindAction("StaffTertiary")		
+end
+
+Tool.Equipped:Connect(Equipped)
+Tool.Unequipped:Connect(Unequipped)
+
+
+function MouseInput.OnClientInvoke()
+	return game.Players.LocalPlayer:GetMouse().Hit.p
+end]]></ProtectedString>
+				<bool name="Disabled">false</bool>
+				<Content name="LinkedSource"><null></null></Content>
+				<token name="RunContext">0</token>
+				<string name="ScriptGuid">{49447602-3CCD-468C-A6F1-9983E22DB04B}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+				<bool name="DefinesCapabilities">true</bool>
+				<string name="Name">GunClient</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+		</Item>
+		<Item class="Script" referent="RBX563F1524813B4729B2C2D87DE7CDFD54">
+			<Properties>
+				<ProtectedString name="Source"><![CDATA[--Redone by Noob3713
+--if I had a bunch of money to waste i would definitely pay someone to make one of these for me
+
+Tool = script.Parent
+Cannon = Tool.Handle
+
+Tool.Enabled = true
+
+AnimFolder = Tool.Animations
+
+--Trail = Staff.Trail
+--Trail.Attachment0 = Staff.TrailTop
+--Trail.Attachment1 = Staff.TrailBottom
+--Trail.Enabled = true
+
+--SP1 = Staff.StarPartics.Twinkle
+--SP2 = Staff.StarParticsBottom.Twinkle
+--SP1.Enabled = true
+--SP2.Enabled = true
+
+--StaffFire = Staff.FirePartics.StaffFire
+--StaffFire.Enabled = true
+
+Running = game:GetService("RunService")
+Debree = game:GetService("Debris")
+PlyrService = game:GetService("Players")
+
+Remote = (Tool:FindFirstChild("Remote") or Instance.new("RemoteEvent"));Remote.Name = "Remote";Remote.Parent = Tool
+MouseInput = Tool.MouseInput
+
+function TagHumanoid(humanoid, player)
+	local Creator_Tag = Instance.new("ObjectValue")
+	Creator_Tag.Name = "creator"
+	Creator_Tag.Value = player
+	Debree:AddItem(Creator_Tag, 2)
+	Creator_Tag.Parent = humanoid
+end
+
+function UntagHumanoid(humanoid)
+	for i, v in pairs(humanoid:GetChildren()) do
+		if v:IsA("ObjectValue") and v.Name == "creator" then
+			v:Destroy()
+		end
+	end
+end
+
+-- team related stuff do not steal
+
+if Tool:FindFirstChild("TeamAttack") then
+	Tool.TeamAttack:Destroy()
+end
+
+TeamSwitch = Instance.new("BoolValue")
+TeamSwitch.Value = false
+TeamSwitch.Name = "TeamAttack"
+TeamSwitch.Parent = Tool
+
+--setting the value to true will allow teammates to damage eachother
+--setting the value to false will prevent it
+--the value can be changed manually if you want i guess
+
+function TeamAlly(person)
+	Plyr2 = game.Players:GetPlayerFromCharacter(person)
+	if TeamSwitch.Value == false and Plyr and Plyr2 and not Plyr.Neutral and Plyr.TeamColor == Plyr2.TeamColor then
+		return true
+	end
+	return false
+end
+
+function MinionAlly(tempChar)
+	if tempChar:FindFirstChild("Master") ~= nil and tempChar.Master.ClassName == "ObjectValue" and tempChar.Master.Value == Plyr then
+		return true
+	end
+	return false
+end
+
+function MinionTeamAlly(tempMinion) -- NOTE: you need the above function for this to work
+	TempMaster = tempMinion:FindFirstChild("Master")
+	if TempMaster and TempMaster.ClassName == "ObjectValue" and TempMaster.Value and TeamAlly(TempMaster.Value.Character) then
+		return true
+	end
+	return false
+end
+
+-- end team related stuff
+
+OrigGrip = nil
+OrigGrip2 = nil
+
+CurrentDamage = 22
+
+Special1 = true
+Special2 = true
+Special3 = true
+DoingSpecial = false
+
+stuff = {}
+moreStuff = {}
+
+Deflect = false
+
+function DoSpecial(Client, Key)
+	if not Client or Client ~= Plyr or not Key or not Tool.Enabled or Hum.Health <= 0 or DoingSpecial then return end
+	if Key == Enum.KeyCode.Q then
+		if Special1 == true then
+			Special1 = false
+			wait(30)
+			Special1 = true
+		end
+	elseif Key == Enum.KeyCode.E then
+		if Special2 == true then
+			Special2 = false
+			--ShootingStar()
+			wait(25)
+			Special2 = true
+		end
+	elseif Key == Enum.KeyCode.X then
+		if Special3 == true then
+			Special3 = false
+			--Inviso()
+			--wait(20)
+			Special3 = true
+		end
+	end
+end
+
+BaseUrl = "rbxassetid://"
+FlakeMeshes = {"187687175","187687161","187687193"}
+ParticTexes = {"276120078","276120139","276120200"}
+
+function FireProjectile()
+	Tool.Enabled = false
+	--WaveAnim = Hum:LoadAnimation(AnimSet.LightStaffAnim)
+	--if WaveAnim then WaveAnim:Play(nil,nil,2) end
+	MousePosition = MouseInput:InvokeClient(Plyr)
+
+	Icicle = Instance.new("Part")
+	Icicle.BrickColor = BrickColor.new("Really red")
+	Icicle.Material = "Neon"
+	Icicle.Anchored = false
+	Icicle.CanCollide = false
+	Icicle.Shape = "Ball"
+	Icicle.Size = Vector3.new(0.4,0.4,2)
+	Icicle.CFrame = CFrame.new(Cannon.GunBarrel.WorldPosition,MousePosition)
+	Icicle.Parent = game.Workspace
+	Icicle:SetNetworkOwner(nil)
+	
+	IcicleMesh = Instance.new("SpecialMesh")
+	IcicleMesh.MeshId = "http://www.roblox.com/asset/?id=20518365"
+	IcicleMesh.TextureId = "http://www.roblox.com/asset/?id=19287687"
+	IcicleMesh.Scale = Vector3.new(1.2,1.2,1.2)
+	IcicleMesh.Parent = Icicle
+	
+	Cannon.GunBarrel.Smoke:Emit(50)
+	Cannon.Launch:Play()
+	
+	BV = Instance.new("BodyVelocity")
+	BV.MaxForce = Vector3.new(1,1,1)*math.huge
+	BV.Velocity = CFrame.new(Cannon.GunBarrel.WorldPosition,MousePosition).lookVector * 120
+	BV.Parent = Icicle
+	--BV.P = 1000000
+	BV.Name = "vroom"
+	
+	--Staff.Twinkle:Play()
+	
+	BS = script.BulletScript:Clone()
+	BS.Parent = Icicle
+	NewTx = ParticTexes[math.random(1,#ParticTexes)]
+	BS.SnowBullet.Texture = BaseUrl .. NewTx
+	BS.SnowSplosion.Texture = BaseUrl .. NewTx
+	TeamSwitch:Clone().Parent = BS
+	TagHumanoid(BS,Plyr)
+	BS.Disabled = false
+end
+
+Targets = {}
+Distance = 999
+
+Charge = 0
+
+RayConstant = Vector3.new(0,-200,0)
+
+Dis = math.huge
+Target = nil
+MaxDis = math.huge
+TargetPoint = nil
+TargetDir = nil
+
+NewAnim = nil
+SummonAnim = nil
+AnimSpeed = 1
+
+NewPart = nil
+NewPos = Vector3.new(0,0,0)
+
+function Shoot()
+	if Tool.Enabled == true and DoingSpecial == false then
+		Tool.Enabled = false
+		FireProjectile()
+		Charge = 0
+		wait(0.4)
+		Tool.Enabled = true
+	end
+end
+
+IgnoreDamage = false
+NewHealth = 100
+
+DamageReducer = .7
+
+function ReduceDamage()
+	NewHealth = Hum.Health
+	if not IgnoreDamage and NewHealth ~= Hum.MaxHealth and NewHealth > 0 then
+		if NewHealth < CurrentHealth then
+			local DamageDealt = (CurrentHealth - NewHealth)
+			IgnoreDamage = true
+			Hum.Health = Hum.Health + (DamageDealt * DamageReducer)
+			IgnoreDamage = false
+		end
+	end
+	CurrentHealth = NewHealth
+end
+
+CurrentHeath = 100
+
+Char = nil
+Hum = nil
+Plyr = nil
+Root = nil
+AnimSet = nil
+function Equip()
+	Char = Tool.Parent
+	Hum = Char:FindFirstChild("Humanoid")
+	Plyr = game.Players:GetPlayerFromCharacter(Char)
+	Root = Char:FindFirstChild("HumanoidRootPart") or Char:FindFirstChild("Torso")
+	AnimSet = AnimFolder:FindFirstChild(Hum.RigType)
+	
+end
+
+function Unequip()
+	--DamageDodge:Disconnect()
+	--if EquipAnim then EquipAnim:Stop() end
+end
+
+Tool.Equipped:Connect(Equip)
+Tool.Unequipped:Connect(Unequip)
+Tool.Activated:Connect(Shoot)
+--Sword.Touched:Connect(SwordHit)
+Remote.OnServerEvent:Connect(DoSpecial)]]></ProtectedString>
+				<bool name="Disabled">false</bool>
+				<Content name="LinkedSource"><null></null></Content>
+				<token name="RunContext">0</token>
+				<string name="ScriptGuid">{33ED6348-D20C-4B19-A3C4-935E0F7E9096}</string>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+				<bool name="DefinesCapabilities">true</bool>
+				<string name="Name">GunMain</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+			<Item class="Script" referent="RBX1E1165FEF7D44D61B3C9569122467902">
+				<Properties>
+					<ProtectedString name="Source"><![CDATA[Flake = script.Parent
+
+if script:FindFirstChild("creator") == nil then
+	Flake:Destroy()
+end
+
+Running = game:GetService("RunService")
+Debree = game:GetService("Debris")
+
+Plyr = script.creator.Value
+
+Char = Plyr.Character
+
+Tag = script.creator:Clone()
+Tag.Parent = Flake
+Tag.Changed:connect(function(thing)
+	if Tag.Value and Tag.Value.ClassName == "Player" then
+		Plyr = Tag.Value
+		Char = Plyr.Character
+	end
+end)
+
+--FlySound = script.Projectile_Fly
+ImpactSound = script.Shatter
+Flakes = script.SnowBullet
+Sparkles = script.SnowSplosion
+
+ImpactSound.Parent = Flake
+Flakes.Parent = Flake
+Flakes.Enabled = true
+
+Sparkles.Parent = Flake
+
+function Frozen(Character) -- Quick check to see if they're not frozen
+	for _,v in pairs(game.ServerScriptService:GetChildren()) do
+		if v:IsA("Script") and v.Name == "Freeze" and v:FindFirstChild("Target") and v:FindFirstChild("Target").Value == Character then
+			return true
+		end
+	end
+	return false
+end
+
+Hums = {}
+Ignore = false
+
+function WaveHit(part)
+	if part.Parent ~= nil and not part:IsDescendantOf(Char) and part.Parent:FindFirstChild("Humanoid") ~= nil and not TeamAlly(part.Parent) and not MinionAlly(part.Parent) and not MinionTeamAlly(part.Parent) then
+		Ignore = false
+		for z = 1,#Hums do
+			if Hums[z] == part.Parent.Humanoid then
+				Ignore = true
+			end
+		end
+		if Ignore == false then
+			Distance = (Flake.Position - part.Position).magnitude
+			UntagHumanoid(part.Parent.Humanoid)
+			TagHumanoid(part.Parent.Parent,Plyr)
+			part.Parent.Humanoid:TakeDamage(15 - Distance)
+			table.insert(Hums,part.Parent.Humanoid)
+			if math.random(1,15) == 1 and not Frozen(part.Parent) then
+				FS = script.Freeze:Clone()
+				FS.Parent = game.ServerScriptService
+				FS.Creator.Value = Plyr
+				FS.Target.Value = part.Parent
+				FS.Disabled = false
+			end
+		end
+	end
+end
+
+function BulletHit(hit)
+	if hit.Parent ~= nil and not hit:IsDescendantOf(Char) and Flake.Anchored == false and (hit.CanCollide == true or hit.Parent:FindFirstChild("Humanoid")) and not TeamAlly(hit.Parent) and not MinionAlly(hit.Parent) and not MinionTeamAlly(hit.Parent) then
+		Flake.Anchored = true
+		Flake.Transparency = 1
+		Flakes.Enabled = false
+		ImpactSound:Play()
+		Sparkles:Emit(200)
+		if hit.Parent:FindFirstChild("Humanoid") ~= nil then
+			UntagHumanoid(hit.Parent)
+			TagHumanoid(hit.Parent,Plyr)
+			hit.Parent.Humanoid:TakeDamage(20)
+		end
+		P = Instance.new("Part")
+		P.BrickColor = BrickColor.new("Electric blue")
+		P.Transparency = 0.5
+		P.Material = "Neon"
+		P.Anchored = true
+		P.CanCollide = false
+		P.Shape = "Ball"
+		P.Size = Vector3.new(1,1,1)
+		P.Position = Flake.Position
+		P.Parent = Flake
+		P.Touched:connect(WaveHit)
+		
+		for a = 1,40 do
+			Running.Heartbeat:wait()
+			P.Size = P.Size + Vector3.new(0.4,0.4,0.4)
+			P.Transparency = P.Transparency + 0.0125
+		end
+		P.Size = Vector3.new(0,0,0)
+		wait(0.5)
+		P:Destroy()
+		wait(2)
+		Flake:Destroy()
+	end
+end
+
+function TagHumanoid(humanoid, player)
+	local Creator_Tag = Instance.new("ObjectValue")
+	Creator_Tag.Name = "creator"
+	Creator_Tag.Value = player
+	Debree:AddItem(Creator_Tag, 2)
+	Creator_Tag.Parent = humanoid
+end
+
+function UntagHumanoid(humanoid)
+	for i, v in pairs(humanoid:GetChildren()) do
+		if v:IsA("ObjectValue") and v.Name == "creator" then
+			v:Destroy()
+		end
+	end
+end
+
+-- team related stuff do not steal
+
+if script:FindFirstChild("TeamAttack") then
+	TeamSwitch = script.TeamAttack
+end
+
+--if you want to change the settings on team attack, go to the main script
+
+function TeamAlly(person)
+	Plyr2 = game.Players:GetPlayerFromCharacter(person)
+	if TeamSwitch and TeamSwitch.Value == false and Plyr and Plyr2 and not Plyr.Neutral and Plyr.TeamColor == Plyr2.TeamColor then
+		return true
+	end
+	return false
+end
+
+function MinionAlly(tempChar)
+	if tempChar:FindFirstChild("Master") ~= nil and tempChar.Master.ClassName == "ObjectValue" and tempChar.Master.Value == Plyr then
+		return true
+	end
+	return false
+end
+
+function MinionTeamAlly(tempMinion) -- NOTE: you need the above function for this to work
+	TempMaster = tempMinion:FindFirstChild("Master")
+	if TempMaster and TempMaster.ClassName == "ObjectValue" and TempMaster.Value and TeamAlly(TempMaster.Value.Character) then
+		return true
+	end
+	return false
+end
+
+-- end team related stuff
+
+StarImpact = Flake.Touched:Connect(BulletHit)
+--FlySound:Play()
+
+wait(5)
+if Flake.Anchored == false then
+	Flake:Destroy()
+end]]></ProtectedString>
+					<bool name="Disabled">true</bool>
+					<Content name="LinkedSource"><null></null></Content>
+					<token name="RunContext">0</token>
+					<string name="ScriptGuid">{793C48D2-1183-4EA1-BB8A-412F036934FF}</string>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+					<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+					<bool name="DefinesCapabilities">true</bool>
+					<string name="Name">BulletScript</string>
+					<BinaryString name="SerializedOverrides"></BinaryString>
+					<int64 name="SourceAssetId">-1</int64>
+					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+				</Properties>
+				<Item class="Script" referent="RBX4445F3E67BA9499B9889B3E86E6CCCDA">
+					<Properties>
+						<ProtectedString name="Source"><![CDATA[local Target = script:WaitForChild("Target").Value
+
+local Sounds = {
+	IceCrack = script:WaitForChild("IceCrack"),
+	Shatter = script:WaitForChild("Shatter")
+}
+
+local Torso = Target:FindFirstChild("Torso") or Target:FindFirstChild("UpperTorso")
+
+if not Target then script:Destroy() end
+
+local Humanoid = Target:FindFirstChildOfClass("Humanoid")
+Humanoid:UnequipTools()
+
+local Stop = false
+coroutine.wrap(function()
+	repeat
+		Humanoid.JumpPower = 0
+		Humanoid.WalkSpeed = 0
+		game:GetService("RunService").Heartbeat:Wait()
+	until Stop
+end)()
+
+local Services = {
+	Players = (game:FindService("Players") or game:GetService("Players")),
+	Debris = (game:FindService("Debris") or game:GetService("Debris")),
+	RunService = (game:FindService("RunService") or game:GetService("RunService")),
+}
+
+function Create(ty)
+	return function(data)
+		local obj = Instance.new(ty)
+		for k, v in pairs(data) do
+			if type(k) == 'number' then
+				v.Parent = obj
+			else
+				obj[k] = v
+			end
+		end
+		return obj
+	end
+end
+
+if Services.Players:GetPlayerFromCharacter(Target) then
+	local Disable = script:WaitForChild("DisableBackpack")
+	Disable.Parent = Services.Players:GetPlayerFromCharacter(Target):WaitForChild("Backpack")
+	Disable.Disabled = false
+	Services.Debris:AddItem(Disable,1)
+	Services.Players:GetPlayerFromCharacter(Target).CharacterRemoving:Connect(function(Char)--keeps people from a hidden inventory
+		local Enable = script:WaitForChild("EnableBackpack")
+		Enable.Parent = Services.Players:GetPlayerFromCharacter(Target):WaitForChild("Backpack")
+		Enable.Disabled = false
+		Services.Debris:AddItem(Enable,1)
+	end)
+end
+
+local ice = Create("Part"){
+	Shape = "Block", 
+	Size = Vector3.new(4.2,4,6.3)*0, 
+	CanCollide = true,
+	Anchored = true,
+	Locked = true,
+	Name = "Ice Block",
+	CFrame = Torso.CFrame*CFrame.Angles(math.rad(-90),0,0), 
+	Transparency = 0.4,
+	Parent = Target,
+}
+
+local iceBlockMesh = Create("SpecialMesh"){
+	MeshId = "http://www.roblox.com/asset/?id=66876751",
+	TextureId = "http://www.roblox.com/asset/?id=66876766",
+	Scale = Vector3.new(1.0, 1.0, 1.0)*0,
+	Parent = ice,
+}
+
+Sounds.IceCrack.Parent = ice
+Sounds.IceCrack:Play()
+
+local Puff = script:WaitForChild("Puff")
+Puff.Parent = ice
+Puff.Enabled = true
+
+local FrozenParts = {}
+
+for _,parts in pairs(Target:GetChildren()) do
+	if parts:IsA("BasePart") and Humanoid:GetLimb(parts) then
+		parts.Anchored = true
+		FrozenParts[#FrozenParts+1] = parts
+	end
+end
+
+for i=1,60,1 do
+	ice.Size = (Vector3.new(4.2,4,6.3)*.1):lerp(Vector3.new(4.2,4,6.3),i/60)
+	iceBlockMesh.Scale = (Vector3.new(1.0, 1.0, 1.0)*.1):lerp(Vector3.new(1.0, 1.0, 1.0),i/60)
+	ice.CFrame = Torso.CFrame*CFrame.Angles(math.rad(-90),0,0)
+	Services.RunService.Heartbeat:Wait()
+end
+
+local Duration,Start = 2.5,tick()
+
+repeat
+	Services.RunService.Heartbeat:Wait()
+until (tick()-Start) >= Duration or Humanoid.Health <= 0
+
+Sounds.Shatter.Parent = Torso
+Sounds.Shatter:Play()
+Services.Debris:AddItem(Sounds.Shatter,Sounds.Shatter.TimeLength+1)
+
+Stop = true
+ice:Destroy()
+Humanoid.JumpPower = 50
+Humanoid.WalkSpeed = 16
+
+local Seed = Random.new(tick())
+
+for _, parts in pairs(FrozenParts) do
+	if parts then
+		parts.Anchored = false
+		local DebrisIce = Create("Part"){
+			Size = Vector3.new(Seed:NextNumber(1,2),Seed:NextNumber(1,2),Seed:NextNumber(1,2)),
+			Locked = true,
+			Anchored = false,
+			Name = "Broken Ice",
+			CFrame = parts.CFrame,
+			Transparency = 0.3,
+			Material = Enum.Material.Glass,
+			TopSurface = Enum.SurfaceType.Smooth,
+			BottomSurface = Enum.SurfaceType.Smooth,
+			Color = (Seed:NextInteger(1,3) == 1 and Color3.fromRGB(170,255,255)) or Color3.fromRGB(0,170,255),
+			Parent = workspace
+		}
+		Services.Debris:AddItem(DebrisIce,Seed:NextNumber(3,5))
+	end
+end
+
+local FrostSparkles = script:WaitForChild("FrostSparkles")
+FrostSparkles.Parent = Torso
+FrostSparkles:Emit(FrostSparkles.Rate)
+Services.Debris:AddItem(FrostSparkles,FrostSparkles.Lifetime.Max)
+
+if Services.Players:GetPlayerFromCharacter(Target) then	
+	local Enable = script:WaitForChild("EnableBackpack")
+	Enable.Parent = Services.Players:GetPlayerFromCharacter(Target):WaitForChild("Backpack")
+	Enable.Disabled = false
+	Services.Debris:AddItem(Enable,1)
+end
+
+wait(2) -- Grace period (Your're Welcome EuroC2)
+
+script:Destroy()]]></ProtectedString>
+						<bool name="Disabled">true</bool>
+						<Content name="LinkedSource"><null></null></Content>
+						<token name="RunContext">0</token>
+						<string name="ScriptGuid">{627F0B82-D24F-402E-83A0-F0D5BFF6A777}</string>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+						<bool name="DefinesCapabilities">true</bool>
+						<string name="Name">Freeze</string>
+						<BinaryString name="SerializedOverrides"></BinaryString>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+					<Item class="ObjectValue" referent="RBXB7825F080E49483CA3C49BD31941C6E8">
+						<Properties>
+							<Ref name="Value">null</Ref>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+							<bool name="DefinesCapabilities">false</bool>
+							<string name="Name">Target</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="LocalScript" referent="RBX3A5AF762F1A1474CA575BCE16B10070C">
+						<Properties>
+							<ProtectedString name="Source"><![CDATA[--Much efficient way to hide the backpack without causing lag
+
+local StarterGui = game:GetService("StarterGui")
+
+StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)]]></ProtectedString>
+							<bool name="Disabled">true</bool>
+							<Content name="LinkedSource"><null></null></Content>
+							<token name="RunContext">0</token>
+							<string name="ScriptGuid">{EB1E1026-2BD4-4482-BFBD-B4A8FA3EB442}</string>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+							<bool name="DefinesCapabilities">true</bool>
+							<string name="Name">DisableBackpack</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="LocalScript" referent="RBXBD719E0B84774AC693DF7FD6E6BC80EE">
+						<Properties>
+							<ProtectedString name="Source"><![CDATA[--Much efficient way to hide the backpack without causing lag
+
+local StarterGui = game:GetService("StarterGui")
+
+StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)]]></ProtectedString>
+							<bool name="Disabled">true</bool>
+							<Content name="LinkedSource"><null></null></Content>
+							<token name="RunContext">0</token>
+							<string name="ScriptGuid">{3EB3E036-9E4C-418E-9B41-4DBC91D3D7B2}</string>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+							<bool name="DefinesCapabilities">true</bool>
+							<string name="Name">EnableBackpack</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="Sound" referent="RBXE48F868FC2FC42D5BC26EACF49D2699F">
+						<Properties>
+							<bool name="AcousticSimulationEnabled">true</bool>
+							<NumberRange name="LoopRegion">0 60000 </NumberRange>
+							<bool name="Looped">false</bool>
+							<bool name="PlayOnRemove">false</bool>
+							<NumberRange name="PlaybackRegion">0 60000 </NumberRange>
+							<bool name="PlaybackRegionsEnabled">false</bool>
+							<float name="PlaybackSpeed">1</float>
+							<bool name="Playing">false</bool>
+							<float name="RollOffMaxDistance">10000</float>
+							<float name="RollOffMinDistance">10</float>
+							<token name="RollOffMode">0</token>
+							<Ref name="SoundGroup">null</Ref>
+							<Content name="SoundId"><url>rbxassetid://32788850</url></Content>
+							<double name="TimePosition">0</double>
+							<float name="Volume">1</float>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+							<bool name="DefinesCapabilities">false</bool>
+							<string name="Name">IceCrack</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="ObjectValue" referent="RBXE83D941C75D4423892A02DB88755143E">
+						<Properties>
+							<Ref name="Value">null</Ref>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+							<bool name="DefinesCapabilities">false</bool>
+							<string name="Name">Creator</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="ParticleEmitter" referent="RBX1593F260DD274A388B18C8A046C453EF">
+						<Properties>
+							<Vector3 name="Acceleration">
+								<X>0</X>
+								<Y>0</Y>
+								<Z>0</Z>
+							</Vector3>
+							<float name="Brightness">1</float>
+							<ColorSequence name="Color">0 0.666667 1 1 0 1 1 1 1 0 </ColorSequence>
+							<float name="Drag">0</float>
+							<token name="EmissionDirection">1</token>
+							<bool name="Enabled">false</bool>
+							<bool name="FlipbookBlendFrames">true</bool>
+							<NumberRange name="FlipbookFramerate">1 1 </NumberRange>
+							<string name="FlipbookIncompatible">Particle texture must be 1024 by 1024 to use flipbooks.</string>
+							<token name="FlipbookLayout">0</token>
+							<token name="FlipbookMode">0</token>
+							<int name="FlipbookSizeX">1</int>
+							<int name="FlipbookSizeY">1</int>
+							<bool name="FlipbookStartRandom">false</bool>
+							<NumberRange name="Lifetime">1 2 </NumberRange>
+							<float name="LightEmission">0</float>
+							<float name="LightInfluence">0.5</float>
+							<bool name="LockedToPart">false</bool>
+							<token name="Orientation">0</token>
+							<float name="Rate">10</float>
+							<NumberRange name="RotSpeed">-60 60 </NumberRange>
+							<NumberRange name="Rotation">0 0 </NumberRange>
+							<token name="Shape">0</token>
+							<token name="ShapeInOut">0</token>
+							<float name="ShapePartial">1</float>
+							<token name="ShapeStyle">0</token>
+							<NumberSequence name="Size">0 2.75 0 1 1.9375 0.5625 </NumberSequence>
+							<NumberRange name="Speed">1 2 </NumberRange>
+							<Vector2 name="SpreadAngle">
+								<X>-180</X>
+								<Y>180</Y>
+							</Vector2>
+							<NumberSequence name="Squash">0 0 0 1 0 0 </NumberSequence>
+							<Content name="Texture"><url>rbxassetid://258128463</url></Content>
+							<float name="TimeScale">1</float>
+							<NumberSequence name="Transparency">0 1 0 0.199597 0.493506 0 0.502016 0.493506 0 0.641129 0.52381 0 0.747984 0.549784 0 0.836694 0.623377 0 0.910282 0.709957 0 0.957661 0.800866 0 1 1 0 </NumberSequence>
+							<float name="VelocityInheritance">0.5</float>
+							<bool name="WindAffectsDrag">false</bool>
+							<float name="ZOffset">0</float>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+							<bool name="DefinesCapabilities">false</bool>
+							<string name="Name">Puff</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="Sound" referent="RBX484C9E4D735D4608BE9B5AE1B65F5260">
+						<Properties>
+							<bool name="AcousticSimulationEnabled">true</bool>
+							<NumberRange name="LoopRegion">0 60000 </NumberRange>
+							<bool name="Looped">false</bool>
+							<bool name="PlayOnRemove">false</bool>
+							<NumberRange name="PlaybackRegion">0 60000 </NumberRange>
+							<bool name="PlaybackRegionsEnabled">false</bool>
+							<float name="PlaybackSpeed">1</float>
+							<bool name="Playing">false</bool>
+							<float name="RollOffMaxDistance">10000</float>
+							<float name="RollOffMinDistance">10</float>
+							<token name="RollOffMode">0</token>
+							<Ref name="SoundGroup">null</Ref>
+							<Content name="SoundId"><url>http://www.roblox.com/Asset?ID=87015121</url></Content>
+							<double name="TimePosition">0</double>
+							<float name="Volume">1</float>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+							<bool name="DefinesCapabilities">false</bool>
+							<string name="Name">Shatter</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+					<Item class="ParticleEmitter" referent="RBX1F477655A58E4CC6A815234517603D91">
+						<Properties>
+							<Vector3 name="Acceleration">
+								<X>0</X>
+								<Y>-10</Y>
+								<Z>0</Z>
+							</Vector3>
+							<float name="Brightness">1</float>
+							<ColorSequence name="Color">0 0.666667 1 1 0 1 0.666667 1 1 0 </ColorSequence>
+							<float name="Drag">2</float>
+							<token name="EmissionDirection">1</token>
+							<bool name="Enabled">false</bool>
+							<bool name="FlipbookBlendFrames">true</bool>
+							<NumberRange name="FlipbookFramerate">1 1 </NumberRange>
+							<string name="FlipbookIncompatible">Particle texture must be 1024 by 1024 to use flipbooks.</string>
+							<token name="FlipbookLayout">0</token>
+							<token name="FlipbookMode">0</token>
+							<int name="FlipbookSizeX">1</int>
+							<int name="FlipbookSizeY">1</int>
+							<bool name="FlipbookStartRandom">false</bool>
+							<NumberRange name="Lifetime">1 2 </NumberRange>
+							<float name="LightEmission">1</float>
+							<float name="LightInfluence">0</float>
+							<bool name="LockedToPart">false</bool>
+							<token name="Orientation">0</token>
+							<float name="Rate">300</float>
+							<NumberRange name="RotSpeed">-200 200 </NumberRange>
+							<NumberRange name="Rotation">-180 180 </NumberRange>
+							<token name="Shape">0</token>
+							<token name="ShapeInOut">0</token>
+							<float name="ShapePartial">1</float>
+							<token name="ShapeStyle">0</token>
+							<NumberSequence name="Size">0 0.5625 0.5625 0.05 0 0 0.104294 0.625 0.625 0.15 0 0 0.199386 0.6875 0.625 0.25 0 0 0.300613 0.6875 0.5625 0.35 0 0 0.404908 0.6875 0.5625 0.45 0 0 0.501534 0.75 0.625 0.55 0 0 0.599693 0.8125 0.6875 0.65 0 0 0.70092 0.6875 0.5625 0.75 0 0 0.800613 0.75 0.625 0.85 0 0 0.92638 0.6875 0.5 1 0 0 </NumberSequence>
+							<NumberRange name="Speed">20 40 </NumberRange>
+							<Vector2 name="SpreadAngle">
+								<X>-180</X>
+								<Y>180</Y>
+							</Vector2>
+							<NumberSequence name="Squash">0 0 0 1 0 0 </NumberSequence>
+							<Content name="Texture"><url>rbxassetid://298984512</url></Content>
+							<float name="TimeScale">1</float>
+							<NumberSequence name="Transparency">0 0 0 1 1 0 </NumberSequence>
+							<float name="VelocityInheritance">0</float>
+							<bool name="WindAffectsDrag">false</bool>
+							<float name="ZOffset">0</float>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+							<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+							<bool name="DefinesCapabilities">false</bool>
+							<string name="Name">FrostSparkles</string>
+							<BinaryString name="SerializedOverrides"></BinaryString>
+							<int64 name="SourceAssetId">-1</int64>
+							<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						</Properties>
+					</Item>
+				</Item>
+				<Item class="ParticleEmitter" referent="RBXFDABE416D01B48F6830BD793A2ABC4F2">
+					<Properties>
+						<Vector3 name="Acceleration">
+							<X>0</X>
+							<Y>1</Y>
+							<Z>0</Z>
+						</Vector3>
+						<float name="Brightness">1</float>
+						<ColorSequence name="Color">0 1 1 1 0 1 0.85098 1 1 0 </ColorSequence>
+						<float name="Drag">0.600000024</float>
+						<token name="EmissionDirection">5</token>
+						<bool name="Enabled">false</bool>
+						<bool name="FlipbookBlendFrames">true</bool>
+						<NumberRange name="FlipbookFramerate">1 1 </NumberRange>
+						<string name="FlipbookIncompatible">Particle texture must be 1024 by 1024 to use flipbooks.</string>
+						<token name="FlipbookLayout">0</token>
+						<token name="FlipbookMode">0</token>
+						<int name="FlipbookSizeX">1</int>
+						<int name="FlipbookSizeY">1</int>
+						<bool name="FlipbookStartRandom">false</bool>
+						<NumberRange name="Lifetime">1 1 </NumberRange>
+						<float name="LightEmission">-0.0500000007</float>
+						<float name="LightInfluence">0</float>
+						<bool name="LockedToPart">false</bool>
+						<token name="Orientation">0</token>
+						<float name="Rate">100</float>
+						<NumberRange name="RotSpeed">-100 100 </NumberRange>
+						<NumberRange name="Rotation">0 0 </NumberRange>
+						<token name="Shape">0</token>
+						<token name="ShapeInOut">0</token>
+						<float name="ShapePartial">1</float>
+						<token name="ShapeStyle">0</token>
+						<NumberSequence name="Size">0 0.1 0 1 1.5 0 </NumberSequence>
+						<NumberRange name="Speed">10 15 </NumberRange>
+						<Vector2 name="SpreadAngle">
+							<X>180</X>
+							<Y>180</Y>
+						</Vector2>
+						<NumberSequence name="Squash">0 0 0 1 0 0 </NumberSequence>
+						<Content name="Texture"><url>http://www.roblox.com/asset/?id=276120078</url></Content>
+						<float name="TimeScale">1</float>
+						<NumberSequence name="Transparency">0 0 0 1 1 0 </NumberSequence>
+						<float name="VelocityInheritance">0</float>
+						<bool name="WindAffectsDrag">false</bool>
+						<float name="ZOffset">0</float>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">SnowSplosion</string>
+						<BinaryString name="SerializedOverrides"></BinaryString>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="ParticleEmitter" referent="RBXBB586ACC60C64B3D9390209B06A03E19">
+					<Properties>
+						<Vector3 name="Acceleration">
+							<X>0</X>
+							<Y>1</Y>
+							<Z>0</Z>
+						</Vector3>
+						<float name="Brightness">1</float>
+						<ColorSequence name="Color">0 1 1 1 0 1 0.85098 1 1 0 </ColorSequence>
+						<float name="Drag">0</float>
+						<token name="EmissionDirection">5</token>
+						<bool name="Enabled">false</bool>
+						<bool name="FlipbookBlendFrames">true</bool>
+						<NumberRange name="FlipbookFramerate">1 1 </NumberRange>
+						<string name="FlipbookIncompatible">Particle texture must be 1024 by 1024 to use flipbooks.</string>
+						<token name="FlipbookLayout">0</token>
+						<token name="FlipbookMode">0</token>
+						<int name="FlipbookSizeX">1</int>
+						<int name="FlipbookSizeY">1</int>
+						<bool name="FlipbookStartRandom">false</bool>
+						<NumberRange name="Lifetime">1 1 </NumberRange>
+						<float name="LightEmission">-0.0500000007</float>
+						<float name="LightInfluence">0</float>
+						<bool name="LockedToPart">false</bool>
+						<token name="Orientation">0</token>
+						<float name="Rate">100</float>
+						<NumberRange name="RotSpeed">-100 100 </NumberRange>
+						<NumberRange name="Rotation">0 0 </NumberRange>
+						<token name="Shape">0</token>
+						<token name="ShapeInOut">0</token>
+						<float name="ShapePartial">1</float>
+						<token name="ShapeStyle">0</token>
+						<NumberSequence name="Size">0 0.2 0 1 1 0 </NumberSequence>
+						<NumberRange name="Speed">0 0 </NumberRange>
+						<Vector2 name="SpreadAngle">
+							<X>90</X>
+							<Y>90</Y>
+						</Vector2>
+						<NumberSequence name="Squash">0 0 0 1 0 0 </NumberSequence>
+						<Content name="Texture"><url>http://www.roblox.com/asset/?id=276120078</url></Content>
+						<float name="TimeScale">1</float>
+						<NumberSequence name="Transparency">0 0 0 1 1 0 </NumberSequence>
+						<float name="VelocityInheritance">0</float>
+						<bool name="WindAffectsDrag">false</bool>
+						<float name="ZOffset">0</float>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">SnowBullet</string>
+						<BinaryString name="SerializedOverrides"></BinaryString>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+				<Item class="Sound" referent="RBXC7355DC729634AA18B41AEA5E5F107AD">
+					<Properties>
+						<bool name="AcousticSimulationEnabled">true</bool>
+						<NumberRange name="LoopRegion">0 60000 </NumberRange>
+						<bool name="Looped">false</bool>
+						<bool name="PlayOnRemove">false</bool>
+						<NumberRange name="PlaybackRegion">0 60000 </NumberRange>
+						<bool name="PlaybackRegionsEnabled">false</bool>
+						<float name="PlaybackSpeed">0.5</float>
+						<bool name="Playing">false</bool>
+						<float name="RollOffMaxDistance">10000</float>
+						<float name="RollOffMinDistance">5</float>
+						<token name="RollOffMode">0</token>
+						<Ref name="SoundGroup">null</Ref>
+						<Content name="SoundId"><url>rbxassetid://4508963254</url></Content>
+						<double name="TimePosition">0</double>
+						<float name="Volume">5</float>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">Shatter</string>
+						<BinaryString name="SerializedOverrides"></BinaryString>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+		<Item class="BoolValue" referent="RBX6F8A864889B3423980B801DACF354008">
+			<Properties>
+				<bool name="Value">false</bool>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+				<bool name="DefinesCapabilities">false</bool>
+				<string name="Name">TeamAttack</string>
+				<BinaryString name="SerializedOverrides"></BinaryString>
+				<int64 name="SourceAssetId">-1</int64>
+				<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			</Properties>
+		</Item>
+	</Item>
+	<SharedStrings>
+		<SharedString md5="yuZpQdnvvUBOTYh1jqZ2cA=="></SharedString>
+	</SharedStrings>
+</roblox>

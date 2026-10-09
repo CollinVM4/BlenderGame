@@ -18,8 +18,12 @@ function Menus.Attach(gui: Instance, player: Player)
     local connections: { RBXScriptConnection } = {}
     local buttons: { [Instance]: RBXScriptConnection } = {}
     local stopped = false
+    local playerGui = player:FindFirstChild("PlayerGui")
 
     local function initialize(instance: Instance)
+        if stopped then
+            return
+        end
         local id = panelId(instance)
         if id and not panels[instance] then
             local panel = instance :: GuiObject
@@ -36,7 +40,10 @@ function Menus.Attach(gui: Instance, player: Player)
     end
     local function wire(button: Instance): boolean
         if stopped then
-            return true
+            -- A retained FramewispActions hook may outlive a detached root.
+            -- Explicit reattachment must delegate into the new binding.
+            local current = attached[gui]
+            return if current then current.Wire(button) else true
         end
         if not button:IsA("GuiButton") then
             return false
@@ -120,6 +127,9 @@ function Menus.Attach(gui: Instance, player: Player)
         return true
     end
     local function added(instance: Instance)
+        if stopped then
+            return
+        end
         initialize(instance)
         wire(instance)
         -- Also handles a complete subtree inserted in one operation.
@@ -149,6 +159,9 @@ function Menus.Attach(gui: Instance, player: Player)
     )
     for _, descendant in gui:GetDescendants() do
         initialize(descendant)
+    end
+    for _, descendant in gui:GetDescendants() do
+        wire(descendant)
     end
     table.insert(
         connections,
@@ -182,7 +195,7 @@ function Menus.Attach(gui: Instance, player: Player)
     table.insert(
         connections,
         gui.AncestryChanged:Connect(function(_, parent)
-            if parent == nil then
+            if parent == nil or (playerGui and not gui:IsDescendantOf(playerGui)) then
                 stop()
             end
         end)

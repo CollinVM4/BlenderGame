@@ -1,3 +1,11 @@
+-- Weapon input must not wait for unrelated UI/remote initialization.
+task.spawn(function()
+    require(script.Controllers.IceGunController).Init()
+end)
+-- Register independently of yielding menu/remote initialization.
+task.spawn(function()
+    require(script.Controllers.IceGunDisplayController).Init()
+end)
 require(script.Controllers.TutorialGleamController).Init()
 -- Subscribe to committed claims before other controller initialization can yield.
 require(script.Controllers.StandIdentityController).Init()

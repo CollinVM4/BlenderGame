@@ -36,7 +36,7 @@ check(
 )
 inventory.ClearHeld(owner)
 setup(press(owner, "TAKE", 2), "take smoothie from protected slot")
-check(slot(owner, 2).Count == 0 and slot(owner, 2).Capacity == 3, "cleared smoothie restores ingredient capacity")
+check(slot(owner, 2).Count == 0 and slot(owner, 2).Capacity == 1, "cleared smoothie restores ingredient capacity")
 setup(press(owner, "STORE", 3), "stash smoothie")
 local original = slot(owner, 3).Smoothie
 local backpack = enemy:FindFirstChildOfClass("Backpack")

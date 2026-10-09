@@ -29,6 +29,10 @@ local services: { [string]: any } = {
     GameService = require(script.Services.GameService),
     MarketService = require(script.Services.MarketService),
     CombatService = require(script.Services.CombatService),
+    IceGunService = require(script.Services.IceGunService),
+    IceGunProjectileService = require(script.Services.IceGunProjectileService),
+    IceGunEffects = require(script.Services.IceGunEffects),
+    FreezeStatusService = require(script.Services.FreezeStatusService),
     DevContentService = require(script.Services.DevContentService),
     GameplayService = require(script.Services.GameplayService),
 }
@@ -52,11 +56,17 @@ services.TycoonService.Init({
         services.FarmService.StartSession(player)
         services.BlendService.Reset(player)
         services.MuncherService.Reset(player)
-        services.InventoryService.InitializeTutorialStash(player)
+        local seeded, reason = services.InventoryService.InitializeTutorialStash(player)
+        if not seeded then
+            warn("[TutorialInit] Starter stash unavailable: " .. tostring(reason))
+            return false
+        end
         services.CustomerService.ActivateForPlayer(player, true)
         services.TutorialService.MembershipChanged(player)
+        return true
     end,
     MemberChanged = function(player)
+        services.InventoryService.BindPlayer(player)
         services.InitialSpawnService.ClearReservation(player)
         services.TutorialService.MembershipChanged(player)
         services.MovementService.RefreshPlayer(player)
@@ -94,6 +104,9 @@ for _, name in
 do
     services[name].Init(services)
 end
+services.FreezeStatusService.Init(services)
+services.IceGunProjectileService.Init(services)
+services.IceGunService.Init(services)
 services.HealthRegenService.Init()
 services.AdminService.Init(services)
 services.CustomerService.Init(services, services.GameService.CustomerServed, services.GameService.IsServing)
@@ -129,6 +142,7 @@ local function addPlayer(player: Player)
     services.DiscoveryService.PlayerAdded(player)
     services.TycoonService.RefreshUpgradeAttributes(player)
     services.MovementService.RefreshPlayer(player)
+    services.IceGunService.AddPlayer(player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
     local function onCharacterAdded(character: Model)
@@ -137,6 +151,8 @@ local function addPlayer(player: Player)
         services.PlayerHeadDropService.ApplyCharacter(player, character)
         services.CharacterPhysicsService.ApplyCharacter(player, character, services.RagdollService.PrepareCharacter)
         services.InventoryService.CleanupCharacter(player)
+        services.FreezeStatusService.ApplyCharacter(player, character)
+        services.IceGunService.ApplyCharacter(player, character)
         services.CombatService.ApplyCharacter(player, character)
         services.MovementService.ApplyCharacter(player, character)
         services.SprintService.ResetCharacter(player)
@@ -175,6 +191,9 @@ Players.PlayerRemoving:Connect(function(player)
                 "GameService",
                 "BlendService",
                 "MuncherService",
+                "IceGunService",
+                "IceGunProjectileService",
+                "FreezeStatusService",
                 "CombatService",
                 "InventoryService",
                 "IngredientService",
@@ -214,6 +233,7 @@ local components: { { Init: (any) -> () } } = {
     require(script.Components.BlendVFX),
     require(script.Components.DispenseButton),
     require(script.Components.MarketPedestal),
+    require(script.Components.IceGunDisplay),
     require(script.Components.BlenderKillScript),
     require(script.Components.Stash),
     require(script.Components.DayButton),

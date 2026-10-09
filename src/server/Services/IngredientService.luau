@@ -10,7 +10,8 @@ local Item = require(Shared.IngredientItem)
 local Types = require(Shared.Types)
 local IngredientService = {}
 -- Tags/attributes are presentation metadata, never proof of ownership or validity.
-local records: { [Instance]: { Id: string, Owner: Player?, Claimable: boolean, Item: Types.IngredientItem } } = {}
+type Record = { Id: string, Owner: Player?, Claimable: boolean, Item: Types.IngredientItem, FarmManaged: boolean }
+local records: { [Instance]: Record } = {}
 
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
@@ -27,6 +28,7 @@ function IngredientService.Spawn(
         Item: Types.IngredientItem?,
         VisualTemplate: Instance?,
         FreezeUntilPickup: boolean?,
+        FarmManaged: boolean?,
         BeforePublish: ((Instance) -> ())?,
     }?
 ): Instance?
@@ -69,7 +71,15 @@ function IngredientService.Spawn(
     if root and root:CanSetNetworkOwnership() then
         root:SetNetworkOwner(nil)
     end
-    records[object] = { Id = id, Owner = owner, Claimable = claimable ~= false, Item = item }
+    records[object] = {
+        Id = id,
+        Owner = owner,
+        Claimable = claimable ~= false,
+        Item = item,
+        -- Server lifecycle state, deliberately separate from presentation/item metadata.
+        -- Consume retires this record on harvest; drop/throw spawn a fresh loose record.
+        FarmManaged = options ~= nil and options.FarmManaged == true,
+    }
     object.Destroying:Connect(function()
         records[object] = nil
     end)
@@ -86,9 +96,7 @@ function IngredientService.Resolve(hit: Instance): Instance?
     end
     return nil
 end
-function IngredientService.GetRecord(
-    object: Instance
-): { Id: string, Owner: Player?, Claimable: boolean, Item: Types.IngredientItem }?
+function IngredientService.GetRecord(object: Instance): Record?
     local record = records[object]
     if not record or not object:IsDescendantOf(workspace) then
         return nil
@@ -120,13 +128,19 @@ function IngredientService.Consume(object: Instance, pickedUp: boolean?): string
 end
 -- Snapshot the registry: removal callbacks may replenish spawn systems.
 -- Carry, stash and accepted blender contents have already left this registry.
+-- Farm products stay registered for pickup, but belong to their row until consumed.
 function IngredientService.ClearLooseIngredients()
     local remove = {}
-    for object in records do
-        table.insert(remove, object)
+    for object, record in records do
+        if not record.FarmManaged then
+            table.insert(remove, object)
+        end
     end
     for _, object in remove do
-        IngredientService.Consume(object)
+        local record = records[object]
+        if record and not record.FarmManaged then
+            IngredientService.Consume(object)
+        end
     end
 end
 

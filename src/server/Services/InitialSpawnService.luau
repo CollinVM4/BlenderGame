@@ -66,10 +66,8 @@ function Spawn.ClearReservation(player: Player, preserveHint: boolean?)
     end
 end
 function Spawn.ApplyCharacter(player: Player, character: Model)
-    if attempted[player] then
-        return
-    end
-    attempted[player] = true -- consumed even if no marker/root is available; never route deaths
+    local firstArrival = not attempted[player]
+    attempted[player] = true -- Only unclaimed tutorial routing is limited to the first character.
     task.spawn(function()
         local root = character:WaitForChild("HumanoidRootPart", 10)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -80,8 +78,26 @@ function Spawn.ApplyCharacter(player: Player, character: Model)
             or humanoid.Health <= 0
             or player.Parent == nil
             or player.Character ~= character
-            or deps.TycoonService.GetPlot(player)
         then
+            return
+        end
+        -- Resolve after the root wait so a release, team change or reassignment cannot
+        -- send this character to a stale session. Nothing below yields before PivotTo.
+        local assignedPlot = deps.TycoonService.GetPlot(player)
+        if assignedPlot then
+            local identity = assignedPlot:FindFirstChild("PlotIdentity")
+            local spawnOrigin = if identity then identity:FindFirstChild("PlayerSpawnOrigin") else nil
+            if spawnOrigin and spawnOrigin:IsA("Attachment") then
+                local spawnCFrame = spawnOrigin.WorldCFrame * CFrame.new(0, 3, 0)
+                if deps.TycoonService.GetOwner(assignedPlot) ~= player then
+                    spawnCFrame *= CFrame.new(4, 0, 0)
+                end
+                character:PivotTo(spawnCFrame)
+                root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+            end
+            return
+        end
+        if not firstArrival then
             return
         end
         for _, plot in deps.TycoonService.GetOrderedPlots() do

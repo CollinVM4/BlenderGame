@@ -18,7 +18,13 @@ function Controller.Init()
         local character = player.Character
         if character then
             for _, child in character:GetChildren() do
-                if child:IsA("Tool") and typeof(child:GetAttribute("BatLevel")) == "number" then
+                if
+                    child:IsA("Tool")
+                    and (
+                        typeof(child:GetAttribute("BatLevel")) == "number"
+                        or child:GetAttribute("IceGunWeapon") == true
+                    )
+                then
                     -- Leave primary input available to Tool.Activated, including on touch.
                     return Enum.ContextActionResult.Pass
                 end

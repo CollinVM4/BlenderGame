@@ -1,0 +1,458 @@
+<?xml version='1.0' encoding='utf-8'?>
+<roblox xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+  <Meta name="ExplicitAutoJoints">true</Meta>
+  <External>null</External>
+  <External>nil</External>
+  <Item class="Tool" referent="RBX2D2C485707AD4A4D95BBE45C2031CA57">
+    <Properties>
+      <bool name="Enabled">true</bool>
+      <CoordinateFrame name="Grip">
+        <X>-0.200000003</X>
+        <Y>-1.64999998</Y>
+        <Z>-0.400000006</Z>
+        <R00>1</R00>
+        <R01>0</R01>
+        <R02>0</R02>
+        <R10>0</R10>
+        <R11>0</R11>
+        <R12>-1</R12>
+        <R20>0</R20>
+        <R21>1</R21>
+        <R22>0</R22>
+      </CoordinateFrame>
+      <bool name="ManualActivationOnly">false</bool>
+      <bool name="RequiresHandle">true</bool>
+      <string name="ToolTip">winter best season</string>
+      <Content name="TextureId">
+        <url>http://www.roblox.com/asset/?id=20518488</url>
+      </Content>
+      <token name="LevelOfDetail">0</token>
+      <CoordinateFrame name="ModelMeshCFrame">
+        <X>0</X>
+        <Y>0</Y>
+        <Z>0</Z>
+        <R00>1</R00>
+        <R01>0</R01>
+        <R02>0</R02>
+        <R10>0</R10>
+        <R11>1</R11>
+        <R12>0</R12>
+        <R20>0</R20>
+        <R21>0</R21>
+        <R22>1</R22>
+      </CoordinateFrame>
+      <SharedString name="ModelMeshData">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+      <Vector3 name="ModelMeshSize">
+        <X>0</X>
+        <Y>0</Y>
+        <Z>0</Z>
+      </Vector3>
+      <token name="ModelStreamingMode">0</token>
+      <bool name="NeedsPivotMigration">false</bool>
+      <Ref name="PrimaryPart">null</Ref>
+      <float name="ScaleFactor">1</float>
+      <SharedString name="SlimHash">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+      <OptionalCoordinateFrame name="WorldPivotData">
+        <CFrame>
+          <X>-2.13378549</X>
+          <Y>3.03572106</Y>
+          <Z>17.0001011</Z>
+          <R00>0.999391675</R00>
+          <R01>8.43392627e-07</R01>
+          <R02>0.0348828062</R02>
+          <R10>-0.0348615982</R10>
+          <R11>0.0348993614</R11>
+          <R12>0.998782754</R12>
+          <R20>-0.00121643895</R20>
+          <R21>-0.999391019</R21>
+          <R22>0.0348781496</R22>
+        </CFrame>
+      </OptionalCoordinateFrame>
+      <BinaryString name="AttributesSerialize" />
+      <SecurityCapabilities name="Capabilities">17996771963439872</SecurityCapabilities>
+      <bool name="DefinesCapabilities">true</bool>
+      <string name="Name">IcicleGun</string>
+      <BinaryString name="SerializedOverrides" />
+      <int64 name="SourceAssetId">7127826632</int64>
+      <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+      <bool name="CanBeDropped">false</bool>
+    </Properties>
+    <Item class="Part" referent="RBX7E3E061021CD4A8CA6A6747E163FED45">
+      <Properties>
+        <token name="shape">1</token>
+        <token name="formFactorRaw">2</token>
+        <bool name="AudioCanCollide">true</bool>
+        <float name="BackParamA">-0.5</float>
+        <float name="BackParamB">0.5</float>
+        <token name="BackSurface">0</token>
+        <token name="BackSurfaceInput">0</token>
+        <float name="BottomParamA">-0.5</float>
+        <float name="BottomParamB">0.5</float>
+        <token name="BottomSurface">0</token>
+        <token name="BottomSurfaceInput">0</token>
+        <CoordinateFrame name="CFrame">
+          <X>-0.953548133</X>
+          <Y>2.45954895</Y>
+          <Z>17.9258823</Z>
+          <R00>0.308885276</R00>
+          <R01>-0.950457633</R01>
+          <R02>0.0348828733</R02>
+          <R10>0.0224158708</R10>
+          <R11>0.0439411588</R11>
+          <R12>0.998782635</R12>
+          <R20>-0.950833499</R20>
+          <R21>-0.307727665</R21>
+          <R22>0.0348782092</R22>
+        </CoordinateFrame>
+        <bool name="CastShadow">true</bool>
+        <string name="CollisionGroup">Default</string>
+        <int name="CollisionGroupId">0</int>
+        <Color3uint8 name="Color3uint8">4288914085</Color3uint8>
+        <PhysicalProperties name="CustomPhysicalProperties">
+          <CustomPhysics>false</CustomPhysics>
+        </PhysicalProperties>
+        <bool name="EnableFluidForces">true</bool>
+        <float name="FrontParamA">-0.5</float>
+        <float name="FrontParamB">0.5</float>
+        <token name="FrontSurface">0</token>
+        <token name="FrontSurfaceInput">0</token>
+        <float name="LeftParamA">-0.5</float>
+        <float name="LeftParamB">0.5</float>
+        <token name="LeftSurface">0</token>
+        <token name="LeftSurfaceInput">0</token>
+        <bool name="Locked">false</bool>
+        <token name="Material">256</token>
+        <string name="MaterialVariantSerialized" />
+        <CoordinateFrame name="PivotOffset">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <float name="Reflectance">0</float>
+        <float name="RightParamA">-0.5</float>
+        <float name="RightParamB">0.5</float>
+        <token name="RightSurface">0</token>
+        <token name="RightSurfaceInput">0</token>
+        <int name="RootPriority">0</int>
+        <Vector3 name="RotVelocity">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+        </Vector3>
+        <float name="TopParamA">-0.5</float>
+        <float name="TopParamB">0.5</float>
+        <token name="TopSurface">0</token>
+        <token name="TopSurfaceInput">0</token>
+        <float name="Transparency">0</float>
+        <Vector3 name="Velocity">
+          <X>0</X>
+          <Y>0</Y>
+          <Z>0</Z>
+        </Vector3>
+        <Vector3 name="size">
+          <X>1</X>
+          <Y>3.20000005</Y>
+          <Z>1</Z>
+        </Vector3>
+        <BinaryString name="AttributesSerialize" />
+        <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+        <bool name="DefinesCapabilities">false</bool>
+        <string name="Name">Handle</string>
+        <BinaryString name="SerializedOverrides" />
+        <int64 name="SourceAssetId">-1</int64>
+        <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+        <bool name="Anchored">false</bool>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CanQuery">false</bool>
+        <bool name="Massless">true</bool>
+      </Properties>
+      <Item class="SpecialMesh" referent="RBX32801C5828D54B09B563F6FAA58DB563">
+        <Properties>
+          <token name="MeshType">5</token>
+          <Content name="MeshId">
+            <url>http://www.roblox.com/asset/?id=19280156</url>
+          </Content>
+          <Content name="TextureId">
+            <url>http://www.roblox.com/asset/?id=19280155</url>
+          </Content>
+          <Vector3 name="Offset">
+            <X>0</X>
+            <Y>0</Y>
+            <Z>0</Z>
+          </Vector3>
+          <Vector3 name="Scale">
+            <X>0.800000012</X>
+            <Y>0.800000012</Y>
+            <Z>0.800000012</Z>
+          </Vector3>
+          <Vector3 name="VertexColor">
+            <X>1</X>
+            <Y>1</Y>
+            <Z>1</Z>
+          </Vector3>
+          <BinaryString name="AttributesSerialize" />
+          <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+          <bool name="DefinesCapabilities">false</bool>
+          <string name="Name">Mesh</string>
+          <BinaryString name="SerializedOverrides" />
+          <int64 name="SourceAssetId">-1</int64>
+          <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+        </Properties>
+      </Item>
+      <Item class="Sound" referent="RBXDE5EAE6610684DF2AADF15E2DD9EDD60">
+        <Properties>
+          <bool name="AcousticSimulationEnabled">true</bool>
+          <NumberRange name="LoopRegion">0 60000 </NumberRange>
+          <bool name="Looped">false</bool>
+          <bool name="PlayOnRemove">false</bool>
+          <NumberRange name="PlaybackRegion">0 60000 </NumberRange>
+          <bool name="PlaybackRegionsEnabled">false</bool>
+          <float name="PlaybackSpeed">1</float>
+          <bool name="Playing">false</bool>
+          <float name="RollOffMaxDistance">10000</float>
+          <float name="RollOffMinDistance">10</float>
+          <token name="RollOffMode">0</token>
+          <Ref name="SoundGroup">null</Ref>
+          <Content name="SoundId">
+            <url>http://www.roblox.com/asset/?id=11900833</url>
+          </Content>
+          <double name="TimePosition">0</double>
+          <float name="Volume">1</float>
+          <BinaryString name="AttributesSerialize" />
+          <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+          <bool name="DefinesCapabilities">false</bool>
+          <string name="Name">Launch</string>
+          <BinaryString name="SerializedOverrides" />
+          <int64 name="SourceAssetId">-1</int64>
+          <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+        </Properties>
+        <Item class="SpecialMesh" referent="RBX8E64BCF0E8424FA38E28347F9EBC981D">
+          <Properties>
+            <token name="MeshType">5</token>
+            <Content name="MeshId">
+              <url>http://www.roblox.com/asset/?id=20518365</url>
+            </Content>
+            <Content name="TextureId">
+              <url>http://www.roblox.com/asset/?id=19287687</url>
+            </Content>
+            <Vector3 name="Offset">
+              <X>0</X>
+              <Y>0</Y>
+              <Z>0</Z>
+            </Vector3>
+            <Vector3 name="Scale">
+              <X>1</X>
+              <Y>1</Y>
+              <Z>1</Z>
+            </Vector3>
+            <Vector3 name="VertexColor">
+              <X>1</X>
+              <Y>1</Y>
+              <Z>1</Z>
+            </Vector3>
+            <BinaryString name="AttributesSerialize" />
+            <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+            <bool name="DefinesCapabilities">false</bool>
+            <string name="Name">Mesh</string>
+            <BinaryString name="SerializedOverrides" />
+            <int64 name="SourceAssetId">-1</int64>
+            <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+          </Properties>
+        </Item>
+      </Item>
+      <Item class="Attachment" referent="RBX4FFAF74C6F4A49DC88081FF6A078804A">
+        <Properties>
+          <CoordinateFrame name="CFrame">
+            <X>-0.280000001</X>
+            <Y>1.79999995</Y>
+            <Z>0.400000006</Z>
+            <R00>6.31088724e-30</R00>
+            <R01>0</R01>
+            <R02>-1</R02>
+            <R10>0</R10>
+            <R11>1</R11>
+            <R12>0</R12>
+            <R20>1</R20>
+            <R21>0</R21>
+            <R22>6.31088724e-30</R22>
+          </CoordinateFrame>
+          <bool name="Visible">false</bool>
+          <BinaryString name="AttributesSerialize" />
+          <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+          <bool name="DefinesCapabilities">false</bool>
+          <string name="Name">GunBarrel</string>
+          <BinaryString name="SerializedOverrides" />
+          <int64 name="SourceAssetId">-1</int64>
+          <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+        </Properties>
+        <Item class="ParticleEmitter" referent="RBX9E12F7DF12AE47AD920247A8B4C51649">
+          <Properties>
+            <Vector3 name="Acceleration">
+              <X>0</X>
+              <Y>0</Y>
+              <Z>0</Z>
+            </Vector3>
+            <float name="Brightness">1</float>
+            <ColorSequence name="Color">0 0 1 1 0 1 0 1 1 0 </ColorSequence>
+            <float name="Drag">0</float>
+            <token name="EmissionDirection">1</token>
+            <bool name="Enabled">false</bool>
+            <bool name="FlipbookBlendFrames">true</bool>
+            <NumberRange name="FlipbookFramerate">1 1 </NumberRange>
+            <string name="FlipbookIncompatible">Particle texture must be 1024 by 1024 to use flipbooks.</string>
+            <token name="FlipbookLayout">0</token>
+            <token name="FlipbookMode">0</token>
+            <int name="FlipbookSizeX">1</int>
+            <int name="FlipbookSizeY">1</int>
+            <bool name="FlipbookStartRandom">false</bool>
+            <NumberRange name="Lifetime">0.8 0.8 </NumberRange>
+            <float name="LightEmission">1</float>
+            <float name="LightInfluence">0</float>
+            <bool name="LockedToPart">false</bool>
+            <token name="Orientation">0</token>
+            <float name="Rate">100</float>
+            <NumberRange name="RotSpeed">0 0 </NumberRange>
+            <NumberRange name="Rotation">-180 180 </NumberRange>
+            <token name="Shape">0</token>
+            <token name="ShapeInOut">0</token>
+            <float name="ShapePartial">1</float>
+            <token name="ShapeStyle">0</token>
+            <NumberSequence name="Size">0 0.3 0 1 0.5 0 </NumberSequence>
+            <NumberRange name="Speed">4 6 </NumberRange>
+            <Vector2 name="SpreadAngle">
+              <X>-180</X>
+              <Y>180</Y>
+            </Vector2>
+            <NumberSequence name="Squash">0 0 0 1 0 0 </NumberSequence>
+            <Content name="Texture">
+              <url>http://www.roblox.com/asset/?id=254711773</url>
+            </Content>
+            <float name="TimeScale">1</float>
+            <NumberSequence name="Transparency">0 1 0 0.102823 0.238095 0.0465 0.703629 0.272727 0.143 1 1 0 </NumberSequence>
+            <float name="VelocityInheritance">0.5</float>
+            <bool name="WindAffectsDrag">false</bool>
+            <float name="ZOffset">0.5</float>
+            <BinaryString name="AttributesSerialize" />
+            <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+            <bool name="DefinesCapabilities">false</bool>
+            <string name="Name">Smoke</string>
+            <BinaryString name="SerializedOverrides" />
+            <int64 name="SourceAssetId">-1</int64>
+            <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+    <Item class="Folder" referent="RBX5700BBAED3B14C1FAA8A53D2FA9E5A16">
+      <Properties>
+        <Color3 name="IconTint">
+          <R>0</R>
+          <G>0</G>
+          <B>0</B>
+        </Color3>
+        <BinaryString name="AttributesSerialize" />
+        <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+        <bool name="DefinesCapabilities">false</bool>
+        <string name="Name">Animations</string>
+        <BinaryString name="SerializedOverrides" />
+        <int64 name="SourceAssetId">-1</int64>
+        <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+      </Properties>
+      <Item class="Folder" referent="RBXEDECE651D6F4482B9C12742D34D5BE9E">
+        <Properties>
+          <Color3 name="IconTint">
+            <R>0</R>
+            <G>0</G>
+            <B>0</B>
+          </Color3>
+          <BinaryString name="AttributesSerialize" />
+          <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+          <bool name="DefinesCapabilities">false</bool>
+          <string name="Name">R6</string>
+          <BinaryString name="SerializedOverrides" />
+          <int64 name="SourceAssetId">-1</int64>
+          <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+        </Properties>
+      </Item>
+      <Item class="Folder" referent="RBX3A4020DB474F4B49952867E79CF80EC6">
+        <Properties>
+          <Color3 name="IconTint">
+            <R>0</R>
+            <G>0</G>
+            <B>0</B>
+          </Color3>
+          <BinaryString name="AttributesSerialize" />
+          <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+          <bool name="DefinesCapabilities">false</bool>
+          <string name="Name">R15</string>
+          <BinaryString name="SerializedOverrides" />
+          <int64 name="SourceAssetId">-1</int64>
+          <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Camera" referent="RBX66F932BFFF7A4478A5E9169D0B41236A">
+      <Properties>
+        <CoordinateFrame name="CFrame">
+          <X>-2.63716555</X>
+          <Y>6.46979809</Y>
+          <Z>-2.39844513</Z>
+          <R00>-0.681233346</R00>
+          <R01>0.267799914</R01>
+          <R02>-0.681325436</R02>
+          <R10>-0</R10>
+          <R11>0.930688083</R11>
+          <R12>0.365813732</R12>
+          <R20>0.732066333</R20>
+          <R21>0.249204516</R21>
+          <R22>-0.634015739</R22>
+        </CoordinateFrame>
+        <Ref name="CameraSubject">null</Ref>
+        <token name="CameraType">0</token>
+        <float name="FieldOfView">70</float>
+        <token name="FieldOfViewMode">0</token>
+        <CoordinateFrame name="Focus">
+          <X>-1.27451468</X>
+          <Y>5.73817062</Y>
+          <Z>-1.13041365</Z>
+          <R00>1</R00>
+          <R01>0</R01>
+          <R02>0</R02>
+          <R10>0</R10>
+          <R11>1</R11>
+          <R12>0</R12>
+          <R20>0</R20>
+          <R21>0</R21>
+          <R22>1</R22>
+        </CoordinateFrame>
+        <bool name="HeadLocked">true</bool>
+        <float name="HeadScale">1</float>
+        <token name="OrthographicMode">0</token>
+        <float name="OrthographicSize">300</float>
+        <token name="ProjectionType">0</token>
+        <bool name="VRTiltAndRollEnabled">false</bool>
+        <float name="ViewStretch">1</float>
+        <BinaryString name="AttributesSerialize" />
+        <SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+        <bool name="DefinesCapabilities">false</bool>
+        <string name="Name">ThumbnailCamera</string>
+        <BinaryString name="SerializedOverrides" />
+        <int64 name="SourceAssetId">-1</int64>
+        <SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+      </Properties>
+    </Item>
+  </Item>
+  <SharedStrings>
+    <SharedString md5="yuZpQdnvvUBOTYh1jqZ2cA==" />
+  </SharedStrings>
+</roblox>

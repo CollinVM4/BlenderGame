@@ -274,18 +274,20 @@ local function swingRejection(player: Player, equipped: EquippedBat?): string?
     end
     return nil
 end
-local function enemyRejection(attacker: Player, victim: Player): string?
+-- Both weapons share current plot/team eligibility; their status immunity stays separate.
+local function playerDamageRejection(attacker: Player, victim: Player): string?
     local session = deps.TycoonService.GetSessionId(victim)
-    local character = alive(victim)
-    local stun = stuns[victim]
     if attacker == victim then
         return "self"
     end
-    if not character then
+    if not alive(victim) then
         return "target not alive"
     end
     if not session then
         return "target has no plot session"
+    end
+    if not alive(attacker) or not deps.TycoonService.GetSessionId(attacker) then
+        return "attacker has no living plot session"
     end
     if session == deps.TycoonService.GetSessionId(attacker) then
         return "shared plot session"
@@ -293,6 +295,31 @@ local function enemyRejection(attacker: Player, victim: Player): string?
     if not attacker.Neutral and not victim.Neutral and attacker.Team == victim.Team then
         return "non-neutral Roblox teammates"
     end
+    return nil
+end
+
+function CombatService.CanDamagePlayer(attacker: Player, victim: Player): boolean
+    return playerDamageRejection(attacker, victim) == nil
+end
+
+function CombatService.DamagePlayer(attacker: Player, victim: Player, character: Model, damage: number): boolean
+    if victim.Character ~= character or not CombatService.CanDamagePlayer(attacker, victim) then
+        return false
+    end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or character:FindFirstChildOfClass("ForceField") then
+        return false
+    end
+    humanoid:TakeDamage(damage)
+    return true
+end
+
+local function enemyRejection(attacker: Player, victim: Player): string?
+    local reason = playerDamageRejection(attacker, victim)
+    if reason then
+        return reason
+    end
+    local stun = stuns[victim]
     if deps.MovementService.IsStunned(victim) then
         return "target stunned"
     end

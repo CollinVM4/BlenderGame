@@ -155,6 +155,7 @@ local function grow(farm: any, row: any, session: string, generation: number, id
             true,
             {
                 FreezeUntilPickup = true,
+                FarmManaged = true,
                 BeforePublish = function(object: Instance)
                     object:SetAttribute("SpawnSource", "Farm")
                     object:SetAttribute("FarmSpawnTime", workspace:GetServerTimeNow())
@@ -176,6 +177,7 @@ local function grow(farm: any, row: any, session: string, generation: number, id
                         object.AncestryChanged:Connect(function()
                             if not object:IsDescendantOf(workspace) then
                                 removed()
+                                object:Destroy()
                             end
                         end)
                     )
@@ -237,22 +239,26 @@ local function plant(farm: any, row: any, player: Player)
     deps.TycoonService.EndTransaction(token)
 end
 
+local function resetRow(row: any)
+    row.Generation += 1
+    local products = row.Products
+    row.Products = {}
+    for product, connections in products do
+        for _, connection in connections do
+            connection:Disconnect()
+        end
+        product:Destroy()
+    end
+    stopReveal(row)
+    row.IngredientId, row.Busy, row.Spawning = nil, false, false
+    setState(row, "LOCKED")
+    show(row.VisualAppearance, false)
+end
+
 local function reset(farm: any)
     farm.Session = nil -- invalidate before destruction signals or tween cancellation
     for _, row in farm.Rows do
-        row.Generation += 1
-        local products = row.Products
-        row.Products = {}
-        for product, connections in products do
-            for _, connection in connections do
-                connection:Disconnect()
-            end
-            product:Destroy()
-        end
-        stopReveal(row)
-        row.IngredientId, row.Busy, row.Spawning = nil, false, false
-        setState(row, "LOCKED")
-        show(row.VisualAppearance, false)
+        resetRow(row)
     end
     refreshPads(farm)
 end
@@ -326,6 +332,15 @@ local function bind(plot: Instance): (() -> ())?
     end
     farms[plot] = farm
     for index, row in farm.Rows do
+        table.insert(
+            farm.Connections,
+            row.Object.AncestryChanged:Connect(function()
+                if not row.Object:IsDescendantOf(plot) then
+                    resetRow(row)
+                    refreshPads(farm)
+                end
+            end)
+        )
         row.Markers.Anchored, row.Markers.Transparency = true, 1
         row.Markers.CanCollide, row.Markers.CanTouch, row.Markers.CanQuery = false, false, false
         row.Pad.Anchored = true

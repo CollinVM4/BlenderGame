@@ -40,6 +40,7 @@ SUITES = {
     "tutorial": ("state", ("tutorial.spec.luau",)),
     "initial-spawn": ("integration", ("initial_spawn.spec.luau",)),
     "tutorial-targets": ("presentation", ("tutorial_targets.spec.luau",)),
+    "tutorial-claim": ("integration", ("fixtures/smoothie.luau", "tutorial_claim.spec.luau")),
     "tutorial-gameplay": ("integration", ("fixtures/smoothie.luau", "tutorial_gameplay.spec.luau")),
     "admin": ("integration", ("admin.spec.luau",)),
     "admin-legacy": ("integration", ("admin_legacy.spec.luau", "admin.spec.luau")),
@@ -124,6 +125,15 @@ SUITES = {
     "stand-editor": ("presentation", ("fixtures/stand_graphemes.luau", "stand_editor.spec.luau")),
     "stand-identity": ("integration", ("fixtures/smoothie.luau", "fixtures/stand_graphemes.luau", "stand_identity.spec.luau")),
     "stand-sign": ("presentation", ("stand_sign.spec.luau",)),
+    "icegun-display": ("integration", ("fixtures/icegun.luau", "icegun_display.spec.luau")),
+    "icegun-initial-owner": ("integration", ("fixtures/icegun.luau", "fixtures/icegun_input.luau", "icegun_initial_owner.spec.luau")),
+    "icegun-input": ("presentation", ("fixtures/icegun.luau", "fixtures/icegun_input.luau", "icegun_input.spec.luau")),
+    "icegun-presentation": ("presentation", ("fixtures/icegun.luau", "icegun_presentation.spec.luau")),
+    "icegun-entitlement": ("state", ("fixtures/icegun.luau", "icegun_entitlement.spec.luau")),
+    "freeze-status": ("state", ("fixtures/icegun.luau", "freeze_status.spec.luau")),
+    "icegun-simulated-combat": ("integration", ("fixtures/icegun.luau", "icegun_simulated_combat.spec.luau", "icegun_combat.spec.luau")),
+    "icegun-aim": ("integration", ("fixtures/icegun.luau", "icegun_aim.spec.luau")),
+    "icegun-combat": ("integration", ("fixtures/icegun.luau", "icegun_combat.spec.luau")),
 }
 focused = {
     "vfx_only": ("vfx",),
@@ -156,6 +166,9 @@ for directory in ("src/shared/Constants", "src/server/Services", "src/server/Adm
         sources[path.stem] = path.read_text(encoding="utf-8")
 sources["TutorialTargets"] = (ROOT / "src/shared/TutorialTargets.luau").read_text(encoding="utf-8")
 sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
+for name in ("IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):
+    sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")
+sources["IceGunDisplayComponent"] = (ROOT / "src/server/Components/IceGunDisplay.luau").read_text(encoding="utf-8")
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
@@ -188,6 +201,7 @@ sources["IngredientPickupComponent"] = (ROOT / "src/server/Components/Ingredient
 sources["DispenserComponent"] = (ROOT / "src/server/Components/Dispenser.luau").read_text(encoding="utf-8")
 sources["GameplayPresentationController"] = (ROOT / "src/client/Controllers/GameplayPresentationController.luau").read_text(encoding="utf-8")
 sources["GameplayAudioController"] = (ROOT / "src/client/Controllers/GameplayAudioController.luau").read_text(encoding="utf-8")
+sources["ServerBootstrap"] = (ROOT / "src/server/init.server.luau").read_text(encoding="utf-8")
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
 sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")

@@ -5,6 +5,7 @@ local Upgrades = require(Shared.Constants.Upgrades)
 local SprintConfig = require(Shared.Constants.SprintConfig)
 local MovementService = {}
 local data: any
+local frozen: { [Player]: boolean? } = {}
 local stunned: { [Player]: boolean? } = {}
 type Stats = { BaseWalkSpeed: number, SprintWalkSpeed: number, MaxStamina: number, JumpPower: number }
 local resolved: { [Player]: Stats } = {}
@@ -34,7 +35,7 @@ function MovementService.GetJumpPower(player: Player): number
 end
 
 local function applyJump(player: Player, humanoid: Humanoid)
-    local power = if MovementService.IsStunned(player) then 0 else MovementService.GetJumpPower(player)
+    local power = if MovementService.IsMovementLocked(player) then 0 else MovementService.GetJumpPower(player)
     if humanoid.UseJumpPower then
         humanoid.JumpPower = power
     else
@@ -47,23 +48,43 @@ function MovementService.IsStunned(player: Player): boolean
 end
 
 function MovementService.CanPerformGameplayAction(player: Player): boolean
-    return not MovementService.IsStunned(player)
+    return not MovementService.IsMovementLocked(player)
 end
 
-function MovementService.SetStunned(player: Player, value: boolean)
-    stunned[player] = if value then true else nil
-    player:SetAttribute("Stunned", value)
+function MovementService.IsFrozen(player: Player): boolean
+    return frozen[player] == true
+end
+
+function MovementService.IsMovementLocked(player: Player): boolean
+    return MovementService.IsStunned(player) or MovementService.IsFrozen(player)
+end
+
+local function applyLock(player: Player)
+    local locked = MovementService.IsMovementLocked(player)
+    -- Existing clients use Stunned as the aggregate input lock. Bat state stays separate.
+    player:SetAttribute("Stunned", locked)
+    player:SetAttribute("Frozen", MovementService.IsFrozen(player))
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if humanoid and resolved[player] then
         applyJump(player, humanoid)
-        if value then
+        humanoid.WalkSpeed = if locked then 0 else MovementService.GetBaseWalkSpeed(player)
+        if locked then
             humanoid.Jump = false
-            humanoid.WalkSpeed = 0
         end
     end
     if resolved[player] then
         changed:Fire(player)
     end
+end
+
+function MovementService.SetStunned(player: Player, value: boolean)
+    stunned[player] = if value then true else nil
+    applyLock(player)
+end
+
+function MovementService.SetFrozen(player: Player, value: boolean)
+    frozen[player] = if value then true else nil
+    applyLock(player)
 end
 
 function MovementService.RefreshPlayer(player: Player)
@@ -142,6 +163,7 @@ end
 
 function MovementService.RemovePlayer(player: Player)
     stunned[player] = nil
+    frozen[player] = nil
     resolved[player] = nil
     overrides[player] = nil
 end

@@ -8,23 +8,33 @@
       "CustomerNPCs": {
         "$className": "Folder",
         "$ignoreUnknownInstances": true
+      },
+      "Weapons": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "IcicleGun": {
+          "$path": "assets/icegun/IcicleGun.rbxmx"
+        }
+      },
+      "IceGunPedestalTemplate": {
+        "$path": "assets/icegun/EquipmentSpawner.rbxmx"
+      },
+      "IceGunEffects": {
+        "$path": "assets/icegun/IceGunEffects.rbxmx"
       }
     },
-    
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Shared": {
         "$path": "src/shared"
       }
     },
-    
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "Server": {
         "$path": "src/server"
       }
     },
-    
     "StarterGui": {
       "$className": "StarterGui",
       "$ignoreUnknownInstances": true,

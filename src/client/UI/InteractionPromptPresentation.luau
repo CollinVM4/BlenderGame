@@ -8,6 +8,7 @@ local Presentation = {}
 
 export type Settings = {
     ActionText: string?,
+    FormatText: ((string, boolean) -> string)?,
     KeyText: string?,
     MaxDistance: number?,
     Width: number?,
@@ -96,6 +97,9 @@ function Presentation.Create(
             if holding then "HOLD " else "",
             config.ActionText or prompt.ActionText
         )
+        if config.FormatText then
+            text.Text = config.FormatText(key or "", holding)
+        end
         if config.InputOnly then
             text.Text = string.format("%s[%s]", if holding then "HOLD " else "", key or "")
         end
