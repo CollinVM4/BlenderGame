@@ -26,8 +26,8 @@ local thrownIngredients: { [Player]: { { Object: Instance, ObserveAfter: number,
 local StashConfig = Economy.NormalStash
 local StashSlots = require(script.Parent.StashSlots)
 local StashValue = require(script.Parent.StashValue)
-local function ingredientSlotCapacity(protected: boolean?): number
-    return if protected then 1 else StashConfig.IngredientCapacity
+local function ingredientSlotCapacity(): number
+    return StashConfig.IngredientCapacity
 end
 
 local raids: { [string]: { RaidEndsAt: number, ProtectionEndsAt: number } } = {}
@@ -67,7 +67,7 @@ local function selectedItem(player: Player): HeldItem?
     return nil
 end
 -- Client IDs are preferences, never ownership proof. Only this player's live records qualify.
-local function resolveActionItem(player: Player, requestedCarryItemId: any?): HeldItem?
+local function resolveActionItem(player: Player, requestedCarryItemId: any?, newestFirst: boolean?): HeldItem?
     local stack: { HeldItem } = held[player] or {}
     local function available(item: HeldItem): boolean
         return not item.Releasing and not item.Destroying
@@ -77,8 +77,8 @@ local function resolveActionItem(player: Player, requestedCarryItemId: any?): He
     if selected and selected.ItemType == "Smoothie" and available(selected) then
         return selected
     end
-    local requested = requestedCarryItemId
-    if requested == nil and selected and selected.ItemType == "Ingredient" then
+    local requested = if newestFirst then nil else requestedCarryItemId
+    if not newestFirst and requested == nil and selected and selected.ItemType == "Ingredient" then
         requested = selected.Tool:GetAttribute("CarryItemId")
     end
     if type(requested) == "number" and requested == requested and requested > 0 and requested % 1 == 0 then
@@ -224,6 +224,14 @@ local function releaseHeld(
         local at = IngredientThrow.Origin(root)
         local object = deps.IngredientService.Spawn(record.Id :: string, at, nil, true, {
             Item = record.Item,
+            PrepareSpawn = function(prepared: Instance): CFrame?
+                local origin, reason = IngredientThrow.FindOrigin(root, character, prepared)
+                IngredientThrow.Trace(player, "placement: " .. reason)
+                if origin then
+                    at = origin
+                end
+                return origin
+            end,
             BeforePublish = function(prepared: Instance)
                 if deps.AnnouncementService then
                     deps.AnnouncementService.TrackWorld(prepared, record.AnnouncementOwnership)
@@ -342,21 +350,42 @@ function InventoryService.CleanupCharacter(player: Player)
 end
 
 -- Exact selected identity takes priority; unselected/invalid ingredient hints use newest-first.
-function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?): Instance?
+function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?, newestFirst: boolean?): Instance?
     if not MovementService.CanPerformGameplayAction(player) then
+        IngredientThrow.Trace(player, "rejected: gameplay action disabled")
         return nil
     end
-    local record = resolveActionItem(player, requestedCarryItemId)
+    -- Input throws newest first; explicit server selection APIs remain compatible.
+    local record = resolveActionItem(player, requestedCarryItemId, newestFirst)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if not record or not root or not root:IsA("BasePart") or not humanoid or humanoid.Health <= 0 then
+        IngredientThrow.Trace(
+            player,
+            "rejected: "
+                .. (
+                    if not record
+                        then "no valid held item"
+                        elseif not root or not root:IsA("BasePart") then "missing character root"
+                        else "missing/dead humanoid"
+                )
+        )
         return nil
     end
-    local origin = IngredientThrow.Origin(root).Position
+    IngredientThrow.Trace(
+        player,
+        "resolved held item=" .. tostring(record.Id) .. " carryId=" .. tostring(record.CarryItemId)
+    )
     local object = releaseHeld(player, true, nil, table.find(held[player], record))
     if object and record.ItemType == "Ingredient" then
-        GameplaySfx.Emit("IngredientThrow", origin)
+        GameplaySfx.Emit("IngredientThrow", (object :: any):GetPivot().Position)
     end
+    IngredientThrow.Trace(
+        player,
+        if object
+            then "published world item; carryCount=" .. tostring(InventoryService.GetCarryCount(player))
+            else "rejected: release/spawn failed; inventory retained"
+    )
     return object
 end
 
@@ -670,8 +699,26 @@ function InventoryService.Init(services)
         end
     end)
 end
+local function refreshSlotMetadata(slot: Types.StashSlot, part: BasePart?)
+    slot.Protected = part ~= nil and StashSlots.IsProtected(part, slot.SlotIndex)
+    slot.Capacity = if slot.ItemType == "Smoothie" then 1 else ingredientSlotCapacity()
+end
+local function refreshStashMetadata(player: Player)
+    local plot = deps.TycoonService.GetPlot(player)
+    local fixtures = if plot then deps.TycoonService.GetFixtures(plot, "PlayerStash") else {}
+    local parts = if plot
+            and #fixtures == 1
+            and deps.TycoonService.GetOwner(fixtures[1]) == player
+        then StashSlots.Resolve(fixtures[1], StashSlots.Expansion(plot))
+        else {}
+    local slots: { [number]: Types.StashSlot } = stashes[player] or {}
+    for index, slot in slots do
+        refreshSlotMetadata(slot, parts[index])
+    end
+end
 local function ensureStash(player: Player)
     if stashes[player] then
+        refreshStashMetadata(player)
         return
     end
     stashes[player] = {}
@@ -680,10 +727,11 @@ local function ensureStash(player: Player)
             SlotIndex = index,
             Ingredients = {},
             Count = 0,
-            Capacity = ingredientSlotCapacity(index <= StashConfig.Protected),
-            Protected = index <= StashConfig.Protected,
+            Capacity = ingredientSlotCapacity(),
+            Protected = false,
         }
     end
+    refreshStashMetadata(player)
 end
 function InventoryService.AddPlayer(player: Player)
     if carried[player] then
@@ -711,8 +759,16 @@ function InventoryService.GetStackCap(player: Player): number
     return Upgrades.StackSize[deps.PlayerDataService.GetUpgrade(player, "StackSize")].Value
 end
 function InventoryService.GetStashLayout(player: Player)
+    refreshStashMetadata(player)
     local tier = if deps.TycoonService.GetUpgrade then deps.TycoonService.GetUpgrade(player, "SecondStorage") else 1
-    return { Slots = Upgrades.SecondStorage[tier].Value, Protected = StashConfig.Protected }
+    local protected = 0
+    local slots: { [number]: Types.StashSlot } = stashes[player] or {}
+    for index, slot in slots do
+        if index <= Upgrades.SecondStorage[tier].Value and slot.Protected then
+            protected += 1
+        end
+    end
+    return { Slots = Upgrades.SecondStorage[tier].Value, Protected = protected }
 end
 function InventoryService.GetHeldIngredientId(player: Player): string?
     local record = resolveActionItem(player)
@@ -792,7 +848,7 @@ function InventoryService.InitializeTutorialStash(player: Player): (boolean, str
             if not slot or slot.Count ~= 0 or #slot.Ingredients > 0 or slot.Smoothie then
                 error("StarterSlotUnavailable slot=" .. tostring(order.Slot))
             end
-            if #order.Ingredients > ingredientSlotCapacity(slot.Protected) then
+            if #order.Ingredients > ingredientSlotCapacity() then
                 error("StarterSlotCapacity slot=" .. tostring(order.Slot))
             end
             local units: { Types.IngredientItem } = {}
@@ -814,7 +870,7 @@ function InventoryService.InitializeTutorialStash(player: Player): (boolean, str
     for index, units in prepared do
         local slot = stash[index]
         slot.Ingredients = units
-        slot.ItemType, slot.Count, slot.Capacity = "Ingredient", #units, ingredientSlotCapacity(slot.Protected)
+        slot.ItemType, slot.Count, slot.Capacity = "Ingredient", #units, ingredientSlotCapacity()
         slot.IngredientId = units[#units].IngredientId
     end
     starterSessions[id] = player
@@ -881,13 +937,14 @@ function InventoryService.CleanupSession(sessionId: string)
     raids[sessionId] = nil
 end
 function InventoryService.GetSnapshot(player: Player)
+    local layout = InventoryService.GetStashLayout(player)
     local stash = {}
     local promoted = false
     local now = workspace:GetServerTimeNow()
     local source = stashes[player]
     if source then
         for index, stack in source do
-            if index > InventoryService.GetStashLayout(player).Slots then
+            if index > layout.Slots then
                 continue
             end
             for _, item in stack.Ingredients do
@@ -1058,7 +1115,12 @@ local function getSlotPart(owner: Player, index: number): BasePart?
     if index > StashConfig.Slots and (not expansion or expansion:GetAttribute("StashExpansionReady") ~= true) then
         return nil
     end
-    return StashSlots.Resolve(fixtures[1], expansion)[index]
+    local part = StashSlots.Resolve(fixtures[1], expansion)[index]
+    local slot = stashes[owner] and stashes[owner][index]
+    if slot then
+        refreshSlotMetadata(slot, part)
+    end
+    return part
 end
 local function accessible(player: Player, owner: Player, index: number): boolean
     if not MovementService.CanPerformGameplayAction(player) then
@@ -1081,6 +1143,10 @@ function InventoryService.CanWithdraw(player: Player, owner: Player, index: numb
     if friendly(player, owner) then
         return true
     end
+    local plot = deps.TycoonService.GetPlot(owner)
+    if plot and deps.LockBaseService and deps.LockBaseService.IsLocked(plot) then
+        return false
+    end
     return not slot.Protected and InventoryService.GetStashRaidState(owner).State ~= "Protected"
 end
 local function heldKey(record: HeldItem): string?
@@ -1089,7 +1155,7 @@ end
 local function clearSlot(slot: Types.StashSlot)
     slot.ItemType, slot.IngredientId, slot.Smoothie = nil, nil, nil
     slot.Ingredients = {}
-    slot.Count, slot.Capacity = 0, ingredientSlotCapacity(slot.Protected)
+    slot.Count, slot.Capacity = 0, ingredientSlotCapacity()
 end
 -- Server-only NPC theft. Caller holds the plot transaction and claims
 -- its one theft attempt before entering. Never transfers the unit to another inventory.
@@ -1108,14 +1174,10 @@ function InventoryService.RemoveThiefIngredient(
         return nil
     end
     local candidates: { { Slot: Types.StashSlot, UnitIndex: number } } = {}
+    refreshStashMetadata(owner)
     local slots: { [number]: Types.StashSlot } = stashes[owner] or {}
     for index, slot in slots do
-        if
-            index > StashConfig.Protected
-            and not slot.Protected
-            and slot.ItemType == "Ingredient"
-            and getSlotPart(owner, index)
-        then
+        if not slot.Protected and slot.ItemType == "Ingredient" and getSlotPart(owner, index) then
             for unitIndex in slot.Ingredients do
                 table.insert(candidates, { Slot = slot, UnitIndex = unitIndex })
             end
@@ -1178,7 +1240,7 @@ local function depositSelected(player: Player, itemType: string, key: string, in
         slot.Smoothie = SmoothieItem.Copy(record.Smoothie)
         slot.Count, slot.Capacity = 1, 1
     else
-        local capacity = ingredientSlotCapacity(slot.Protected)
+        local capacity = ingredientSlotCapacity()
         if slot.Count >= capacity or (slot.Count > 0 and slot.ItemType ~= "Ingredient") then
             return false
         end
@@ -1236,6 +1298,12 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
         then SmoothieGeometry.CreateTool(smoothie)
         else deps.IngredientService.CreateVisual(id, unit)
     if not visual then
+        return false
+    end
+    -- Recheck after visual creation and immediately before the slot reservation.
+    -- A rejected TAKE leaves the exact stored units and held inventory untouched.
+    if not InventoryService.CanWithdraw(player, owner, index) then
+        visual:Destroy()
         return false
     end
     -- Synchronous reservation; restore the exact record list on failed equip.

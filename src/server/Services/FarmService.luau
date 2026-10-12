@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
+local Eligibility = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmEligibility)
 local WorldUtil = require(script.Parent.WorldUtil)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
 local FarmService = {}
@@ -211,7 +212,7 @@ local function plant(farm: any, row: any, player: Player)
     end
     local id = deps.InventoryService.GetHeldIngredientId(player)
     local definition = if id then deps.IngredientService.GetDefinition(id) else nil
-    if not id or not definition or definition.Farmable == false then
+    if not id or not definition or not Eligibility.CanPlant(definition) then
         return
     end
     local duration = (Config.GrowSeconds :: any)[definition.Rarity]

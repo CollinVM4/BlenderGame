@@ -185,12 +185,7 @@ function Presentation.Refresh(slot: BasePart?, state: any, ingredients: any)
     slot:SetAttribute("StashItemType", state and state.ItemType)
     slot:SetAttribute("StashCapacity", state and state.Capacity or Config.IngredientCapacity)
     slot:SetAttribute("StashCount", state and state.Count or 0)
-    slot:SetAttribute(
-        "StashProtected",
-        state and state.Protected
-            or (slot:GetAttribute("StashLogicalSlotIndex") or slot:GetAttribute("SlotIndex") or 0)
-                <= Config.Protected
-    )
+    slot:SetAttribute("StashProtected", state ~= nil and state.Protected == true)
     if not state or state.Count == 0 or (not state.IngredientId and not state.Smoothie) then
         return
     end

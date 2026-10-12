@@ -76,7 +76,7 @@ for _, name in
 do
     local motor = instance("Motor6D")
     motor.Name, motor.Parent, motor.Part0 = name, root, root
-    motor.Part1 = part(name .. "Arm", character, vec(1, 2, 1), translate())
+    motor.Part1 = part(name .. "Arm", character, vec(1, 2, 1), root.CFrame)
     motor.C0, motor.C1, motor.Enabled = translate(1, 1, 0), translate(0, 1, 0), name ~= "LeftWrist"
     table.insert(motors, motor)
 end

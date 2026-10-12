@@ -165,6 +165,17 @@ check(
     "teammate clearance follows authored spawn orientation"
 )
 check(rotatedOwner:GetPivot().LookVector.X == -1, "respawn preserves marker facing")
+local resolvedOwner, assignedOwner = spawn.GetAssignedSpawn(d)
+local resolvedTeammate, assignedTeam = spawn.GetAssignedSpawn(g)
+check(
+    resolvedOwner and resolvedOwner.Position.X == 100 and resolvedOwner.Position.Y == 23 and assignedOwner == first,
+    "shared spawn resolver matches rotated owner respawn"
+)
+check(
+    resolvedTeammate and resolvedTeammate.Position.Z == 196 and assignedTeam == first,
+    "shared spawn resolver matches rotated teammate offset"
+)
+
 rotatedMarker.WorldCFrame = originalFrame
 
 -- Suspend precisely at the root wait to exercise membership changes during loading.

@@ -9,6 +9,9 @@ return {
     Knockback = {
         HorizontalSpeed = 7, -- Legacy customer knockback; player hits use Levels below.
         UpwardSpeed = 4,
+        ServerOwnershipSeconds = 0.2,
+        MaxHorizontalSpeed = 110, -- Bound accumulated player launch speed, not displacement.
+        MaxUpwardSpeed = 80, -- Never clamp an existing downward fall.
     },
     Scatter = {
         HorizontalMin = 8,
@@ -24,8 +27,29 @@ return {
     MaxRootDistance = 8,
     Levels = {
         -- Independent horizontal/upward velocity changes in studs/sec, mass-scaled at impact.
-        { Scale = 1, Reach = 5, StunDuration = 1.5, HorizontalKnockback = 18, VerticalKnockback = 5 },
-        { Scale = 1.12, Reach = 5.75, StunDuration = 2.25, HorizontalKnockback = 27, VerticalKnockback = 7 },
-        { Scale = 1.25, Reach = 6.5, StunDuration = 3, HorizontalKnockback = 38, VerticalKnockback = 9 },
+        {
+            Scale = 1,
+            Reach = 5,
+            StunDuration = 1.5,
+            HorizontalKnockback = 28,
+            VerticalKnockback = 10,
+            DamageFraction = 0.25,
+        },
+        {
+            Scale = 1.12,
+            Reach = 5.75,
+            StunDuration = 2.25,
+            HorizontalKnockback = 48,
+            VerticalKnockback = 20,
+            DamageFraction = 0.34,
+        },
+        {
+            Scale = 1.25,
+            Reach = 6.5,
+            StunDuration = 3,
+            HorizontalKnockback = 75,
+            VerticalKnockback = 32,
+            DamageFraction = 0.50,
+        },
     },
 }

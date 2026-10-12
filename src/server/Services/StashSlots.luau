@@ -1,6 +1,17 @@
 --!strict
 -- One resolver shared by server validation and prompt binding. Authored names stay intact.
 local Slots = {}
+local CollectionService = game:GetService("CollectionService")
+local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy).NormalStash
+-- Direct surface metadata overrides the server-owned per-slot designations.
+-- Names, ancestors and StashProtected (replicated output) never authorize protection.
+function Slots.IsProtected(slot: BasePart, index: number): boolean
+    local designation = slot:GetAttribute("StashSlotProtected")
+    if type(designation) == "boolean" then
+        return designation
+    end
+    return CollectionService:HasTag(slot, Config.ProtectionTag) or Config.SlotProtection[index] == true
+end
 function Slots.Expansion(plot: Instance): Instance?
     return plot:FindFirstChild("UpgradeStash")
 end

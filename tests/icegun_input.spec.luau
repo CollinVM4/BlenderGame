@@ -4,7 +4,12 @@ local fireRemote = instance("RemoteEvent")
 fireRemote.Name, fireRemote.Parent = "IceGunFire", replicated
 local sentAim = {}
 local sentRays = {}
-function fireRemote:FireServer(aim, origin, direction)
+local selections = {}
+function fireRemote:FireServer(aim, origin, direction, character)
+    if aim == "Select" then
+        table.insert(selections, { Tool = origin, Equip = direction, Character = character })
+        return
+    end
     table.insert(sentAim, aim)
     table.insert(sentRays, { Origin = origin, Direction = direction })
 end
@@ -163,6 +168,10 @@ local activeScreen = gui:FindFirstChild("IceGunReticle")
 activeScreen.Enabled = false
 activeScreen:GetPropertyChangedSignal("Enabled"):Fire()
 check(services.UserInputService.MouseIconEnabled, "disabled gameplay reticle releases cursor")
+local beforeDisabledReticle = #sentAim
+advance(2)
+respawnTool.Activated:Fire()
+check(#sentAim == beforeDisabledReticle + 1, "visual reticle visibility does not authorize firing")
 activeScreen.Enabled = true
 activeScreen:GetPropertyChangedSignal("Enabled"):Fire()
 services.UserInputService.WindowFocusReleased:Fire()
@@ -190,6 +199,25 @@ moveInputTool(lateTool, viewer.Character)
 check(gui:FindFirstChild("IceGunReticle") == nil, "unmarked Tool has no weapon reticle")
 lateTool:SetAttribute("IceGunWeapon", true)
 check(gui:FindFirstChild("IceGunReticle") ~= nil, "late authorization attribute enables equipped reticle")
+for _ = 1, 20 do
+    moveInputTool(lateTool, viewer:FindFirstChildOfClass("Backpack"))
+    check(gui:FindFirstChild("IceGunReticle") == nil, "repeated put-away hides reticle")
+    -- Late removal/unequip notifications after the same instance is selected again.
+    local backpack = lateTool.Parent
+    lateTool.Parent = nil
+    lateTool.AncestryChanged:Fire()
+    lateTool.Parent = viewer.Character
+    viewer.Character.ChildAdded:Fire(lateTool)
+    backpack.ChildRemoved:Fire(lateTool)
+    lateTool.Unequipped:Fire()
+    lateTool.Equipped:Fire()
+    flush()
+    check(gui:FindFirstChild("IceGunReticle") ~= nil, "late notifications preserve current equipped reticle")
+    advance(2)
+    local before = #sentAim
+    lateTool.Activated:Fire()
+    check(#sentAim == before + 1, "deferred transfer cleanup preserves one activation after re-equip")
+end
 local h = viewer.Character:FindFirstChildOfClass("Humanoid")
 h.Health = 0
 h.Died:Fire()

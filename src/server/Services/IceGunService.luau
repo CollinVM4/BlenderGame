@@ -221,6 +221,45 @@ function Service.GetEquipped(player: Player): Tool?
     return nil
 end
 
+-- Hotbar selection is intent; only this server's live issued instance may move.
+function Service.RequestSelection(player: Player, requested: any, equip: any): boolean
+    local state, tool = states[player], issued[player]
+    local character = player.Character
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if
+        player.Parent ~= Players
+        or not configured
+        or not state
+        or state.Owned ~= true
+        or not tool
+        or requested ~= tool
+        or typeof(equip) ~= "boolean"
+        or not character
+        or not backpack
+        or not humanoid
+        or humanoid.Health <= 0
+        or (tool.Parent ~= backpack and tool.Parent ~= character)
+    then
+        trace(player, "selection rejected: invalid issued Tool/owner/character", tool)
+        return false
+    end
+    if equip then
+        if humanoid.PlatformStand or not deps.MovementService.CanPerformGameplayAction(player) then
+            return false
+        end
+        if tool.Parent ~= character then
+            humanoid:EquipTool(tool)
+        end
+    elseif tool.Parent == character then
+        -- Put away only our weapon; never unequip a newly selected Bat/carry Tool.
+        tool.Parent = backpack
+    end
+    player:SetAttribute("IceGunEquipped", tool.Parent == character)
+    trace(player, if equip then "hotbar selection equipped" else "hotbar selection put away", tool)
+    return true
+end
+
 function Service.RequestEquip(player: Player): boolean
     if not deps.MovementService.CanPerformGameplayAction(player) then
         return false
@@ -229,11 +268,9 @@ function Service.RequestEquip(player: Player): boolean
     trace(player, "pedestal equip before reconciliation", before)
     local tool = Service.GrantIfOwned(player)
     trace(player, if tool == before then "pedestal reused issued Tool" else "pedestal replaced issued Tool", tool)
-    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if not tool or not humanoid then
+    if not tool or not Service.RequestSelection(player, tool, true) then
         return false
     end
-    humanoid:EquipTool(tool)
     trace(
         player,
         if Service.IsEquipped(player)
@@ -339,7 +376,7 @@ end
 function Service.Init(services)
     deps = services
     if Config.DebugLogging and RunService:IsStudio() then
-        warn("[IceGun server] ownership initialized revision=icegun-circle-2026-10-09 module=" .. script:GetFullName())
+        warn("[IceGun server] ownership initialized revision=icegun-reequip-2026-10-11 module=" .. script:GetFullName())
     end
     if not configured then
         warn("[IceGun] IceGunGamePassId is unconfigured/invalid; purchases and grants disabled.")

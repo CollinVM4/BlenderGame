@@ -303,26 +303,63 @@ table.clear(pending)
 
 local definition = ingredients.GetDefinition("Apple")
 local originalRarity = definition.Rarity
-for rarity, seconds in { Uncommon = 90, Rare = 120, Mystery = 210, Unknown = 60 } do
-    definition.Rarity = rarity
-    carry(owner, "Apple")
-    plantRow(1, owner)
-    check(timers[#timers].Seconds == seconds, rarity .. " duration/fallback")
-    timers[#timers].Run()
-    for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
-        if ingredients.GetRecord(object) then
-            object:Destroy()
+for _, mode in { "omitted", "true" } do
+    definition.Farmable = if mode == "true" then true else nil
+    for rarity, seconds in { Uncommon = 90, Rare = 120, Mystery = 210, Unknown = 60 } do
+        definition.Rarity = rarity
+        carry(owner, "Apple")
+        plantRow(1, owner)
+        check(timers[#timers].Seconds == seconds, rarity .. " duration/fallback")
+        timers[#timers].Run()
+        for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
+            if ingredients.GetRecord(object) then
+                object:Destroy()
+            end
         end
+        check(state(1) == "EMPTY", "removed harvest permits next crop")
     end
-    check(state(1) == "EMPTY", "removed harvest permits next crop")
 end
-definition.Rarity = originalRarity
-carry(owner, "Apple")
-definition.Farmable = false
-plantRow(1, owner)
-check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "nonfarmable ingredient is retained")
 definition.Farmable = nil
+-- Definition opt-outs apply to every rarity, even if the client advertises a
+-- different held item or directly triggers the prompt without its UI check.
+carry(owner, "Apple")
+local blockedSeed = tool(owner)
+local beforeBlockedTimers = #timers
+for _, rarity in { "Common", "Uncommon", "Rare", "Mystery" } do
+    definition.Rarity, definition.Farmable = rarity, false
+    owner:SetAttribute("HeldIngredientId", "Banana")
+    plantRow(1, owner)
+    check(
+        state(1) == "EMPTY"
+            and inventory.GetCarryCount(owner) == 1
+            and not blockedSeed.Destroyed
+            and rows[1].Object:GetAttribute("FarmGrowEnd") == nil
+            and #timers == beforeBlockedTimers,
+        rarity .. " opt-out preserves held item and empty row despite client metadata"
+    )
+end
+definition.Rarity, definition.Farmable = originalRarity, nil
 inventory.ClearHeld(owner)
+-- Dynamic avatar drops use the same central definition as template ingredients.
+local avatarHead = part("AvatarHead")
+local headDrop = ingredients.Spawn("PlayerHead", frame(), nil, true, { VisualTemplate = avatarHead })
+setup(headDrop and ingredients.GetRecord(headDrop).Item.VisualKey, "dynamic PlayerHead drop")
+local headItem = ingredients.GetRecord(headDrop).Item
+setup(inventory.CarryWorldItem(owner, headDrop), "pick up dynamic head")
+local heldHead = tool(owner)
+plantRow(1, owner)
+check(
+    state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1 and not heldHead.Destroyed,
+    "dynamic PlayerHead cannot plant and retains exact identity and appearance"
+)
+local retainedDrop = inventory.DropHeld(owner)
+check(
+    retainedDrop
+        and ingredients.GetRecord(retainedDrop).Item.ItemId == headItem.ItemId
+        and ingredients.GetRecord(retainedDrop).Item.VisualKey == headItem.VisualKey,
+    "rejected dynamic head retains item identity and avatar appearance"
+)
+retainedDrop:Destroy()
 for _, id in { "Golden_Potato", "Golden_Tomato" } do
     carry(owner, id)
     plantRow(1, owner)
@@ -340,6 +377,7 @@ plantRow(1, owner)
 check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "Dragon Fruit cannot be planted")
 inventory.ClearHeld(owner)
 carry(owner, "Apple")
+definition.Farmable = true -- An explicit allow still requires every server action check.
 owner.Character:FindFirstChildOfClass("Humanoid").Health = 0
 plantRow(1, owner)
 check(state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1, "dead actor cannot consume a seed")
@@ -349,6 +387,8 @@ plantRow(1, owner)
 check(state(1) == "EMPTY", "server rejects distant prompt activation")
 owner.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, 0)
 plantRow(1, owner)
+check(state(1) == "GROWING", "explicit true allows an otherwise valid ingredient")
+definition.Farmable = nil
 local stale = timers[#timers]
 local session = tycoon.GetSessionId(owner)
 tycoon.RemovePlayer(owner)

@@ -71,7 +71,7 @@ end
 tick()
 check(not display(origin).Enabled, "locked row hides state")
 check(
-    display(pad).Enabled and display(pad):FindFirstChild("Detail").Text == "$1,000",
+    display(pad).Enabled and display(pad):FindFirstChild("Detail").Text == "$20,000",
     "configured comma-separated pad price"
 )
 row:SetAttribute("FarmState", "EMPTY")
@@ -92,7 +92,20 @@ check(
 heldId = "Banana"
 load("Ingredients").Banana.Farmable = false
 tick()
-check(planting:FindFirstChild("Detail").Text == "", "nonfarmable selection has no planting name")
+check(
+    planting:FindFirstChild("Title").Text == "Cannot Plant This Item" and planting:FindFirstChild("Detail").Text == "",
+    "nonfarmable selection shows rejection feedback"
+)
+heldId = "PlayerHead"
+tick()
+check(planting:FindFirstChild("Title").Text == "Cannot Plant This Item", "PlayerHead prompt rejects planting")
+heldId = "Dragon_Fruit"
+tick()
+check(planting:FindFirstChild("Title").Text == "Cannot Plant This Item", "existing Mystery restriction stays visible")
+heldId = "Banana"
+load("Ingredients").Banana.Farmable = true
+tick()
+check(planting:FindFirstChild("Title").Text == "PLANT", "explicit true retains ordinary eligibility")
 load("Ingredients").Banana.Farmable = nil
 prompts.PromptShown:Fire(prompt, "Touch")
 planting = playerGui:FindFirstChild("FarmPlantDisplay")

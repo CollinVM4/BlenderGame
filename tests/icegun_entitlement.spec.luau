@@ -170,6 +170,17 @@ check(
     "successful simulated purchase immediately equips exactly one issued Tool"
 )
 local boughtTool = gun.GetEquipped(player1)
+for _ = 1, 20 do
+    check(gun.RequestSelection(player1, boughtTool, false), "simulated owner can put away issued Tool")
+    check(
+        gun.RequestSelection(player1, boughtTool, true) and gun.GetEquipped(player1) == boughtTool,
+        "simulated owner hotbar selection preserves exact authorization"
+    )
+end
+check(
+    not gun.RequestSelection(player2, boughtTool, true),
+    "unowned simulated player cannot select another player's weapon"
+)
 boughtTool.Parent = player1:FindFirstChildOfClass("Backpack")
 boughtTool.AncestryChanged:Fire()
 gun.GrantIfOwned(player1)

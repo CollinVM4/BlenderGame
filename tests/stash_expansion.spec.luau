@@ -172,7 +172,7 @@ inventory.ClearHeld(teammate)
 for index = 6, 10 do
     carry(owner, "Banana")
     check(inventory.Deposit(owner, "Banana", index), "existing deposit path accepts expanded slot")
-    check(not slot(owner, index).Protected, "expanded slots preserve first-two-total protection rule")
+    check(not slot(owner, index).Protected, "untagged expanded slots remain exposed")
     check(inventory.Withdraw(teammate, index, owner), "existing teammate withdrawal accepts expanded slot")
     inventory.ClearHeld(teammate)
 end

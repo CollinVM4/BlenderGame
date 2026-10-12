@@ -4,6 +4,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.JackedNoob)
 local Logic = require(script.Parent.JackedNoobLogic)
 local WorldUtil = require(script.Parent.WorldUtil)
+local Reaction = require(script.Parent.JackedNoobHitReaction)
+local BatConfig = require(ReplicatedStorage.Shared.Constants.BatConfig)
+local Knockback = require(script.Parent.BatKnockback)
+local RunService = game:GetService("RunService")
 
 local Service = {}
 local deadlines: Logic.State = {}
@@ -14,6 +18,9 @@ local template: Model? = nil
 local spawn: CFrame? = nil
 local response: RemoteEvent
 local inventory: any
+local deps: any
+local hitUntil = 0
+local immuneUntil = 0
 local random = Random.new()
 
 local function validRig(model: Model): (Humanoid?, BasePart?, BasePart?)
@@ -47,6 +54,8 @@ bind = function(model: Model)
         return
     end
     active = model
+    hitUntil, immuneUntil = 0, 0
+    Reaction.Clear()
     if not template then
         spawn = model:GetPivot()
         disableLegacy(model)
@@ -105,6 +114,9 @@ bind = function(model: Model)
             if not alive or active ~= model or humanoid.Health <= 0 then
                 break
             end
+            if os.clock() < hitUntil then
+                continue
+            end
             local localPosition = zone.CFrame:PointToObjectSpace(root.Position)
             local halfX = zone.Size.X / 2
             local halfZ = zone.Size.Z / 2
@@ -119,11 +131,22 @@ bind = function(model: Model)
         end
     end)
 
+    local removalConnection = model.AncestryChanged:Connect(function()
+        if active == model and not model:IsDescendantOf(workspace) then
+            alive = false
+            active = nil
+            promptConnection:Disconnect()
+            Reaction.Clear()
+        end
+    end)
+
     humanoid.Died:Connect(function()
         if active ~= model then
             return
         end
         alive = false
+        removalConnection:Disconnect()
+        Reaction.Clear()
         promptConnection:Disconnect()
         prompt:Destroy()
         active = nil
@@ -142,7 +165,51 @@ bind = function(model: Model)
     end)
 end
 
+-- Only CombatService dispatches Hit after issued-bat geometry and actor validation.
+function Service.CanHit(player: Player, model: Model): boolean
+    if active ~= model or not model:IsDescendantOf(workspace) or not deps.TycoonService.GetSessionId(player) then
+        return false
+    end
+    local humanoid, root = validRig(model)
+    return humanoid ~= nil
+        and humanoid.Health > 0
+        and root ~= nil
+        and not root.Anchored
+        and not model:FindFirstChildOfClass("ForceField")
+        and os.clock() >= immuneUntil
+end
+
+function Service.Hit(player: Player, model: Model, context: { Direction: Vector3, Duration: number }): boolean
+    if not Service.CanHit(player, model) then
+        return false
+    end
+    local humanoid, root, head = validRig(model)
+    if not humanoid or not root or not head then
+        return false
+    end
+    hitUntil = os.clock() + context.Duration
+    immuneUntil = hitUntil + BatConfig.ImmunitySeconds
+    -- Authored R6 Noob has no native R15 ragdoll; preserve the existing rig policy.
+    if humanoid.RigType == Enum.HumanoidRigType.R15 and deps.RagdollService.PrepareCharacter(model) then
+        if deps.RagdollService.SetRagdolled(model, true) then
+            RunService.Heartbeat:Once(function()
+                if active == model and humanoid.Health > 0 and deps.RagdollService.IsRagdolled(model) then
+                    Knockback.Apply(root, context.Direction)
+                end
+            end)
+            task.delay(context.Duration, function()
+                if active == model and humanoid.Health > 0 and model:IsDescendantOf(workspace) then
+                    deps.RagdollService.SetRagdolled(model, false)
+                end
+            end)
+        end
+    end
+    Reaction.Play(head)
+    return true
+end
+
 function Service.Init(services: any)
+    deps = services
     inventory = services.InventoryService
     response = Instance.new("RemoteEvent")
     response.Name = "JackedNoobResponse"

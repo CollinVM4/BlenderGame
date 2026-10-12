@@ -89,6 +89,7 @@ end
 local authoredConfig = loadModule("IceGunConfig")
 local config = table.clone(authoredConfig)
 config.IceGunGamePassId = 123
+config.DebugLogging = false -- Live Studio logging must not alter the CLI boundary.
 cache.IceGunConfig = config
 local ownership, marketplaceCalls, prompts = {}, 0, 0
 local marketplaceFailure = false

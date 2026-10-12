@@ -45,3 +45,5 @@ require(script.Controllers.ScrapbookController).Init()
 require(script.Controllers.RespawnPresentationController).Init()
 
 require(script.Controllers.MuncherPresentationController).Init()
+
+require(script.Controllers.UnstuckController).Init()

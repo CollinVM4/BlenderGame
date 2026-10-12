@@ -50,7 +50,7 @@ function Stash.Init(services: any)
                     slot:SetAttribute(prefix .. "StoredAt", unit and unit.RipenessStoredAt)
                 end
                 Presentation.Refresh(slot, state, services.IngredientService)
-                prompts[index].ObjectText = (if index <= Config.Protected then "Protected slot " else "Slot ") .. index
+                prompts[index].ObjectText = (if state and state.Protected then "Protected slot " else "Slot ") .. index
                 prompts[index].ActionText = "STASH"
             end
         end

@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local Constants = game:GetService("ReplicatedStorage").Shared.Constants
 local Config = require(Constants.FarmConfig)
 local Definitions = require(Constants.Ingredients)
+local Eligibility = require(Constants.FarmEligibility)
 local TextStyle = require(Constants.DialogueTextStyle)
 local Style = require(script.Parent.Parent.UI.WorldBillboardStyle)
 local Input = require(script.Parent.Parent.UI.InteractionPromptPresentation)
@@ -102,8 +103,11 @@ function Controller.Init()
             -- equipped smoothies. This is display metadata, never an activation payload.
             local id = player:GetAttribute("HeldIngredientId")
             local definition = if typeof(id) == "string" then Definitions[id] else nil
-            local valid = definition ~= nil and definition.Farmable ~= false
-            row.InputTitle.Text = if valid then "PLANT" else "HOLD AN INGREDIENT"
+            local valid = Eligibility.CanPlant(definition)
+            row.InputTitle.Text = if valid
+                then "PLANT"
+                elseif definition then "Cannot Plant This Item"
+                else "HOLD AN INGREDIENT"
             row.InputTitle.TextTransparency = if valid then 0 else 0.35
             row.InputName.Text = if valid and definition then definition.DisplayName or definition.Id else ""
             row.InputName.TextColor3 = if definition then definition.BlendColor else TextStyle.White

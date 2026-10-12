@@ -29,6 +29,7 @@ function IngredientService.Spawn(
         VisualTemplate: Instance?,
         FreezeUntilPickup: boolean?,
         FarmManaged: boolean?,
+        PrepareSpawn: ((Instance, CFrame) -> CFrame?)?,
         BeforePublish: ((Instance) -> ())?,
     }?
 ): Instance?
@@ -41,6 +42,14 @@ function IngredientService.Spawn(
     local object = IngredientService.CreateVisual(id, item)
     if not object then
         return nil
+    end
+    if options and options.PrepareSpawn then
+        local preparedAt = options.PrepareSpawn(object, at)
+        if not preparedAt then
+            object:Destroy()
+            return nil
+        end
+        at = preparedAt
     end
     object.Name = id
     object:SetAttribute("IngredientId", id)

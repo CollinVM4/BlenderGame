@@ -2,6 +2,8 @@
 -- Native Avatar Joint Upgrade R15 physics only. No combat, input, inventory or gameplay stun dependencies.
 local RunService = game:GetService("RunService")
 local RagdollService = {}
+local ragdollChanged = Instance.new("BindableEvent")
+RagdollService.Changed = ragdollChanged.Event
 type JointState = {
     IsKinematic: boolean,
     MaxForce: number,
@@ -18,12 +20,19 @@ type Rig = {
     Joints: { Joint },
     Sockets: { BallSocketConstraint },
     TorsoCollision: { [BasePart]: boolean },
+    LimbCollision: { [BasePart]: boolean },
     Connections: { RBXScriptConnection },
     Active: boolean,
     PlatformStand: boolean,
     AutoRotate: boolean,
 }
 local rigs: { [Model]: Rig } = {}
+local limbNames: { [string]: boolean } = {}
+for _, side in { "Left", "Right" } do
+    for _, segment in { "UpperArm", "LowerArm", "Hand", "UpperLeg", "LowerLeg", "Foot" } do
+        limbNames[side .. segment] = true
+    end
+end
 -- Expected avatar body pairs. Root is validated separately and never modified.
 local joints: { [string]: { string } } = {
     Neck = { "UpperTorso", "Head" },
@@ -243,6 +252,7 @@ function RagdollService.PrepareCharacter(character: Model): boolean
         Joints = {},
         Sockets = {},
         TorsoCollision = {},
+        LimbCollision = {},
         Connections = {},
         Active = false,
         PlatformStand = h.PlatformStand,
@@ -267,6 +277,18 @@ function RagdollService.PrepareCharacter(character: Model): boolean
         table.insert(rig.Sockets, socket)
     end
     rigs[character] = rig
+    for _, body in character:GetChildren() do
+        if body:IsA("BasePart") and limbNames[body.Name] then
+            table.insert(
+                rig.Connections,
+                body:GetPropertyChangedSignal("CanCollide"):Connect(function()
+                    if rig.Active and rig.LimbCollision[body] ~= nil and body.CanCollide then
+                        body.CanCollide = false
+                    end
+                end)
+            )
+        end
+    end
     table.insert(
         rig.Connections,
         h.Died:Connect(function()
@@ -330,6 +352,13 @@ function RagdollService.SetRagdolled(character: Model, enabled: boolean): boolea
             return reject("UpperTorso and LowerTorso required for core world collision")
         end
         rig.TorsoCollision = { [upper] = upper.CanCollide, [lower] = lower.CanCollide }
+        rig.LimbCollision = {}
+        for _, body in character:GetChildren() do
+            if body:IsA("BasePart") and limbNames[body.Name] then
+                rig.LimbCollision[body] = body.CanCollide
+                body.CanCollide = false
+            end
+        end
         rig.PlatformStand, rig.AutoRotate = h.PlatformStand, h.AutoRotate
         for _, joint in rig.Joints do
             joint.Saved = capture(joint.Constraint)
@@ -347,6 +376,7 @@ function RagdollService.SetRagdolled(character: Model, enabled: boolean): boolea
         end
         h:ChangeState(Enum.HumanoidStateType.Physics)
     else
+        rig.Active = false -- Release collision guards before restoring healthy snapshots.
         for _, joint in rig.Joints do
             local constraint, saved = joint.Constraint, joint.Saved
             if constraint.Parent then
@@ -362,6 +392,11 @@ function RagdollService.SetRagdolled(character: Model, enabled: boolean): boolea
                 torso.CanCollide = canCollide
             end
         end
+        for limb, canCollide in rig.LimbCollision do
+            if limb.Parent then
+                limb.CanCollide = canCollide
+            end
+        end
         if h.Parent then
             h.PlatformStand, h.AutoRotate = rig.PlatformStand, rig.AutoRotate
             if h.Health > 0 and not rig.PlatformStand then
@@ -370,6 +405,7 @@ function RagdollService.SetRagdolled(character: Model, enabled: boolean): boolea
         end
         rig.Active = false
     end
+    ragdollChanged:Fire(character, enabled)
     if RunService:IsStudio() then
         if enabled then
             print(string.format("[Ragdoll] ON changed=%d RootKinematic=%s", changed, tostring(rig.Root.IsKinematic)))
@@ -378,6 +414,33 @@ function RagdollService.SetRagdolled(character: Model, enabled: boolean): boolea
         end
     end
     return true
+end
+
+-- Reapply the last known healthy joint/collision snapshot even if OFF already ran.
+-- Caller must validate recent ragdoll history and reject gameplay locks/death.
+function RagdollService.RecoverCharacter(character: Model): boolean
+    local rig = rigs[character]
+    if not rig or rig.Humanoid.Health <= 0 then
+        return false
+    end
+    if not rig.Root:IsDescendantOf(character) or not rig.Root.Enabled or not rig.Root.IsKinematic then
+        return false
+    end
+    for _, joint in rig.Joints do
+        if not joint.Constraint:IsDescendantOf(character) then
+            return false
+        end
+    end
+    for _, socket in rig.Sockets do
+        if not socket:IsDescendantOf(character) or not socket.Enabled then
+            return false
+        end
+    end
+    for _, joint in rig.Joints do
+        joint.Constraint.Enabled = true
+    end
+    rig.Active = true
+    return RagdollService.SetRagdolled(character, false)
 end
 
 function RagdollService.CleanupCharacter(character: Model)

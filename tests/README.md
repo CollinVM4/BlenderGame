@@ -1,5 +1,12 @@
 # Test suite boundaries
 
+Fall damage: `--suite fall-damage` runs authoritative impact/jump/ragdoll/reset
+contracts, brief-contact and avatar replacement regressions, and bounded
+observer checks. The formerly failing bunny-hop, held-Jump and replaced-torso
+correction contracts now run in this normal suite. `--fall-damage-fix-contracts`
+is retained as a compatibility selector for the same passing suite. See
+[reliability changes and Studio multiplayer checks](../docs/FALL_DAMAGE_DIAGNOSTICS.md).
+
 Run `python tests/run_state_tests.py --luau <luau.exe>`. The default manifest runs
 every suite below, in a fresh Luau process, continues after failures, reports each
 group separately, and exits nonzero if any suite failed. `--list` shows selection
@@ -268,3 +275,24 @@ Use `run_mobile_prompt_tests.py` for touch geometry, overlap routing and input
 isolation, plus `--suite smoothie-dispense` for the independent authoritative
 dispense contracts. See [mobile pickup validation](../docs/MOBILE_PICKUP.md)
 for commands, baseline failures and physical-device checks.
+
+## Ragdoll unstuck recovery
+
+Use `--suite unstuck --suite unstuck-placement --suite unstuck-fallback --suite unstuck-ui`
+for authorization, destination clearance, assigned-plot fallback integration, and
+presentation/input. The shared resolver is covered by `--suite initial-spawn`;
+authorized teleport history and subsequent natural falls by `--suite fall-damage`.
+Native joint/collision restoration remains in the independent `--suite ragdoll` home.
+See [UNSTUCK setup and Studio acceptance](../docs/UNSTUCK.md) for the ten-stud lift,
+current-plot fallback, device/multiplayer checks, and validation limitations.
+
+
+## Bat launch tuning
+
+`--suite bat-knockback` owns target values, mass-normalized impulse math, direction,
+speed bounds, and ownership-policy restoration. `--suite combat-launch` uses the shared
+bat combat fixture to run upgrade launch, one-hit, immunity, deferred callback,
+ragdoll failure, cross-target dispatch, death/reset/respawn, and ownership interruption
+contracts independently of the mixed `combat` inventory/adapter suite. Existing native
+joint/collision restoration stays in `ragdoll`; actual landing/recovery history stays in
+`fall-damage`. See [tuning, baseline blockers, and per-level multiplayer Studio checks](../docs/BAT_LAUNCH_TUNING.md).

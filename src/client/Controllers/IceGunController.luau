@@ -4,7 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
-local REVISION = "icegun-circle-2026-10-09"
+local REVISION = "icegun-reequip-2026-10-11"
 local Config = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
 local Controller = {}
 local started = false
@@ -194,9 +194,35 @@ function Controller.Init()
         positionReticle()
         reconcileCursor()
     end
+    local selectedTool: Tool? = nil
+    local selectedCharacter: Model? = nil
+    local selectedEquipped: boolean? = nil
+    local function sendSelection(tool: Tool, force: boolean?)
+        if not character or player.Character ~= character or tool:GetAttribute("IceGunWeapon") ~= true then
+            return
+        end
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        if tool.Parent ~= character and tool.Parent ~= backpack then
+            return
+        end
+        local equipped = tool.Parent == character
+        if not force and selectedTool == tool and selectedCharacter == character and selectedEquipped == equipped then
+            return
+        end
+        local event = ReplicatedStorage:FindFirstChild("IceGunFire")
+        if event and event:IsA("RemoteEvent") then
+            -- Selection and shots share one ordered, nonyielding server handler.
+            selectedTool, selectedCharacter, selectedEquipped = tool, character, equipped
+            event:FireServer("Select", tool, equipped, character)
+            trace(player, "hotbar selection intent sent", tool)
+        end
+    end
     local function unwatch(tool: Tool)
         local list = tools[tool]
         tools[tool] = nil
+        if selectedTool == tool then
+            selectedTool, selectedCharacter, selectedEquipped = nil, nil, nil
+        end
         for _, connection in (list or {}) :: { RBXScriptConnection } do
             connection:Disconnect()
         end
@@ -216,6 +242,7 @@ function Controller.Init()
             child
         )
         if tools[child] then
+            sendSelection(child)
             updateReticle()
             return
         end
@@ -225,6 +252,7 @@ function Controller.Init()
             list,
             child:GetAttributeChangedSignal("IceGunWeapon"):Connect(function()
                 trace(player, "authorization attribute received", child)
+                sendSelection(child)
                 updateReticle()
             end)
         )
@@ -232,13 +260,22 @@ function Controller.Init()
             list,
             child.Equipped:Connect(function()
                 trace(player, "Tool equipped", child)
+                sendSelection(child)
                 updateReticle()
             end)
         )
-        table.insert(list, child.Unequipped:Connect(hideReticle))
+        table.insert(
+            list,
+            child.Unequipped:Connect(function()
+                trace(player, "Tool unequipped", child)
+                sendSelection(child)
+                updateReticle()
+            end)
+        )
         table.insert(
             list,
             child.AncestryChanged:Connect(function()
+                sendSelection(child)
                 updateReticle()
                 -- Transfers can pass through nil. Retire only after the current transfer finishes.
                 task.defer(function()
@@ -289,7 +326,7 @@ function Controller.Init()
                     trace(player, "activation rejected: local cooldown", child)
                     return
                 end
-                if not gameplayInput() or (reticle and not reticle.Enabled) then
+                if not gameplayInput() then
                     trace(player, "activation rejected: gameplay UI inactive", child)
                     return
                 end
@@ -303,9 +340,11 @@ function Controller.Init()
                 local aim = if hit then hit.Position else ray.Origin + ray.Direction * length
                 local event = ReplicatedStorage:FindFirstChild("IceGunFire")
                 if event and event:IsA("RemoteEvent") then
+                    -- Covers activation delivered before Equipped/ChildAdded notifications.
+                    sendSelection(child, true)
                     nextShot = os.clock() + Config.ShotCooldown
                     trace(player, "Fire RemoteEvent sent", child)
-                    event:FireServer(aim, ray.Origin, ray.Direction)
+                    event:FireServer(aim, ray.Origin, ray.Direction, current)
                 else
                     trace(player, "activation rejected: fire remote unavailable", child)
                 end
@@ -314,6 +353,7 @@ function Controller.Init()
         trace(player, "Tool.Activated listener connected", child)
         if child:GetAttribute("IceGunWeapon") == true then
             trace(player, "authorization attribute received", child)
+            sendSelection(child)
         end
         updateReticle()
     end

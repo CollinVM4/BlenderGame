@@ -49,6 +49,9 @@ do
             end,
         },
         TycoonService = {
+            GetUpgrade = function(p)
+                return if fixtures[p] and fixtures[p]:FindFirstChild("UpgradeStash") then 2 else 1
+            end,
             GetSessionId = function(p)
                 return sessions[p]
             end,
@@ -154,21 +157,6 @@ do
         inventory.GetSnapshot(ripeOwner).Stash[3].Value == definitions.Strawberry.Value * 3.25,
         "same-ID items retain separate effective values"
     )
-
-    local protectedOwner = player()
-    carry(protectedOwner, "Milk")
-    check(press(protectedOwner, "STORE", 1), "protected slot accepts one ingredient")
-    check(
-        stored(protectedOwner, 1) == 1 and inventory.GetSnapshot(protectedOwner).Stash[1].Capacity == 1,
-        "protected ingredient capacity is one"
-    )
-    carry(protectedOwner, "Banana")
-    check(
-        not press(protectedOwner, "STORE", 1) and inventory.GetCarryCount(protectedOwner) == 1,
-        "second protected ingredient rejected without loss"
-    )
-    check(press(protectedOwner, "STORE", 3), "exposed slot retains capacity three")
-    check(inventory.GetSnapshot(protectedOwner).Stash[3].Capacity == 3, "exposed capacity remains three")
 
     local p = player()
     for _ = 1, 3 do
@@ -435,5 +423,87 @@ do
         "ripeness promotion refreshes slot total"
     )
     promotionConnection:Disconnect()
+    -- Every original and purchased slot uses the same explicit surface designation.
+    local config = loadModule("Economy").NormalStash
+    for index = 1, 10 do
+        local originalDesignation = config.SlotProtection[index]
+        config.SlotProtection[index] = nil
+        for _, designation in { "none", "tag", "metadata" } do
+            local owner, enemy = player(), player()
+            local fixture = fixtures[owner]
+            local row = instance("Model")
+            row.Name, row.Parent = "UpgradeStash", fixture
+            row:SetAttribute("StashExpansionReady", true)
+            for expanded = 6, 10 do
+                local part = instance("Part")
+                part.Name, part.Parent = "Slot" .. expanded, row
+            end
+            local part = loadModule("StashSlots").Resolve(fixture, row)[index]
+            services.CollectionService:RemoveTag(part, "ProtectedStashSlot")
+            part.Name = "LockedSlot" .. index
+            services.CollectionService:AddTag(fixture, "ProtectedStashSlot")
+            fixture:SetAttribute("StashSlotProtected", true)
+            -- Replicated output and names cannot authorize permanent protection.
+            part:SetAttribute("StashProtected", true)
+            if designation == "tag" then
+                services.CollectionService:AddTag(part, "ProtectedStashSlot")
+            elseif designation == "metadata" then
+                part:SetAttribute("StashSlotProtected", true)
+            end
+            -- Expanded naming resolves numbering; it never determines protection.
+            if index > 5 then
+                part.Name = "Slot" .. index
+            end
+            local protected = designation ~= "none"
+            local state = inventory.GetSnapshot(owner).Stash[index]
+            check(state.Protected == protected and state.Capacity == 3, "explicit designation for slot " .. index)
+            for _, id in { "Milk", "Banana", "Milk" } do
+                carry(owner, id)
+                check(press(owner, "STORE", index), "slot accepts mixed/duplicate ingredient through capacity three")
+            end
+            carry(owner, "Mango")
+            check(
+                not press(owner, "STORE", index) and stored(owner, index) == 3 and inventory.GetCarryCount(owner) == 1,
+                "fourth STORE preserves carried and stored units"
+            )
+            inventory.ClearHeld(owner)
+            local value = inventory.GetSnapshot(owner).Stash[index].Value
+            check(value == definitions.Milk.Value * 2 + definitions.Banana.Value, "three ingredient slot value")
+            check(press(enemy, "TAKE", index, owner) == not protected, "nonmember theft obeys designation")
+            check(stored(owner, index) == (if protected then 3 else 2), "theft conserves slot contents")
+            if protected then
+                -- NPC thieves must use the same classification, including low indices.
+                check(
+                    inventory.RemoveThiefIngredient(owner, sessions[owner]) == nil,
+                    "NPC cannot take protected contents"
+                )
+            end
+            now += 120
+            heartbeat:Fire(1)
+            check(inventory.GetSnapshot(owner).Stash[index].Ingredients[1].IsRipe, "protected/exposed items ripen")
+            while stored(owner, index) > 0 do
+                check(press(owner, "TAKE", index), "owner can TAKE every remaining unit")
+            end
+            check(inventory.GetSnapshot(owner).Stash[index].Capacity == 3, "empty slot restores ingredient capacity")
+        end
+        config.SlotProtection[index] = originalDesignation
+    end
+
+    -- Explicit server metadata preserves the authored first two slots without tags.
+    local configured = player()
+    for index = 1, 5 do
+        check(
+            inventory.GetSnapshot(configured).Stash[index].Protected == (index <= 2),
+            "default server designation for original slot " .. index
+        )
+    end
+    local exposed = fixtures[configured]:GetChildren()[1]
+    exposed:SetAttribute("StashSlotProtected", false)
+    seed(configured, 1, 1)
+    check(not inventory.GetSnapshot(configured).Stash[1].Protected, "explicit false overrides default designation")
+    check(
+        inventory.RemoveThiefIngredient(configured, sessions[configured]) ~= nil,
+        "NPC can steal explicitly exposed low-index slot"
+    )
     print("PASS stash interaction: " .. (count - before) .. " checks")
 end

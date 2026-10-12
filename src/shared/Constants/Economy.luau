@@ -19,7 +19,9 @@ return {
     InteractionDistance = 12,
     NormalStash = {
         Slots = 5,
-        Protected = 2,
+        ProtectionTag = "ProtectedStashSlot",
+        -- Explicit permanent designations; Second Storage adds no protected entries.
+        SlotProtection = { [1] = true, [2] = true },
         IngredientCapacity = 3,
         RaidWindowSeconds = 6,
         RaidProtectionSeconds = 30,

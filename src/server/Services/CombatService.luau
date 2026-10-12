@@ -18,7 +18,7 @@ type EquippedBat = {
     IsUnderCharacter: boolean,
     IssuedValidation: boolean,
 }
-type Stun = { Character: Model, Until: number, ImmuneUntil: number }
+type Stun = { Character: Model, Until: number, ImmuneUntil: number, ReleaseOwnership: (() -> ())? }
 local weapons: { [Player]: Weapon? } = {}
 local attackAt: { [Player]: number } = {}
 local swings: { [Player]: {} } = {}
@@ -73,6 +73,9 @@ local function clearStun(player: Player)
     stuns[player] = nil
     if state then
         setRagdolled(state.Character, false)
+        if state.ReleaseOwnership then
+            state.ReleaseOwnership()
+        end
     end
     deps.MovementService.SetStunned(player, false)
     player:SetAttribute("StunnedUntil", 0)
@@ -319,6 +322,9 @@ local function enemyRejection(attacker: Player, victim: Player): string?
     if reason then
         return reason
     end
+    if (victim.Character :: Model):FindFirstChildOfClass("ForceField") then
+        return "target spawn protected"
+    end
     local stun = stuns[victim]
     if deps.MovementService.IsStunned(victim) then
         return "target stunned"
@@ -335,7 +341,7 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
     local duration = level.StunDuration
     local character = victim.Character :: Model
     local untilTime = os.clock() + duration
-    local state = { Character = character, Until = untilTime, ImmuneUntil = untilTime + Config.ImmunitySeconds }
+    local state: Stun = { Character = character, Until = untilTime, ImmuneUntil = untilTime + Config.ImmunitySeconds }
     stuns[victim] = state
     victim:SetAttribute("StunnedUntil", untilTime)
     deps.MovementService.SetStunned(victim, true)
@@ -343,8 +349,17 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
     local attackerRoot = (attacker.Character :: Model):FindFirstChild("HumanoidRootPart") :: BasePart
     local away = Knockback.Direction(attackerRoot, root)
     deps.InventoryService.DropCarriedIngredients(victim, "BatStun", away)
-    if setRagdolled(character, true) then
+    -- Own simulation before requesting Physics; release after a short launch interval.
+    local owned, release = pcall(Knockback.TakeOwnership, root)
+    if owned then
+        state.ReleaseOwnership = release
+    else
+        warn("[Bat] Ownership acquisition failed: " .. tostring(release))
+    end
+    local ragdolled = setRagdolled(character, true)
+    if ragdolled and state.ReleaseOwnership then
         RunService.Heartbeat:Once(function()
+            local releaseOwnership = state.ReleaseOwnership :: () -> ()
             local currentCharacter, currentRoot = alive(victim)
             if
                 stuns[victim] ~= state
@@ -354,6 +369,7 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
                 or os.clock() >= state.Until
                 or not deps.MovementService.IsStunned(victim)
             then
+                releaseOwnership()
                 return
             end
             local ok, problem = pcall(function(): boolean
@@ -366,15 +382,29 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
             if not ok then
                 warn("[Bat] Knockback failed: " .. tostring(problem))
             end
+            if ok and problem then
+                task.delay(Config.Knockback.ServerOwnershipSeconds, releaseOwnership)
+            else
+                releaseOwnership()
+            end
         end)
+    elseif state.ReleaseOwnership then
+        state.ReleaseOwnership()
     end
     task.delay(duration, function()
         if stuns[victim] == state and victim.Character == character then
             setRagdolled(character, false)
+            if state.ReleaseOwnership then
+                state.ReleaseOwnership()
+            end
             deps.MovementService.SetStunned(victim, false)
             victim:SetAttribute("StunnedUntil", 0)
         end
     end)
+    -- Use the authoritative level resolved at impact. Apply last so lethal damage
+    -- follows normal Humanoid death cleanup without recreating stun after Died.
+    local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid
+    CombatService.DamagePlayer(attacker, victim, character, humanoid.MaxHealth * level.DamageFraction)
 end
 -- No target, level, duration or geometry is accepted from the requester.
 function CombatService.SwingBat(player: Player): boolean
@@ -477,7 +507,10 @@ function CombatService.SwingBat(player: Player): boolean
                                 .. victim.Name
                         )
                         break
-                    elseif deps.CustomerService.CanHitCustomer(player, ancestor) then
+                    elseif
+                        deps.CustomerService.CanHitCustomer(player, ancestor)
+                        or (deps.JackedNoobService and deps.JackedNoobService.CanHit(player, ancestor))
+                    then
                         candidates[ancestor] = {}
                         break
                     end
@@ -503,10 +536,13 @@ function CombatService.SwingBat(player: Player): boolean
                         .. "/"
                         .. tostring(deps.TycoonService.GetSessionId(victim))
                 )
-            elseif deps.CustomerService.CanHitCustomer(player, target) then
+            elseif
+                deps.CustomerService.CanHitCustomer(player, target)
+                or (deps.JackedNoobService and deps.JackedNoobService.CanHit(player, target))
+            then
                 targetRoot = target:FindFirstChild("HumanoidRootPart") :: BasePart?
             else
-                enemyReason = "customer ineligible"
+                enemyReason = "NPC ineligible"
             end
             if target and targetRoot then
                 local direction = targetRoot.Position - root.Position
@@ -556,10 +592,15 @@ function CombatService.SwingBat(player: Player): boolean
                 )
             else
                 local targetRoot = closest:FindFirstChild("HumanoidRootPart") :: BasePart
-                deps.CustomerService.HitCustomer(player, closest, {
+                local context = {
                     Direction = Knockback.Direction(root, targetRoot),
                     Duration = level.StunDuration,
-                })
+                }
+                if deps.JackedNoobService and deps.JackedNoobService.CanHit(player, closest) then
+                    deps.JackedNoobService.Hit(player, closest, context)
+                else
+                    deps.CustomerService.HitCustomer(player, closest, context)
+                end
             end
         end
     end

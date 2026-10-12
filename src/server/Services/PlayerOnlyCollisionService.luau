@@ -6,12 +6,25 @@ local PlayerOnlyCollisionService = { PlayerGroup = "Players" }
 local HELPER_GROUP = "PlayerOnly"
 local TAG = "PlayerOnlyCollision"
 local initialized = false
+local controlled: { [BasePart]: boolean } = {}
 
 local function configurePart(instance: Instance)
     if instance:IsA("BasePart") then
         instance.CollisionGroup = HELPER_GROUP
-        instance.CanCollide = true
+        instance.CanCollide = if controlled[instance] ~= nil then controlled[instance] else true
     end
+end
+
+-- Scoped server override. Tags and all other helper behavior remain intact.
+function PlayerOnlyCollisionService.SetControlled(part: BasePart, enabled: boolean)
+    controlled[part] = enabled
+    configurePart(part)
+end
+
+function PlayerOnlyCollisionService.ReleaseControlled(part: BasePart)
+    controlled[part] = nil
+    -- A detached security wall stays inactive until explicitly bound again.
+    part.CanCollide = false
 end
 
 function PlayerOnlyCollisionService.Init()

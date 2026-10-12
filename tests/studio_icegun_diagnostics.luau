@@ -3,7 +3,7 @@
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local revision = "icegun-circle-2026-10-09"
+local revision = "icegun-reequip-2026-10-11"
 local function inspectModule(module)
     if not module then
         warn("[IceGun snapshot] MISSING module")

@@ -9,8 +9,16 @@ the generic upgrade request cannot purchase `FarmRows`. Either teammate can pay.
 `FarmService` owns LOCKED / EMPTY / GROWING / READY row state. Planting reads the
 same authoritative selected/fallback carry record used by throwing, validates
 its live Tool, and consumes exactly one through `InventoryService`. Equipped
-smoothies cannot be planted. `IngredientDefinition.Farmable = false` opts an
-ingredient out; omitted means farmable. Unknown/missing rarity warns and uses
+smoothies cannot be planted. Set `Farmable = false` on any entry in
+`src/shared/Constants/Ingredients.luau` to disable planting regardless of rarity.
+`PlayerHead` and `Dragon_Fruit` are opted out. Omitted/true preserves legacy
+eligibility and all server ownership, distance, movement, and row restrictions;
+true does not override another restriction. There is no blanket Mystery rarity
+ban: the existing Dragon Fruit restriction is its definition's opt-out.
+`src/shared/Constants/FarmEligibility.luau` resolves the definition rule for both
+the farm prompt and authoritative planting. Ineligible selections show
+"Cannot Plant This Item"; server rejection precedes consumption or row mutation,
+including for dynamically created PlayerHead drops. Unknown/missing rarity warns and uses
 Common. `FarmConfig` owns prices, growth durations and reveal/proximity tuning.
 
 After 30 / 45 / 90 / 180 seconds for Common / Uncommon / Rare / Mystery, the

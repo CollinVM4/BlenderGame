@@ -11,11 +11,13 @@ local services: { [string]: any } = {
     PlayerDataService = require(script.Services.PlayerDataService),
     MovementService = require(script.Services.MovementService),
     RagdollService = require(script.Services.RagdollService),
+    UnstuckService = require(script.Services.UnstuckService),
     FallDamageService = require(script.Services.FallDamageService),
     HealthRegenService = require(script.Services.HealthRegenService),
     CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
     TycoonService = require(script.Services.TycoonService),
+    LockBaseService = require(script.Services.LockBaseService),
     InitialSpawnService = require(script.Services.InitialSpawnService),
     TutorialService = require(script.Services.TutorialService),
     IngredientService = require(script.Services.IngredientService),
@@ -26,6 +28,7 @@ local services: { [string]: any } = {
     BlendService = require(script.Services.BlendService),
     MuncherService = require(script.Services.MuncherService),
     CustomerService = require(script.Services.CustomerService),
+    JackedNoobService = require(script.Services.JackedNoobService),
     GameService = require(script.Services.GameService),
     MarketService = require(script.Services.MarketService),
     CombatService = require(script.Services.CombatService),
@@ -41,6 +44,24 @@ require(script.Services.FilmingUtil).Init()
 require(script.Services.GameplaySfxService).Init()
 require(script.Services.PlayerOnlyCollisionService).Init()
 
+-- Migrate existing named plot fixtures to tags without yielding for absent assets.
+local folder = workspace:FindFirstChild("Plots")
+local roots = if folder then folder:GetChildren() else {}
+for _, plot in game:GetService("CollectionService"):GetTagged("PlayerPlot") do
+    if not table.find(roots, plot) then
+        table.insert(roots, plot)
+    end
+end
+local direct = workspace:FindFirstChild("Blender")
+if direct then
+    table.insert(roots, direct)
+end
+for _, plot in roots do
+    services.TycoonService.AutoTagLegacyPlot(plot)
+end
+-- Bind security before unrelated service initialization or player claims.
+services.LockBaseService.Init(services)
+
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
 services.IngredientService.Init(services)
@@ -53,6 +74,7 @@ services.InitialSpawnService.Init(services)
 services.TutorialService.Init(services)
 services.TycoonService.Init({
     SessionStarted = function(player)
+        services.LockBaseService.StartSession(player)
         services.FarmService.StartSession(player)
         services.BlendService.Reset(player)
         services.MuncherService.Reset(player)
@@ -66,6 +88,7 @@ services.TycoonService.Init({
         return true
     end,
     MemberChanged = function(player)
+        services.LockBaseService.RefreshMembership()
         services.InventoryService.BindPlayer(player)
         services.InitialSpawnService.ClearReservation(player)
         services.TutorialService.MembershipChanged(player)
@@ -75,6 +98,7 @@ services.TycoonService.Init({
         services.CustomerService.BindPlayer(player)
     end,
     MemberRemoved = function(player)
+        services.LockBaseService.RefreshMembership()
         services.TutorialService.MembershipChanged(player)
         services.MovementService.RefreshPlayer(player)
         services.CombatService.RefreshPlayer(player)
@@ -83,6 +107,7 @@ services.TycoonService.Init({
         services.MuncherService.RemovePlayer(player)
     end,
     SessionEnded = function(id)
+        services.LockBaseService.CleanupSession(id)
         services.FarmService.CleanupSession(id)
         services.InventoryService.CleanupSession(id)
         services.CustomerService.CleanupSession(id)
@@ -107,25 +132,11 @@ end
 services.FreezeStatusService.Init(services)
 services.IceGunProjectileService.Init(services)
 services.IceGunService.Init(services)
+services.UnstuckService.Init(services)
 services.HealthRegenService.Init()
 services.AdminService.Init(services)
 services.CustomerService.Init(services, services.GameService.CustomerServed, services.GameService.IsServing)
 
--- Migrate existing named plot fixtures to tags without yielding for absent assets.
-local folder = workspace:FindFirstChild("Plots")
-local roots = if folder then folder:GetChildren() else {}
-for _, plot in game:GetService("CollectionService"):GetTagged("PlayerPlot") do
-    if not table.find(roots, plot) then
-        table.insert(roots, plot)
-    end
-end
-local direct = workspace:FindFirstChild("Blender")
-if direct then
-    table.insert(roots, direct)
-end
-for _, plot in roots do
-    services.TycoonService.AutoTagLegacyPlot(plot)
-end
 services.FarmService.Init(services)
 require(script.Services.StashExpansionService).Init(services)
 
@@ -146,6 +157,7 @@ local function addPlayer(player: Player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
     local function onCharacterAdded(character: Model)
+        services.LockBaseService.ApplyCharacter(player, character)
         services.InitialSpawnService.ApplyCharacter(player, character)
         services.TutorialService.ApplyCharacter(player, character)
         services.PlayerHeadDropService.ApplyCharacter(player, character)
@@ -159,7 +171,10 @@ local function addPlayer(player: Player)
         services.FallDamageService.ApplyCharacter(player, character)
         services.HealthRegenService.ApplyCharacter(player, character)
     end
-    removingConnections[player] = player.CharacterRemoving:Connect(services.RagdollService.CleanupCharacter)
+    removingConnections[player] = player.CharacterRemoving:Connect(function(character)
+        services.LockBaseService.RemoveCharacter(player)
+        services.RagdollService.CleanupCharacter(character)
+    end)
     characterConnections[player] = player.CharacterAdded:Connect(onCharacterAdded)
     if player.Character then
         onCharacterAdded(player.Character)
@@ -169,7 +184,7 @@ Players.PlayerAdded:Connect(addPlayer)
 for _, player in Players:GetPlayers() do
     addPlayer(player)
 end
-require(script.Services.JackedNoobService).Init(services)
+services.JackedNoobService.Init(services)
 Players.PlayerRemoving:Connect(function(player)
     services.InitialSpawnService.RemovePlayer(player)
     services.TutorialService.RemovePlayer(player)

@@ -188,7 +188,17 @@ for cycle = 1, 3 do
         nativeUnchanged(native) and #c:GetDescendants() == originalCount,
         "root, native constraints, attachments and non-torso collision remain untouched"
     )
+    local root = body.HumanoidRootPart
+    root.AssemblyLinearVelocity = vec(0, 0, 0)
+    loadModule("BatKnockback").Apply(root, vec(0, 0, -1), loadModule("BatConfig").Levels[3])
+    -- Engine boundary represents the launch while real RagdollService restores the rig.
+    root.AssemblyLinearVelocity = root.Impulse / root.AssemblyMass
+    local launched = root.AssemblyLinearVelocity
     setup(ragdoll.SetRagdolled(c, false), "ragdoll off")
+    check(
+        (root.AssemblyLinearVelocity - launched).Magnitude == 0,
+        "Giant launch recovery does not manufacture a velocity spike"
+    )
     setup(ragdoll.SetRagdolled(c, false), "repeated off is safe")
     check(
         body.UpperTorso.CanCollide == (cycle == 2) and body.LowerTorso.CanCollide == (cycle == 3),
@@ -278,3 +288,21 @@ check(
     "activation rejects a removed native socket without partial state changes"
 )
 ragdoll.CleanupCharacter(stale)
+
+local recoveryRig, recoveryHumanoid, recoveryJoints, recoveryBody = ajuRig()
+recoveryBody.LeftUpperArm.CanCollide = true
+setup(ragdoll.SetRagdolled(recoveryRig, true), "prepare collision recovery")
+check(
+    not recoveryBody.LeftUpperArm.CanCollide and recoveryBody.UpperTorso.CanCollide,
+    "ragdoll suppresses limb collisions while retaining convincing torso support"
+)
+setup(ragdoll.SetRagdolled(recoveryRig, false), "normal recovery")
+check(recoveryBody.LeftUpperArm.CanCollide, "healthy limb collision snapshot restored")
+recoveryJoints.Neck.IsKinematic = false
+recoveryHumanoid.PlatformStand = true
+check(
+    ragdoll.RecoverCharacter(recoveryRig) and recoveryJoints.Neck.IsKinematic and not recoveryHumanoid.PlatformStand,
+    "validated recovery reapplies healthy joints even after OFF completed"
+)
+recoveryHumanoid.Health = 0
+check(not ragdoll.RecoverCharacter(recoveryRig), "recovery never restores a dead humanoid")

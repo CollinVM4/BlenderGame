@@ -1,7 +1,7 @@
 --!strict
 
 export type IngredientDefinition = {
-    Farmable: boolean?,
+    Farmable: boolean?, -- false disables farming; nil/true retains existing planting restrictions.
     Id: string,
     Value: number,
     DisplayName: string?,
@@ -133,10 +133,11 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 0,
     },
 
-    PlayerHead = { 
+    PlayerHead = {
         Id = "PlayerHead",
+        Farmable = false,
         DisplayName = "Player Head", -- This will need to be dynamic
-        Tags = { "Weird",},
+        Tags = { "Weird" },
         BlendColor = Color3.fromRGB(255, 105, 180),
         Rarity = "Uncommon",
         Value = 15000,
@@ -166,7 +167,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Pizza = {
         Id = "Pizza",
         DisplayName = "Pizza",
-        Tags = { "Fast Food", "Mystery",},
+        Tags = { "Fast Food", "Mystery" },
         BlendColor = Color3.fromRGB(255, 200, 100),
         Rarity = "Rare",
         Value = 75000,
@@ -246,7 +247,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Onion = {
         Id = "Onion",
         DisplayName = "Onion",
-        Tags = { "Veggie", "White", "Weird",},
+        Tags = { "Veggie", "White", "Weird" },
         BlendColor = Color3.fromRGB(220, 205, 170),
         Rarity = "Common",
         Value = 2000,
@@ -386,7 +387,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Protein = {
         Id = "Protein",
         DisplayName = "Protein",
-        Tags = { "Protein", },
+        Tags = { "Protein" },
         BlendColor = Color3.fromRGB(119, 95, 13),
         Rarity = "Uncommon",
         Value = 5000,
@@ -426,7 +427,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Cotton_Candy = {
         Id = "Cotton_Candy",
         DisplayName = "Cotton Candy",
-        Tags = { "Sweet", "Pink", "Candy"},
+        Tags = { "Sweet", "Pink", "Candy" },
         BlendColor = Color3.fromRGB(255, 182, 193),
         Rarity = "Rare",
         Value = 65000,
@@ -478,13 +479,12 @@ local Ingredients: { [string]: IngredientDefinition } = {
     Cactus = {
         Id = "Cactus",
         DisplayName = "Cactus",
-        Tags = { "Weird", "Green", "Plant"},
+        Tags = { "Weird", "Green", "Plant" },
         BlendColor = Color3.fromRGB(100, 200, 100),
         Rarity = "Uncommon",
         Value = 8000,
         JumpLocation = 1,
     },
-
 
     French_Fries = {
         Id = "French_Fries",

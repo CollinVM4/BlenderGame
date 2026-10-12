@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--luau", default="luau")
 selection = parser.add_mutually_exclusive_group()
 selection.add_argument("--suite", action="append", help="Run named suites (repeatable)")
+selection.add_argument("--fall-damage-fix-contracts", action="store_true", help="Run fall-damage correction contracts (now included in the normal fall-damage suite)")
 selection.add_argument("--group", choices=("state", "integration", "presentation"))
 selection.add_argument("--vfx-only", action="store_true", help="Run blender VFX presentation checks")
 selection.add_argument("--world-only", action="store_true", help="Run ingredient world integration checks")
@@ -64,13 +65,18 @@ SUITES = {
     "stash-expansion": ("integration", ("fixtures/smoothie.luau", "stash_expansion.spec.luau")),
     "farm": ("integration", ("fixtures/smoothie.luau", "farm.spec.luau")),
     "upgrade-sync": ("integration", ("fixtures/smoothie.luau", "upgrade_sync.spec.luau")),
-    "combat": ("integration", ("fixtures/smoothie.luau", "combat.spec.luau")),
+    "npc-combat": ("integration", ("npc_combat.spec.luau",)),
+    "jacked-noob-hit-presentation": ("presentation", ("jacked_noob_hit_presentation.spec.luau",)),
+    "bat-knockback": ("state", ("fixtures/smoothie.luau", "bat_knockback.spec.luau")),
+    "combat-launch": ("integration", ("fixtures/smoothie.luau", "fixtures/bat_combat.luau", "combat_launch.spec.luau")),
+    "combat": ("integration", ("fixtures/smoothie.luau", "fixtures/bat_combat.luau", "combat.spec.luau")),
     "plot-player-flow": ("integration", ("fixtures/smoothie.luau", "plot_player_flow.spec.luau")),
     "plot-session-races": ("integration", ("fixtures/smoothie.luau", "plot_session_races.spec.luau")),
     "plot-session-progression": ("integration", ("fixtures/smoothie.luau", "plot_session_progression.spec.luau")),
     "plot-session-requests": ("integration", ("fixtures/smoothie.luau", "plot_session_requests.spec.luau")),
     "plot-session": ("integration", ("fixtures/smoothie.luau", "plot_session.spec.luau")),
     "throw": ("state", ("fixtures/carry.luau", "ingredient_throw.spec.luau")),
+    "throw-multiplayer": ("integration", ("fixtures/smoothie.luau", "throw_multiplayer.spec.luau")),
     "throw-blender": ("integration", ("fixtures/carry.luau", "ingredient_throw_blender.spec.luau")),
     "carry-selection": ("integration", ("fixtures/smoothie.luau", "carry_selection.spec.luau")),
     "carry-input": ("integration", ("fixtures/carry.luau", "carry_input.spec.luau")),
@@ -101,6 +107,10 @@ SUITES = {
     "smoothie-roundtrip": ("integration", ("fixtures/smoothie.luau", "smoothie_roundtrip.spec.luau")),
     "smoothie-survivors": ("integration", ("fixtures/smoothie.luau", "smoothie_survivors.spec.luau")),
     "bat-controller": ("presentation", ("bat_controller.spec.luau",)),
+    "unstuck-ui": ("presentation", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "unstuck_ui.spec.luau")),
+    "unstuck": ("state", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "fixtures/unstuck_service.luau", "unstuck.spec.luau")),
+    "unstuck-fallback": ("integration", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "fixtures/unstuck_service.luau", "unstuck_fallback.spec.luau")),
+    "unstuck-placement": ("integration", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "unstuck_placement.spec.luau")),
     "ragdoll": ("presentation", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "ragdoll.spec.luau")),
     "vfx": ("presentation", ("vfx_runner.spec.luau",)),
     "carry-presentation": ("presentation", ("fixtures/carry.luau", "carry_presentation.spec.luau")),
@@ -136,6 +146,7 @@ SUITES = {
     "icegun-combat": ("integration", ("fixtures/icegun.luau", "icegun_combat.spec.luau")),
 }
 focused = {
+    "fall_damage_fix_contracts": ("fall-damage",),
     "vfx_only": ("vfx",),
     "world_only": ("world",),
     "throw_only": ("throw", "throw-blender"),
@@ -210,6 +221,7 @@ sources["StandIdentityController"] = (ROOT / "src/client/Controllers/StandIdenti
 sources["StandNameEditor"] = (ROOT / "src/client/UI/StandNameEditor.luau").read_text(encoding="utf-8")
 sources["PanelManager"] = (ROOT / "src/client/UI/PanelManager.luau").read_text(encoding="utf-8")
 sources["PlotIdentityController"] = (ROOT / "src/client/Controllers/PlotIdentityController.luau").read_text(encoding="utf-8")
+sources["UnstuckController"] = (ROOT / "src/client/Controllers/UnstuckController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
 source_bundle = (
     "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"

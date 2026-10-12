@@ -98,6 +98,14 @@ local function frame(x, y, z)
         return result
     end
     return setmetatable(cf, {
+        __index = function(_, key)
+            if key == "Rotation" then
+                local rotation = frame()
+                rotation.RightVector, rotation.UpVector, rotation.LookVector =
+                    cf.RightVector, cf.UpVector, cf.LookVector
+                return rotation
+            end
+        end,
         __mul = function(a, b)
             local v = a.Position
                 + a.RightVector * b.Position.X
@@ -150,6 +158,24 @@ local function instance(class)
             end
         end
         return found
+    end
+    function object:FindFirstAncestor(name)
+        local parent = self.Parent
+        while parent do
+            if parent.Name == name then
+                return parent
+            end
+            parent = parent.Parent
+        end
+    end
+    function object:FindFirstAncestorWhichIsA(className)
+        local parent = self.Parent
+        while parent do
+            if parent.IsA and parent:IsA(className) then
+                return parent
+            end
+            parent = parent.Parent
+        end
     end
     function object:IsDescendantOf(target)
         local current = self.Parent
@@ -356,6 +382,9 @@ local workspaceFake = {
     Raycast = function()
         return nil
     end,
+    GetPartBoundsInBox = function()
+        return {}
+    end,
     GetPartsInPart = function(_, input)
         return input.Overlaps or {}
     end,
@@ -481,6 +510,11 @@ local env = setmetatable({
     os = {
         clock = function()
             return now
+        end,
+    },
+    OverlapParams = {
+        new = function()
+            return {}
         end,
     },
     RaycastParams = {

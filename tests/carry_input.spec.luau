@@ -27,10 +27,14 @@ end
 function shared.Events:WaitForChild(name)
     return self:FindFirstChild(name)
 end
-local action, mouseAction, bindings, touchEnabled = nil, nil, 0, false
+local action, touchEnabled = nil, false
+local inputBegan = signal()
 services.Players.LocalPlayer = player
 local textFocused = false
 services.UserInputService = {
+    InputBegan = inputBegan,
+    TouchEnabled = true,
+    MouseEnabled = true,
     GetFocusedTextBox = function()
         return if textFocused then {} else nil
     end,
@@ -40,11 +44,7 @@ services.ContextActionService = {
         if name == "ThrowHeld" then
             action = callback
             touchEnabled = createTouchButton
-        elseif name == "ThrowHeldMouse" then
-            mouseAction = callback
-            setup(not createTouchButton, "mouse action does not create mobile UI")
         end
-        bindings += 1
     end,
     SetTitle = function() end,
     SetPosition = function() end,
@@ -56,7 +56,7 @@ env.Enum.KeyCode = { ButtonR2 = "ButtonR2" }
 local controller = loadModule("CarryInputController")
 controller.Init()
 controller.Init()
-check(bindings == 2, "controller startup cannot duplicate throw bindings")
+check(action ~= nil and touchEnabled, "mobile/gamepad throw action available after repeated initialization")
 for _, id in { "Banana", "Ice", "Cherries" } do
     setup(inventory.CarryWorldItem(player, ingredients.Spawn(id, translate(), nil, true)), "input fixture pickup")
 end
@@ -79,8 +79,11 @@ player:SetAttribute("Stunned", false)
 action("ThrowHeld", "End")
 check(inventory.GetCarryCount(player) == 3, "release edge does not throw")
 action("ThrowHeld", "Begin")
-check(inventory.GetCarryCount(player) == 2 and selectedTool.Destroyed, "one central input throws selected ingredient")
-check(requestedIds[1] == selectedTool:GetAttribute("CarryItemId"), "client sends exact equipped carry identity")
+check(
+    inventory.GetCarryCount(player) == 2 and not selectedTool.Destroyed,
+    "input throws newest even with older ingredient equipped"
+)
+check(requestedIds[1] == false, "client sends no gameplay selection or position")
 action("ThrowHeld", "Begin")
 check(inventory.GetCarryCount(player) == 2, "server throttles repeated requests")
 now += 0.2
@@ -119,3 +122,52 @@ forged:SetAttribute("IngredientId", "Banana")
 now += 0.2
 remote.OnServerEvent:Fire(player, "ThrowHeld")
 check(inventory.GetCarryCount(player) == 0, "forged Tool cannot create authoritative inventory")
+
+-- Physical mouse is accepted on hybrid PC hardware; GUI/CAS processed input is not.
+humanoid.Health = 100
+inventory.ClearHeld(player)
+for _, id in { "Banana", "Ice", "Cherries" } do
+    setup(inventory.CarryWorldItem(player, ingredients.Spawn(id, translate(), nil, true)), "mouse fixture pickup")
+end
+local mouse = { UserInputType = "MouseButton1" }
+local beforeMouse = #requestedIds
+inputBegan:Fire(mouse, true)
+inputBegan:Fire({ UserInputType = "Touch" }, false)
+check(
+    #requestedIds == beforeMouse and inventory.GetCarryCount(player) == 3,
+    "GUI, consumed actions and touch gestures never throw"
+)
+now += 0.2
+inputBegan:Fire(mouse, false)
+check(
+    #requestedIds == beforeMouse + 1 and inventory.GetCarryCount(player) == 2,
+    "hybrid PC left click throws exactly once without a world target"
+)
+local gun = instance("Tool")
+gun.Name = "IceGun"
+gun:SetAttribute("IceGunWeapon", true)
+gun.Parent = character
+now += 0.2
+inputBegan:Fire(mouse, false)
+check(#requestedIds == beforeMouse + 1, "Ice Gun owns primary mouse input")
+gun.Parent = backpack
+bat.Parent = character
+inputBegan:Fire(mouse, false)
+check(#requestedIds == beforeMouse + 1, "Bat owns primary mouse input")
+bat.Parent = backpack
+now += 0.2
+action("ThrowHeld", "Begin")
+check(inventory.GetCarryCount(player) == 1, "mobile/gamepad action remains available alongside desktop mouse")
+
+now += 0.2
+services.UserInputService.MouseEnabled = false
+local beforeTouch = #requestedIds
+inputBegan:Fire(mouse, false)
+check(#requestedIds == beforeTouch, "touch-only synthesized mouse cannot throw")
+services.UserInputService.MouseEnabled = true
+services.UserInputService.TouchEnabled = false
+inputBegan:Fire(mouse, false)
+check(
+    inventory.GetCarryCount(player) == 0 and #requestedIds == beforeTouch + 1,
+    "standard desktop mouse throws newest remaining ingredient"
+)

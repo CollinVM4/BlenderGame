@@ -2,7 +2,7 @@
 return table.freeze({
     IceGunGamePassId = 2022020489, -- Creator Hub pass ID, not the asset ID. Fail closed until configured.
     StudioGamePassSimulation = true, -- Explicit opt-in; server + Studio + negative UserId only.
-    DebugLogging = false, -- Optional, rate-limited lifecycle/fire diagnostics.
+    DebugLogging = true, -- Optional, rate-limited lifecycle/fire diagnostics.
     MaximumCameraDistance = 128, -- Bounds untrusted third-person camera intent.
     ProjectileSpeed = 70,
     ShotCooldown = 2,

@@ -31,7 +31,7 @@ do
             Ingredients = table.create(count, { IngredientId = "Apple" }),
         }
     end
-    for _, slotIndex in { 1, 2, 3, 4, 5, 6 } do
+    for _, slotIndex in { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } do
         local model = instance("Model")
         model.Name = if slotIndex <= 2 then "LockedSlot" .. slotIndex else "Slot" .. slotIndex
         local pad = instance("Part")
@@ -57,10 +57,13 @@ do
         local decoy = instance("Folder")
         decoy.Name, decoy.Parent = "SlotIndicator", model
         display.Refresh(pad, nil, visuals)
+        check(pad:GetAttribute("StashProtected") == false, "missing snapshot never guesses protection")
         expectColors(indicators, 0)
         for _, count in { 1, capacity, math.max(0, capacity - 1), 0 } do
             local state = snapshot(count, capacity)
+            state.Protected = false
             display.Refresh(pad, state, visuals)
+            check(pad:GetAttribute("StashProtected") == false, "explicit false protection survives index/name")
             expectColors(indicators, count)
             check(state.Capacity == capacity and state.Count == count, "indicator count cannot change stash rules")
         end
@@ -95,6 +98,16 @@ do
         expectColors({ indicators[1] }, 0)
         model:Destroy()
     end
+    -- Previously false protection fell through to a missing index of zero (locked).
+    local slot5 = instance("Part")
+    slot5.Name = "Slot5"
+    display.Refresh(slot5, snapshot(0, 3), visuals)
+    check(slot5:GetAttribute("StashProtected") == false, "unnumbered unprotected Slot5 never falls back to zero")
+    local explicit = snapshot(0, 3)
+    explicit.Protected = true
+    display.Refresh(slot5, explicit, visuals)
+    check(slot5:GetAttribute("StashProtected") == true, "presentation reflects authoritative protection")
+    slot5:Destroy()
     local standalone = instance("Part")
     local sharedContainer = instance("Model")
     sharedContainer.Name = "PlayerStash"

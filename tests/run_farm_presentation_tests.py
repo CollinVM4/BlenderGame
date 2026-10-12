@@ -17,6 +17,7 @@ paths = [root / path for path in (
     "src/client/UI/InteractionPromptPresentation.luau",
     "src/shared/Constants/DialogueTextStyle.luau",
     "src/shared/Constants/FarmConfig.luau",
+    "src/shared/Constants/FarmEligibility.luau",
     "src/shared/Constants/Ingredients.luau",
 )]
 bundle = "local sources = {\n" + "\n".join(

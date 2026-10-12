@@ -86,11 +86,59 @@ env.Instance.new = function(class)
     end
     return object
 end
+local reactionCount, clearCount = 0, 0
+cache.JackedNoobHitReaction = {
+    Play = function(target)
+        setup(target == head or target:IsDescendantOf(workspaceFake), "reaction uses live NPC head")
+        reactionCount += 1
+    end,
+    Clear = function()
+        clearCount += 1
+    end,
+}
+env.Enum.HumanoidRigType = { R6 = "R6", R15 = "R15" }
+rig.Parent, human.RigType = workspaceFake, env.Enum.HumanoidRigType.R6
+local originalClone = rig.Clone
+local function cloneRig(source)
+    local copy = originalClone(source)
+    local h = copy:FindFirstChildOfClass("Humanoid")
+    h.Health, h.Died = 100, signal()
+    copy.Clone = cloneRig
+    return copy
+end
+rig.Clone = cloneRig
+local hitTimers = {}
+env.task.delay = function(seconds, callback)
+    table.insert(hitTimers, { At = now + seconds, Run = callback })
+end
 local serviceGrants = 0
 local full = false
 local fail = false
 local reenter
-loadModule("JackedNoobService").Init({
+local ragdolled = {}
+local pendingPhysics = {}
+services.RunService.Heartbeat.Once = function(_, callback)
+    table.insert(pendingPhysics, callback)
+end
+local noob = loadModule("JackedNoobService")
+noob.Init({
+    RagdollService = {
+        PrepareCharacter = function()
+            return true
+        end,
+        SetRagdolled = function(model, enabled)
+            ragdolled[model] = enabled
+            return true
+        end,
+        IsRagdolled = function(model)
+            return ragdolled[model] == true
+        end,
+    },
+    TycoonService = {
+        GetSessionId = function(player)
+            return if player == a or player == b then "Plot" else nil
+        end,
+    },
     InventoryService = {
         GetCarryCount = function()
             return if full then 3 else 0
@@ -161,3 +209,61 @@ check(
     #replies == 7 and replies[7].Line == "lil bro, you look like you need this.",
     "player departure clears personal interaction and reward cooldowns"
 )
+
+local hitContext = { Direction = vec(0, 0, -1), Duration = 1.5 }
+check(noob.CanHit(a, rig), "live registered Noob can be hit from a plot")
+check(noob.Hit(a, rig, hitContext) and reactionCount == 1, "validated Noob hit dispatches one reaction")
+check(not noob.Hit(b, rig, hitContext) and reactionCount == 1, "other player respects shared Noob hit immunity")
+now += hitContext.Duration + loadModule("BatConfig").ImmunitySeconds
+check(noob.Hit(b, rig, hitContext) and reactionCount == 2, "hit after immunity refreshes reaction")
+local impostor = cloneRig(rig)
+impostor.Parent = workspaceFake
+check(not noob.CanHit(a, impostor), "copied NPC attribute does not register a Noob")
+now += hitContext.Duration + loadModule("BatConfig").ImmunitySeconds
+local forceField = instance("ForceField")
+forceField.Parent = rig
+check(not noob.Hit(a, rig, hitContext), "protected Noob cannot react")
+forceField:Destroy()
+root.Anchored = true
+check(not noob.CanHit(a, rig), "anchored Noob is ineligible")
+root.Anchored = false
+human.Health = 0
+human.Died:Fire()
+check(not noob.Hit(a, rig, hitContext) and clearCount >= 2, "death rejects hits and clears reaction")
+now += config.RespawnSeconds
+for _, timer in hitTimers do
+    if timer.At <= now then
+        timer.Run()
+    end
+end
+local replacement
+for _, object in allInstances do
+    if
+        object.ClassName == "Model"
+        and object ~= rig
+        and object ~= impostor
+        and object.Parent == workspaceFake
+        and object:GetAttribute("NPCId") == config.NPCId
+    then
+        replacement = object
+    end
+end
+setup(replacement ~= nil, "Noob respawned")
+local replacementHumanoid = replacement:FindFirstChildOfClass("Humanoid")
+local replacementRoot = replacement:FindFirstChild("HumanoidRootPart")
+replacementHumanoid.RigType = env.Enum.HumanoidRigType.R15
+replacementRoot.AssemblyMass = 12
+replacementRoot.ApplyImpulse = function(self, impulse)
+    self.Impulse = impulse
+end
+check(noob.Hit(a, replacement, hitContext), "respawn resets hit eligibility")
+for _, callback in pendingPhysics do
+    callback()
+end
+check(ragdolled[replacement] and replacementRoot.Impulse ~= nil, "supported Noob rig uses normal ragdoll knockback")
+now += hitContext.Duration
+hitTimers[#hitTimers].Run()
+check(not ragdolled[replacement] and not noob.CanHit(b, replacement), "Noob ragdoll recovers while immunity remains")
+replacement.Parent = nil
+replacement.AncestryChanged:Fire()
+check(not noob.CanHit(a, replacement), "removed Noob rejects hits")

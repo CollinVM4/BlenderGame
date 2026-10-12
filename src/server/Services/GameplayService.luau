@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local GameplayService = {}
+local IngredientThrow = require(script.Parent.IngredientThrow)
 local MovementService = require(script.Parent.MovementService)
 local plotInteractions = setmetatable({} :: { [ProximityPrompt]: (Player, any) -> () }, { __mode = "k" })
 function GameplayService.RegisterPlotInteraction(prompt: ProximityPrompt, callback: (Player, any) -> ())
@@ -76,8 +77,14 @@ function GameplayService.Init(services: any)
                     .. tostring(player:GetAttribute("BatDebugNextSwing"))
             )
         end
+        if action == "ThrowHeld" then
+            IngredientThrow.Trace(player, "request received")
+        end
         local now = os.clock()
         if now < (nextRequest[player] or 0) then
+            if action == "ThrowHeld" then
+                IngredientThrow.Trace(player, "rejected: gameplay throttle")
+            end
             trace(
                 string.format(
                     "request adapter rejected: gameplay throttle (%.3fs remaining)",
@@ -105,6 +112,9 @@ function GameplayService.Init(services: any)
             return
         end
         if not MovementService.CanPerformGameplayAction(player) then
+            if action == "ThrowHeld" then
+                IngredientThrow.Trace(player, "rejected: gameplay action disabled")
+            end
             trace("request adapter rejected: MovementService.IsStunned(attacker)")
             if action == "SwingBat" then
                 services.CombatService.TraceRejectedSwing(player, "GameplayRequest attacker stunned")
@@ -144,9 +154,10 @@ function GameplayService.Init(services: any)
         elseif action == "ThrowHeld" then
             -- Use the issued Tool identity, without coupling inventory back to combat.
             if services.CombatService.IsBatEquipped(player) then
+                IngredientThrow.Trace(player, "rejected: bat equipped")
                 return
             end
-            services.InventoryService.ThrowHeld(player, id)
+            services.InventoryService.ThrowHeld(player, nil, true)
         elseif action == "ReleaseIngredient" and validId then
             services.InventoryService.ReleaseUnit(player, id)
         elseif action == "Deposit" and validId and validSlot then

@@ -1,144 +1,3 @@
--- Real combat, inventory, movement, shared purchases and request adapter; engine query/timers doubled.
-env.OverlapParams = {
-    new = function()
-        return {}
-    end,
-}
-local combat = loadModule("CombatService")
-local movement = loadModule("MovementService")
-local tycoon = dependency.TycoonService
-local config = loadModule("BatConfig")
-local gameplaySfx = loadModule("GameplaySfxService")
-gameplaySfx.Init()
-local sfxRemote = shared.Events:FindFirstChild("GameplaySfx")
-local swingSounds = {}
-sfxRemote.FireAllClients = function(_, name, position)
-    table.insert(swingSounds, { Name = name, Position = position })
-end
-dependency.MovementService = movement
-dependency.CombatService = combat
-dependency.CustomerService = customer
-movement.Init(dependency)
-combat.Init(dependency)
--- Physical engine boundary; AJU joint restoration is covered in ragdoll.spec.
-local physical = {}
-local ragdollCalls = {}
-local ragdollFailure = nil
-local heartbeatCallbacks = {}
-services.RunService.Heartbeat.Once = function(_, callback)
-    table.insert(heartbeatCallbacks, callback)
-end
-local function heartbeat()
-    local pending = heartbeatCallbacks
-    heartbeatCallbacks = {}
-    for _, callback in pending do
-        callback()
-    end
-end
-dependency.RagdollService = {
-    SetRagdolled = function(character, enabled)
-        local owner = services.Players:GetPlayerFromCharacter(character)
-        table.insert(ragdollCalls, {
-            Character = character,
-            Enabled = enabled,
-            Stunned = owner and movement.IsStunned(owner),
-            CarryCount = owner and inventory.GetCarryCount(owner),
-        })
-        if ragdollFailure == (if enabled then "on-error" else "off-error") then
-            error("injected ragdoll failure")
-        elseif ragdollFailure == (if enabled then "on-false" else "off-false") then
-            return false
-        end
-        physical[character] = enabled
-        character:FindFirstChildOfClass("Humanoid").PlatformStand = enabled
-        return true
-    end,
-    IsRagdolled = function(character)
-        return physical[character] == true
-    end,
-}
-local function impulseRoot(root)
-    root.AssemblyMass = 12
-    function root:ApplyImpulse(impulse)
-        self.Impulse = impulse
-        self.ImpulseCount = (self.ImpulseCount or 0) + 1
-    end
-end
-workspaceFake.Gravity = 196.2
-local timers = {}
-env.task.delay = function(seconds, callback)
-    table.insert(timers, { At = now + seconds, Callback = callback })
-end
-local function advance(seconds)
-    now += seconds
-    local pending = timers
-    timers = {}
-    for _, timer in pending do
-        if timer.At <= now then
-            timer.Callback()
-        else
-            table.insert(timers, timer)
-        end
-    end
-end
-local template = instance("Tool")
-template.Name, template.Parent = "Bat", storage
-template.Grip = frame(0.1, -0.3, 0.2)
-local handle = part("Handle", template)
-handle.Size = vec(1, 2, 1)
-local mesh = part("BatMesh", template)
-mesh.Size = vec(1, 4, 1)
-local hitbox = part("Hitbox", template)
-hitbox.Size = vec(0.867, 0.597, 4.703)
-hitbox.CFrame = frame(0.25, 0.1, -2.35)
-local roster = {}
-services.Players.GetPlayers = function()
-    return roster
-end
-services.Players.GetPlayerFromCharacter = function(_, character)
-    for _, p in roster do
-        if p.Character == character then
-            return p
-        end
-    end
-    return nil
-end
-local function fighter(z)
-    local p, humanoid = player()
-    p.Name = "Fighter" .. tostring(#roster + 1)
-    p.Character.Name = p.Name
-    p.Parent, p.Neutral, p.ChildAdded = services.Players, true, signal()
-    humanoid.UseJumpPower = true
-    local root = p.Character:FindFirstChild("HumanoidRootPart")
-    impulseRoot(root)
-    root.Position, root.CFrame = vec(0, 0, z or 0), frame(0, 0, z or 0)
-    p.Character.Parent = workspaceFake
-    table.insert(roster, p)
-    movement.ApplyCharacter(p, p.Character)
-    combat.ApplyCharacter(p, p.Character)
-    flush()
-    return p, humanoid
-end
-local function bats(p)
-    local result = {}
-    for _, container in { p.Character, p:FindFirstChildOfClass("Backpack") } do
-        for _, object in container:GetChildren() do
-            if object:IsA("Tool") and object.Name == "Bat" then
-                table.insert(result, object)
-            end
-        end
-    end
-    return result
-end
-tycoon.Init({
-    MemberChanged = function(p)
-        movement.RefreshPlayer(p)
-        combat.RefreshPlayer(p)
-    end,
-    MemberRemoved = function(p)
-        combat.RefreshPlayer(p)
-    end,
-})
 local attacker, attackerHumanoid = fighter(0)
 local victim, victimHumanoid = fighter(-3)
 local teammate = fighter(-2)
@@ -148,7 +7,7 @@ check(#bats(attacker) == 0, "level zero grants no bat")
 attacker:SetAttribute("BatLevel", 3)
 combat.RefreshPlayer(attacker)
 check(#bats(attacker) == 0 and not combat.SwingBat(attacker), "replicated level cannot spoof ownership")
-tycoon.SetCash(attacker, 20000)
+tycoon.SetCash(attacker, 1000000)
 setup(tycoon.PurchaseUpgrade(attacker, "Bat", 2, tycoon.GetRequestContext(attacker)), "purchase bat one")
 check(#bats(attacker) == 1 and #bats(teammate) == 1, "shared unlock grants exactly one bat per member immediately")
 local bat = bats(attacker)[1]
@@ -170,16 +29,6 @@ check(not combat.IsBatEquipped(attacker), "unissued Character Bat is not conside
 check(not combat.SwingBat(attacker), "unissued Character Bat cannot start a swing")
 check(#swingSounds == 0, "unissued Character Bat does not emit BatSwing")
 fakeBat:Destroy()
-local querySize, queryFrame, queryParams, queryCount = nil, nil, nil, 0
-local overlaps = {}
-workspaceFake.GetPartBoundsInBox = function(_, at, size, params)
-    querySize, queryCount = size, queryCount + 1
-    queryFrame, queryParams = at, params
-    return overlaps
-end
-local function equip(p)
-    p.Character:FindFirstChildOfClass("Humanoid"):EquipTool(bats(p)[1])
-end
 check(not combat.SwingBat(attacker), "unequipped bat rejects request")
 check(#swingSounds == 0, "unequipped bat rejection is silent")
 equip(attacker)
@@ -255,7 +104,10 @@ check(
         and queryParams.MaxParts == 0,
     "query excludes only attacker descendants and includes noncollidable queryable bodies"
 )
-check(movement.IsStunned(victim) and victimHumanoid.Health == health, "enemy is stunned without damage")
+check(
+    movement.IsStunned(victim) and victimHumanoid.Health == health - 25,
+    "enemy is stunned and takes level-one damage once"
+)
 check(victim:GetAttribute("StunnedUntil") == now + 1.5, "level one controls stun duration")
 check(victimHumanoid.WalkSpeed == 0 and victimHumanoid.JumpPower == 0, "stun disables movement and jumping")
 check(#dropped == 2 and inventory.GetCarryCount(victim) == 1, "successful hit drops every ingredient once")
@@ -292,6 +144,8 @@ check(
 )
 heartbeat()
 check(victimRoot.ImpulseCount == 1, "knockback is a one-shot impulse")
+advance(config.Knockback.ServerOwnershipSeconds)
+check(victimRoot.OwnershipAuto and movement.IsStunned(victim), "ownership returns before stun ends")
 check(victim:GetAttribute("HasSmoothie") == true, "stun preserves smoothie state")
 check(inventory.DropCarriedIngredients(victim, "repeat") == 0, "repeated forced drop cannot duplicate ingredients")
 local droppedParent = dropped[1].Parent
@@ -327,7 +181,7 @@ check(
     movement.IsStunned(victim) and victimHumanoid.WalkSpeed == 0,
     "authoritative stun remains active throughout its duration"
 )
-advance(1.5 - 0.65)
+advance(1.5 - 0.65 - config.Knockback.ServerOwnershipSeconds)
 check(
     not movement.IsStunned(victim) and victimHumanoid.JumpPower == movement.GetJumpPower(victim),
     "expiry restores upgraded jump state"
@@ -344,6 +198,8 @@ equip(attacker)
 setup(combat.SwingBat(attacker), "immune swing")
 advance(config.HitActiveStart + 0.000001)
 check(not movement.IsStunned(victim), "post-stun immunity rejects chain stun")
+heartbeat()
+check(victimRoot.ImpulseCount == 1, "post-recovery immunity prevents another launch")
 advance(config.ImmunitySeconds)
 -- Studio regression: authored contact can occur beyond gameplay Reach at level one.
 local firstSample = config.HitActiveStart
@@ -370,6 +226,7 @@ check(
     "second-sample hit stops remaining queries and victims"
 )
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+victimHumanoid.Health = 100 -- Reset between independent geometry cases.
 overlaps = { windowRoot }
 setup(combat.SwingBat(attacker), "first sample contact")
 advance(firstSample + 0.000001)
@@ -385,6 +242,7 @@ check(
     "first sample hit cannot hit again or select a second victim"
 )
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+victimHumanoid.Health = 100 -- Reset between independent geometry cases.
 overlaps = {}
 local queriesBeforeMiss = queryCount
 setup(combat.SwingBat(attacker), "entire window misses")
@@ -425,6 +283,7 @@ overlaps = { secondRoot }
 advance(config.HitActiveEnd)
 check(queryCount == afterLateHit and not movement.IsStunned(secondVictim), "late hit consumes entire swing")
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+victimHumanoid.Health = 100 -- Reset between independent geometry cases.
 setup(combat.SwingBat(attacker), "scheduler resumes after deadline")
 local beforeDelayed = queryCount
 overlaps = { windowRoot }
@@ -467,6 +326,7 @@ setup(combat.SwingBat(attacker), "level one authored contact at 5.807 studs")
 advance(config.HitActiveStart + 0.000001)
 check(movement.IsStunned(victim), "level one overlap at 5.807 stuns across separate plot sessions")
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+victimHumanoid.Health = 100 -- Reset between independent geometry cases.
 contactRoot.Position = vec(0, 0, -2)
 overlaps = {}
 setup(combat.SwingBat(attacker), "close target outside authored volume")
@@ -483,6 +343,7 @@ liveHitbox.CFrame = validPose
 advance(config.SwingCooldown)
 -- Each kind of overlapping descendant resolves through nested Models to the real owner.
 for _, name in { "HumanoidRootPart", "Torso", "Left Arm", "Accessory" } do
+    victimHumanoid.Health = 100 -- Independent geometry cases, not a continuous duel.
     local contact
     if name == "Accessory" then
         local accessory = instance("Accessory")
@@ -499,9 +360,11 @@ for _, name in { "HumanoidRootPart", "Torso", "Left Arm", "Accessory" } do
     advance(config.HitActiveStart + 0.000001)
     check(movement.IsStunned(victim), "point blank overlap resolves owner: " .. name)
     advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+    victimHumanoid.Health = 100 -- Reset between independent geometry cases.
 end
 victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -3)
 for level = 2, 3 do
+    victimHumanoid.Health = 100
     setup(tycoon.PurchaseUpgrade(attacker, "Bat", level + 1, tycoon.GetRequestContext(attacker)), "upgrade bat")
     check(#bats(attacker) == 1 and bats(attacker)[1] == bat, "upgrade keeps one existing bat")
     check(
@@ -522,7 +385,10 @@ for level = 2, 3 do
         )).Magnitude < 0.0001,
         "purchased bat level controls independent horizontal and vertical launch speeds"
     )
-    check(victimHumanoid.Health == health, "upgraded bat impulse adds no direct damage")
+    check(
+        victimHumanoid.Health == 100 - 100 * config.Levels[level].DamageFraction,
+        "upgraded bat applies authoritative damage"
+    )
     check(
         querySize.X > levelOneSize.X and math.abs(querySize.Z - hitbox.Size.Z * config.Levels[level].Scale) < 0.0001,
         "upgraded query grows modestly"
@@ -533,6 +399,161 @@ end
 victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, -3)
 check(handle.Size.Y == 2 and hitbox.Size.Z == 4.703, "stored template is unchanged")
 check(bat.Grip == template.Grip, "upgrades preserve authored Tool grip")
+-- Damage balance: real combat + regeneration + death ingredient lifecycle.
+-- Health/queries/physics are engine doubles; all gameplay decisions are real services.
+services.RunService.Heartbeat = signal()
+services.RunService.Heartbeat.Once = function(_, callback)
+    table.insert(heartbeatCallbacks, callback)
+end
+local regen = loadModule("HealthRegenService")
+regen.Init()
+local headDrops = loadModule("PlayerHeadDropService")
+headDrops.Init(dependency)
+local function stepCombat(seconds)
+    advance(seconds)
+    services.RunService.Heartbeat:Fire(seconds)
+    heartbeat()
+end
+local function headCount(p)
+    local count = 0
+    for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
+        if ingredients.GetRecord(object) and object:GetAttribute("SourceUserId") == p.UserId then
+            count += 1
+        end
+    end
+    return count
+end
+for level, expected in { { 75, 50, 25, 0 }, { 66, 32, 0 }, { 50, 0 } } do
+    local actor = fighter(0)
+    local target, h = fighter(-3)
+    target.DisplayName = target.Name
+    target.Character.ChildAdded = signal()
+    tycoon.SetCash(actor, 1000000)
+    for purchased = 1, level do
+        setup(
+            tycoon.PurchaseUpgrade(actor, "Bat", purchased + 1, tycoon.GetRequestContext(actor)),
+            "damage bat upgrade"
+        )
+    end
+    equip(actor)
+    -- Replicated attributes must not affect the authoritative damage tier.
+    actor:SetAttribute("BatLevel", 3)
+    bats(actor)[1]:SetAttribute("BatLevel", 3)
+    regen.ApplyCharacter(target, target.Character)
+    headDrops.ApplyCharacter(target, target.Character)
+    local function swing()
+        overlaps = {
+            target.Character:FindFirstChild("Head"),
+            target.Character:FindFirstChild("HumanoidRootPart"),
+            target.Character:FindFirstChild("Head"),
+        }
+        setup(combat.SwingBat(actor), "damage swing")
+        stepCombat(config.HitActiveStart + 0.000001)
+    end
+    local shield = instance("ForceField")
+    shield.Parent = target.Character
+    swing()
+    check(h.Health == 100 and not movement.IsStunned(target), "spawn shield blocks damage and stun")
+    stepCombat(config.SwingCooldown)
+    shield:Destroy()
+    -- Shared plot membership and Roblox teams retain their existing restrictions.
+    actor.Neutral, target.Neutral, actor.Team, target.Team = false, false, "damage-team", "damage-team"
+    swing()
+    check(h.Health == 100 and not movement.IsStunned(target), "Roblox teammates take no damage")
+    actor.Neutral, target.Neutral = true, true
+    stepCombat(config.SwingCooldown)
+    local friend, friendHumanoid = fighter(-2)
+    tycoon.RemovePlayer(friend)
+    setup(tycoon.JoinSession(friend, actor, tycoon.GetRequestContext(actor)), "damage teammate joins plot")
+    overlaps = { friend.Character:FindFirstChild("HumanoidRootPart") }
+    setup(combat.SwingBat(actor), "shared plot swing")
+    stepCombat(config.HitActiveStart + 0.000001)
+    check(friendHumanoid.Health == 100 and not movement.IsStunned(friend), "shared plot teammates take no damage")
+    stepCombat(config.SwingCooldown)
+    for hitIndex, remaining in expected do
+        swing()
+        check(
+            h.Health == remaining,
+            "100 HP level " .. level .. " hit " .. hitIndex .. " leaves " .. remaining .. " HP"
+        )
+        check(not combat.SwingBat(actor), "successful damage still enforces swing cooldown")
+        stepCombat(config.HitSampleInterval)
+        check(h.Health == remaining, "duplicate body parts and later samples cannot repeat damage")
+        if remaining > 0 then
+            -- A ready attacker still cannot damage a ragdolled target.
+            stepCombat(config.SwingCooldown)
+            swing()
+            check(h.Health == remaining, "ragdoll blocks repeat damage")
+            stepCombat(config.Levels[level].StunDuration)
+            check(
+                not movement.IsStunned(target) and not physical[target.Character],
+                "surviving damage recovers movement and ragdoll"
+            )
+            swing()
+            check(
+                h.Health == remaining and not movement.IsStunned(target),
+                "post-ragdoll immunity blocks damage and stun"
+            )
+            stepCombat(config.ImmunitySeconds)
+            check(h.Health == remaining, "regen stays delayed between consecutive valid hits")
+        end
+    end
+    check(h.Health == 0 and not movement.IsStunned(target), "lethal hit follows normal death stun cleanup")
+    check(headCount(target) == 1, "Bat death drops exactly one PlayerHead ingredient")
+    h.Died:Fire()
+    check(headCount(target) == 1, "repeated death cannot duplicate PlayerHead")
+    -- Fresh character reuses the player, with no old stun/immunity or damage token.
+    local oldCharacter = target.Character
+    target.CharacterRemoving:Fire(oldCharacter)
+    local character = instance("Model")
+    character.Name, character.Parent, character.ChildAdded = target.Name, workspaceFake, signal()
+    local root = part("HumanoidRootPart", character)
+    root.Position, root.CFrame = vec(0, 0, -3), frame(0, 0, -3)
+    impulseRoot(root)
+    part("Head", character)
+    local fresh = instance("Humanoid")
+    fresh.Parent, fresh.Health, fresh.Died, fresh.UseJumpPower = character, 100, signal(), true
+    prepareHumanoid(fresh)
+    target.Character = character
+    movement.ApplyCharacter(target, character)
+    combat.ApplyCharacter(target, character)
+    regen.ApplyCharacter(target, character)
+    headDrops.ApplyCharacter(target, character)
+    flush()
+    stepCombat(config.SwingCooldown)
+    swing()
+    check(
+        fresh.Health == expected[1] and h.Health == 0,
+        "respawn takes fresh authoritative damage without changing old health"
+    )
+    stepCombat(config.Levels[level].StunDuration + config.ImmunitySeconds)
+    check(
+        not movement.IsStunned(target) and fresh.Health == expected[1],
+        "old death/recovery callbacks cannot damage or strand respawn"
+    )
+    combat.RemovePlayer(actor)
+    combat.RemovePlayer(target)
+    regen.RemovePlayer(target)
+    headDrops.RemovePlayer(target)
+end
+
+-- Upgrade changes during startup are resolved again by the server at impact.
+do
+    local actor = fighter(0)
+    local target, h = fighter(-3)
+    h.MaxHealth, h.Health = 200, 200
+    tycoon.SetCash(actor, 1000000)
+    setup(tycoon.PurchaseUpgrade(actor, "Bat", 2, tycoon.GetRequestContext(actor)), "impact-level bat unlock")
+    equip(actor)
+    overlaps = { target.Character:FindFirstChild("HumanoidRootPart") }
+    setup(combat.SwingBat(actor), "impact-level swing")
+    setup(tycoon.PurchaseUpgrade(actor, "Bat", 3, tycoon.GetRequestContext(actor)), "upgrade during startup")
+    stepCombat(config.HitActiveStart + 0.000001)
+    check(h.Health == 132, "impact uses current server upgrade and target MaxHealth")
+    combat.RemovePlayer(actor)
+    combat.RemovePlayer(target)
+end
+
 -- A client-provided target is ignored by the real adapter.
 local remoteService = loadModule("GameplayService")
 local requestRemote
@@ -621,13 +642,14 @@ movement.SetStunned(attacker, false)
 studio = false
 env.print = previousPrint
 advance(config.SwingCooldown)
+victimHumanoid.Health = 100
 local farther = fighter(-4)
 overlaps = { farther.Character:FindFirstChild("HumanoidRootPart"), victim.Character:FindFirstChild("HumanoidRootPart") }
 setup(combat.SwingBat(attacker), "nearest enemy swing")
 advance(config.HitActiveStart + 0.000001)
 check(movement.IsStunned(victim) and not movement.IsStunned(farther), "one swing hits closest valid enemy only")
 -- Stunned ownership does not permit swinging; stale timers cannot clear a new character's stun.
-tycoon.SetCash(victim, 2000)
+tycoon.SetCash(victim, 1000000)
 setup(tycoon.PurchaseUpgrade(victim, "Bat", 2, tycoon.GetRequestContext(victim)), "victim owns bat")
 equip(victim)
 check(not combat.SwingBat(victim), "stunned bat owner cannot swing")
@@ -644,6 +666,7 @@ newRoot.CFrame, newRoot.Position = frame(0, 0, -3), vec(0, 0, -3)
 part("Head", newCharacter)
 local newHumanoid = instance("Humanoid")
 newHumanoid.Parent, newHumanoid.Health, newHumanoid.UseJumpPower, newHumanoid.Died = newCharacter, 100, true, signal()
+prepareHumanoid(newHumanoid)
 newHumanoid.EquipTool = victimHumanoid.EquipTool
 victim.Character, victimHumanoid = newCharacter, newHumanoid
 combat.ApplyCharacter(victim, newCharacter)
@@ -728,7 +751,7 @@ check(#bats(attacker) == 0, "session removal revokes bat access")
 
 -- A deferred replacement cannot resurrect tools after removal.
 local departing = fighter(0)
-tycoon.SetCash(departing, 2000)
+tycoon.SetCash(departing, 1000000)
 setup(tycoon.PurchaseUpgrade(departing, "Bat", 2, tycoon.GetRequestContext(departing)), "departing bat")
 bats(departing)[1]:Destroy()
 combat.RemovePlayer(departing)
@@ -748,7 +771,7 @@ cache.WorldUtil = utility
 local originalSize = hitbox.Size
 hitbox.Size = vec(originalSize.X * 2, originalSize.Y, originalSize.Z)
 local widened = fighter(0)
-tycoon.SetCash(widened, 20000)
+tycoon.SetCash(widened, 1000000)
 overlaps = {}
 for level = 1, 3 do
     setup(tycoon.PurchaseUpgrade(widened, "Bat", level + 1, tycoon.GetRequestContext(widened)), "widened bat upgrade")
@@ -762,166 +785,3 @@ for level = 1, 3 do
     advance(config.SwingCooldown)
 end
 hitbox.Size = originalSize
-
--- Integration-specific failure and deferred callback contracts.
-local hitter = fighter(0)
-tycoon.SetCash(hitter, 2000)
-setup(tycoon.PurchaseUpgrade(hitter, "Bat", 2, tycoon.GetRequestContext(hitter)), "integration hitter owns bat")
-equip(hitter)
-local function hitTarget(target)
-    overlaps = { target.Character:FindFirstChild("HumanoidRootPart") }
-    setup(combat.SwingBat(hitter), "integration hit")
-    advance(config.HitActiveStart + 0.000001)
-    setup(movement.IsStunned(target), "integration target stunned")
-end
-for _, failure in { "on-false", "on-error", "off-false", "off-error" } do
-    local target = fighter(-3)
-    carry(target, "Banana")
-    ragdollFailure = failure
-    hitTarget(target)
-    check(inventory.GetCarryCount(target) == 0, failure .. " preserves ingredient drop")
-    heartbeat()
-    local root = target.Character:FindFirstChild("HumanoidRootPart")
-    if string.sub(failure, 1, 2) == "on" then
-        check(root.Impulse == nil, failure .. " skips knockback")
-    end
-    advance(config.Levels[1].StunDuration)
-    check(
-        not movement.IsStunned(target) and target:GetAttribute("StunnedUntil") == 0,
-        failure .. " cannot strand authoritative stun"
-    )
-    ragdollFailure = nil
-    combat.RemovePlayer(target)
-end
-for _, invalidation in
-    { "death", "removed", "character-removed", "replacement", "unstunned", "unragdolled", "expired", "new-token" }
-do
-    local target, humanoid = fighter(-3)
-    hitTarget(target)
-    local original = target.Character
-    local originalRoot = original:FindFirstChild("HumanoidRootPart")
-    if invalidation == "death" then
-        humanoid.Health = 0
-        humanoid.Died:Fire()
-    elseif invalidation == "removed" then
-        target.Parent = nil
-        combat.RemovePlayer(target)
-    elseif invalidation == "character-removed" then
-        original.Parent = nil
-    elseif invalidation == "expired" then
-        advance(config.Levels[1].StunDuration)
-    elseif invalidation == "replacement" then
-        local replacement = fighter(-3)
-        target.Character = replacement.Character
-    elseif invalidation == "unstunned" then
-        movement.SetStunned(target, false)
-    elseif invalidation == "unragdolled" then
-        physical[original] = false
-    else
-        -- Same character, new stun token before the old recovery deadline.
-        combat.ApplyCharacter(target, original)
-        flush()
-        advance(config.SwingCooldown)
-        hitTarget(target)
-    end
-    heartbeat()
-    if invalidation == "new-token" then
-        check(originalRoot.ImpulseCount == 1, "old token cannot add an impulse to a newer stun on the same character")
-        advance(0.4) -- First stun expires; newer one remains active.
-        check(
-            movement.IsStunned(target) and physical[original],
-            "old recovery cannot clear a newer same-character stun"
-        )
-    else
-        check(originalRoot.Impulse == nil, invalidation .. " cancels deferred knockback")
-    end
-    local callsBeforeRecovery = #ragdollCalls
-    advance(config.Levels[1].StunDuration)
-    if invalidation == "replacement" then
-        check(
-            #ragdollCalls == callsBeforeRecovery and target.Character:FindFirstChild("HumanoidRootPart").Impulse == nil,
-            "old callbacks cannot impulse or unragdoll a replaced character"
-        )
-    end
-    combat.RemovePlayer(target)
-end
--- Coincident roots use attacker forward, including a safe fallback for vertical forward.
-for _, forward in { vec(1, 0, 0), vec(0, 1, 0) } do
-    local target = fighter(0)
-    local root = target.Character:FindFirstChild("HumanoidRootPart")
-    root.AssemblyMass = 25
-    hitter.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector = forward
-    hitTarget(target)
-    heartbeat()
-    local tuning = config.Levels[1]
-    local expected = if forward.X == 1
-        then vec(tuning.HorizontalKnockback, tuning.VerticalKnockback, 0)
-        else vec(0, tuning.VerticalKnockback, -tuning.HorizontalKnockback)
-    check(
-        (root.Impulse / root.AssemblyMass - expected).Magnitude < 0.0001,
-        "coincident roots normalize safely and mass preserves configured velocity change"
-    )
-    advance(config.Levels[1].StunDuration)
-    combat.RemovePlayer(target)
-end
-
--- Classification uses the customer authority; both kinds share the same geometry/token gate.
-local registeredCustomer = instance("Model")
-registeredCustomer.Name, registeredCustomer.Parent = "Customer", workspaceFake
-local customerRoot = part("HumanoidRootPart", registeredCustomer)
-local customerHits = 0
-local receivedContext
-local realCustomerService = dependency.CustomerService
-local customerEligible = true
-dependency.CustomerService = {
-    CanHitCustomer = function(actor, model)
-        return actor == hitter and model == registeredCustomer and customerEligible
-    end,
-    HitCustomer = function(actor, model, context)
-        setup(actor == hitter and model == registeredCustomer, "dispatch registered customer")
-        customerHits += 1
-        receivedContext = context
-        return true
-    end,
-}
-hitter.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector = vec(0, 0, -1)
-local competingPlayer = fighter(-3)
-local savedRaycast = workspaceFake.Raycast
-for _, rejection in { "authority", "distance", "behind", "wall", "none" } do
-    advance(config.SwingCooldown)
-    customerEligible = rejection ~= "authority"
-    customerRoot.Position = if rejection == "distance"
-        then vec(0, 0, -100)
-        elseif rejection == "behind" then vec(0, 0, 2)
-        else vec(0, 0, -2)
-    workspaceFake.Raycast = function()
-        return if rejection == "wall" then { Instance = instance("Part") } else nil
-    end
-    overlaps = { customerRoot, customerRoot }
-    if rejection == "none" then
-        table.insert(overlaps, competingPlayer.Character:FindFirstChild("HumanoidRootPart"))
-    end
-    setup(combat.SwingBat(hitter), "customer candidate swing")
-    advance(config.HitActiveStart + 0.000001)
-    check(customerHits == (if rejection == "none" then 1 else 0), rejection .. " shares customer validation")
-    advance(config.HitSampleInterval)
-end
-check(
-    not movement.IsStunned(competingPlayer) and customerHits == 1,
-    "nearest customer wins over player and duplicate parts/later samples cannot accept another target"
-)
-check(
-    receivedContext.Duration == config.Levels[1].StunDuration and receivedContext.Direction.Z == -1,
-    "customer receives server-owned duration and shared knockback direction"
-)
-advance(config.SwingCooldown)
-customerRoot.Position = vec(0, 0, -4)
-overlaps = { customerRoot, competingPlayer.Character:FindFirstChild("HumanoidRootPart") }
-setup(combat.SwingBat(hitter), "closer player competes with customer")
-advance(config.HitActiveStart + 0.000001)
-check(
-    movement.IsStunned(competingPlayer) and customerHits == 1,
-    "nearest player keeps existing player stun handling without hitting customer"
-)
-workspaceFake.Raycast = savedRaycast
-dependency.CustomerService = realCustomerService

@@ -57,19 +57,34 @@ for name, marker in refs do
 end
 tycoon.AutoTagLegacyPlot(foreignPlot)
 setup(tycoon.AssignPlot(foreign) == foreignPlot, "claim different plot session")
-check(not customer.CanHitCustomer(foreign, first), "another active plot session cannot hit customer")
-tycoon.RemovePlayer(foreign)
+check(customer.CanHitCustomer(foreign, first), "another active plot session can hit customer")
+local teammate = instance("Player")
+teammate.Name, teammate.UserId = "ForeignTeammate", 503
+setup(tycoon.JoinSession(teammate, foreign, tycoon.GetRequestContext(foreign)), "join other plot teammate")
+check(customer.CanHitCustomer(teammate, first), "teammate can hit a different plot customer")
 local stale = instance("Model")
 stale.Name, stale.Parent = first.Name, workspaceFake
 stale:SetAttribute("PlotSessionId", tycoon.GetSessionId(owner))
 check(not customer.CanHitCustomer(owner, stale), "names and session attributes cannot register a customer")
+local protected = instance("ForceField")
+protected.Parent = first
+check(not customer.HitCustomer(owner, first, hitContext), "immune customer rejects hit")
+protected:Destroy()
+local firstHumanoid = first:FindFirstChildOfClass("Humanoid")
+firstHumanoid.Health = 0
+check(not customer.HitCustomer(owner, first, hitContext), "dead registered customer rejects hit")
+firstHumanoid.Health = 100
 compatible = false
 check(not customer.HitCustomer(owner, first, hitContext), "incompatible rig rejects without interrupting order")
 compatible = true
 check(customer.GetSnapshot(owner).Ready, "rejected hit leaves readiness intact")
 setup(customer.TakeOrder(owner, first), "reveal first order")
 local request = second:GetAttribute("RequestId")
-check(customer.HitCustomer(owner, second, hitContext), "waiting customer accepts hit")
+check(customer.HitCustomer(teammate, second, hitContext), "different plot teammate hits waiting customer")
+check(not customer.HitCustomer(foreign, second, hitContext), "second player cannot retrigger recovering customer")
+tycoon.RemovePlayer(teammate)
+tycoon.RemovePlayer(foreign) -- Attacker leaving must not cancel the other plot's recovery.
+heartbeat() -- Deliver the impact physics step before the stun duration elapses.
 check(not customer.HitCustomer(owner, second, hitContext), "recovering customer rejects repeated hit")
 check(not customer.TakeOrder(owner, second), "recovering customer rejects Take Order handler")
 check(not second:FindFirstChild("TakeOrderPrompt", true).Enabled, "hit disables Take Order prompt")
@@ -97,10 +112,11 @@ end
 advance(2)
 check(exitMoveCalls == 1 and not first.Destroyed, "served customer starts its original exit walk")
 check(customer.CanHitCustomer(owner, first), "registered served customer remains hittable after queue removal")
-setup(customer.HitCustomer(owner, first, hitContext), "hit served customer walking to exit")
+setup(tycoon.AssignPlot(foreign) == foreignPlot, "other owner reclaims plot")
+setup(customer.HitCustomer(foreign, first, hitContext), "other owner hits served customer walking to exit")
+tycoon.RemovePlayer(foreign)
 check(
-    not first:FindFirstChild("TakeOrderPrompt", true).Enabled
-        and not first:FindFirstChild("ServePrompt", true).Enabled,
+    not first:FindFirstChild("TakeOrderPrompt", true).Enabled and not first:FindFirstChild("ServePrompt", true).Enabled,
     "served customer prompts remain disabled during recovery"
 )
 local stillQueued = false
@@ -111,6 +127,7 @@ check(not stillQueued, "served customer is not reinserted into the ordering queu
 servedHumanoid.MoveToFinished:Fire(true)
 check(not first.Destroyed, "cancelled exit walk completion cannot remove a ragdolled customer")
 heartbeat()
+check(not customer.CanHitCustomer(owner, second), "short immunity prevents immediate chain hit after recovery")
 advance(hitContext.Duration)
 heartbeat()
 heartbeat()
@@ -119,15 +136,15 @@ check(
     "recovered served customer starts a fresh exit walk and is removed on completion"
 )
 check(
-    tycoon.GetCash(owner) == cashBefore
-        and consumed == consumedBefore
-        and first:GetAttribute("Grade") == servedGrade,
+    tycoon.GetCash(owner) == cashBefore and consumed == consumedBefore and first:GetAttribute("Grade") == servedGrade,
     "hitting a served customer does not repeat payout, consumption, or grade"
 )
 heartbeat()
 local secondRoot = second:FindFirstChild("HumanoidRootPart")
 check(
-    secondRoot.Impulse and secondRoot.Impulse.Z == -84 and secondRoot.Impulse.Y == 48,
+    secondRoot.Impulse
+        and secondRoot.Impulse.Z == -secondRoot.AssemblyMass * loadModule("BatConfig").Knockback.HorizontalSpeed
+        and secondRoot.Impulse.Y == secondRoot.AssemblyMass * loadModule("BatConfig").Knockback.UpwardSpeed,
     "customer receives configured mass-scaled bat impulse"
 )
 advance(1.5)
@@ -146,7 +163,6 @@ check(
     second:FindFirstChild("TakeOrderPrompt", true).Enabled and not second:FindFirstChild("ServePrompt", true).Enabled,
     "untaken order restores Take Order only"
 )
-check(not customer.CanHitCustomer(owner, second), "short immunity prevents immediate chain hit")
 advance(loadModule("BatConfig").ImmunitySeconds)
 setup(customer.TakeOrder(owner, second), "reveal recovered order")
 setup(customer.HitCustomer(owner, second, hitContext), "hit at unchanged counter marker")

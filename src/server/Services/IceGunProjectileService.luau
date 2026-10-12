@@ -5,7 +5,7 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
 local Service = {}
-local REVISION = "icegun-circle-2026-10-09"
+local REVISION = "icegun-reequip-2026-10-11"
 local lastDiagnostic: { [string]: number } = {}
 local function trace(player: Player, stage: string)
     if not Config.DebugLogging or not RunService:IsStudio() then
@@ -306,7 +306,22 @@ function Service.Init(services)
     end
     local event = Instance.new("RemoteEvent")
     event.Name = "IceGunFire"
-    event.OnServerEvent:Connect(Service.Fire)
+    event.OnServerEvent:Connect(function(player, aim, origin, direction, character)
+        -- Keep selection and fire on the same reliable ordered stream. Neither
+        -- path yields, so an immediate shot observes the preceding selection.
+        if character ~= nil and character ~= player.Character then
+            trace(player, "request rejected: stale character")
+            return
+        end
+        if aim == "Select" then
+            if character == nil then
+                return
+            end
+            deps.IceGunService.RequestSelection(player, origin, direction)
+        else
+            Service.Fire(player, aim, origin, direction)
+        end
+    end)
     event.Parent = ReplicatedStorage
 end
 

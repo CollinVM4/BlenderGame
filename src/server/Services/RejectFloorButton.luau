@@ -26,6 +26,10 @@ local function standing(actor: Player, button: BasePart): boolean
     return hit ~= nil and hit.Instance == button
 end
 
+-- Shared physical activation check; LockBase uses the same support/proximity
+-- verification without Reject's customer-specific hold duration.
+FloorButton.IsStanding = standing
+
 function FloorButton.Bind(
     button: BasePart,
     origin: Attachment,

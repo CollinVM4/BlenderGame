@@ -65,6 +65,25 @@ function Spawn.ClearReservation(player: Player, preserveHint: boolean?)
         target.Value = nil
     end
 end
+-- Shared, read-only assigned-plot resolution. Never reserves or claims an unowned plot.
+-- Returns a model pivot, matching the existing assigned-character respawn placement.
+function Spawn.GetAssignedSpawn(player: Player): (CFrame?, Instance?)
+    local plot = deps.TycoonService.GetPlot(player)
+    if not plot or not plot:IsDescendantOf(workspace) then
+        return nil, nil
+    end
+    local identity = plot:FindFirstChild("PlotIdentity")
+    local origin = if identity then identity:FindFirstChild("PlayerSpawnOrigin") else nil
+    if not origin or not origin:IsA("Attachment") then
+        return nil, plot
+    end
+    local at = origin.WorldCFrame * CFrame.new(0, 3, 0)
+    if deps.TycoonService.GetOwner(plot) ~= player then
+        at *= CFrame.new(4, 0, 0)
+    end
+    return at, plot
+end
+
 function Spawn.ApplyCharacter(player: Player, character: Model)
     local firstArrival = not attempted[player]
     attempted[player] = true -- Only unclaimed tutorial routing is limited to the first character.
@@ -83,16 +102,10 @@ function Spawn.ApplyCharacter(player: Player, character: Model)
         end
         -- Resolve after the root wait so a release, team change or reassignment cannot
         -- send this character to a stale session. Nothing below yields before PivotTo.
-        local assignedPlot = deps.TycoonService.GetPlot(player)
+        local assignedSpawn, assignedPlot = Spawn.GetAssignedSpawn(player)
         if assignedPlot then
-            local identity = assignedPlot:FindFirstChild("PlotIdentity")
-            local spawnOrigin = if identity then identity:FindFirstChild("PlayerSpawnOrigin") else nil
-            if spawnOrigin and spawnOrigin:IsA("Attachment") then
-                local spawnCFrame = spawnOrigin.WorldCFrame * CFrame.new(0, 3, 0)
-                if deps.TycoonService.GetOwner(assignedPlot) ~= player then
-                    spawnCFrame *= CFrame.new(4, 0, 0)
-                end
-                character:PivotTo(spawnCFrame)
+            if assignedSpawn then
+                character:PivotTo(assignedSpawn)
                 root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
             end
             return

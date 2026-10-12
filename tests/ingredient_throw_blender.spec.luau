@@ -9,6 +9,10 @@ part("Stem", template, vec(1, 1, 1), translate(0, 2, 0)).CanCollide = true
 local object = ingredients.Spawn("Banana", translate(), nil, true)
 setup(inventory.CarryWorldItem(player, object), "carry multipart ingredient")
 local thrown = inventory.ThrowHeld(player)
+check(
+    root.CFrame:ToObjectSpace(thrown:GetPivot()).Position.Z < -3.5,
+    "multipart stem and fruit bounds clear character at publication"
+)
 for _, child in thrown:GetDescendants() do
     if child:IsA("BasePart") then
         check(not child.Anchored and child.CanQuery, "multipart throw immediately physical and queryable")

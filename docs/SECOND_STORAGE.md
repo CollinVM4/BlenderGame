@@ -56,7 +56,7 @@ farm pads (340x64 pixels, 24px text, white title, gold price, 40-stud distance).
 ## Protection and ownership
 
 Only logical slots 1 and 2 are protected. Existing code protects numeric positions,
-not names, and NormalStash.Protected remains 2. Therefore slots 6-10 are all
+not names. NormalStash.SlotProtection explicitly designates only slots 1 and 2. Therefore slots 6-10 are all
 unprotected. This preserves the existing two-total-position protection rule.
 No VIP changes were made.
 

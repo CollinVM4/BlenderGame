@@ -898,6 +898,21 @@ local function hitRecord(player: Player, model: Model): (any, any)
     return nil, nil
 end
 
+-- Combat may cross plot boundaries; serving/reject buttons still use hitRecord.
+local function combatRecord(player: Player, model: Model): (any, any)
+    if key(player) == "" or not model:IsDescendantOf(workspace) then
+        return nil, nil
+    end
+    for sessionId, models in ownedModels do
+        local record = models[model]
+        local queue = queues[sessionId]
+        if record and queue and current(player, queue) and record.Model == model and record.SessionId == sessionId then
+            return record, queue
+        end
+    end
+    return nil, nil
+end
+
 local function active(record: any): boolean
     return record.State == "Queued"
         or record.State == "OrderTaken"
@@ -1190,7 +1205,10 @@ local function bindRejectButton(queue: any)
 end
 
 function CustomerService.CanHitCustomer(player: Player, model: Model): boolean
-    local record = hitRecord(player, model)
+    local record = combatRecord(player, model)
+    if model:FindFirstChildOfClass("ForceField") then
+        return false
+    end
     if record and bad(record) and active(record) and deps.TycoonService.GetSessionOwner(record.SessionId) == player then
         local humanoid = model:FindFirstChildOfClass("Humanoid")
         return record.Root.Parent ~= nil and not record.Root.Anchored and humanoid ~= nil and humanoid.Health > 0
@@ -1232,7 +1250,10 @@ function CustomerService.HitCustomer(
     model: Model,
     context: { Direction: Vector3, Duration: number }
 ): boolean
-    local candidate = hitRecord(player, model)
+    if not CustomerService.CanHitCustomer(player, model) then
+        return false
+    end
+    local candidate = combatRecord(player, model)
     if
         candidate
         and bad(candidate)
@@ -1241,10 +1262,7 @@ function CustomerService.HitCustomer(
     then
         return CustomerService.RejectCustomer(player, model, "Bat", nil)
     end
-    if not CustomerService.CanHitCustomer(player, model) then
-        return false
-    end
-    local record, queue = hitRecord(player, model)
+    local record, queue = combatRecord(player, model)
     local specialInterrupted = bad(record) and (record.State == "Stealing" or record.State == "Escaping")
     if specialInterrupted then
         record.RuntimeToken += 1

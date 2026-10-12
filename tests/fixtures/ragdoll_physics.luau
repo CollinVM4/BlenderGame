@@ -14,6 +14,9 @@ instance = function(class)
     object.RequiresNeck = true
     object.Massless = true
     object.State = "Running"
+    function object:GetPropertyChangedSignal(_)
+        return signal() -- Engine property enforcement is a Studio check.
+    end
     function object:GetState()
         return self.State
     end
@@ -23,6 +26,9 @@ instance = function(class)
     end
     function object:SetStateEnabled(state, value)
         states[state] = value
+    end
+    function object:CanSetNetworkOwnership()
+        return not self.Anchored
     end
     function object:GetNetworkOwnershipAuto()
         return self.AutomaticOwner

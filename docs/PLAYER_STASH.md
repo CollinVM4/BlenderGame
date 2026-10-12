@@ -57,7 +57,12 @@ retain their existing server APIs. StashChanged continues to drive displays.
 
 Rojo sync and start a fresh play session. No manually authored remotes or new assets
 are needed. Keep one PlayerStash fixture per plot, unique base SlotIndex values 1–5,
-and the existing authored expansion. Existing StashPromptOrigin attachments can stay;
+and the existing authored expansion. No tag changes are required: server config
+`NormalStash.SlotProtection` explicitly designates 1 and 2. Optional direct surface
+`StashSlotProtected` boolean metadata overrides that designation; absent a boolean,
+a direct `ProtectedStashSlot` tag can also protect a surface. Names and ancestor tags
+never designate protection. Author optional overrides before Play.
+Existing StashPromptOrigin attachments can stay;
 the new panel uses screen UI and the canonical slot part for focus. For three physical
 occupancy lights, provide three SlotIndicator parts in each locked-slot model;
 missing lights do not change gameplay capacity.
