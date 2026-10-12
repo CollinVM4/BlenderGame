@@ -225,6 +225,10 @@ update = function()
             continue
         end
         local offset = OFFSETS[action]
+        if action == "IceShotgunFire" and available.X > available.Y then
+            -- Stack Fire above Throw in landscape, clear of the right-side menus.
+            offset = Vector2.new(OFFSETS.ThrowHeld.X, -1.85)
+        end
         local position = place(center + offset * diameter, size, bounds, obstacles)
         if position then
             local half = Vector2.new(size / 2, size / 2)

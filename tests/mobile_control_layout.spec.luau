@@ -317,6 +317,12 @@ local function verify(native)
         check(near(tc.X - jc.X, -0.95 * js.X) and near(tc.Y - jc.Y, -0.95 * js.Y), "Throw follows the 45 degree offset")
         check(tc.X > sc.X and tc.Y < sc.Y, "Throw is above and slightly right of Sprint")
         check(near(ss.X, js.X * 0.83) and near(ts.Y, js.Y * 0.83), "Action targets use 83 percent of Jump diameter")
+        local available = bounds.Max - bounds.Min
+        if available.X > available.Y then
+            check(near(fc.X, tc.X) and fc.Y + fs.Y / 2 < tc.Y - ts.Y / 2, "Landscape Fire sits directly above Throw")
+        else
+            check(near(fc.X, jc.X) and near(fc.Y - jc.Y, -1.8 * js.Y), "Portrait Fire retains its original position")
+        end
     end
 end
 scene(800, 400, 70)
