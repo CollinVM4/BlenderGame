@@ -8,10 +8,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--luau", default="luau")
-parser.add_argument("--group", choices=("integration", "presentation"))
+parser.add_argument("--group", choices=("integration", "presentation", "visibility"))
 args = parser.parse_args()
 sources = {}
-for directory in ("src/server/Services", "src/shared", "src/shared/Constants"):
+for directory in ("src/server/Services", "src/shared", "src/shared/Constants", "src/client/Controllers"):
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
 prefix = "local sources = " + "{" + ",".join(
@@ -20,6 +20,7 @@ prefix = "local sources = " + "{" + ",".join(
 groups = {
     "integration": ("fixtures/roblox.luau", "fixtures/smoothie.luau", "fixtures/lock_base.luau", "lock_base.spec.luau"),
     "runtime-integration": ("fixtures/roblox.luau", "fixtures/smoothie.luau", "fixtures/lock_base.luau", "lock_base_runtime.spec.luau"),
+    "visibility": ("fixtures/roblox.luau", "fixtures/lock_base.luau", "lock_base_visibility.spec.luau"),
     "presentation": ("fixtures/roblox.luau", "fixtures/lock_base.luau", "lock_base_presentation.spec.luau"),
 }
 results = []

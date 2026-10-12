@@ -51,7 +51,8 @@ release resets security; teammates joining/removing do not extend the timer.
 The server-owned world GUI and model movement replicate to every player, including
 late joiners. Text is written only when the displayed second or state changes. The
 single-line idle text is centered horizontally and vertically; Fredoka, outline,
-color, 65-stud visibility and the three-stud world offset are retained.
+color and 65-stud camera culling are retained. The UI uses the exact authored
+attachment with zero offsets and independent 6/7-stud character proximity.
 
 Collision and theft behavior are unchanged: existing PlayerOnlyCollision walls
 block outsiders while locked, server-created NoCollisionConstraints exempt owner/
@@ -66,20 +67,28 @@ Keep the authored hierarchy:
 
 ```text
 LockBase
-  LockButton (BasePart, or container with hosted attachment)
-    LockAttachment
+  LockButton (BasePart or container)
     BlackBase
     Button (BasePart)
+      LockAttachment (Attachment)
     Visual (Model)
       LaserBase (multiple)
       Laser (multiple)
 ```
 
-LockAttachment must have a BasePart host in Workspace. A direct attachment on a
-BasePart LockButton is valid. For a Model container, runtime repairs the existing
-attachment onto Button while preserving its calculated world transform. No new
-prompt, visual model or laser geometry is required. Runtime anchors/enables
-collision/query/touch on Button.
+The exact UI anchor is `LockBase.LockButton.Button.LockAttachment`. Runtime leaves
+its authored Position/CFrame and parent untouched. Move this attachment in Studio
+to place the text; both BillboardGui offsets are zero. No floating anchor is made.
+Attachments elsewhere are not repaired or used as fallback anchors. Runtime
+anchors/enables collision/query/touch on Button as before.
+
+The server publishes occupancy and continues updating Fredoka countdown text.
+Each client checks HumanoidRootPart distance to the attachment's WorldPosition
+every 0.2 seconds: show within 6 studs, retain visibility through 7 studs, hide
+beyond 7. Missing/removed characters and unclaimed plots hide the UI. Camera
+culling remains at 65 studs to accommodate normal third-person camera offsets.
+`Enabled` is locally controlled, so its server value stays false even when a
+nearby player sees the text. The existing color/outline are retained at size 24.
 
 Retain PlayerOnlyCollision on the authored security walls. Discovery accepts tagged
 parts beneath LockBase, in any Wall/Walls hierarchy within the plot, or explicitly
@@ -150,3 +159,16 @@ production modules pass Roblox-aware Luau LSP analysis with a fresh Rojo sourcem
 StyLua formatting checks and the Rojo 7.7 build also pass. These CLI tests
 prove authority, exception relationships and model tween transitions against engine
 doubles; they do not substitute for the Studio acceptance above.
+
+### Billboard proximity smoke checks
+
+In Studio Start Server with two players, check the UI is centered exactly on the
+authored Button.LockAttachment, with no 3-stud offset or duplicate display. Move
+the attachment in Studio and verify the origin follows it. Independently move
+each character within 6 studs and beyond 7; one player's visibility must not
+affect the other. Zoom the normal third-person camera out while remaining near.
+Leave range during a lock, wait, then return and verify the current timer. Release
+and reclaim the plot, respawn nearby and far away, and remove/restore the plot to
+check hidden/removed displays and late replication. Confirm two-line LOCKED/time
+and plain LOCK BASE render without clipping. CLI boundary tests do not prove
+Roblox rendering, physical attachment transforms, or live network timing.

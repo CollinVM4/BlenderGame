@@ -271,7 +271,7 @@ local function scene(width, height, diameter)
     local screen = object("ScreenGui", "ContextActionGui", root)
     frame = object("Frame", "ContextButtonFrame", screen)
     frame.AbsolutePosition, frame.AbsoluteSize = vector(width - 220, height - 200), vector(190, 170)
-    for _, name in { "SprintHeld", "ThrowHeld" } do
+    for _, name in { "SprintHeld", "ThrowHeld", "IceShotgunFire" } do
         buttons[name] = object("ImageButton", "ContextActionButton", frame)
     end
     buttons.ThrowHeld.AnchorPoint = vector(0.5, 1)
@@ -303,6 +303,12 @@ local function verify(native)
             "Entire touch target is inside the safe area"
         )
     end
+    local fc, fs = geometry(buttons.IceShotgunFire)
+    check(disjoint(fc, fs, sc, ss) and disjoint(fc, fs, tc, ts), "Weapon fire keeps Throw and Sprint clear")
+    local jc, js = jump.AbsolutePosition + jump.AbsoluteSize / 2, jump.AbsoluteSize
+    if native then
+        check(disjoint(fc, fs, jc, js), "Weapon fire keeps native Jump clear")
+    end
     check(disjoint(sc, ss, tc, ts), "Sprint and Throw hit targets do not overlap")
     if native then
         local jc, js = jump.AbsolutePosition + jump.AbsoluteSize / 2, jump.AbsoluteSize
@@ -321,6 +327,7 @@ sprint.Init()
 carry.Init()
 sprint.Init()
 carry.Init()
+layout.Register("IceShotgunFire")
 flush()
 check(writes == 0, "Missing CAS buttons do not block initialization")
 buttons = initialButtons
@@ -328,7 +335,7 @@ for _, button in buttons do
     root.DescendantAdded:Fire(button)
 end
 flush()
-check(bindings == 3, "Repeated startup binds two visible actions and one mouse-only action")
+check(bindings == 2, "Repeated startup binds only the two visible CAS actions")
 verify(true)
 -- Phone portrait, wide/short phone, tablet landscape/portrait, and repeated recreation.
 for _, dimensions in { { 375, 760, 70 }, { 932, 350, 70 }, { 1024, 720, 120 }, { 768, 980, 120 }, { 320, 480, 70 } } do
@@ -425,13 +432,13 @@ flush()
 before = writes
 change(jump, "AbsolutePosition", vector(150, 300))
 flush()
-check(writes == before and bindings == 3, "Non-touch mode stops layout without rebinding input")
+check(writes == before and bindings == 2, "Non-touch mode stops layout without rebinding input")
 change(input, "TouchEnabled", true)
 flush()
 layout.Register("SprintHeld")
 layout.Register("ThrowHeld")
 flush()
-check(bindings == 3, "Recreation and repeated registration never duplicate actions")
+check(bindings == 2, "Recreation and repeated registration never duplicate actions")
 moduleScripts.MobileControlLayout.Destroying:Fire()
 before = writes
 change(jump, "AbsolutePosition", vector(100, 280))

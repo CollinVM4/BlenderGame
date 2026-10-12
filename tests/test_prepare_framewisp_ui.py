@@ -257,5 +257,36 @@ class CLITests(unittest.TestCase):
             self.assertIn(message, result.stderr)
 
 
+
+class ExternalMenuTests(unittest.TestCase):
+    def test_new_export_preserves_scripts_and_artwork(self):
+        source = ROOT / "new_export.rbxmx"
+        original = source.read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "prepared.rbxmx"
+            prep.prepare(source, destination, external_menus=True)
+            before, after = ET.parse(source), ET.parse(destination)
+            def scripts(tree):
+                return {prep.item_name(i): i.findtext("./Properties/ProtectedString[@name='Source']")
+                        for i in tree.iter("Item") if i.attrib['class'] == 'LocalScript'}
+            self.assertEqual(scripts(before), scripts(after))
+            old_items, new_items = list(before.iter('Item')), list(after.iter('Item'))
+            self.assertEqual(len(old_items), len(new_items))
+            delegated = 0
+            for old, new in zip(old_items, new_items):
+                self.assertEqual(old.attrib, new.attrib)
+                for prop in old.find('Properties'):
+                    if prop.attrib.get('name') not in ('AttributesSerialize', 'Visible'):
+                        self.assertEqual(ET.tostring(prop), ET.tostring(new.find("./Properties/*[@name='%s']" % prop.attrib['name'])))
+                encoded = new.findtext("./Properties/BinaryString[@name='AttributesSerialize']", '')
+                data = base64.b64decode(''.join(encoded.split()))
+                if b'BlenderMenuAction' in data:
+                    delegated += 1
+                    self.assertNotIn(b'\x0b\x00\x00\x00FigmaAction\x02', data)
+            self.assertEqual(delegated, 8)  # four menu buttons + four close buttons
+            prep.prepare(destination, external_menus=True)
+            self.assertEqual(scripts(after), scripts(ET.parse(destination)))
+        self.assertEqual(source.read_bytes(), original)
+
 if __name__ == "__main__":
     unittest.main()

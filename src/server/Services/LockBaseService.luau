@@ -35,7 +35,7 @@ function Service.ResolveAssets(plot: Instance): any
     local lock = if plot.Name == "LockBase" then plot else plot:FindFirstChild("LockBase", true)
     local assembly = lock and lock:FindFirstChild("LockButton")
     local button = assembly and assembly:FindFirstChild("Button")
-    local attachment = assembly and assembly:FindFirstChild("LockAttachment", true)
+    local attachment = button and button:FindFirstChild("LockAttachment")
     local visual = assembly and assembly:FindFirstChild("Visual")
     return {
         Lock = lock,

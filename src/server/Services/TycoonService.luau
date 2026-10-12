@@ -127,7 +127,25 @@ function TycoonService.EndTransaction(id: string)
         operation()
     end
 end
+-- Bat is a shared session purchase. Derive eligibility from current members,
+-- never from replicated attributes, Tool equip state, or character lifetime.
+function TycoonService.HasBat(player: Player): boolean
+    local id = TycoonService.GetSessionId(player)
+    if not id then
+        return false
+    end
+    for _, member in TycoonService.GetMembers(id) do
+        if TycoonService.GetSessionId(member) == id and TycoonService.GetUpgrade(member, "Bat") >= 2 then
+            return true
+        end
+    end
+    return false
+end
+
 local function publishIdentity(plot: Instance, session: Session?)
+    local hasBat = session ~= nil and TycoonService.HasBat(session.Owner)
+    plot:SetAttribute("HasBat", hasBat)
+    plot:SetAttribute("BadNPCEnabled", hasBat)
     plot:SetAttribute("StandName", if session then session.StandName else nil)
     plot:SetAttribute("StandNameRevision", if session then session.StandNameRevision else nil)
     plot:SetAttribute("PlotOwnerName", if session then session.Owner.Name else nil)

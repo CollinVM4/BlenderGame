@@ -4,12 +4,15 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "UIRegistry": "src/client/UI/UIRegistry.luau",
+    "FramewispMenus": "src/client/UI/FramewispMenus.luau",
     "PanelManager": "src/client/UI/PanelManager.luau",
     "BadCustomers": "src/shared/Constants/BadCustomers.luau",
     "Ingredients": "src/shared/Constants/Ingredients.luau",
@@ -20,7 +23,16 @@ paths = {
     "ScrapbookPresentation": "src/client/UI/ScrapbookPresentation.luau",
     "ScrapbookController": "src/client/Controllers/ScrapbookController.luau",
 }
-bundle = "local sources = {\n" + "\n".join(
+items = []
+def add(item, parent):
+    index = len(items) + 1
+    items.append((index, parent, item.attrib["class"], item.findtext("./Properties/string[@name='Name']")))
+    for child in item.findall("Item"):
+        add(child, index)
+for item in ET.parse(root / "Framewisp_CCWMF.rbxmx").getroot().findall("Item"):
+    add(item, 0)
+tree = "local exportNodes = " + json.dumps(items).replace("[", "{").replace("]", "}") + "\n"
+bundle = tree + "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((root / path).read_text(encoding='utf-8'))},"
     for name, path in paths.items()
 ) + "\n}\n" + (root / "tests/scrapbook_ui.spec.luau").read_text(encoding="utf-8")

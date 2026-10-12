@@ -72,6 +72,8 @@ local function clearStun(player: Player)
     local state = stuns[player]
     stuns[player] = nil
     if state then
+        state.Character:SetAttribute("BatStunned", nil)
+        state.Character:SetAttribute("BatImmuneUntil", nil)
         setRagdolled(state.Character, false)
         if state.ReleaseOwnership then
             state.ReleaseOwnership()
@@ -278,7 +280,7 @@ local function swingRejection(player: Player, equipped: EquippedBat?): string?
     return nil
 end
 -- Both weapons share current plot/team eligibility; their status immunity stays separate.
-local function playerDamageRejection(attacker: Player, victim: Player): string?
+local function playerDamageRejection(attacker: Player, victim: Player, allowTeamDamage: boolean?): string?
     local session = deps.TycoonService.GetSessionId(victim)
     if attacker == victim then
         return "self"
@@ -292,21 +294,27 @@ local function playerDamageRejection(attacker: Player, victim: Player): string?
     if not alive(attacker) or not deps.TycoonService.GetSessionId(attacker) then
         return "attacker has no living plot session"
     end
-    if session == deps.TycoonService.GetSessionId(attacker) then
+    if not allowTeamDamage and session == deps.TycoonService.GetSessionId(attacker) then
         return "shared plot session"
     end
-    if not attacker.Neutral and not victim.Neutral and attacker.Team == victim.Team then
+    if not allowTeamDamage and not attacker.Neutral and not victim.Neutral and attacker.Team == victim.Team then
         return "non-neutral Roblox teammates"
     end
     return nil
 end
 
-function CombatService.CanDamagePlayer(attacker: Player, victim: Player): boolean
-    return playerDamageRejection(attacker, victim) == nil
+function CombatService.CanDamagePlayer(attacker: Player, victim: Player, allowTeamDamage: boolean?): boolean
+    return playerDamageRejection(attacker, victim, allowTeamDamage) == nil
 end
 
-function CombatService.DamagePlayer(attacker: Player, victim: Player, character: Model, damage: number): boolean
-    if victim.Character ~= character or not CombatService.CanDamagePlayer(attacker, victim) then
+function CombatService.DamagePlayer(
+    attacker: Player,
+    victim: Player,
+    character: Model,
+    damage: number,
+    allowTeamDamage: boolean?
+): boolean
+    if victim.Character ~= character or not CombatService.CanDamagePlayer(attacker, victim, allowTeamDamage) then
         return false
     end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -343,6 +351,9 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
     local untilTime = os.clock() + duration
     local state: Stun = { Character = character, Until = untilTime, ImmuneUntil = untilTime + Config.ImmunitySeconds }
     stuns[victim] = state
+    -- Replicated cosmetic status; existing os.clock deadlines remain authoritative.
+    character:SetAttribute("BatImmuneUntil", workspace:GetServerTimeNow() + duration + Config.ImmunitySeconds)
+    character:SetAttribute("BatStunned", true)
     victim:SetAttribute("StunnedUntil", untilTime)
     deps.MovementService.SetStunned(victim, true)
     local root = character:FindFirstChild("HumanoidRootPart") :: BasePart
@@ -398,6 +409,7 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
                 state.ReleaseOwnership()
             end
             deps.MovementService.SetStunned(victim, false)
+            character:SetAttribute("BatStunned", nil)
             victim:SetAttribute("StunnedUntil", 0)
         end
     end)

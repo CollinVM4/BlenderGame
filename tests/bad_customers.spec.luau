@@ -122,6 +122,31 @@ local function spawn(kind)
     flush()
     return model
 end
+local equipped = {}
+deps.CombatService = {
+    IsBatEquipped = function(p)
+        return equipped[p] == true
+    end,
+}
+local function hit(p, model)
+    return customer.HitCustomer(p, model, { Direction = vec(1, 0, 0), Duration = 1 })
+end
+local function buyBat(p, tier)
+    tycoon.SetCash(p, 1000000)
+    setup(tycoon.PurchaseUpgrade(p, "Bat", tier or 2, tycoon.GetRequestContext(p)), "purchase authoritative Bat")
+end
+local function holdRoute(model)
+    model:FindFirstChildOfClass("Humanoid").MoveTo = function(h, at)
+        h.WalkTarget = at
+    end
+end
+local function startTheft()
+    local model = spawn("thief")
+    setup(customer.TakeOrder(owner, model), "reveal thief")
+    flush()
+    holdRoute(model)
+    return model
+end
 tycoon.Init({
     SessionStarted = customer.ActivateForPlayer,
     SessionEnded = customer.CleanupSession,
@@ -131,656 +156,13 @@ tycoon.Init({
 tycoon.AutoTagLegacyPlot(plot)
 setup(tycoon.AssignPlot(owner, plot) == plot, "claim authoritative owner")
 reset()
-local normal, thief, free = spawn(), spawn("thief"), spawn("freeloader")
-check(customer.ResolveRejectTarget(owner) == normal, "counter wins without inspecting thief/freeloader waiting")
-check(not customer.RejectFront(foreign, plot) and #customer.GetQueueSnapshot(owner) == 3, "outsider cannot dismiss")
-setup(tycoon.JoinSession(foreign, owner, tycoon.GetRequestContext(owner)), "join teammate")
-check(
-    not customer.RejectFront(foreign, plot) and not customer.RejectCustomer(foreign, thief, "Bat"),
-    "teammate is not plot owner"
-)
-local cashBefore, consumedBefore = tycoon.GetCash(owner), consumed
-cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "keep-me" }
-local held = cup
-setup(customer.TakeOrder(owner, normal), "take legitimate order before dismissal")
-check(customer.RejectFront(owner, plot), "owner dismisses legitimate front")
-check(
-    customer.ResolveRejectTarget(owner) == thief and thief:GetAttribute("QueuePosition") == 1,
-    "Wait1 immediately advances after dismissal"
-)
-check(
-    normal:GetAttribute("Reaction") == "Disgust" and normal:GetAttribute("Grade") == nil,
-    "false rejection gives angry reaction without grade"
-)
-check(
-    not customer.Serve(owner, normal) and not customer.TakeOrder(owner, normal),
-    "dismissed order cannot be restarted/served"
-)
-check(
-    cup == held and consumed == consumedBefore and tycoon.GetCash(owner) == cashBefore,
-    "dismissal preserves smoothie/cash"
-)
-check(not customer.DismissCustomer(owner, normal, "RejectedByOwner"), "duplicate dismissal is inert")
-advance(config.DismissalResponseHold)
-check(
-    normal.Destroyed and normal:GetPivot().Position.X == refs.CustomerExit.CFrame.Position.X,
-    "dismissed order retains correct plot exit context"
-)
-check(customer.RejectFront(owner, plot) and sfx.Reject == 1, "front thief enters shared rejection")
-check(
-    not customer.HitCustomer(owner, thief, { Direction = vec(1, 0, 0), Duration = 1 }),
-    "Button then Bat cannot double reject"
-)
-check(
-    customer.ResolveRejectTarget(owner) == free and free:GetAttribute("QueuePosition") == 1,
-    "Wait2 advances before launch completes"
-)
-heartbeat()
-check(thief.PrimaryPart.Impulse.Y == 12 * config.Reject.LaunchVertical, "rejection is mass-scaled physical sky impulse")
-check(button.CFrame.Position.X == 3 and button.CFrame.Position.Y == 4, "authored red button stays fixed")
-check(customer.HitCustomer(owner, free, { Direction = vec(1, 0, 0), Duration = 1 }), "owner Bat rejects freeloader")
-check(
-    not customer.RejectCustomer(owner, free, "RejectButton") and sfx.Reject == 2,
-    "Bat then Button commits/audio once"
-)
-check(
-    #customer.GetQueueSnapshot(owner) == 0 and not customer.RejectFront(owner, plot),
-    "empty queue and no active thief is safe no-op"
-)
-check(not customer.Serve(owner, free) and cup == held, "rejected freeloader causes no consumption/debit")
--- Negative result bypasses every payout modifier, validates minimum cup and consumes once.
-reset()
-free = spawn("freeloader")
-setup(customer.TakeOrder(owner, free), "take freeloader request")
-check(free:GetAttribute("RequestId") == "Freeloader", "bad fixed request never becomes random wildcard dialogue")
-cup = { Ingredients = { "Ice" }, BlendId = "invalid-minimum" }
-check(
-    not customer.Serve(owner, free) and consumed == consumedBefore,
-    "freeloader refuses undersized cup without consuming"
-)
-cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "freeloader-cup" }
-tycoon.SetCash(owner, 100)
-local normalPayout = customer.CalculateOrderPayout
-customer.CalculateOrderPayout = function()
-    error("freeloader entered normal payout formula")
-end
-check(
-    customer.Serve(owner, free) and tycoon.GetCash(owner) == 50 and consumed == consumedBefore + 1,
-    "freeloader costs exactly fifty and consumes once"
-)
-customer.CalculateOrderPayout = normalPayout
-check(
-    free:GetAttribute("Grade") == nil and not customer.RejectCustomer(owner, free, "Bat"),
-    "served freeloader needs no grade and cannot be rejected"
-)
-local resultGui = free:FindFirstChild("CustomerResult", true)
-check(
-    string.find(resultGui:FindFirstChild("Result").Text, "-$50", 1, true) ~= nil
-        and not resultGui:FindFirstChild("Ingredients"),
-    "result shows only negative cash"
-)
-check(not customer.Serve(owner, free) and tycoon.GetCash(owner) == 50, "freeloader service replay cannot debit twice")
-reset()
-free = spawn("freeloader")
-tycoon.SetCash(owner, 20)
-cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "floor" }
-setup(customer.Serve(owner, free), "serve under cash floor")
-check(tycoon.GetCash(owner) == 0, "cash follows centralized nonnegative policy")
--- Service owns the exclusive claim BEFORE consuming visual callbacks.
-reset()
-normal = spawn()
-cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "serve-wins" }
-local consume = deps.BlendService.ConsumeCup
-local dismissalWon
-deps.BlendService.ConsumeCup = function(...)
-    dismissalWon = customer.DismissCustomer(owner, normal, "RejectedByOwner")
-    return consume(...)
-end
-local beforeConsume = consumed
-check(
-    customer.Serve(owner, normal) and dismissalWon == false and consumed == beforeConsume + 1,
-    "serve wins against reentrant reject during consumption"
-)
-deps.BlendService.ConsumeCup = consume
-check(not customer.DismissCustomer(owner, normal, "RejectedByOwner"), "served legitimate customer cannot dismiss later")
-reset()
-normal = spawn()
-cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "dismiss-wins" }
-local serveWon
-local oldSet = normal.SetAttribute
-function normal:SetAttribute(name, value)
-    if name == "RequestId" and value == nil then
-        serveWon = customer.Serve(owner, normal)
-    end
-    oldSet(self, name, value)
-end
-beforeConsume, cashBefore, held = consumed, tycoon.GetCash(owner), cup
-check(
-    customer.DismissCustomer(owner, normal, "RejectedByOwner") and serveWon == false,
-    "dismiss wins against reentrant service"
-)
-check(
-    consumed == beforeConsume and tycoon.GetCash(owner) == cashBefore and cup == held,
-    "dismiss winner changes no smoothie/economy state"
-)
--- Revealed thief overrides the advancing line, including both waiting slots.
-reset()
-thief, normal = spawn("thief"), spawn()
-local wait1, wait2 = spawn(), nil
-local unconsumed = consumed
-check(not customer.Serve(owner, thief) and consumed == unconsumed, "queued thief never takes normal service/payout")
-check(customer.TakeOrder(owner, thief), "owner order initiation starts theft")
-check(
-    #customer.GetQueueSnapshot(owner) == 2 and customer.ResolveRejectTarget(owner) == thief,
-    "stealing thief frees line and overrides legitimate front and Wait1"
-)
-wait2 = spawn()
-check(customer.ResolveRejectTarget(owner) == thief, "active thief also overrides Wait2")
-flush()
-check(thief:GetPivot().Position.X == 75 and sfx.Thief == 1, "thief uses own authored stash waypoint/audio")
-local priorThefts = thefts
-local priorDrops = #drops
-check(customer.RejectFront(owner, plot), "button catches thief in theft windup")
-advance(config.TheftWindup)
-check(thefts == priorThefts and #drops == priorDrops, "rejection before theft removes/drops nothing")
-check(
-    customer.ResolveRejectTarget(owner) == normal and normal:GetAttribute("Reaction") == nil,
-    "innocent counter is retained and normal targeting resumes after rejection"
-)
--- Steal once, escape via Wait2, catch after commit and release the persistent unit.
-reset()
-thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start late catch")
-flush()
-local thiefHumanoid = thief:FindFirstChildOfClass("Humanoid")
-local routes = {}
-thiefHumanoid.MoveTo = function(humanoid, at)
-    table.insert(routes, at.X)
-    humanoid.WalkTarget = at
-end
-advance(config.TheftWindup)
-check(thefts == priorThefts + 1 and stolen.ItemId == "stolen-unit", "one theft mutation commits")
-local carriedVisual = thief:FindFirstChild("StolenIngredientVisual")
-check(
-    carriedVisual ~= nil and ingredientService.GetRecord(carriedVisual) == nil and #drops == priorDrops,
-    "held loot travels with thief without a claimable world duplicate"
-)
-normal = spawn()
-check(customer.ResolveRejectTarget(owner) == thief, "escaping thief overrides new counter")
-thiefHumanoid.MoveToFinished:Fire(true)
-check(
-    table.find(routes, 30) ~= nil and thief:GetAttribute("QueuePosition") == nil,
-    "escape traverses Wait2 without claiming a slot"
-)
-thiefHumanoid.MoveToFinished:Fire(true) -- complete Wait2
-flush() -- start final Exit route
-thiefHumanoid.MoveToFinished:Fire(true) -- advance from path start to Exit
-check(
-    table.find(routes, refs.CustomerExit.CFrame.Position.X) ~= nil and customer.ResolveRejectTarget(owner) == thief,
-    "thief stays rejectable through final escape leg"
-)
-check(
-    customer.ResolveRejectTarget(owner) == thief
-        and customer.HitCustomer(owner, thief, { Direction = vec(1, 0, 0), Duration = 1 }),
-    "escaping thief still accepts owner Bat"
-)
-advance(2 * config.TheftWindup)
-check(thefts == priorThefts + 1 and stolen.ItemId == "stolen-unit", "late Bat cannot repeat theft")
-local drop = drops[#drops]
-local recovered = ingredientService.GetRecord(drop)
-check(
-    #drops == priorDrops + 1 and recovered.Item.ItemId == stolen.ItemId and recovered.Item.IsRipe,
-    "owner Bat publishes exactly one ripe persistent world ingredient"
-)
-check(
-    carriedVisual.Destroyed and not thief.PrimaryPart.Impulse,
-    "stolen visual is removed and world drop published before sky impulse"
-)
-check((drop:GetPivot().Position - thief.PrimaryPart.Position).Magnitude < 8, "loot drops near caught thief")
-check(
-    not customer.RejectCustomer(owner, thief, "RejectButton")
-        and not customer.HitCustomer(owner, thief, { Direction = vec(1, 0, 0), Duration = 1 })
-        and #drops == priorDrops + 1,
-    "repeated Button/Bat cannot duplicate release"
-)
-heartbeat()
-check(
-    ingredientService.GetRecord(drop) ~= nil and drop.Parent == workspaceFake,
-    "loot stays in world when thief launches"
-)
-thief:Destroy()
-check(
-    #drops == priorDrops + 1 and ingredientService.GetRecord(drop) ~= nil,
-    "NPC cleanup never duplicates or removes released world loot"
-)
-check(customer.ResolveRejectTarget(owner) == normal, "front queue resumes after late catch cleanup")
--- Button wins after commit too, including a simultaneous Bat attempt at publication.
-reset()
-thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start Button recovery")
-flush()
-local escapeHumanoid = thief:FindFirstChildOfClass("Humanoid")
-escapeHumanoid.MoveTo = function(h, at)
-    h.WalkTarget = at
-end
-advance(config.TheftWindup)
-priorDrops = #drops
-local release = deps.InventoryService.ReleaseThiefIngredient
-local batWon
-deps.InventoryService.ReleaseThiefIngredient = function(...)
-    batWon = customer.HitCustomer(owner, thief, { Direction = vec(1, 0, 0), Duration = 1 })
-    return release(...)
-end
-check(
-    customer.RejectFront(owner, plot) and batWon == false and #drops == priorDrops + 1,
-    "Button after theft and reentrant Bat publish exactly one drop"
-)
-deps.InventoryService.ReleaseThiefIngredient = release
-heartbeat()
-check(
-    not customer.RejectCustomer(owner, thief, "RejectButton") and #drops == priorDrops + 1,
-    "launch/repeated reject cannot release thief loot again"
-)
--- A successful escape or unexpected destruction consumes custody, never drops it.
-for _, destroyUnexpectedly in { false, true } do
-    reset()
-    thief = spawn("thief")
-    setup(customer.TakeOrder(owner, thief), "start uncaught thief")
-    flush()
-    normal = spawn()
-    priorDrops = #drops
-    if destroyUnexpectedly then
-        local h = thief:FindFirstChildOfClass("Humanoid")
-        h.MoveTo = function(self, at)
-            self.WalkTarget = at
-        end
-    end
-    advance(config.TheftWindup)
-    if destroyUnexpectedly then
-        thief:Destroy()
-    end
-    check(
-        thief.Destroyed and #drops == priorDrops and customer.ResolveRejectTarget(owner) == normal,
-        "escape/generic cleanup loses stolen loot and resumes front targeting"
-    )
-end
--- The plot transaction guards reentrant rejection; the next owner input recovers.
-reset()
-thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start commit race")
-flush()
-local commitHumanoid = thief:FindFirstChildOfClass("Humanoid")
-commitHumanoid.MoveTo = function(h, at)
-    h.WalkTarget = at
-end
-local remove = deps.InventoryService.RemoveThiefIngredient
-local commitReject
-deps.InventoryService.RemoveThiefIngredient = function(...)
-    local result = remove(...)
-    commitReject = customer.RejectFront(owner, plot)
-    return result
-end
-priorDrops = #drops
-advance(config.TheftWindup)
-deps.InventoryService.RemoveThiefIngredient = remove
-check(
-    commitReject == false and #drops == priorDrops and customer.RejectFront(owner, plot) and #drops == priorDrops + 1,
-    "theft transaction blocks reentrant rejection then exact loot remains recoverable"
-)
--- Deterministic plot-scoped association when more than one thief is revealed.
-reset()
-local firstThief = spawn("thief")
-setup(customer.TakeOrder(owner, firstThief), "reveal first thief")
-flush()
-local firstHumanoid = firstThief:FindFirstChildOfClass("Humanoid")
-firstHumanoid.MoveTo = function(h, at)
-    h.WalkTarget = at
-end
-advance(config.TheftWindup) -- First thief is now Escaping, with its route held open.
-local secondThief = spawn("thief")
-setup(customer.TakeOrder(owner, secondThief), "reveal second thief")
-flush()
-check(customer.ResolveRejectTarget(owner) == firstThief, "escaping thief wins over stealing thief")
-setup(customer.RejectFront(owner, plot), "catch more progressed thief")
-check(customer.ResolveRejectTarget(owner) == secondThief, "next revealed thief becomes priority after rejection")
-local thirdThief = spawn("thief")
-setup(customer.TakeOrder(owner, thirdThief), "reveal third thief")
-flush()
-check(customer.ResolveRejectTarget(owner) == secondThief, "oldest stealing encounter breaks priority ties")
-for _, cleanup in { "Death", "Reset" } do
-    reset()
-    thief = spawn("thief")
-    setup(customer.TakeOrder(owner, thief), "start post-theft cleanup case")
-    flush()
-    local h = thief:FindFirstChildOfClass("Humanoid")
-    h.MoveTo = function(self, at)
-        self.WalkTarget = at
-    end
-    advance(config.TheftWindup)
-    priorDrops = #drops
-    if cleanup == "Death" then
-        h.Died:Fire()
-    else
-        customer.DeactivateForPlayer(owner)
-    end
-    check(
-        thief.Destroyed and #drops == priorDrops and customer.ResolveRejectTarget(owner) == nil,
-        "post-theft death/reset consumes loot and clears active association"
-    )
-end
--- A Bat hit during the stash route cancels old movement before the impulse step.
-reset()
-thief = spawn("thief")
-local walkingHumanoid = thief:FindFirstChildOfClass("Humanoid")
-walkingHumanoid.MoveTo = function(humanoid, at)
-    humanoid.WalkTarget = at
-end
-setup(customer.TakeOrder(owner, thief), "start pending thief walk")
-flush()
-priorThefts = thefts
-priorDrops = #drops
-check(
-    customer.HitCustomer(owner, thief, { Direction = vec(1, 0, 0), Duration = 1 }),
-    "owner Bat interrupts active thief walk"
-)
-walkingHumanoid.MoveToFinished:Fire(true)
-advance(config.TheftWindup)
-check(
-    thefts == priorThefts and #customer.GetQueueSnapshot(owner) == 0 and #drops == priorDrops,
-    "cancelled walk completion cannot restart theft/queue"
-)
-
--- Another plot/session is isolated, including spoofed customer attributes.
-local otherPlot = instance("Model")
-otherPlot.Name, otherPlot.Parent = "OtherPlot", workspaceFake
-for name, marker in refs do
-    local copy = instance("Part")
-    copy.Name, copy.Parent, copy.CFrame = name, otherPlot, marker.CFrame
-end
-tycoon.RemovePlayer(foreign)
-tycoon.AutoTagLegacyPlot(otherPlot)
-setup(tycoon.AssignPlot(foreign, otherPlot) == otherPlot, "claim other business")
-check(
-    not customer.RejectFront(owner, otherPlot) and not customer.RejectCustomer(foreign, thief, "Bat"),
-    "wrong plot requests cannot control victim"
-)
--- Two active bad encounters remain isolated through simultaneous plot operations.
-template:SetAttribute("CustomerId", "thief")
-requests.SpecialCustomerChance = 1
-local secondBusiness = customer.SpawnForPlayer(foreign)
-setup(secondBusiness, "spawn second plot thief")
-flush()
-setup(customer.TakeOrder(foreign, secondBusiness), "reveal other plot thief")
-check(
-    customer.ResolveRejectTarget(foreign) == secondBusiness and customer.ResolveRejectTarget(owner) == nil,
-    "Plot1 never selects Plot2 active thief"
-)
-local otherBefore = #customer.GetQueueSnapshot(foreign)
-check(customer.RejectCustomer(foreign, secondBusiness, "Bat"), "other plot owner can reject their own bad customer")
-check(
-    #customer.GetQueueSnapshot(foreign) == otherBefore and #customer.GetQueueSnapshot(owner) == 0,
-    "each rejection affects only its own queue"
-)
-
--- Non-owner ordinary hit behavior remains temporary within the allowed same session.
-tycoon.RemovePlayer(foreign)
-setup(tycoon.JoinSession(foreign, owner, tycoon.GetRequestContext(owner)), "rejoin teammate")
-reset()
-thief = spawn("thief")
-check(
-    customer.HitCustomer(foreign, thief, { Direction = vec(1, 0, 0), Duration = 1 }),
-    "teammate follows ordinary hit path"
-)
-check(
-    #customer.GetQueueSnapshot(owner) == 1 and customer.ResolveRejectTarget(owner) == thief,
-    "teammate hit preserves active lifecycle/queue"
-)
-check(
-    customer.HitCustomer(owner, thief, { Direction = vec(1, 0, 0), Duration = 1 }),
-    "owner can reject already ragdolled bad customer"
-)
-check(#customer.GetQueueSnapshot(owner) == 0, "owner rejection during ragdoll releases queue")
--- Legitimate customers (including specials) retain the ordinary Bat contract.
-requests.NPCs.legitimateTest =
-    { Type = "Special", DisplayName = "Legitimate Special", RequestId = "QueueRed", Weight = 1 }
-for _, kind in { "regularTest", "legitimateTest" } do
-    reset()
-    local legitimate = spawn(if kind == "legitimateTest" then kind else nil)
-    if kind == "regularTest" then
-        local humanoid = instance("Humanoid")
-        humanoid.Health, humanoid.Parent = 100, legitimate
-        local root = legitimate.PrimaryPart
-        root.Name, root.AssemblyMass = "HumanoidRootPart", 12
-        root.ApplyImpulse = function(self, value)
-            self.Impulse = value
-        end
-    end
-    local requestId, rejectionCues = legitimate:GetAttribute("RequestId"), sfx.Reject
-    setup(customer.TakeOrder(owner, legitimate), "take legitimate order for Bat")
-    check(
-        customer.HitCustomer(owner, legitimate, { Direction = vec(1, 0, 0), Duration = 1 }),
-        "legitimate Bat hit uses temporary ragdoll"
-    )
-    check(
-        #customer.GetQueueSnapshot(owner) == 1 and legitimate:GetAttribute("RequestId") == requestId,
-        "legitimate Bat preserves queue/order"
-    )
-    heartbeat()
-    advance(1)
-    heartbeat()
-    check(
-        customer.GetSnapshot(owner).Ready and sfx.Reject == rejectionCues,
-        "ordinary Bat recovers without successful rejection audio"
-    )
-    check(
-        customer.DismissCustomer(owner, legitimate, "RejectedByOwner") and #customer.GetQueueSnapshot(owner) == 0,
-        "button dismisses recovered legitimate special/regular"
-    )
-end
--- The floor plate uses server-observed support, not prompt requests or limb touches.
-local savedCharacter, savedRaycast = owner.Character, workspaceFake.Raycast
-local character = instance("Model")
-character.Parent = workspaceFake
-local root = instance("Part")
-root.Name, root.Parent = "HumanoidRootPart", character
-root.Size = vec(2, 2, 1)
-root.AssemblyLinearVelocity = vec(0, 0, 0)
-local humanoid = instance("Humanoid")
-humanoid.Parent, humanoid.Health, humanoid.HipHeight = character, 100, 2
-owner.Character = character
-local support = button
-workspaceFake.Raycast = function(_, position, direction, params)
-    setup(
-        params.RespectCanCollide and params.FilterDescendantsInstances[1] == character,
-        "query excludes the owner's character and uses solid ground"
-    )
-    local top = button.CFrame.Position.Y + button.Size.Y / 2
-    if
-        math.abs(position.X - button.CFrame.Position.X) <= button.Size.X / 2
-        and math.abs(position.Z - button.CFrame.Position.Z) <= button.Size.Z / 2
-        and position.Y >= top
-        and position.Y + direction.Y <= top
-    then
-        return { Instance = support }
-    end
-    return nil
-end
-local function stand(on)
-    root.Position = button.CFrame.Position + vec(if on then 0 else 10, button.Size.Y / 2 + 3, 0)
-end
-stand(false)
-reset()
-normal = spawn()
-heartbeat()
-check(
-    customer.ResolveRejectTarget(owner) == normal,
-    "nearby owner and foreign occupants cannot activate the floor plate"
-)
-check(button:FindFirstChild("RejectPrompt") == nil, "floor plate has no keyboard or click activation")
-local display = button:FindFirstChild("RejectFloorDisplay")
-local line = display:FindFirstChild("Progress")
-check(
-    display.Adornee == origin and display:FindFirstChild("Action").Text == "STAND TO REJECT",
-    "shared floor display uses the existing attachment"
-)
-stand(true)
-heartbeat()
-advance(0.75)
-heartbeat()
-check(
-    math.abs(line.Size.X.Offset - 60) < 0.01 and line.Size.Y.Offset == 6,
-    "standing fills the shared thick red progress line halfway"
-)
-check(customer.ResolveRejectTarget(owner) == normal, "partial standing time cannot reject")
-stand(false)
-heartbeat()
-advance(1)
-heartbeat()
-check(line.Size.X.Offset == 0 and customer.ResolveRejectTarget(owner) == normal, "stepping off cancels progress")
-stand(true)
-heartbeat()
-advance(1.5)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == nil, "continuous standing rejects the authoritative front")
-local nextCustomer = spawn()
-advance(3)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == nextCustomer, "remaining on the floor plate never repeats rejection")
-stand(false)
-heartbeat()
-stand(true)
-heartbeat()
-advance(1.5)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == nil, "stepping off and back on rearms the floor plate")
-stand(false)
-reset()
-normal = spawn()
-stand(true)
-support = base
-heartbeat()
-advance(2)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == normal, "another support surface cannot substitute for the red button")
-support = button
-root.AssemblyLinearVelocity = vec(0, 12, 0)
-heartbeat()
-advance(2)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == normal, "jumping over the button cannot activate it")
-root.AssemblyLinearVelocity = vec(0, 0, 0)
-heartbeat()
-advance(0.75)
-humanoid.Health = 0
-heartbeat()
-advance(1)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == normal, "death cancels standing progress")
-humanoid.Health = 100
-heartbeat()
-advance(0.75)
-owner.Near = false
-heartbeat()
-owner.Near = true
-heartbeat()
-advance(0.75)
-heartbeat()
-check(customer.ResolveRejectTarget(owner) == normal, "loss of gameplay eligibility requires a fresh full stand")
-display = button:FindFirstChild("RejectFloorDisplay")
-customer.DeactivateForPlayer(owner)
-advance(2)
-heartbeat()
-check(
-    display.Destroyed or button:FindFirstChild("RejectFloorDisplay") == nil,
-    "flow cleanup removes the floor display and prevents late activation"
-)
-owner.Character, workspaceFake.Raycast = savedCharacter, savedRaycast
--- Missing escape markers are additive failures; they never prevent logical removal.
-reset()
-thief = spawn("thief")
-refs.CustomerWait2.Parent = nil
-setup(customer.TakeOrder(owner, thief), "start escape without Wait2")
-flush()
-advance(config.TheftWindup)
-check(thief.Destroyed, "missing Wait2 goes directly to Exit")
-refs.CustomerWait2.Parent = plot
-reset()
-normal = spawn()
-refs.CustomerExit.Parent = nil
-check(
-    customer.DismissCustomer(owner, normal, "RejectedByOwner") and normal.Destroyed,
-    "missing exit cleans dismissed NPC immediately"
-)
-refs.CustomerExit.Parent = plot
--- Walking failure and out-of-bounds launch have bounded cleanup.
-reset()
-thief = spawn("thief")
-local pathFactory = services.PathfindingService.CreatePath
-services.PathfindingService.CreatePath = function(...)
-    local path = pathFactory(...)
-    path.Status = "NoPath"
-    return path
-end
-setup(customer.TakeOrder(owner, thief), "start unreachable thief route")
-flush()
-check(thief.Destroyed, "exhausted thief path retries remove NPC")
-services.PathfindingService.CreatePath = pathFactory
-reset()
-thief = spawn("thief")
-setup(customer.RejectCustomer(owner, thief, "Bat"), "launch out of bounds")
-thief.PrimaryPart.Position = vec(0, -600, 0)
-heartbeat()
-check(thief.Destroyed, "out-of-bounds rejected rig cleans")
-
--- Missing markers and bounded physics recovery/cleanup.
-reset()
-thiefPoint.Parent = nil
-thief = spawn("thief")
-priorThefts = thefts
-setup(customer.TakeOrder(owner, thief), "missing point starts safe escape")
-flush()
-flush()
-check(thefts == priorThefts and thief.Destroyed, "missing thief point prevents theft and exits safely")
-thiefPoint.Parent = plot
-reset()
-thief = spawn("thief")
-setup(customer.RejectCustomer(owner, thief, "RejectButton"), "launch for recovery")
-workspaceFake.Raycast = function()
-    return { Instance = base }
-end
-heartbeat()
-advance(config.Reject.MinimumFlight + config.Reject.LandingPoll + config.Reject.RecoveryDelay)
-heartbeat()
-check(thief.Destroyed and not physical[thief], "landed bad customer recovers then exits/cleans")
-workspaceFake.Raycast = function()
-    return nil
+check(not tycoon.HasBat(owner) and plot:GetAttribute("BadNPCEnabled") == false, "level zero disables plot eligibility")
+for _, kind in { "thief", "freeloader" } do
+    local model = spawn(kind)
+    check(model:GetAttribute("CustomerId") ~= kind, "level zero filters bad candidates even at full special chance")
 end
 reset()
-thief = spawn("thief")
-setup(customer.RejectCustomer(owner, thief, "Bat"), "launch with no floor")
-heartbeat()
-advance(config.Reject.LandingTimeout + 0.1)
-check(thief.Destroyed, "landing timeout cleans rig")
-reset()
-thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start runtime for cleanup")
-flush()
-priorThefts = thefts
-thief:FindFirstChildOfClass("Humanoid").Died:Fire()
-advance(config.TheftWindup)
-check(
-    thief.Destroyed and thefts == priorThefts and #customer.GetQueueSnapshot(owner) == 0,
-    "death cancels special runtime"
-)
-reset()
-thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start runtime for plot reset")
-flush()
-customer.DeactivateForPlayer(owner)
-advance(config.TheftWindup)
-check(thief.Destroyed and thefts == priorThefts, "plot reset cancels theft")
-reset()
-local studioCheck = services.RunService.IsStudio
+local studio = services.RunService.IsStudio
 services.RunService.IsStudio = function()
     return true
 end
@@ -788,50 +170,402 @@ services.RunService.IsServer = function()
     return true
 end
 template:SetAttribute("CustomerId", "thief")
-local injected = customer.SpawnForPlayer(owner, "thief")
-check(
-    injected ~= nil and injected:GetAttribute("CustomerId") == "thief",
-    "injection selects ID with random special chance zero"
-)
-local repeated = customer.SpawnForPlayer(owner, "thief")
-check(repeated ~= nil and #customer.GetQueueSnapshot(owner) == 2, "injection appends despite special cooldown")
-check(
-    customer.SpawnForPlayer(owner, "missing") == nil and #customer.GetQueueSnapshot(owner) == 2,
-    "missing injection never spawns fallback"
-)
-check(customer.SpawnForPlayer(owner, "thief") ~= nil, "injection fills final queue slot")
-check(customer.SpawnForPlayer(owner, "thief") == nil, "injection preserves queue capacity")
-services.RunService.IsStudio = function()
-    return false
-end
-check(customer.SpawnForPlayer(owner, "thief") == nil, "injection unavailable outside Studio")
-services.RunService.IsStudio = studioCheck
+check(customer.SpawnForPlayer(owner, "thief") == nil, "Studio injection cannot bypass Level 0 eligibility")
+services.RunService.IsStudio = studio
 reset()
-thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start runtime for owner leave")
-flush()
-tycoon.RemovePlayer(owner)
+local normal = spawn()
+local beforeQueue = #customer.GetQueueSnapshot(owner)
+buyBat(owner)
+check(
+    tycoon.HasBat(owner) and plot:GetAttribute("HasBat") and plot:GetAttribute("BadNPCEnabled"),
+    "purchase enables derived eligibility"
+)
+check(#customer.GetQueueSnapshot(owner) == beforeQueue, "purchase does not force an arrival")
+check(assembly.Destroyed, "legacy floor action removed from active plot")
+setup(tycoon.JoinSession(foreign, owner, tycoon.GetRequestContext(owner)), "join defender teammate")
+equipped[owner], equipped[foreign] = true, true
+check(tycoon.HasBat(foreign), "teammate reads existing shared purchased tier")
+for _, tier in { 2, 3, 4 } do
+    if tier > 2 then
+        buyBat(foreign, tier)
+    end
+    reset()
+    for _, kind in { "thief", "freeloader" } do
+        local model = spawn(kind)
+        check(
+            model:GetAttribute("CustomerId") == kind,
+            "level one and higher retain existing bad candidate probability"
+        )
+    end
+end
+reset()
+template:SetAttribute("CustomerId", "thief")
+requests.SpecialCustomerChance = 0
+check(
+    customer.SpawnForPlayer(owner):GetAttribute("CustomerId") ~= "thief",
+    "purchased eligibility preserves zero special probability"
+)
+requests.SpecialCustomerChance = 1
+now += economy.SpecialCustomerCooldownSeconds + 1
+check(
+    customer.SpawnForPlayer(owner):GetAttribute("CustomerId") == "thief",
+    "existing full special probability works when eligible"
+)
+check(
+    customer.SpawnForPlayer(owner):GetAttribute("CustomerId") ~= "thief",
+    "existing special cooldown remains enforced"
+)
+reset()
+normal = spawn()
+check(
+    not customer.RejectFront(owner, plot) and not customer.DismissCustomer(owner, normal, "RejectedByOwner"),
+    "legacy actions cannot dismiss legitimate queue"
+)
+check(
+    not customer.RejectCustomer(owner, normal, "Bat") and customer.ResolveRejectTarget(owner) == nil,
+    "legacy exact/front reject APIs are inert"
+)
+check(#customer.GetQueueSnapshot(owner) == 1, "legacy requests preserve queue")
+-- Bad rejection never consumes a cup or cash; serving a freeloader keeps its existing penalty.
+reset()
+local free = spawn("freeloader")
+cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "preserved-on-hit" }
+local cashBefore, consumedBefore, held = tycoon.GetCash(owner), consumed, cup
+check(
+    hit(foreign, free) and cup == held and consumed == consumedBefore and tycoon.GetCash(owner) == cashBefore,
+    "Bat rejection preserves smoothie and economy"
+)
+reset()
+free = spawn("freeloader")
+setup(customer.TakeOrder(owner, free), "reveal freeloader")
+cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "served-once" }
+cashBefore, consumedBefore = tycoon.GetCash(owner), consumed
+check(
+    customer.Serve(owner, free) and tycoon.GetCash(owner) == cashBefore + config.FreeloaderPayout,
+    "freeloader retains existing serve penalty"
+)
+check(
+    not hit(foreign, free) and not customer.Serve(owner, free) and consumed == consumedBefore + 1,
+    "serve claim prevents duplicate Bat rejection or payout"
+)
+reset()
+normal, thief = spawn(), spawn("thief")
+-- Equipped-tool state affects combat authorization, never spawn entitlement.
+local thief = spawn("thief")
+equipped[owner], equipped[foreign] = false, false
+check(
+    tycoon.HasBat(owner) and plot:GetAttribute("BadNPCEnabled") and not hit(owner, thief),
+    "unequip preserves eligibility but blocks rejection"
+)
+owner.Character = nil
+customer.BindPlayer(owner)
+check(not thief.Destroyed and tycoon.HasBat(owner), "temporary death/respawn cannot cancel encounter")
+equipped[owner], equipped[foreign] = true, true
+-- Both defenders use the exact physical victim; a waiting bad NPC need not be the front.
+for _, defender in { owner, foreign } do
+    reset()
+    normal, thief = spawn(), spawn("thief")
+    local cues = sfx.Reject or 0
+    check(hit(defender, thief), "assigned equipped defender rejects waiting bad NPC")
+    check(
+        #customer.GetQueueSnapshot(owner) == 1 and customer.GetQueueSnapshot(owner)[1].Model == normal,
+        "exact hit preserves legitimate front"
+    )
+    check(
+        not hit(defender, thief) and not hit(owner, thief) and sfx.Reject == cues + 1,
+        "duplicate defender hits claim rejection once"
+    )
+    heartbeat()
+    check(thief.PrimaryPart.Impulse.Y == 12 * config.Reject.LaunchVertical, "existing dramatic launch retained")
+end
+-- Normal customers stay in queue and retain their request through hit/recovery.
+reset()
+normal = spawn()
+local h = instance("Humanoid")
+h.Health, h.Parent = 100, normal
+normal.PrimaryPart.Name, normal.PrimaryPart.AssemblyMass = "HumanoidRootPart", 12
+normal.PrimaryPart.ApplyImpulse = function(self, value)
+    self.Impulse = value
+end
+setup(customer.TakeOrder(owner, normal), "take legitimate order")
+local requestId = normal:GetAttribute("RequestId")
+check(hit(foreign, normal), "normal customer uses ordinary temporary combat")
+check(
+    #customer.GetQueueSnapshot(owner) == 1 and normal:GetAttribute("RequestId") == requestId,
+    "normal combat cannot permanently reject order"
+)
+heartbeat()
+advance(1)
+heartbeat()
+check(customer.GetSnapshot(owner).Ready and not normal.Destroyed, "normal customer recovers and returns to service")
+requests.NPCs.legitimateTest =
+    { Type = "Special", DisplayName = "Legitimate Special", RequestId = "QueueRed", Weight = 1 }
+reset()
+local legitimateSpecial = spawn("legitimateTest")
+local specialRequest = legitimateSpecial:GetAttribute("RequestId")
+check(
+    hit(owner, legitimateSpecial) and #customer.GetQueueSnapshot(owner) == 1,
+    "legitimate special uses temporary Bat path"
+)
+heartbeat()
+advance(1)
+heartbeat()
+check(
+    not legitimateSpecial.Destroyed and legitimateSpecial:GetAttribute("RequestId") == specialRequest,
+    "legitimate special recovers without permanent rejection"
+)
+-- Interrupt both pending movement and the theft windup.
+for _, phase in { "Walking", "Windup" } do
+    reset()
+    thief = spawn("thief")
+    if phase == "Walking" then
+        holdRoute(thief)
+    end
+    setup(customer.TakeOrder(owner, thief), "start pre-commit encounter")
+    flush()
+    local priorThefts, priorDrops = thefts, #drops
+    check(hit(foreign, thief), "teammate interrupts pre-commit thief")
+    thief:FindFirstChildOfClass("Humanoid").MoveToFinished:Fire(true)
+    advance(config.TheftWindup)
+    check(
+        thefts == priorThefts and #drops == priorDrops and #customer.GetQueueSnapshot(owner) == 0,
+        "stale route/timer cannot commit theft after rejection"
+    )
+end
+reset()
+thief = startTheft()
+normal = spawn()
+local priorDrops = #drops
 advance(config.TheftWindup)
-check(thief.Destroyed and thefts == priorThefts, "owner leaving cancels theft/runtime")
-tycoon.RemovePlayer(foreign) -- Last teammate releases the surviving promoted session.
-setup(tycoon.AssignPlot(owner, plot) == plot, "reclaim plot for post-theft owner leave")
+check(customer.CanHitCustomer(foreign, thief), "escaping thief remains associated and hittable after queue release")
+local reentrant
+local release = deps.InventoryService.ReleaseThiefIngredient
+deps.InventoryService.ReleaseThiefIngredient = function(...)
+    reentrant = hit(owner, thief)
+    return release(...)
+end
+check(hit(foreign, thief), "post-commit teammate hit rejects exact escaping thief")
+deps.InventoryService.ReleaseThiefIngredient = release
+local recovered = ingredientService.GetRecord(drops[#drops])
+check(
+    reentrant == false and #drops == priorDrops + 1 and recovered.Item.ItemId == stolen.ItemId,
+    "reentrant hit drops exact stolen unit once"
+)
+check(
+    recovered.Item.IsRipe and recovered.Item.RipenessStoredSeconds == 120,
+    "recovery preserves stolen ingredient state"
+)
+check(
+    customer.GetQueueSnapshot(owner)[1].Model == normal and not hit(owner, thief),
+    "old thief cannot reject replacement customer"
+)
+-- A successful final exit consumes the unit; a timeout/failed route preserves it.
 reset()
 thief = spawn("thief")
-setup(customer.TakeOrder(owner, thief), "start committed theft before owner leave")
+setup(customer.TakeOrder(owner, thief), "start successful escape")
 flush()
-local leavingHumanoid = thief:FindFirstChildOfClass("Humanoid")
-leavingHumanoid.MoveTo = function(h, at)
-    h.WalkTarget = at
+priorDrops = #drops
+advance(config.TheftWindup)
+check(
+    thief.Destroyed and #drops == priorDrops and not hit(owner, thief),
+    "successful escape permanently consumes ingredient"
+)
+-- Reentrant hit during commit cannot bypass the plot transaction.
+reset()
+thief = startTheft()
+local remove = deps.InventoryService.RemoveThiefIngredient
+local duringCommit
+deps.InventoryService.RemoveThiefIngredient = function(...)
+    local result = remove(...)
+    duringCommit = hit(foreign, thief)
+    return result
 end
+priorDrops = #drops
+advance(config.TheftWindup)
+deps.InventoryService.RemoveThiefIngredient = remove
+check(
+    duringCommit == false and #drops == priorDrops and hit(owner, thief) and #drops == priorDrops + 1,
+    "commit lock prevents duplicate theft/rejection and next hit recovers"
+)
+-- Reset restores unescaped custody and invalidates callbacks.
+for _, postCommit in { false, true } do
+    reset()
+    thief = startTheft()
+    if postCommit then
+        advance(config.TheftWindup)
+    end
+    local priorThefts = thefts
+    priorDrops = #drops
+    customer.DeactivateForPlayer(owner)
+    advance(config.TheftWindup + 1)
+    check(
+        thief.Destroyed and thefts == priorThefts and #drops == priorDrops + (if postCommit then 1 else 0),
+        "reset cancels encounter and preserves unescaped custody"
+    )
+end
+-- Teammate departure revokes their authority without erasing the shared purchase.
+reset()
+thief = startTheft()
+tycoon.RemovePlayer(foreign)
+check(
+    not thief.Destroyed and tycoon.HasBat(owner) and not hit(foreign, thief),
+    "departing teammate cannot defend but surviving purchased plot stays eligible"
+)
+setup(tycoon.JoinSession(foreign, owner, tycoon.GetRequestContext(owner)), "return teammate")
+check(hit(foreign, thief), "newly assigned teammate can defend the existing encounter")
+-- Current ownership survives promotion because Bat upgrades belong to the session.
+reset()
+thief = startTheft()
 advance(config.TheftWindup)
 priorDrops = #drops
 tycoon.RemovePlayer(owner)
 check(
-    thief.Destroyed and #drops == priorDrops and customer.ResolveRejectTarget(owner) == nil,
-    "owner departure after theft consumes loot without recovery and clears targeting"
+    not thief.Destroyed and tycoon.HasBat(foreign) and plot:GetAttribute("BadNPCEnabled"),
+    "owner departure promotes eligible teammate without cancelling encounter"
 )
+check(hit(foreign, thief) and #drops == priorDrops + 1, "promoted teammate defends existing escaping thief")
+-- Last member closes session, preserving loot; new session starts at level zero.
+local oldOwner = owner
+owner = foreign
+reset()
+-- theft fixture checks its dynamically bound owner.
+thief = startTheft()
+advance(config.TheftWindup)
+priorDrops = #drops
+tycoon.RemovePlayer(owner)
+check(
+    thief.Destroyed and #drops == priorDrops + 1 and not plot:GetAttribute("BadNPCEnabled"),
+    "last Bat member departure clears eligibility and restores custody"
+)
+owner = oldOwner
+setup(tycoon.AssignPlot(owner, plot) == plot, "new owner starts new session")
+check(not tycoon.HasBat(owner), "new ownership cannot inherit departed session purchase")
+-- Exercise eligibility loss independently of equip, using the authoritative read boundary.
+-- Current shared upgrades cannot be downgraded in gameplay, but cancellation must handle it.
+buyBat(owner)
+reset()
+thief = startTheft()
+advance(config.TheftWindup)
+normal = spawn()
+priorDrops = #drops
+local getUpgrade = tycoon.GetUpgrade
+tycoon.GetUpgrade = function(p, id)
+    return if id == "Bat" then 1 else getUpgrade(p, id)
+end
+customer.BindPlayer(owner)
+check(
+    thief.Destroyed and #drops == priorDrops + 1 and customer.GetQueueSnapshot(owner)[1].Model == normal,
+    "loss of last purchased eligibility cancels only bad encounter with exact recovery"
+)
+tycoon.GetUpgrade = getUpgrade
+-- Separate plots cannot reject a victim, even with a purchased equipped Bat.
+local otherPlot = instance("Model")
+otherPlot.Name, otherPlot.Parent = "OtherPlot", workspaceFake
+for name, marker in refs do
+    local copy = instance("Part")
+    copy.Name, copy.Parent, copy.CFrame = name, otherPlot, marker.CFrame
+end
+tycoon.AutoTagLegacyPlot(otherPlot)
+setup(tycoon.AssignPlot(foreign, otherPlot) == otherPlot, "claim foreign business")
+buyBat(foreign)
+reset()
+thief = spawn("thief")
+thief:SetAttribute("OwnerUserId", foreign.UserId)
+check(
+    not hit(foreign, thief) and not customer.CanHitCustomer(foreign, thief),
+    "foreign plot Bat and spoofed attributes cannot reject"
+)
+-- Missing theft point remains safe; launch cleanup remains bounded.
+reset()
+thiefPoint.Parent = nil
+thief = spawn("thief")
+local priorThefts = thefts
+setup(customer.TakeOrder(owner, thief), "missing theft point")
+flush()
+flush()
+check(thefts == priorThefts and thief.Destroyed, "missing theft point prevents loss")
+thiefPoint.Parent = plot
+reset()
+thief = spawn("thief")
+setup(hit(owner, thief), "launch without floor")
+heartbeat()
+advance(config.Reject.LandingTimeout + 0.1)
+check(thief.Destroyed, "launch timeout cleans rig")
+-- Real adapter discards legacy REJECT requests regardless of submitted victim/context.
+reset()
+normal, thief = spawn(), spawn("thief")
+local remote
+local originalNew = env.Instance.new
+env.Instance.new = function(class)
+    local object = originalNew(class)
+    if class == "RemoteEvent" then
+        object.OnServerEvent = signal()
+        remote = object
+    end
+    return object
+end
+loadModule("GameplayService").Init(deps)
+env.Instance.new = originalNew
+for _, action in { "Reject", "RejectCustomer" } do
+    remote.OnServerEvent:Fire(owner, action, thief, 1, tycoon.GetRequestContext(owner))
+    remote.OnServerEvent:Fire(foreign, action, normal, 1, tycoon.GetRequestContext(foreign))
+end
+check(
+    #customer.GetQueueSnapshot(owner) == 2 and not thief.Destroyed and not normal.Destroyed,
+    "real legacy remote requests leave all NPCs intact"
+)
+-- Real CombatService validates issued/equipped identity and dispatches the exact overlap victim.
+local combat = loadModule("CombatService")
+deps.CombatService = combat
+deps.MovementService = {
+    CanPerformGameplayAction = function()
+        return true
+    end,
+}
+combat.Init(deps)
+owner.Character = instance("Model")
+owner.Character.Parent = workspaceFake
+owner.Parent = services.Players
+local humanoid = instance("Humanoid")
+humanoid.Health, humanoid.Parent = 100, owner.Character
+local attackerRoot = instance("Part")
+attackerRoot.Name, attackerRoot.Parent = "HumanoidRootPart", owner.Character
+local backpack = instance("Backpack")
+backpack.Parent = owner
+local batTemplate = instance("Tool")
+batTemplate.Name, batTemplate.Parent = "Bat", storage
+for _, name in { "Handle", "Hitbox" } do
+    local part = instance("Part")
+    part.Name, part.Parent = name, batTemplate
+end
+combat.RefreshPlayer(owner)
+local issued = backpack:FindFirstChild("Bat")
+setup(issued, "real combat issues purchased Bat")
+services.Players.GetPlayerFromCharacter = function(_, model)
+    return if model == owner.Character then owner else nil
+end
+thief.PrimaryPart.Position = vec(0, 0, -2)
+workspaceFake.GetPartBoundsInBox = function()
+    return { thief.PrimaryPart, thief.PrimaryPart }
+end
+workspaceFake.Raycast = function()
+    return nil
+end
+check(not combat.SwingBat(owner), "unequipped real issued Bat cannot start rejection")
+local forged = batTemplate:Clone()
+forged.Parent = owner.Character
+check(not combat.SwingBat(owner) and not hit(owner, thief), "forged equipped Bat cannot reject")
+forged:Destroy()
+issued.Parent = owner.Character
+check(combat.SwingBat(owner), "real equipped issued Bat starts validated swing")
+advance(bat.HitActiveStart + 0.000001)
+check(
+    #customer.GetQueueSnapshot(owner) == 1 and customer.GetQueueSnapshot(owner)[1].Model == normal,
+    "real overlap hit rejects waiting bad victim without touching front"
+)
+check(not hit(owner, thief), "real combat cannot replay rejected victim")
 print(
-    "PASS bad customers outcomes, targeting, authority, races, theft, and cleanup",
+    "PASS bat-only bad customer eligibility, authority, exact targets, theft, and lifecycle",
     count,
     "assertions;",
     setupCount,

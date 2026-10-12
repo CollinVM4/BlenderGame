@@ -4,6 +4,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
+local ContextActionService = game:GetService("ContextActionService")
+local MobileControlLayout = require(script.Parent.Parent.UI.MobileControlLayout)
+local FireView = require(script.Parent.Parent.UI.IceShotgunFireView)
 local REVISION = "icegun-reequip-2026-10-11"
 local Config = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
 local Controller = {}
@@ -41,12 +44,21 @@ function Controller.Init()
     started = true
     local player = Players.LocalPlayer
     local character: Model? = nil
-    local nextShot = 0
+    local pendingUntil = 0
     local tools: { [Tool]: { RBXScriptConnection } } = {}
     local containers: { [Instance]: { RBXScriptConnection } } = {}
     local characterConnections: { RBXScriptConnection } = {}
     local reticle: ScreenGui? = nil
     local crosshair: Frame? = nil
+    local cooldownView: FireView.Handle? = nil
+    local actionBound = false
+    local requestFire: (Tool) -> ()
+    local function updateFireButton()
+        local button = if actionBound then ContextActionService:GetButton("IceShotgunFire") else nil
+        if button then
+            button.Visible = UserInputService.PreferredInput == Enum.PreferredInput.Touch
+        end
+    end
     local savedMouseEnabled: boolean? = nil
     local windowFocused = true
     local function restoreCursor()
@@ -113,6 +125,15 @@ function Controller.Init()
         end
     end
     local function hideReticle()
+        if actionBound then
+            actionBound = false
+            ContextActionService:UnbindAction("IceShotgunFire")
+            MobileControlLayout.Unregister("IceShotgunFire")
+        end
+        if cooldownView then
+            FireView.Destroy(cooldownView)
+            cooldownView = nil
+        end
         restoreCursor()
         crosshair = nil
         if reticle then
@@ -137,6 +158,7 @@ function Controller.Init()
         if reticle and reticle.Parent == gui then
             positionReticle()
             reconcileCursor()
+            updateFireButton()
             return
         end
         hideReticle()
@@ -188,9 +210,24 @@ function Controller.Init()
         dotStroke.Color = Color3.new(0, 0, 0)
         dotStroke.Thickness = 1
         dotStroke.Parent = dot
+        actionBound = true
+        ContextActionService:BindActionAtPriority("IceShotgunFire", function(_, state)
+            if state == Enum.UserInputState.Begin then
+                for tool in tools do
+                    if character and tool.Parent == character and tool:GetAttribute("IceGunWeapon") == true then
+                        requestFire(tool)
+                        break
+                    end
+                end
+            end
+            return Enum.ContextActionResult.Sink
+        end, true, 2100, Enum.KeyCode.ButtonR2)
+        ContextActionService:SetTitle("IceShotgunFire", "Fire")
+        MobileControlLayout.Register("IceShotgunFire")
         reticle, crosshair = screen, cross
         screen:GetPropertyChangedSignal("Enabled"):Connect(reconcileCursor)
         screen.Parent = gui
+        updateFireButton()
         positionReticle()
         reconcileCursor()
     end
@@ -215,6 +252,58 @@ function Controller.Init()
             selectedTool, selectedCharacter, selectedEquipped = tool, character, equipped
             event:FireServer("Select", tool, equipped, character)
             trace(player, "hotbar selection intent sent", tool)
+        end
+    end
+    requestFire = function(tool: Tool)
+        trace(player, "Tool.Activated fired", tool)
+        if tool:GetAttribute("IceGunWeapon") ~= true then
+            trace(player, "activation rejected: weapon attribute unavailable", tool)
+            return
+        end
+        local current = character
+        local camera = workspace.CurrentCamera
+        local h = current and current:FindFirstChildOfClass("Humanoid")
+        if not current or tool.Parent ~= current or player.Character ~= current then
+            trace(player, "activation rejected: Tool not equipped on current character", tool)
+            return
+        elseif not h or h.Health <= 0 then
+            trace(player, "activation rejected: missing/dead Humanoid", tool)
+            return
+        elseif not camera then
+            trace(player, "activation rejected: camera unavailable", tool)
+            return
+        elseif player:GetAttribute("Stunned") == true then
+            trace(player, "activation rejected: stunned/frozen", tool)
+            return
+        elseif UserInputService:GetFocusedTextBox() then
+            trace(player, "activation rejected: text input focused", tool)
+            return
+        elseif os.clock() < pendingUntil then
+            trace(player, "activation deferred: awaiting server response", tool)
+            return
+        end
+        if not gameplayInput() then
+            trace(player, "activation rejected: gameplay UI inactive", tool)
+            return
+        end
+        local point = aimPoint(camera)
+        local ray = camera:ViewportPointToRay(point.X, point.Y)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { current }
+        local length = Config.MaximumRange + Config.MaximumCameraDistance
+        local hit = workspace:Raycast(ray.Origin, ray.Direction * length, params)
+        local aim = if hit then hit.Position else ray.Origin + ray.Direction * length
+        local event = ReplicatedStorage:FindFirstChild("IceGunFire")
+        if event and event:IsA("RemoteEvent") then
+            -- Covers activation delivered before Equipped/ChildAdded notifications.
+            sendSelection(tool, true)
+            pendingUntil = os.clock() + 1.5
+            updateFireButton()
+            trace(player, "Fire RemoteEvent sent", tool)
+            event:FireServer(aim, ray.Origin, ray.Direction, current)
+        else
+            trace(player, "activation rejected: fire remote unavailable", tool)
         end
     end
     local function unwatch(tool: Tool)
@@ -248,14 +337,32 @@ function Controller.Init()
         end
         local list: { RBXScriptConnection } = {}
         tools[child] = list
-        table.insert(
-            list,
-            child:GetAttributeChangedSignal("IceGunWeapon"):Connect(function()
-                trace(player, "authorization attribute received", child)
+        -- Discovery observes attributes on all Tools to handle late replication,
+        -- but only an authorized weapon may own an activation listener.
+        local activation: RBXScriptConnection? = nil
+        local function reconcileActivation()
+            if activation then
+                activation:Disconnect()
+                local index = table.find(list, activation)
+                if index then
+                    table.remove(list, index)
+                end
+                activation = nil
+            end
+            if child:GetAttribute("IceGunWeapon") == true then
+                local connection = child.Activated:Connect(function()
+                    -- CAS owns touch/gamepad; native activation owns desktop.
+                    if pointerAim() and child:GetAttribute("IceGunWeapon") == true then
+                        requestFire(child)
+                    end
+                end)
+                activation = connection
+                table.insert(list, connection)
                 sendSelection(child)
-                updateReticle()
-            end)
-        )
+            end
+            updateReticle()
+        end
+        table.insert(list, child:GetAttributeChangedSignal("IceGunWeapon"):Connect(reconcileActivation))
         table.insert(
             list,
             child.Equipped:Connect(function()
@@ -296,66 +403,7 @@ function Controller.Init()
                 unwatch(child)
             end)
         )
-        table.insert(
-            list,
-            child.Activated:Connect(function()
-                trace(player, "Tool.Activated fired", child)
-                if child:GetAttribute("IceGunWeapon") ~= true then
-                    trace(player, "activation rejected: weapon attribute unavailable", child)
-                    return
-                end
-                local current = character
-                local camera = workspace.CurrentCamera
-                local h = current and current:FindFirstChildOfClass("Humanoid")
-                if not current or child.Parent ~= current or player.Character ~= current then
-                    trace(player, "activation rejected: Tool not equipped on current character", child)
-                    return
-                elseif not h or h.Health <= 0 then
-                    trace(player, "activation rejected: missing/dead Humanoid", child)
-                    return
-                elseif not camera then
-                    trace(player, "activation rejected: camera unavailable", child)
-                    return
-                elseif player:GetAttribute("Stunned") == true then
-                    trace(player, "activation rejected: stunned/frozen", child)
-                    return
-                elseif UserInputService:GetFocusedTextBox() then
-                    trace(player, "activation rejected: text input focused", child)
-                    return
-                elseif os.clock() < nextShot then
-                    trace(player, "activation rejected: local cooldown", child)
-                    return
-                end
-                if not gameplayInput() then
-                    trace(player, "activation rejected: gameplay UI inactive", child)
-                    return
-                end
-                local point = aimPoint(camera)
-                local ray = camera:ViewportPointToRay(point.X, point.Y)
-                local params = RaycastParams.new()
-                params.FilterType = Enum.RaycastFilterType.Exclude
-                params.FilterDescendantsInstances = { current }
-                local length = Config.MaximumRange + Config.MaximumCameraDistance
-                local hit = workspace:Raycast(ray.Origin, ray.Direction * length, params)
-                local aim = if hit then hit.Position else ray.Origin + ray.Direction * length
-                local event = ReplicatedStorage:FindFirstChild("IceGunFire")
-                if event and event:IsA("RemoteEvent") then
-                    -- Covers activation delivered before Equipped/ChildAdded notifications.
-                    sendSelection(child, true)
-                    nextShot = os.clock() + Config.ShotCooldown
-                    trace(player, "Fire RemoteEvent sent", child)
-                    event:FireServer(aim, ray.Origin, ray.Direction, current)
-                else
-                    trace(player, "activation rejected: fire remote unavailable", child)
-                end
-            end)
-        )
-        trace(player, "Tool.Activated listener connected", child)
-        if child:GetAttribute("IceGunWeapon") == true then
-            trace(player, "authorization attribute received", child)
-            sendSelection(child)
-        end
-        updateReticle()
+        reconcileActivation()
     end
     local function unwatchContainer(container: Instance)
         local list = containers[container]
@@ -392,7 +440,7 @@ function Controller.Init()
     local function bind(current: Model)
         clearCharacter()
         character = current
-        nextShot = 0
+        pendingUntil = 0
         watchContainer(current)
         local backpack = player:FindFirstChildOfClass("Backpack")
         if backpack then
@@ -402,6 +450,46 @@ function Controller.Init()
                 watch(child)
             end
         end
+    end
+    local resultRemote: RemoteEvent? = nil
+    local resultConnection: RBXScriptConnection? = nil
+    local function watchResults(object: Instance)
+        if object.Name ~= "IceGunFire" or not object:IsA("RemoteEvent") or resultRemote == object then
+            return
+        end
+        if resultConnection then
+            resultConnection:Disconnect()
+        end
+        resultRemote = object
+        resultConnection = object.OnClientEvent:Connect(
+            function(accepted: boolean, firingCharacter: Model?, deadline: number, reason: string?)
+                if firingCharacter ~= character or not character then
+                    return
+                end
+                pendingUntil = 0
+                if accepted then
+                    if cooldownView then
+                        FireView.Hide(cooldownView)
+                    end
+                elseif reason == "shot cooldown" and crosshair and gameplayInput() then
+                    local remaining = math.max(0, deadline - workspace:GetServerTimeNow())
+                    if remaining > 0 then
+                        if not cooldownView then
+                            cooldownView = FireView.Create(crosshair)
+                        end
+                        local view = cooldownView
+                        if view then
+                            FireView.Show(view, remaining)
+                        end
+                    end
+                end
+            end
+        )
+    end
+    ReplicatedStorage.ChildAdded:Connect(watchResults)
+    local remote = ReplicatedStorage:FindFirstChild("IceGunFire")
+    if remote then
+        watchResults(remote)
     end
     player.ChildAdded:Connect(function(child)
         if child:IsA("Backpack") then

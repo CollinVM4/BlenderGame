@@ -26,7 +26,7 @@ check(
 local gui = attachment:FindFirstChild("LockBaseDisplay")
 local label = gui:FindFirstChildOfClass("TextLabel")
 check(
-    attachment.Parent == assembly and assembly:IsA("BasePart") and gui.Adornee == attachment and not gui.Enabled,
+    attachment.Parent == button and button:IsA("BasePart") and gui.Adornee == attachment and not gui.Enabled,
     "exact nested attachment has valid host and no unclaimed countdown"
 )
 check(button.CanCollide and button.CanQuery and button.CanTouch, "binding repairs activation surface physics")
@@ -43,7 +43,10 @@ check(
     not security.IsLocked(plot) and not wall.CanCollide and laser.Transparency == 1,
     "claim keeps security and lasers inactive"
 )
-check(gui.Enabled and label.Text == "LOCK BASE", "claimed plot immediately displays only LOCK BASE")
+check(
+    gui:GetAttribute("LockBaseOccupied") == true and label.Text == "LOCK BASE",
+    "claimed plot immediately displays only LOCK BASE"
+)
 heartbeat:Fire(0.1)
 check(not security.IsLocked(plot), "claim placement on Button cannot auto-activate")
 standingOn[root.Position] = nil
@@ -138,25 +141,22 @@ check(
 tycoon.RemovePlayer(owner)
 check(
     not wall.CanCollide
-        and not gui.Enabled
+        and gui:GetAttribute("LockBaseOccupied") == false
         and laser.Transparency == 1
         and visual:GetPivot().Position.Y < authored.Position.Y,
     "release immediately resets actual visual/wall/UI state"
 )
 standingOn[root.Position] = nil
--- Invalid Model-hosted attachments from the former fixture are repaired in place.
+-- Invalid authored attachment hosts are never repaired or moved by presentation.
 local other = lockObject("Model", "InvalidAttachmentPlot", workspaceFake)
 local otherButton, _, otherVisual, invalidAttachment = securityAssets(other, "Model")
+local invalidHost = otherButton.Parent
+invalidAttachment.Parent = invalidHost
 local display = loadModule("LockBasePresentation").Bind(otherButton, invalidAttachment, otherVisual)
-check(
-    invalidAttachment.Parent == otherButton and invalidAttachment.Parent:IsA("BasePart"),
-    "Model-hosted authored attachment is repaired onto existing Button"
-)
 display.Update(true, now + 60, now)
-local repairedGui = invalidAttachment:FindFirstChild("LockBaseDisplay")
 check(
-    repairedGui.Enabled and repairedGui.StudsOffsetWorldSpace.Y == 3 and repairedGui.MaxDistance == 65,
-    "repaired world display appears above button for nearby players"
+    invalidAttachment.Parent == invalidHost and not invalidAttachment:FindFirstChild("LockBaseDisplay"),
+    "invalid attachment remains authored and does not generate a floating display"
 )
 display.Destroy()
 -- Opt-in contacts report meaningful entries, rather than every touched limb/frame.

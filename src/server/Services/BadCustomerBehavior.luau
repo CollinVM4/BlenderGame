@@ -3,7 +3,6 @@
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.BadCustomers)
 local Walk = require(script.Parent.CustomerWalk)
 local Placement = require(script.Parent.CustomerPlacement)
-local Knockback = require(script.Parent.BatKnockback)
 local RunService = game:GetService("RunService")
 local Behavior = {}
 
@@ -130,10 +129,14 @@ function Behavior.Reject(record: any, context: any, ragdoll: any)
             root.AssemblyAngularVelocity = Vector3.new(tuning.TumbleSpeed, 0, tuning.TumbleSpeed / 2)
             local look = root.CFrame.LookVector
             local away = Vector3.new(look.X, 0, look.Z)
-            Knockback.Apply(root, if away.Magnitude > 0.001 then away.Unit else Vector3.new(0, 0, -1), {
-                HorizontalKnockback = tuning.LaunchHorizontal,
-                VerticalKnockback = tuning.LaunchVertical,
-            })
+            local direction = if away.Magnitude > 0.001 then away.Unit else Vector3.new(0, 0, -1)
+            -- Dedicated rejection tuning must not inherit ordinary combat's speed cap.
+            local mass = root.AssemblyMass
+            if not root.Anchored and mass > 0 and mass < math.huge then
+                root:ApplyImpulse(
+                    (direction * tuning.LaunchHorizontal + Vector3.new(0, tuning.LaunchVertical, 0)) * mass
+                )
+            end
         end)
         if not launched then
             context.Destroy()

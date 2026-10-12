@@ -31,7 +31,6 @@ local GameplaySfx = require(script.Parent.GameplaySfxService)
 local OrderEvaluation = require(script.Parent.CustomerOrderEvaluation)
 local BadCustomers = require(Shared.Constants.BadCustomers)
 local BadBehavior = require(script.Parent.BadCustomerBehavior)
-local RejectFloorButton = require(script.Parent.RejectFloorButton)
 local CustomerService = {}
 local deps: any
 local onServed: (Player, Types.Grade?) -> ()
@@ -371,6 +370,13 @@ local function candidateFor(player: Player, template: Model): Candidate?
         end
     else
         request = nil
+    end
+    if
+        config
+        and (config.BadCustomerType == "Thief" or config.BadCustomerType == "Freeloader")
+        and not deps.TycoonService.HasBat(player)
+    then
+        return nil
     end
     local weight = if config and config.Weight then config.Weight else 1
     if weight ~= weight or weight <= 0 or weight == math.huge then
@@ -898,7 +904,7 @@ local function hitRecord(player: Player, model: Model): (any, any)
     return nil, nil
 end
 
--- Combat may cross plot boundaries; serving/reject buttons still use hitRecord.
+-- Normal customer combat may cross plots; bad encounters require target membership.
 local function combatRecord(player: Player, model: Model): (any, any)
     if key(player) == "" or not model:IsDescendantOf(workspace) then
         return nil, nil
@@ -959,7 +965,6 @@ local function behaviorContext(record: any, queue: any): any
         local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
         return owner ~= nil
             and current(owner, queue)
-            and (not bad(record) or record.SpawnOwnerUserId == owner.UserId)
             and record.RuntimeToken == token
             and ownedModels[queue.SessionId] ~= nil
             and ownedModels[queue.SessionId][record.Model] == record
@@ -988,7 +993,13 @@ local function behaviorContext(record: any, queue: any): any
             return
         end
         task.delay(BadCustomers.ExitTimeout, context.Destroy)
-        Walk.Move(record, Placement.AtMarker(exit, record.BottomOffset), function()
+        Walk.Move(record, Placement.AtMarker(exit, record.BottomOffset), function(reached)
+            if not context.Valid() then
+                return
+            end
+            if reached and record.State == "Escaping" then
+                record.Escaped = true
+            end
             context.Destroy()
         end)
     end
@@ -1028,100 +1039,42 @@ local function badCue(record: any, cue: string)
     end)
 end
 
--- Revealed thieves are explicitly associated with this plot's lifetime registry.
--- Hidden queue occupants never get discovered by the override.
-function CustomerService.ResolveRejectTarget(player: Player): Model?
-    local queue = queues[key(player)]
-    if not queue or not current(player, queue) or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= player then
-        return nil
-    end
-    -- Escaping wins over Stealing; ties use the oldest encounter deterministically.
-    local fallback: any = nil
-    for _, record in queue.Records do
-        local humanoid = record.Model:FindFirstChildOfClass("Humanoid")
-        if
-            bad(record)
-            and record.BadCustomerType == "Thief"
-            and (record.State == "Stealing" or record.State == "Escaping")
-            and record.SessionId == queue.SessionId
-            and record.Model:IsDescendantOf(workspace)
-            and record.SpawnOwnerUserId == player.UserId
-            and (not humanoid or humanoid.Health > 0)
-            and (
-                not fallback
-                or (record.State == "Escaping" and fallback.State ~= "Escaping")
-                or (record.State == fallback.State and record.Sequence < fallback.Sequence)
-            )
-        then
-            fallback = record
-        end
-    end
-    if fallback then
-        return fallback.Model
-    end
-    for _, record in queue.Customers do
-        if active(record) and record.SessionId == queue.SessionId and record.Model:IsDescendantOf(workspace) then
-            return record.Model
-        end
-    end
+-- Retired server APIs are inert even when called by a legacy adapter.
+function CustomerService.ResolveRejectTarget(_player: Player): Model?
     return nil
 end
-
-function CustomerService.DismissCustomer(player: Player, model: Model, _reason: string?, context: any): boolean
-    local record, queue = hitRecord(player, model)
-    if
-        not record
-        or not active(record)
-        or bad(record)
-        or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= player
-    then
-        return false
-    end
-    local transaction =
-        deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
-    if not transaction then
-        return false
-    end
-    record.Bubble.MaxDistance = CUSTOMER_ORDER_MAX_DISTANCE
-    record.State = "Dismissed" -- Claim before any Immediate signals/presentation.
-    invalidate(record)
-    releaseQueue(record, queue)
-    record.Model:SetAttribute("OrderRevealed", true)
-    record.Model:SetAttribute("Reaction", "Disgust")
-    local responses = BadCustomers.DismissalResponses
-    typewriterText(record.Text, responses[math.random(1, #responses)], record.Audio.dialogueSound)
-    Film.Emit(player, "CustomerReaction", { Customer = model, ReactionId = "Disgust", PlotSessionId = transaction })
-    local runtime = behaviorContext(record, queue)
-    deps.TycoonService.EndTransaction(transaction)
-    if record.Recovering then
-        pcall(function()
-            deps.RagdollService.SetRagdolled(model, false)
-        end)
-        record.Recovering = false
-    end
-    -- Like normal service, hold the reaction briefly while queue authority has
-    -- already moved on. Missing exits still clean immediately.
-    if runtime.Marker("CustomerExit") then
-        task.delay(BadCustomers.DismissalResponseHold, runtime.Exit)
-    else
-        runtime.Destroy()
-    end
-    return true
+function CustomerService.DismissCustomer(_player: Player, _model: Model, _reason: string?, _context: any): boolean
+    return false
+end
+function CustomerService.RejectFront(_player: Player, _plot: Instance?, _context: any): boolean
+    return false
 end
 
--- The ONLY bad-customer rejection entry. Button and valid owner Bat hit share it.
-function CustomerService.RejectCustomer(player: Player, model: Model, _reason: string, context: any): boolean
+local function releaseStolen(record: any)
+    local stolen = record.StolenIngredient
+    record.StolenIngredient = nil -- claim before publication can emit synchronous signals
+    if record.StolenVisual then
+        record.StolenVisual:Destroy()
+        record.StolenVisual = nil
+    end
+    if stolen then
+        deps.InventoryService.ReleaseThiefIngredient(stolen, record.Root.CFrame * CFrame.new(0, 2, -4))
+    end
+end
+
+-- This pipeline is private: only the validated exact-model Bat hit calls it.
+local function rejectCustomer(player: Player, model: Model): boolean
     local record, queue = hitRecord(player, model)
     if
         not record
         or not active(record)
         or not bad(record)
-        or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= player
+        or not deps.TycoonService.HasBat(player)
+        or not deps.CombatService.IsBatEquipped(player)
     then
         return false
     end
-    local transaction =
-        deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
+    local transaction = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
     if not transaction then
         return false
     end
@@ -1130,17 +1083,7 @@ function CustomerService.RejectCustomer(player: Player, model: Model, _reason: s
     invalidate(record)
     record.Recovering = true
     releaseQueue(record, queue)
-    local stolen = record.StolenIngredient
-    -- Rejected is the exclusive claim. Relinquish ownership and remove the inert
-    -- carried projection before world publication, audio, ragdoll or impulse.
-    record.StolenIngredient = nil
-    if record.StolenVisual then
-        record.StolenVisual:Destroy()
-        record.StolenVisual = nil
-    end
-    if stolen then
-        deps.InventoryService.ReleaseThiefIngredient(stolen, record.Root.CFrame * CFrame.new(0, 2, -4))
-    end
+    releaseStolen(record)
     badCue(record, "Reject")
     local runtime = behaviorContext(record, queue)
     deps.TycoonService.EndTransaction(transaction)
@@ -1150,58 +1093,8 @@ function CustomerService.RejectCustomer(player: Player, model: Model, _reason: s
     return true
 end
 
-function CustomerService.RejectFront(player: Player, plot: Instance?, context: any): boolean
-    local queue = queues[key(player)]
-    if not queue or (plot and queue.Plot ~= plot) then
-        return false
-    end
-    local model = CustomerService.ResolveRejectTarget(player)
-    if not model then
-        return false
-    end
-    local record = hitRecord(player, model)
-    if not record then
-        return false
-    end
-    return if bad(record)
-        then CustomerService.RejectCustomer(player, model, "RejectButton", context)
-        else CustomerService.DismissCustomer(player, model, "RejectedByOwner", context)
-end
-
-local function bindRejectButton(queue: any)
-    local assembly = queue.Plot:FindFirstChild("RejectButton")
-    local button = assembly and assembly:FindFirstChild("Button")
-    local base = assembly and assembly:FindFirstChild("BlackBase")
-    local origin = assembly and assembly:FindFirstChild("Attachment")
-    if
-        not button
-        or not button:IsA("BasePart")
-        or not base
-        or not base:IsA("BasePart")
-        or not origin
-        or not origin:IsA("Attachment")
-    then
-        if RunService:IsStudio() then
-            warn("[Customer] RejectButton needs sibling Button, BlackBase, Attachment; interaction skipped")
-        end
-        return
-    end
-    local oldPrompt = button:FindFirstChild("RejectPrompt")
-    if oldPrompt then
-        oldPrompt:Destroy()
-    end
-    queue.RejectCleanup = RejectFloorButton.Bind(button, origin, function()
-        return if queues[queue.SessionId] == queue then deps.TycoonService.GetSessionOwner(queue.SessionId) else nil
-    end, function(actor)
-        return current(actor, queue)
-            and WorldUtil.Near(actor, button, 10)
-            and CustomerService.ResolveRejectTarget(actor) ~= nil
-    end, function(actor)
-        if queues[queue.SessionId] ~= queue or deps.TycoonService.GetSessionOwner(queue.SessionId) ~= actor then
-            return false
-        end
-        return CustomerService.RejectFront(actor, queue.Plot, deps.TycoonService.GetRequestContext(actor))
-    end)
+function CustomerService.RejectCustomer(_player: Player, _model: Model, _reason: string, _context: any): boolean
+    return false
 end
 
 function CustomerService.CanHitCustomer(player: Player, model: Model): boolean
@@ -1209,7 +1102,15 @@ function CustomerService.CanHitCustomer(player: Player, model: Model): boolean
     if model:FindFirstChildOfClass("ForceField") then
         return false
     end
-    if record and bad(record) and active(record) and deps.TycoonService.GetSessionOwner(record.SessionId) == player then
+    if record and bad(record) then
+        if
+            not active(record)
+            or key(player) ~= record.SessionId
+            or not deps.TycoonService.HasBat(player)
+            or not deps.CombatService.IsBatEquipped(player)
+        then
+            return false
+        end
         local humanoid = model:FindFirstChildOfClass("Humanoid")
         return record.Root.Parent ~= nil and not record.Root.Anchored and humanoid ~= nil and humanoid.Health > 0
     end
@@ -1254,19 +1155,10 @@ function CustomerService.HitCustomer(
         return false
     end
     local candidate = combatRecord(player, model)
-    if
-        candidate
-        and bad(candidate)
-        and active(candidate)
-        and deps.TycoonService.GetSessionOwner(candidate.SessionId) == player
-    then
-        return CustomerService.RejectCustomer(player, model, "Bat", nil)
+    if candidate and bad(candidate) then
+        return rejectCustomer(player, model)
     end
     local record, queue = combatRecord(player, model)
-    local specialInterrupted = bad(record) and (record.State == "Stealing" or record.State == "Escaping")
-    if specialInterrupted then
-        record.RuntimeToken += 1
-    end
     local token = (record.RecoveryToken or 0) + 1
     record.RecoveryToken = token
     record.Recovering = true
@@ -1288,10 +1180,6 @@ function CustomerService.HitCustomer(
             return
         end
         record.Recovering = false
-        if specialInterrupted then
-            BadBehavior.Thief(record, behaviorContext(record, queue))
-            return
-        end
         record.ReturningFromHit = true
         if record.Served then
             record.ResumeExit()
@@ -1377,7 +1265,11 @@ function CustomerService.ActivateForPlayer(player: Player, tutorial: boolean?): 
         queue.NextNormalAt = 0
     end
     queues[key(player)] = queue
-    bindRejectButton(queue)
+    -- Remove the authored action and all descendants, including old displays/prompts.
+    local legacyButton = plot:FindFirstChild("RejectButton")
+    if legacyButton then
+        legacyButton:Destroy()
+    end
     queue.PlotConnection = plot.AncestryChanged:Connect(function()
         if queues[queue.SessionId] == queue and not current(player, queue) then
             CustomerService.CleanupSession(queue.SessionId)
@@ -1598,7 +1490,6 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
     end
     local record: any = {
         State = "Queued",
-        SpawnOwnerUserId = player.UserId,
         RuntimeToken = 0,
         Rejectable = candidate and candidate.Rejectable == true,
         BadCustomerType = if candidate then candidate.BadCustomerType else nil,
@@ -1677,12 +1568,14 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
     end)
     model.Destroying:Connect(function()
         record.State = "Destroyed"
-        -- Escape, death/reset and generic cleanup consume held loot; only the
-        -- successful rejection operation above is allowed to publish a drop.
-        record.StolenIngredient = nil
-        record.StolenVisual = nil
         record.RuntimeToken += 1
         Walk.Cancel(record)
+        if record.Escaped then
+            record.StolenIngredient = nil
+            record.StolenVisual = nil
+        else
+            releaseStolen(record)
+        end
         if deps.RagdollService then
             pcall(function()
                 deps.RagdollService.CleanupCharacter(model)
@@ -2089,9 +1982,6 @@ local function cleanupFlow(sessionId: string)
     if queue and queue.PlotConnection then
         queue.PlotConnection:Disconnect()
     end
-    if queue and queue.RejectCleanup then
-        queue.RejectCleanup()
-    end
     local models = ownedModels[sessionId]
     ownedModels[sessionId] = nil
     if models then
@@ -2118,7 +2008,11 @@ function CustomerService.BindPlayer(player: Player)
         local owner = deps.TycoonService.GetSessionOwner(queue.SessionId)
         if owner then
             for model, record in table.clone((ownedModels[queue.SessionId] or {}) :: { [Model]: any }) do
-                if bad(record) and record.SpawnOwnerUserId ~= owner.UserId then
+                if bad(record) and active(record) and not deps.TycoonService.HasBat(owner) then
+                    record.State = "Cancelled"
+                    invalidate(record)
+                    releaseQueue(record, queue)
+                    releaseStolen(record)
                     model:Destroy()
                 else
                     model:SetAttribute("OwnerUserId", owner.UserId)

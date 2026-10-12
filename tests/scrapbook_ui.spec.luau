@@ -1,154 +1,195 @@
+local count = 0
 local function check(value, message)
     assert(value, message)
+    count += 1
 end
 local function signal()
     local callbacks = {}
     return {
-        Connect = function(_, fn)
-            table.insert(callbacks, fn)
+        Connect = function(_, callback)
+            local entry = { fn = callback, live = true }
+            table.insert(callbacks, entry)
+            return {
+                Disconnect = function()
+                    entry.live = false
+                end,
+            }
         end,
         Fire = function(_, ...)
-            for _, fn in callbacks do
-                fn(...)
+            for _, callback in callbacks do
+                if callback.live then
+                    callback.fn(...)
+                end
             end
         end,
     }
 end
-local function color(r, g, b)
-    return {
-        R = r,
-        G = g,
-        B = b,
-        Lerp = function(self)
-            return self
-        end,
+local function instance(class, name, parent)
+    local properties = {
+        Enabled = true,
+        Visible = true,
+        TextTransparency = 0,
+        Text = "INDEX",
+        AbsoluteWindowSize = { X = 800, Y = 450 },
     }
-end
-local methods = {}
-local meta = {
-    __index = function(self, key)
-        return methods[key] or self.props[key]
-    end,
-    __newindex = function(self, key, value)
-        if key == "Parent" and value then
-            table.insert(value.children, self)
-        end
-        self.props[key] = value
-    end,
-}
-local function node(class, name, parent)
-    local object = setmetatable({
-        props = {
-            ClassName = class,
-            Name = name or class,
-            Visible = true,
-            ImageColor3 = color(1, 1, 1),
-            BackgroundColor3 = color(0.2, 0.2, 0.2),
-            AbsoluteSize = { X = 600, Y = 200 },
-            AbsoluteContentSize = { X = 600, Y = 200 },
-            Activated = signal(),
-            Destroying = signal(),
-        },
+    local propertySignals = {}
+    local object = {
+        ClassName = class,
+        Name = name,
+
         children = {},
-    }, meta)
+        DescendantAdded = signal(),
+        DescendantRemoving = signal(),
+        Activated = signal(),
+        Destroying = signal(),
+        AncestryChanged = signal(),
+        TextWrites = 0,
+        attributes = {},
+    }
+    setmetatable(object, {
+        __index = properties,
+        __newindex = function(self, key, value)
+            if key == "Text" or key == "Enabled" or key == "Visible" then
+                local old = properties[key]
+                properties[key] = value
+                if key == "Text" then
+                    self.TextWrites += 1
+                end
+                if old ~= value and propertySignals[key] then
+                    propertySignals[key]:Fire()
+                end
+            elseif key == "Parent" then
+                properties.Parent = value
+                if value and not table.find(value.children, self) then
+                    table.insert(value.children, self)
+                end
+            else
+                rawset(self, key, value)
+            end
+        end,
+    })
+    function object:IsA(want)
+        return self.ClassName == want
+            or (want == "GuiButton" and (self.ClassName == "TextButton" or self.ClassName == "ImageButton"))
+            or (
+                want == "GuiObject"
+                and table.find({
+                        "Frame",
+                        "CanvasGroup",
+                        "ScrollingFrame",
+                        "TextLabel",
+                        "TextButton",
+                        "ImageButton",
+                        "ImageLabel",
+                    }, self.ClassName)
+                    ~= nil
+            )
+    end
+    function object:SetAttribute(key, value)
+        self.attributes[key] = value
+    end
+    function object:GetAttribute(key)
+        return self.attributes[key]
+    end
+    function object:GetChildren()
+        return table.clone(self.children)
+    end
+    function object:GetDescendants()
+        local descendants = {}
+        for _, c in self.children do
+            table.insert(descendants, c)
+            for _, d in c:GetDescendants() do
+                table.insert(descendants, d)
+            end
+        end
+        return descendants
+    end
+    function object:GetAttributeChangedSignal(name)
+        return self:GetPropertyChangedSignal("attribute:" .. name)
+    end
+    function object:GetPropertyChangedSignal(name)
+        propertySignals[name] = propertySignals[name] or signal()
+        return propertySignals[name]
+    end
+    function object:FindFirstChild(want)
+        for _, c in self.children do
+            if c.Name == want then
+                return c
+            end
+        end
+    end
+    function object:IsDescendantOf(ancestor)
+        local p = self.Parent
+        while p do
+            if p == ancestor then
+                return true
+            end
+            p = p.Parent
+        end
+        return false
+    end
+    function object:WaitForChild(name)
+        return self:FindFirstChild(name)
+    end
+    function object:FindFirstChildOfClass(class)
+        for _, child in self.children do
+            if child:IsA(class) then
+                return child
+            end
+        end
+    end
+    function object:Clone()
+        local copy = instance(self.ClassName, self.Name)
+        for key, value in properties do
+            if key ~= "Parent" then
+                copy[key] = value
+            end
+        end
+        copy.attributes = table.clone(self.attributes)
+        for _, child in self.children do
+            local cloned = child:Clone()
+            cloned.Parent = copy
+        end
+        return copy
+    end
+    function object:Destroy()
+        self.Destroying:Fire()
+        if self.Parent then
+            local index = table.find(self.Parent.children, self)
+            if index then
+                table.remove(self.Parent.children, index)
+            end
+        end
+        self.Parent = nil
+        self.AncestryChanged:Fire(self, nil)
+    end
     object.Parent = parent
     return object
 end
-function methods:IsA(class)
-    return self.ClassName == class
-end
-function methods:FindFirstChild(name)
-    for _, child in self.children do
-        if child.Name == name then
-            return child
-        end
+local playerGui = instance("PlayerGui", "PlayerGui")
+local function import()
+    local objects = { [0] = playerGui }
+    for _, n in exportNodes do
+        objects[n[1]] = instance(n[3], n[4], objects[n[2]])
     end
-    return nil
+    return objects[1]
 end
-function methods:WaitForChild(name)
-    return self:FindFirstChild(name)
-end
-function methods:FindFirstChildOfClass(class)
-    for _, child in self.children do
-        if child.ClassName == class then
-            return child
-        end
-    end
-    return nil
-end
-function methods:GetPropertyChangedSignal()
-    return signal()
-end
-function methods:GetFullName()
-    return if self.Parent then self.Parent:GetFullName() .. "." .. self.Name else self.Name
-end
-function methods:Clone()
-    local copy = node(self.ClassName, self.Name)
-    for key, value in self.props do
-        if key ~= "Parent" and key ~= "Activated" then
-            copy[key] = value
-        end
-    end
-    for _, child in self.children do
-        child:Clone().Parent = copy
-    end
-    return copy
-end
-local function get(root, path)
-    for part in path:gmatch("[^.]+") do
-        root = assert(root:FindFirstChild(part), part)
-    end
-    return root
-end
-local function hierarchy()
-    local gui = node("ScreenGui", "ScrapbookGui")
-    node("ImageButton", "OpenButton", gui)
-    local window = node("Frame", "Window", gui)
-    node("ImageButton", "CloseButton", window)
-    local tabs = node("Frame", "Tabs", window)
-    node("TextButton", "IngredientsButton", tabs)
-    node("TextButton", "CustomersButton", tabs)
-    local pages = node("Frame", "Pages", window)
-    for _, config in
-        { { "Ingredients", "Rarity", "Ingredient", "Artwork" }, { "Customers", "Jump", "Customer", "Portrait" } }
-    do
-        local page = node("Frame", config[1] .. "Page", pages)
-        local scroll = node("ScrollingFrame", "Scroll", page)
-        node("UIListLayout", nil, scroll)
-        local section = node("Frame", config[2] .. "SectionTemplate", scroll)
-        local header = node("Frame", "Header", section)
-        node("TextLabel", "Title", header)
-        local grid = node("Frame", "Grid", section)
-        node("UIGridLayout", nil, grid)
-        local card = node("Frame", config[3] .. "CardTemplate", grid)
-        node("ImageLabel", config[4], card)
-        node("TextLabel", "Name", card)
-        if config[1] == "Ingredients" then
-            node("TextLabel", "Rarity", card)
-            node("TextLabel", "Value", card)
-        end
-    end
-    return gui
-end
-local modules = { Types = {} }
-local shared = node("Folder", "Shared")
-shared.MoneyFormat = "MoneyFormat"
-shared.Constants = {
-    Ingredients = "Ingredients",
-    CustomerRequests = "CustomerRequests",
-    DiscoveryCatalog = "DiscoveryCatalog",
-    ScrapbookArtwork = "ScrapbookArtwork",
-}
-shared.Types = "Types"
-local playerGui = node("PlayerGui", "PlayerGui")
-local player = node("Player", "Player")
+local player = instance("Player", "Player")
+player.CharacterAdded = signal()
 playerGui.Parent = player
-local services = { ReplicatedStorage = { Shared = shared }, Players = { LocalPlayer = player } }
-local jobs, warnings = {}, {}
-local function resume(thread, ...)
-    local ok, err = coroutine.resume(thread, ...)
-    assert(ok, err)
-end
+
+local jobs, deferred = {}, {}
+local shared = {
+    Constants = {
+        Ingredients = "Ingredients",
+        CustomerRequests = "CustomerRequests",
+        DiscoveryCatalog = "DiscoveryCatalog",
+        ScrapbookArtwork = "ScrapbookArtwork",
+    },
+    MoneyFormat = "MoneyFormat",
+    Types = "Types",
+}
+local modules = { Types = {} }
 local function load(name)
     if modules[name] then
         return modules[name]
@@ -158,273 +199,275 @@ local function load(name)
         fn,
         setmetatable({
             game = {
-                GetService = function(_, service)
-                    return services[service]
+                GetService = function(_, name)
+                    return if name == "Players" then { LocalPlayer = player } else { Shared = shared }
                 end,
             },
             script = {
                 Parent = {
-                    BadCustomers = "BadCustomers",
+                    UIRegistry = "UIRegistry",
+                    PanelManager = "PanelManager",
                     Ingredients = "Ingredients",
                     CustomerRequests = "CustomerRequests",
-                    Parent = { UI = { ScrapbookPresentation = "ScrapbookPresentation", PanelManager = "PanelManager" } },
+                    BadCustomers = "BadCustomers",
+                    Parent = {
+                        UI = { ScrapbookPresentation = "ScrapbookPresentation", FramewispMenus = "FramewispMenus" },
+                    },
                 },
             },
             require = load,
-            Color3 = { new = color, fromRGB = color },
-            UDim = {
+            Color3 = {
                 new = function(...)
                     return { ... }
+                end,
+                fromRGB = function(...)
+                    return { ... }
+                end,
+            },
+            UDim = {
+                new = function(s, o)
+                    return { Scale = s, Offset = o }
                 end,
             },
             UDim2 = {
-                new = function(...)
-                    return { ... }
+                fromOffset = function(x, y)
+                    return { X = { Offset = x }, Y = { Offset = y } }
                 end,
-                fromOffset = function(...)
-                    return { ... }
+            },
+            Instance = {
+                new = function(class)
+                    return instance(class, class)
                 end,
             },
             Enum = {
-                AutomaticSize = { Y = "Y", None = "None" },
-                FillDirection = { Vertical = "Vertical", Horizontal = "Horizontal" },
+                FillDirection = { Horizontal = "Horizontal" },
                 SortOrder = { LayoutOrder = "LayoutOrder" },
                 ScrollingDirection = { Y = "Y" },
-                ScaleType = { Fit = "Fit" },
+                AutomaticSize = { Y = "Y" },
             },
-            Instance = { new = node },
             task = {
                 spawn = function(fn)
                     table.insert(jobs, coroutine.create(fn))
                 end,
+                defer = function(fn)
+                    table.insert(deferred, fn)
+                end,
             },
             warn = function(message)
-                table.insert(warnings, message)
+                error(message)
             end,
         }, { __index = getfenv() })
     )
     modules[name] = fn()
     return modules[name]
 end
-local presentation = load("ScrapbookPresentation")
-local controller = load("ScrapbookController")
-local catalog = load("DiscoveryCatalog")
-local artwork = load("ScrapbookArtwork")
-for value, expected in
-    {
-        [250] = "$250",
-        [500] = "$500",
-        [1000] = "$1K",
-        [1500] = "$1.5K",
-        [12000] = "$12K",
-        [165000] = "$165K",
-        [1e6] = "$1M",
-        [1.2e6] = "$1.2M",
-    }
-do
-    check(presentation.FormatValue(value) == expected, "compact value formatting")
-end
-check(artwork.GetIngredient("unknown") == "" and artwork.GetSpecialCustomer("walter") == "", "empty artwork fallback")
-local ingredients = catalog.GetIngredients()
-local groups = presentation.Group(ingredients, function(entry)
-    return entry.Rarity
-end)
-local flattened = {}
-for _, group in groups do
-    for _, entry in group.Entries do
-        table.insert(flattened, entry.Id)
+local function flush()
+    while #deferred > 0 do
+        local pending = deferred
+        deferred = {}
+        for _, fn in pending do
+            fn()
+        end
     end
 end
-for index, entry in ingredients do
-    check(flattened[index] == entry.Id, "grouping preserves canonical order")
+local function resume(thread, ...)
+    local ok, err = coroutine.resume(thread, ...)
+    assert(ok, err)
 end
-check(groups[1].Key == "Common" and groups[#groups].Key == "Mystery", "rarity sections")
+local function descend(root, name)
+    for _, child in root:GetDescendants() do
+        if child.Name == name then
+            return child
+        end
+    end
+end
+local presentation, controller, catalog, artwork =
+    load("ScrapbookPresentation"), load("ScrapbookController"), load("DiscoveryCatalog"), load("ScrapbookArtwork")
+local entries = catalog.GetIngredients()
+for i, entry in entries do
+    if i > 1 then
+        local previous = entries[i - 1]
+        check(
+            catalog.RarityOrder[previous.Rarity] < catalog.RarityOrder[entry.Rarity]
+                or (previous.Rarity == entry.Rarity and previous.Id < entry.Id),
+            "canonical ordering"
+        )
+    end
+end
+check(artwork.GetIngredient("missing") == "", "safe missing thumbnail")
+artwork.Ingredients.Strawberry = "authored-test-thumbnail"
 local state = { Ingredients = {}, SpecialCustomers = {} }
-check(controller.MergeDelta(state, { Kind = "Ingredient", Id = "Strawberry" }), "first delta")
-check(not controller.MergeDelta(state, { Kind = "Ingredient", Id = "Strawberry" }), "duplicate delta is idempotent")
+check(controller.MergeDelta(state, { Kind = "Ingredient", Id = "Strawberry" }), "new discovery")
+check(not controller.MergeDelta(state, { Kind = "Ingredient", Id = "Strawberry" }), "duplicate discovery")
 controller.MergeSnapshot(
     state,
-    { Ingredients = { Banana = true, Strawberry = false }, SpecialCustomers = { walter = true } }
+    { Ingredients = { Strawberry = false, Banana = true }, SpecialCustomers = { walter = true } }
 )
-check(
-    state.Ingredients.Strawberry and state.Ingredients.Banana and state.SpecialCustomers.walter,
-    "snapshot union never erases delta"
-)
-local gui = hierarchy()
-local view = presentation.Create(
-    gui,
-    { Ingredients = {}, SpecialCustomers = {} },
-    { Open = function() end, Close = function() end, SelectTab = function() end }
-)
-local scroll = get(gui, "Window.Pages.IngredientsPage.Scroll")
-local strawberryEntry
-for _, entry in ingredients do
-    if entry.Id == "Strawberry" then
-        strawberryEntry = entry
-    end
-end
-local card = get(scroll, "Section_" .. string.upper(strawberryEntry.Rarity) .. ".Grid.Ingredient_Strawberry")
-check(get(card, "Name").Text == "???" and get(card, "Value").Text == "$???", "locked card masks name/value")
-check(
-    get(card, "Artwork").Image == "" and get(card, "Artwork").ImageColor3.R == 0,
-    "missing artwork still creates locked card"
-)
-view.UpdateDiscovery({ Kind = "Ingredient", Id = "Strawberry" })
-check(
-    get(card, "Name").Text == strawberryEntry.DisplayName
-        and get(card, "Value").Text == presentation.FormatValue(strawberryEntry.Value),
-    "live unlock reveals existing card"
-)
-check(
-    get(card, "Artwork").ImageColor3.R == 1 and get(card, "Rarity").Text == strawberryEntry.Rarity,
-    "restores tint and retains rarity"
-)
-check(
-    get(scroll, "Section_" .. string.upper(strawberryEntry.Rarity) .. ".Grid.Ingredient_Strawberry") == card,
-    "unlock keeps card instance"
-)
-local customersScroll = get(gui, "Window.Pages.CustomersPage.Scroll")
-for _, group in
-    presentation.Group(catalog.GetSpecialCustomers(), function(entry)
-        return tostring(entry.MinJumpTier)
-    end)
-do
-    for index, entry in group.Entries do
-        local customer = get(customersScroll, "Section_JUMP " .. group.Key .. ".Grid.Customer_" .. index)
-        check(get(customer, "Name").Text == "???", "customer identity hidden")
-        if entry.Id == "walter" then
-            view.UpdateDiscovery({ Kind = "SpecialCustomer", Id = "WalterWhite" })
-            check(get(customer, "Name").Text == "???", "display name is not an unlock key")
-            view.UpdateDiscovery({ Kind = "SpecialCustomer", Id = "walter" })
-            check(
-                get(customer, "Name").Text == entry.DisplayName and get(customer, "Portrait").ImageColor3.R == 1,
-                "canonical customer ID reveals portrait/name"
-            )
-        end
-    end
-end
-local bad = hierarchy()
-get(bad, "Window.Pages.IngredientsPage.Scroll.RaritySectionTemplate.Grid.IngredientCardTemplate.Name").Name =
-    "Misspelled"
-local ok, err = pcall(presentation.Create, bad, state, {})
-check(
-    not ok
-        and string.find(
-            err,
-            "ScrapbookGui.Window.Pages.IngredientsPage.Scroll.RaritySectionTemplate.Grid.IngredientCardTemplate.Name missing",
-            1,
-            true
-        ),
-    "missing hierarchy reports exact path"
-)
--- Execute the real controller while InvokeServer is suspended. Exercise UI ready
--- both before and after snapshot completion, without mocking the presentation.
+check(state.Ingredients.Strawberry and state.Ingredients.Banana and state.SpecialCustomers.walter, "snapshot union")
 for _, uiFirst in { true, false } do
-    jobs, warnings = {}, {}
     playerGui.children = {}
-    local live = hierarchy()
-    live.Parent = playerGui
-    shared.children = {}
-    local events = node("Folder", "Events", shared)
-    local added = node("RemoteEvent", "DiscoveryAdded", events)
-    added.OnClientEvent = signal()
-    local snapshot = node("RemoteFunction", "DiscoverySnapshot", events)
+    jobs = {}
+    local root = if uiFirst then import() else nil
+    local events = instance("Folder", "Events")
+    local delta = instance("RemoteEvent", "DiscoveryAdded", events)
+    delta.OnClientEvent = signal()
+    local snapshot = instance("RemoteFunction", "DiscoverySnapshot", events)
     snapshot.InvokeServer = function()
-        added.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Strawberry" })
+        delta.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Strawberry" })
         return coroutine.yield()
     end
-    modules.ScrapbookController = nil
-    load("ScrapbookController").Init()
+    local stop = controller.Start(playerGui, events, player)
     resume(jobs[1])
-    if uiFirst then
-        resume(jobs[2])
+    if not root then
+        root = import()
+        playerGui.DescendantAdded:Fire(root)
+        flush()
     end
-    added.OnClientEvent:Fire({ Kind = "SpecialCustomer", Id = "walter" })
-    resume(jobs[1], { Ingredients = { Banana = true }, SpecialCustomers = {} })
-    if not uiFirst then
-        resume(jobs[2])
-    end
-    local liveCard = get(
-        live,
-        "Window.Pages.IngredientsPage.Scroll.Section_"
-            .. string.upper(strawberryEntry.Rarity)
-            .. ".Grid.Ingredient_Strawberry"
-    )
-    check(get(liveCard, "Name").Text == strawberryEntry.DisplayName, "late snapshot cannot overwrite in-flight delta")
-    for _, entry in ingredients do
-        if entry.Id == "Banana" or entry.Id == "Apple" then
-            local other = get(
-                live,
-                "Window.Pages.IngredientsPage.Scroll.Section_"
-                    .. string.upper(entry.Rarity)
-                    .. ".Grid.Ingredient_"
-                    .. entry.Id
-            )
-            if entry.Id == "Banana" then
-                check(get(other, "Name").Text == entry.DisplayName, "snapshot-only discovery renders")
-            else
-                check(get(other, "Name").Text == "???", "unrelated card stays locked")
-                added.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Apple" })
-                check(
-                    get(other, "Name").Text == entry.DisplayName,
-                    "post-initialization discovery updates existing card"
-                )
+    local binding = assert(presentation.Resolve(playerGui))
+    local scroll = binding.Scroll
+    local function cardFor(id)
+        for index, entry in entries do
+            if entry.Id == id then
+                return scroll:FindFirstChild("CollectionCard_" .. index)
             end
         end
     end
-    for _, group in
-        presentation.Group(catalog.GetSpecialCustomers(), function(entry)
-            return tostring(entry.MinJumpTier)
-        end)
-    do
-        for index, entry in group.Entries do
-            if entry.Id == "walter" then
-                local customer = get(
-                    live,
-                    "Window.Pages.CustomersPage.Scroll.Section_JUMP " .. group.Key .. ".Grid.Customer_" .. index
-                )
-                check(
-                    get(customer, "Name").Text == entry.DisplayName,
-                    "customer delta survives snapshot and delayed GUI creation"
-                )
-            end
+    local strawberry = assert(cardFor("Strawberry"))
+    check(strawberry:FindFirstChild("IngredientLabel").Text == "Strawberry", "event before snapshot unlocks")
+    local locked = assert(cardFor("Apple"))
+    check(
+        locked:FindFirstChild("IngredientLabel").Text == "???"
+            and locked:FindFirstChild("RarityLabel").Text == "LOCKED"
+            and locked:FindFirstChild("FruitImage").Image == ""
+            and not locked:FindFirstChild("IngredientValue").Visible,
+        "locked identity hidden"
+    )
+    check(strawberry:FindFirstChild("FruitImage").Image == "authored-test-thumbnail", "mapped thumbnail")
+    resume(jobs[1], { Ingredients = { Banana = true, Strawberry = false }, SpecialCustomers = {} })
+    check(strawberry:FindFirstChild("IngredientLabel").Text == "Strawberry", "late snapshot preserves event")
+    local banana = cardFor("Banana")
+    check(
+        not banana:FindFirstChild("FruitImage").Visible
+            and banana:FindFirstChild("IngredientValue").Text
+                == presentation.FormatValue(load("Ingredients").Banana.Value),
+        "unmapped image placeholder and catalog value"
+    )
+    delta.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Apple" })
+    delta.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Apple" })
+    check(locked:FindFirstChild("IngredientLabel").Text == "Apple", "live unlock")
+    local grid = scroll:FindFirstChildOfClass("UIGridLayout")
+    check(grid.FillDirectionMaxCells == 4 and grid.CellSize.X.Offset * 4 + 24 + 16 == 800, "four columns fit viewport")
+    scroll.AbsoluteWindowSize = { X = 400, Y = 450 }
+    scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Fire()
+    check(grid.CellSize.X.Offset * 4 + 24 + 16 == 400, "four columns after resize")
+    check(
+        scroll.AutomaticCanvasSize == "Y"
+            and scroll.CanvasSize.Y.Offset == 0
+            and scroll.ClipsDescendants
+            and scroll.ScrollingDirection == "Y",
+        "vertical canvas expansion"
+    )
+    for _, child in scroll:GetChildren() do
+        if child.Name == "IndexCard" or child.Name == "IndexCardTemplate" then
+            check(not child.Visible, "examples excluded")
         end
     end
-    added.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Strawberry" })
-    check(get(liveCard, "Name").Text == strawberryEntry.DisplayName, "duplicate event retains reveal")
-    get(live, "OpenButton").Activated:Fire()
+    local total = 0
+    for _, child in scroll:GetChildren() do
+        if child.Name:match("^CollectionCard_") then
+            total += 1
+        end
+    end
+    check(total == #entries and total > 4, "complete dynamic collection")
+    check(binding.Title.Text == "INDEX 3/" .. #entries, "discovery counter")
+    local menus = load("FramewispMenus").Attach(root, player)
+    local nav = descend(root, "LeftMenu"):FindFirstChild("Index")
+    nav.Activated:Fire()
+    check(binding.Panel.Visible, "Index opens")
+    descend(root, "LeftMenu"):FindFirstChild("Upgrades").Activated:Fire()
+    check(not binding.Panel.Visible, "menu exclusivity")
+    nav.Activated:Fire()
+    player.CharacterAdded:Fire()
+    check(not binding.Panel.Visible, "respawn closes Index")
+    local oldPanel = binding.Panel
+    local replacement = oldPanel:Clone()
+    local parent = oldPanel.Parent
+    oldPanel:Destroy()
+    replacement.Parent = parent
+    playerGui.DescendantRemoving:Fire(oldPanel)
+    playerGui.DescendantAdded:Fire(replacement)
+    flush()
+    local rebound = assert(presentation.Resolve(playerGui))
     check(
-        get(live, "Window").Visible and get(live, "Window.Pages.IngredientsPage").Visible,
-        "first open selects ingredients"
+        rebound.Panel == replacement and rebound.Title.Text == "INDEX 3/" .. #entries,
+        "panel replacement retains state"
     )
-    get(live, "Window.Tabs.CustomersButton").Activated:Fire()
-    get(live, "Window.CloseButton").Activated:Fire()
-    check(not get(live, "Window").Visible, "close hides window")
-    get(live, "OpenButton").Activated:Fire()
+    -- Cloned runtime cards from a live copy are not an authored export. Remove
+    -- these before using the import to exercise a full fresh reimport.
+    root:Destroy()
+    playerGui.DescendantRemoving:Fire(root)
+    local fresh = import()
+    playerGui.DescendantAdded:Fire(fresh)
+    flush()
     check(
-        get(live, "Window.Pages.CustomersPage").Visible and not get(live, "Window.Pages.IngredientsPage").Visible,
-        "reopen retains selected tab"
+        assert(presentation.Resolve(playerGui)).Title.Text == "INDEX 3/" .. #entries,
+        "fresh reimport retains discoveries"
     )
-    local otherVisible = false
-    local other = load("PanelManager").Register("Upgrades", {
-        Open = function()
-            otherVisible = true
-        end,
-        Close = function()
-            otherVisible = false
-        end,
-    })
-    other.Open()
-    check(not get(live, "Window").Visible and otherVisible, "another major menu closes Scrapbook")
-    get(live, "Window.Tabs.IngredientsButton").Activated:Fire()
-    check(not get(live, "Window").Visible, "tab refresh cannot reopen an externally closed Scrapbook")
-    get(live, "OpenButton").Activated:Fire({ UserInputType = "Touch" })
-    check(get(live, "Window").Visible and not otherVisible, "touch reopens Scrapbook exclusively")
-    get(live, "Window.CloseButton").Activated:Fire({ UserInputType = "Touch" })
-    check(not get(live, "Window").Visible, "touch X closes Scrapbook")
-    other.Destroy()
-    check(#warnings == 0, "valid UI startup has no warnings")
+    local active = assert(presentation.Resolve(playerGui))
+    local originalField = active.Template:FindFirstChild("IngredientLabel")
+    local replacementField = originalField:Clone()
+    originalField:Destroy()
+    replacementField.Parent = active.Template
+    playerGui.DescendantRemoving:Fire(originalField)
+    playerGui.DescendantAdded:Fire(replacementField)
+    flush()
+    check(
+        assert(presentation.Resolve(playerGui)).Title.Text == "INDEX 3/" .. #entries,
+        "partial template reimport preserves collection"
+    )
+    fresh.Enabled = false
+    flush()
+    check(presentation.Resolve(playerGui) == nil, "disabled root has no active view")
+    fresh.Enabled = true
+    flush()
+    local duplicate = import()
+    playerGui.DescendantAdded:Fire(duplicate)
+    flush()
+    check(presentation.Resolve(playerGui) == nil, "ambiguous imports pause binding")
+    duplicate:Destroy()
+    playerGui.DescendantRemoving:Fire(duplicate)
+    flush()
+    check(
+        assert(presentation.Resolve(playerGui)).Title.Text == "INDEX 3/" .. #entries,
+        "binding recovers after duplicate removal"
+    )
+    stop()
+    stop()
+    flush()
+    local freshScroll = descend(fresh, "CardsViewport")
+    for _, child in freshScroll:GetChildren() do
+        check(not child.Name:match("^CollectionCard_"), "cleanup removes dynamic cards")
+    end
+    delta.OnClientEvent:Fire({ Kind = "Ingredient", Id = "Ice" })
+    playerGui.DescendantAdded:Fire(fresh)
+    flush()
+    check(descend(fresh, "INDEX").Text == "INDEX", "stopped controller cannot render")
+    fresh:Destroy()
 end
-print(
-    "PASS: Scrapbook merge/races, catalog grouping, formatting, card rendering, canonical IDs, artwork fallback, hierarchy diagnostics, and controls"
-)
+-- Cancellation while snapshot is in flight cannot update a torn-down view.
+playerGui.children = {}
+jobs = {}
+local root = import()
+local events = instance("Folder", "Events")
+local delta = instance("RemoteEvent", "DiscoveryAdded", events)
+delta.OnClientEvent = signal()
+local snapshot = instance("RemoteFunction", "DiscoverySnapshot", events)
+snapshot.InvokeServer = function()
+    return coroutine.yield()
+end
+local stop = controller.Start(playerGui, events, player)
+resume(jobs[1])
+stop()
+resume(jobs[1], { Ingredients = { Apple = true }, SpecialCustomers = {} })
+check(descend(root, "INDEX").Text == "INDEX", "cancelled snapshot ignored")
+print("PASS: Framewisp Scrapbook races, rendering, grid, replacement, lifecycle and exclusive navigation")

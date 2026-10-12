@@ -1,6 +1,6 @@
 # Ice Gun Game Pass and world display
 
-The supplied Creator Store artwork is integrated through sanitized Rojo assets. IceGunService owns account entitlement and issued Tools; CombatService owns shared PvP eligibility/damage; FreezeStatusService adds a separate lock to MovementService. IceGunProjectileService runs one swept-ray simulation only while a projectile exists. No cash charge, SharedCash change, entitlement DataStore, ProcessReceipt handler or replacement shop UI was added.
+The supplied Creator Store artwork is integrated through sanitized Rojo assets. IceGunService owns account entitlement and issued Tools; CombatService owns shared PvP eligibility/damage; FreezeStatusService adds a separate lock to MovementService. IceGunProjectileService now resolves an immediate Ice Shotgun cone while retaining its existing module/API name. See [Ice Shotgun behavior and validation](ICE_SHOTGUN.md) for the current tuning and Studio acceptance checks; earlier Ice Gun accuracy/entitlement notes describe the original projectile version. No cash charge, SharedCash change, entitlement DataStore, ProcessReceipt handler or replacement shop UI was added.
 
 **Purchases/grants remain disabled until you enter a real pass ID.** No Studio or published purchase/multiplayer play session was performed. Automated tests double MarketplaceService and engine physics.
 
@@ -65,7 +65,7 @@ ReplicatedStorage
 └── IceGunFire [runtime RemoteEvent: aim Vector3 only]
 ~~~
 
-An authorized owner's single runtime IcicleGun moves between Backpack and Character. Temporary projectiles, ice blocks and residue live in Workspace as inert effects and expire. They have no ingredient identity or IngredientWorldItem tag and are never registered with ingredient lifetime, farm, stash, theft, blender or Muncher systems. Ingredient cleanup protections were not relaxed.
+An authorized owner's single runtime IcicleGun moves between Backpack and Character. Temporary ice blocks and residue live in Workspace as inert effects and expire. They have no ingredient identity or IngredientWorldItem tag and are never registered with ingredient lifetime, farm, stash, theft, blender or Muncher systems. Ingredient cleanup protections were not relaxed.
 
 ## Original imports and removed scripts
 
@@ -111,7 +111,7 @@ IceGunService.PlayerOwns(player) returns true, false or nil for unknown/unavaila
 
 RequestPurchase(player, optionalProximityValidator) checks entitlement, opens the official Game Pass dialog for verified nonowners or grants/equips for owners. Pending prompts prevent duplicate dialogs. The world point supplies its validator; the shop entry does not require proximity. Canceling leaves state unchanged.
 
-GrantIfOwned(player) returns one issued Tool only when server-cached ownership is confirmed; it does not perform another yielding lookup. RequestEquip(player) uses that grant and the existing action gate. Death/removal clean old Tool/projectile state, respawn restores access, and joining rechecks account ownership. Plot changes neither transfer nor remove personal paid access.
+GrantIfOwned(player) returns one issued Tool only when server-cached ownership is confirmed; it does not perform another yielding lookup. RequestEquip(player) uses that grant and the existing action gate. Death/removal clean old Tool state, respawn restores access, and joining rechecks account ownership. Plot changes neither transfer nor remove personal paid access.
 
 The authored Framewisp Shop contains only an existing 2x Money entry with a 95 price label; no Ice Gun entry exists. It was preserved. Bind a later imported entry to src/client/Controllers/IceGunShopAdapter.luau:
 
@@ -139,9 +139,9 @@ The UI caller owns its connections and teardown through the existing Framewisp l
 
 ## Combat, freeze and physics
 
-IceGunConfig owns defaults: 70 studs/sec, 2-second cooldown, 14 HP direct damage, 0 splash, guaranteed direct-hit freeze, 1.6-second total freeze including 0.2-second formation, 3-second immunity after actual thaw, 110-stud range and 110/70-second projectile lifetime. One projectile per player is active at once. Server stalls cannot replay expired damage; a small final-frame scheduling tolerance applies.
+IceGunConfig owns the Ice Shotgun defaults: 22-stud muzzle-to-target-root range, 50-degree full cone angle, 8-second cooldown, 5 HP per eligible player, guaranteed 2.5-second freeze including the existing 0.2-second ice-block formation, and the existing 4-second immunity after actual thaw. Each accepted shot resolves immediately and hits every visible eligible player root in its cone once.
 
-The server requires a living current character, exact issued equipped Tool, confirmed entitlement, plot session, existing action gate and no PlatformStand. It bounds finite aim intent, rate-limits requests, validates barrel/root distance and determines launch clearance from server geometry. Obstructed/body-intersecting launches are rejected. Shots visibly travel and use swept raycasts rather than hitscan. Direct impact terminates once; world/NPC/friendly impacts shatter without damage. Current plot membership and the existing non-neutral Roblox Team check are shared with bat PvP at impact. Unassigned players retain the existing no-combat eligibility; ForceFields are respected.
+The server requires a living current character, exact issued equipped Tool, confirmed entitlement, existing action gate and no PlatformStand. It bounds finite aim/camera intent, rate-limits requests, validates barrel/root distance and launch clearance from server geometry, and independently raycasts from muzzle to each candidate root. Walls and intervening queryable geometry block targets individually. Client data never specifies damage, target lists, origin, range, angle or status duration. Shared-plot and non-neutral Roblox teammates remain protected; only explicit server IceGunConfig.TeamDamage=true opts ice shots into friendly fire. Bat rules remain unchanged. Unassigned owners may fire but cannot damage players; targets also need living plot sessions. ForceFields and nonplayer NPCs remain protected.
 
 MovementService tracks bat stun and freeze separately. Their aggregate lock controls speed, upgraded jump and gameplay actions and drives the existing client Stunned input attribute. SprintService observes it and does not drain attempted sprint during freeze. Existing bat and inventory/throw requests already use that action gate. Freeze does not clear carried inventory, forcibly unequip Tools, change ownership, hard-reset movement, anchor limbs, teleport or modify velocity. Thaw uses current upgrades; bat recovery cannot clear freeze, and thaw cannot clear bat stun.
 
@@ -152,16 +152,14 @@ Desktop Tool.Activated uses pointer/camera aim; mobile and gamepad use camera-ce
 ## Automated validation
 
 ~~~powershell
-.\.venv\Scripts\python.exe tests\run_state_tests.py --luau <luau.exe> --suite icegun-entitlement --suite freeze-status --suite icegun-combat --suite icegun-display
+.\.venv\Scripts\python.exe tests\run_state_tests.py --luau <luau.exe> --suite icegun-entitlement --suite freeze-status --suite freeze-bat --suite icegun-combat --suite icegun-aim --suite icegun-initial-owner
 .\.venv\Scripts\python.exe tests\run_state_tests.py --luau <luau.exe> --suite icegun-presentation
 .\.venv\Scripts\python.exe tests\test_icegun_assets.py
 ~~~
 
-The gameplay suites cover verified/unknown/error entitlement, cancellation, concurrency, single grants, join/respawn, teammate independence, disabled IDs, proximity/LOS, current teams, swept movement, cooldown, direct-only damage, freeze/immunity, lock composition and cleanup. Presentation separately checks localized live text and desktop/touch/gamepad intent. Asset checks verify idempotence, unchanged union/light/mesh/sound/particle data and removal of legacy authority.
+The gameplay suites cover verified/unknown/error entitlement, cancellation, concurrency, single grants, join/respawn, teammate independence, disabled IDs, proximity/LOS, current teams, cone geometry, per-target wall occlusion, cooldown, multiplayer damage, freeze/immunity, real bat/freeze recovery overlap and cleanup. Presentation separately checks localized live text and desktop/touch/gamepad intent. Asset checks verify idempotence, unchanged union/light/mesh/sound/particle data and removal of legacy authority.
 
-Feature suites and existing carry-input, fall-damage and health-regen suites pass. Roblox-aware analysis of new feature modules and touched movement/input/prompt modules passes. Full-src analysis retains the same 14 unique error signatures as a pre-feature snapshot: CustomerRequests, existing bat optional typing, CustomerService and JackedNoobService. There are no new signatures. StyLua and Rojo build pass.
-
-Baseline-reproduced failures are isolated: sprint fails StandIdentity default-name fixture setup; bat fails upgrade setup; shared interaction prompts fail an existing stash text expectation; runner self-tests retain four stale manifest/bundle expectations. Unrelated production systems were not changed to satisfy them.
+Current conversion validation and baseline typecheck limitations are recorded in [ICE_SHOTGUN.md](ICE_SHOTGUN.md).
 
 ## Studio/manual acceptance checklist
 
@@ -170,8 +168,8 @@ CLI doubles do not prove replication, Creator Store permissions or physical beha
 - ID 0: diagnostic, UNAVAILABLE display, no prompt/grant. Then test owner/nonowner accounts with the real pass in the published experience. Edited attributes and Studio simulated purchases are not proof of actual entitlement.
 - Test cancellation, verified purchase, slow/failed ownership lookup, existing-owner equip, repeated E, simultaneous shoppers, death/respawn, rejoin, joining an owner's plot and switching plots. SharedCash must stay unchanged.
 - Compare pedestal CFrame, union/light appearance, height and original-axis rotation. Verify display persists after purchases/cancels; no free Tool pickup or old 5-second loop exists. Wait through ingredient cleanup and attempt stash/theft/throw/blender/Muncher interactions with the display.
-- With two enemy plot sessions, fire at walls, moving/dodging players and direct targets. Confirm readable 70-stud travel, 2-second cooldown, 14 HP, no splash, 110-stud cutoff and original sound/smoke/trail/shatter. NPC customers must ignore Ice Gun while bat behavior remains intact.
-- Check 0.2-second formation and 1.6-second total freeze. During the next 3 seconds, direct hits damage without another block. Lethal hits/death/reset clean the block. Change team membership between launch/impact and verify protection.
+- With two enemy plot sessions, test several targets in one cone, individual wall cover, moving players, 22-stud range, 50-degree full angle, 8-second cooldown and 5 HP each. Original gun appearance, smoke, launch sound and ice-block/shatter assets remain. NPC customers must ignore ice shots while bat behavior remains intact.
+- Check 0.2-second formation and 2.5-second total freeze. During the next 4 seconds, another shooter can damage without another block. Lethal hits/death/reset clean the block. Change team membership before the next shot and verify current protection. Test bat-first and freeze-first overlap with both short and long bat stuns; see the shotgun checklist.
 - Freeze players with upgraded Jump/Sprint and carried ingredients: block move/jump/attacks/throw, retain inventory, avoid stamina drain and restore controls/upgrades. Hit airborne/ragdolled targets; verify normal falling/recovery, no extra/duplicate fall damage, no anchored parts/solid platforms and normal health-regen delay.
 - Isolated status smoke test in the Studio Play server Command Bar after bootstrap: game.ServerStorage.StudioServiceCalls:Invoke("FreezeStatusService", "Apply", game.Players:GetPlayers()[1]). This exercises live freeze without changing entitlement. Use verified account ownership for gun/grant tests.
 - Test desktop mouse/click, touch camera/activation alongside Throw/Sprint in Device Emulator, console R2/camera aim and R6/R15 torso visuals. Supplied animation folders are empty, so default Tool pose remains. Confirm original mesh/texture/audio permissions and real rendering in this experience.

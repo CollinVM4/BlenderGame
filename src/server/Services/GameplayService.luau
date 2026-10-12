@@ -78,7 +78,11 @@ function GameplayService.Init(services: any)
             )
         end
         if action == "ThrowHeld" then
+            IngredientThrow.BeginRequest(player, context)
             IngredientThrow.Trace(player, "request received")
+        end
+        if action == "Reject" or action == "RejectCustomer" then
+            return -- legacy clients cannot bypass Bat combat
         end
         local now = os.clock()
         if now < (nextRequest[player] or 0) then
@@ -155,6 +159,10 @@ function GameplayService.Init(services: any)
             -- Use the issued Tool identity, without coupling inventory back to combat.
             if services.CombatService.IsBatEquipped(player) then
                 IngredientThrow.Trace(player, "rejected: bat equipped")
+                return
+            end
+            if services.IceGunService and services.IceGunService.IsEquipped(player) then
+                IngredientThrow.Trace(player, "rejected: issued IceGun equipped")
                 return
             end
             services.InventoryService.ThrowHeld(player, nil, true)

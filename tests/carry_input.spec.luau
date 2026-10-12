@@ -15,14 +15,27 @@ env.Instance.new = function(class)
     end
     return object
 end
+services.GuiService = { MenuIsOpen = false }
 local gameplay = loadModule("GameplayService")
-gameplay.Init({ InventoryService = inventory, CombatService = loadModule("CombatService") })
+local issuedGun = nil
+local gameplayDependencies = {
+    InventoryService = inventory,
+    CombatService = loadModule("CombatService"),
+    IceGunService = {
+        IsEquipped = function(p)
+            return issuedGun ~= nil and issuedGun.Parent == p.Character
+        end,
+    },
+}
+gameplay.Init(gameplayDependencies)
 local remote = shared.Events:FindFirstChild("GameplayRequest")
 local requestedIds = {}
+local lastAttempt = nil
 local send = remote.FireServer
-function remote:FireServer(actionName, id)
+function remote:FireServer(actionName, id, slot, context)
+    lastAttempt = context
     table.insert(requestedIds, id or false)
-    send(self, actionName, id)
+    send(self, actionName, id, slot, context)
 end
 function shared.Events:WaitForChild(name)
     return self:FindFirstChild(name)
@@ -35,6 +48,8 @@ services.UserInputService = {
     InputBegan = inputBegan,
     TouchEnabled = true,
     MouseEnabled = true,
+    KeyboardEnabled = true,
+    PreferredInput = "KeyboardAndMouse",
     GetFocusedTextBox = function()
         return if textFocused then {} else nil
     end,
@@ -171,3 +186,66 @@ check(
     inventory.GetCarryCount(player) == 0 and #requestedIds == beforeTouch + 1,
     "standard desktop mouse throws newest remaining ingredient"
 )
+
+-- Correlation and rate bounds cover the opt-in pipeline without authorizing state.
+now += 0.2
+setup(inventory.CarryWorldItem(player, ingredients.Spawn("Banana", translate(), nil, true)), "debug pickup")
+local diagnosticMessages = {}
+local originalPrint = env.print
+env.print = function(message)
+    table.insert(diagnosticMessages, message)
+end
+player:SetAttribute("ThrowDebug", true)
+inputBegan:Fire(mouse, false)
+check(type(lastAttempt) == "number", "debug request carries numeric correlation metadata only")
+local clientFound, serverFound = false, false
+for _, message in diagnosticMessages do
+    if string.find(message, "attempt=" .. tostring(lastAttempt) .. " ", 1, true) then
+        clientFound = clientFound or string.find(message, "[ThrowInput]", 1, true) ~= nil
+        serverFound = serverFound or string.find(message, "[ThrowServer]", 1, true) ~= nil
+    end
+end
+check(clientFound and serverFound, "client attempt correlates with authoritative server outcome")
+check(
+    string.find(table.concat(diagnosticMessages, "\n"), "keyboard=true", 1, true) ~= nil,
+    "diagnostics report hybrid capability alongside received input"
+)
+local beforeFlood = #diagnosticMessages
+for _ = 1, 100 do
+    inputBegan:Fire(mouse, true)
+end
+check(#diagnosticMessages - beforeFlood <= 40, "client diagnostics stay bounded under repeated input")
+local trace = loadModule("IngredientThrow")
+local beforeServerFlood = #diagnosticMessages
+for _ = 1, 100 do
+    trace.Trace(player, "test repeated rejection")
+end
+check(#diagnosticMessages - beforeServerFlood <= 40, "server diagnostics stay bounded under repeated rejection")
+player:SetAttribute("ThrowDebug", false)
+env.print = originalPrint
+
+-- Bypass client gating to exercise the server-owned weapon decision.
+now += 0.2
+setup(inventory.CarryWorldItem(player, ingredients.Spawn("Ice", translate(), nil, true)), "weapon gate pickup")
+issuedGun = gun
+gun.Parent = character
+remote.OnServerEvent:Fire(player, "ThrowHeld")
+check(inventory.GetCarryCount(player) == 1, "issued equipped IceGun rejects direct ingredient throw intent")
+gun.Parent = backpack
+now += 0.2
+remote.OnServerEvent:Fire(player, "ThrowHeld")
+check(inventory.GetCarryCount(player) == 0, "Backpack IceGun does not reject server throw intent")
+
+now += 0.2
+setup(inventory.CarryWorldItem(player, ingredients.Spawn("Ice", translate(), nil, true)), "UI gate pickup")
+services.GuiService.MenuIsOpen = true
+local beforeMenu = #requestedIds
+inputBegan:Fire(mouse, false)
+check(#requestedIds == beforeMenu, "open Roblox menu blocks even unprocessed input")
+services.GuiService.MenuIsOpen = false
+player.GameplayPaused = true
+inputBegan:Fire(mouse, false)
+check(#requestedIds == beforeMenu, "paused gameplay does not initiate throws")
+player.GameplayPaused = false
+inputBegan:Fire(mouse, false)
+check(inventory.GetCarryCount(player) == 0, "closing UI restores ingredient input")

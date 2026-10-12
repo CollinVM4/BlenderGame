@@ -15,6 +15,7 @@ function Service.Clear(player: Player)
     states[player] = nil
     if state then
         state.Character:SetAttribute("FrozenUntil", nil)
+        state.Character:SetAttribute("FreezeImmuneUntil", nil)
         deps.IceGunEffects.ClearFreeze(state.Character, false)
     end
     deps.MovementService.SetFrozen(player, false)
@@ -39,6 +40,7 @@ function Service.Apply(player: Player): boolean
     }
     states[player] = state
     deps.MovementService.SetFrozen(player, true)
+    character:SetAttribute("FreezeImmuneUntil", nil)
     character:SetAttribute("FrozenUntil", workspace:GetServerTimeNow() + Config.FreezeSeconds)
     deps.IceGunEffects.Freeze(character)
     task.delay(Config.FreezeSeconds, function()
@@ -49,6 +51,7 @@ function Service.Apply(player: Player): boolean
         -- Immunity starts at actual thaw, including a delayed server frame.
         state.ImmuneUntil = os.clock() + Config.ImmunitySeconds
         deps.MovementService.SetFrozen(player, false)
+        character:SetAttribute("FreezeImmuneUntil", workspace:GetServerTimeNow() + Config.ImmunitySeconds)
         character:SetAttribute("FrozenUntil", nil)
         deps.IceGunEffects.ClearFreeze(character, true)
     end)

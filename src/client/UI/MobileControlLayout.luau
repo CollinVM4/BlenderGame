@@ -6,8 +6,9 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local Layout = {}
-local OFFSETS = { SprintHeld = Vector2.new(-1.25, 0), ThrowHeld = Vector2.new(-0.95, -0.95) }
-local ACTIONS = { "SprintHeld", "ThrowHeld" }
+local OFFSETS =
+    { SprintHeld = Vector2.new(-1.25, 0), ThrowHeld = Vector2.new(-0.95, -0.95), IceShotgunFire = Vector2.new(0, -1.8) }
+local ACTIONS = { "SprintHeld", "ThrowHeld", "IceShotgunFire" }
 local PADDING = 8
 local GAP = 2
 local registered: { [string]: boolean } = {}
@@ -254,6 +255,11 @@ function Layout.Destroy()
     clearUnused({})
     playerGui = nil
     table.clear(registered)
+end
+
+function Layout.Unregister(action: string)
+    registered[action] = nil
+    schedule()
 end
 
 function Layout.Register(action: string)

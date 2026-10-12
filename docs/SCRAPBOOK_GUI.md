@@ -1,148 +1,133 @@
-# Scrapbook GUI setup
+# Framewisp Index / Scrapbook
 
-The first Scrapbook GUI reads the existing DiscoveryCatalog and discovery remotes.
-It adds no server authority, acquisition rules, persistence, or customer encounter rules.
-Presentation lives in `src/client/UI`, alongside the existing presentation modules.
+The Index now uses the updated `new_export.rbxmx` design and the existing
+session discovery backend. No DataStore, second ingredient registry, or separate
+ScrapbookGui is required. `ScrapbookController.Init()` is already called by the
+client bootstrap. FramewispMenus owns Index visibility, X, exclusive navigation,
+and closing menus on respawn; ScrapbookController owns discovery replication.
 
-## Exact Studio hierarchy
+## Inspected export and required instances
 
-Create this in **StarterGui**, with these case-sensitive names and classes. Rojo
-maps the scripts, not StarterGui; this hierarchy must be saved in your Studio place.
-Do not create per-entry cards or additional LocalScripts.
+The source root is `Framewisp_7QWABL` (ScreenGui), with
+`Be a Blender! Desktop` and `Be a Blender! DesktopContent` (Frames).
+The actual Index hierarchy is:
 
 ```text
-StarterGui
-└── ScrapbookGui [ScreenGui]
-    ├── OpenButton [ImageButton]
-    │   ├── Icon [ImageLabel]
-    │   └── Label [TextLabel]
-    └── Window [Frame]
-        ├── Background [ImageLabel]
-        ├── CloseButton [ImageButton]
-        ├── Header [Frame]
-        │   └── Title [TextLabel]
-        ├── Tabs [Frame]
-        │   ├── IngredientsButton [TextButton]
-        │   └── CustomersButton [TextButton]
-        └── Pages [Frame]
-            ├── IngredientsPage [Frame]
-            │   └── Scroll [ScrollingFrame]
-            │       ├── UIListLayout
-            │       └── RaritySectionTemplate [Frame]
-            │           ├── Header [Frame]
-            │           │   └── Title [TextLabel]
-            │           └── Grid [Frame]
-            │               ├── UIGridLayout
-            │               └── IngredientCardTemplate [Frame]
-            │                   ├── Artwork [ImageLabel]
-            │                   ├── Name [TextLabel]
-            │                   ├── Rarity [TextLabel]
-            │                   └── Value [TextLabel]
-            └── CustomersPage [Frame]
-                └── Scroll [ScrollingFrame]
-                    ├── UIListLayout
-                    └── JumpSectionTemplate [Frame]
-                        ├── Header [Frame]
-                        │   └── Title [TextLabel]
-                        └── Grid [Frame]
-                            ├── UIGridLayout
-                            └── CustomerCardTemplate [Frame]
-                                ├── Portrait [ImageLabel]
-                                └── Name [TextLabel]
+Index [Frame]
+??? UpgradesPanelArtwork [ImageLabel]
+??? CardsViewport [ScrollingFrame]
+?   ??? IndexCardTemplate [Frame]
+?   ?   ??? CardBackground [ImageLabel]
+?   ?   ??? Top Line [ImageLabel]
+?   ?   ??? IngredientValue [TextLabel]
+?   ?   ??? IngredientLabel [TextLabel]
+?   ?   ??? RarityLabel [TextLabel]
+?   ?   ??? FruitImage [ImageLabel]
+?   ??? IndexCard [Frame] ? 3, same fields as template
+??? Header [Frame]
+    ??? HeaderBackground [ImageLabel]
+    ??? INDEX [TextLabel]
+    ??? Close [ImageButton]
 ```
 
-OpenButton.Icon/Label, Window.Background, and Window.Header.Title are decorative:
-the code leaves their text, images, and styling to Studio. Functional descendants
-are resolved immediately with class checks and full-path errors. Only PlayerGui,
-ScrapbookGui, and replicated remote startup have bounded waits (10 seconds each).
-After fixing a missing hierarchy, restart Play to initialize again.
+Text labels retain authored UIStroke and FW_Scale/k_text descendants. Figma
+suffixes are stripped by the exporter. Resolution accepts the exported names
+and tagged names such as Index_panel, CardsViewport_scroll_grid, and *_txt.
+BlenderUI semantic identifiers override names through the shared UIRegistry.
+Generated ScreenGui names and XML referents are not used for binding.
 
-## Required settings and practical starting sizes
+Compared with the previous asset in HEAD, the first example card is now explicitly
+IndexCardTemplate, HeaderBackground is authored image artwork instead of a Frame,
+and the viewport's scrolling direction is Y. The export still has no UIGridLayout,
+UIPadding, automatic canvas expansion, category tabs, or standalone counter.
 
-- ScrapbookGui: `Enabled = true`, `ResetOnSpawn = false` (also set by the code).
-  Keep OpenButton visible and outside Window. Set its Label.Text to `Scrapbook`.
-- Window: `Visible = false`, `AnchorPoint = (0.5, 0.5)`,
-  `Position = {0.5, 0, 0.5, 0}`, `Size = {0.94, 0, 0.9, 0}`. An optional
-  UISizeConstraint with MaxSize `(1000, 800)` keeps desktop cards manageable;
-  avoid a large MinSize that would force the window off mobile screens.
-- Window.Header: Position `{0.04, 0, 0.02, 0}`, Size `{0.8, 0, 0.08, 0}`.
-  Title fills Header. Place CloseButton at the upper right, at least 40x40 pixels.
-- Tabs: Position `{0.04, 0, 0.11, 0}`, Size `{0.92, 0, 0.1, 0}`.
-  Each tab fills half its width; set texts to `Ingredients` and `Customers`.
-  Keep BackgroundTransparency below 1 so selected-tab lightening is visible.
-- Pages: Position `{0.04, 0, 0.23, 0}`, Size `{0.92, 0, 0.73, 0}`.
-  Both page frames and their Scroll fill their parent: Position zero, Size
-  `{1, 0, 1, 0}`. Scroll must have a fixed viewport, not AutomaticSize.
-  Set Scroll.ClipsDescendants true. IngredientsPage starts visible, CustomersPage hidden.
-- Window.Background fills the window, with lower ZIndex than controls/content and
-  Active false. Keep all buttons unobstructed. Use transparent backgrounds on the
-  intermediate layout frames if you want the page artwork to show through.
-- Both section templates and both nested card templates: `Visible = false`,
-  `Archivable = true`. Header.Title fills its Header. Section Header/Grid must use
-  AnchorPoint `(0, 0)`. Don't add a competing layout or size constraint to Grid/cards.
-- Ingredient card child sizes/positions should use scale: Artwork at `{0.05,0,0.03,0}`,
-  size `{0.9,0,0.55,0}`; Name at y=0.59, height=0.15; Rarity at y=0.75,
-  height=0.10; Value at y=0.87, height=0.10. Labels use x=0.04, width=0.92.
-  Customer Portrait can use height=0.72, with Name at y=0.77 and height=0.18.
-  Artwork/Portrait should have transparent backgrounds, ImageTransparency 0,
-  and white ImageColor3 (or your intended default tint). The code sets ScaleType Fit.
-- Use TextScaled and TextWrapped on card labels; a UITextSizeConstraint with
-  MinTextSize 8 and MaxTextSize 20 is a reasonable starting point. Adjust in Studio
-  device emulation. Scale-based image rectangles plus ScaleType Fit preserve PNG
-  proportions without requiring an additional aspect constraint.
+## Import and Studio setup
 
-The code owns section sizing/order, a vertical list inside each generated section,
-30-pixel section headers, four-column grids with 6-pixel gaps, and card cells with
-height 1.35 times their width. Grid height follows UIGridLayout.AbsoluteContentSize;
-scroll canvas height uses AutomaticCanvasSize.Y. No card positions or scroll canvas
-heights are manually computed. Original templates remain hidden.
+Keep the raw export untouched. Prepare the Rojo-mapped asset with:
 
-## Artwork and behavior
-
-Enter asset strings in `src/shared/Constants/ScrapbookArtwork.luau`, for example:
-
-```lua
-Ingredients = {
-    Strawberry = "rbxassetid://YOUR_ASSET_ID",
-},
-SpecialCustomers = {
-    walter = "rbxassetid://YOUR_ASSET_ID",
-    caseoh = "rbxassetid://YOUR_ASSET_ID",
-},
+```powershell
+python tools/prepare_framewisp_ui.py --input new_export.rbxmx --external-menus
 ```
 
-Use transparent PNGs. Missing entries use an empty image; cards still render.
-There is no duplicate catalog to maintain. Ingredient cards are generated from
-GetIngredients(), grouped by Rarity in the supplied order. Customers come from
-GetSpecialCustomers(), grouped by MinJumpTier in supplied order. Only populated
-sections are created. Canonical IDs index live-update lookups; display names never
-serve as discovery keys.
+The existing `default.project.json` maps the prepared Framewisp_CCWMF.rbxmx into
+StarterGui. This command preserves every generated LocalScript source and all
+artwork/layout properties. It defaults the four main panels to hidden and renames
+only the eight major navigation/X FigmaAction attribute keys to BlenderMenuAction.
+Their FigmaActionParam values stay intact. This prevents generated handlers from
+competing with the existing exclusive-menu adapter, which the controller attaches
+from canonical client code. Other action attributes, hover/press effects, text
+scaling, and spin remain authored. Raw unprepared imports still contain competing
+menu actions: always prepare before Rojo sync/build or a manual Studio import.
 
-Locked ingredients show a black image tint, `???`, visible rarity, and `$???`.
-Locked customers show a black portrait tint and `???`. Discoveries restore each
-image's template tint and real text. The controller subscribes before requesting
-its snapshot and unions both sets, including events received while the request
-is pending or before GUI creation. Individual deltas update only their existing
-card. First open selects Ingredients; closing/reopening preserves the current tab.
-The GUI survives character respawns. Runtime replacement of the ScreenGui is not
-supported in this first pass. A failed snapshot warns; live events continue, but
-previous discoveries require successful initialization on the next session.
+Sync the prepared asset and client modules. Remove any old manually authored
+ScrapbookGui from StarterGui; the collection opens through the existing Index
+navigation button. Keep only one enabled desktop import in PlayerGui. No manual
+grid, padding, new remotes, or replacement artwork is needed.
+
+## Runtime behavior
+
+DiscoveryCatalog.GetIngredients() provides the complete definitions from
+Ingredients, ordered by Common/Uncommon/Rare/Mystery, then canonical ID.
+The controller subscribes to DiscoveryAdded before invoking DiscoverySnapshot.
+Both merge monotonically, so a late snapshot cannot erase an in-flight discovery.
+Duplicate events do not affect totals. These remotes under Shared.Events carry
+`{Kind = "Ingredient" | "SpecialCustomer", Id = canonicalId}` and
+`{Ingredients = {[id] = true}, SpecialCustomers = {[id] = true}}` respectively.
+No client unlock mutation endpoint is added.
+
+The template and three examples are hidden. Runtime cards retain its artwork,
+fonts, child positions, strokes, and scaling metadata. Instance names use numeric
+positions rather than ingredient IDs. Locked cards show ??? / LOCKED and clear
+images and value text. Discovered cards show DisplayName, Rarity, base Value via
+MoneyFormat.Announcement, and a mapped image. The authored INDEX label displays
+INDEX discovered/total without adding another UI element.
+
+ScrapbookArtwork remains the centralized canonical-ID thumbnail mapping. No
+image IDs have been invented; all unmapped thumbnails use an empty image with
+hidden FruitImage. Enter actual authored asset strings in that module when ready.
+
+The adapter reuses a UIGridLayout when available, otherwise creates one. Four
+columns use 8-pixel gaps and padding, with cell height preserving the exported
+234:208 card proportions. Width follows AbsoluteWindowSize, including resize.
+CanvasSize starts at zero, AutomaticCanvasSize is Y, ScrollingDirection is Y,
+and content is clipped. All entries, including additional rows, are cloned.
+
+Replacement panels/templates, enabled-root changes, and full reimports rebuild
+views from the retained session state. Duplicate active desktops pause binding.
+View cleanup removes owned cards/layout/padding and resize subscriptions; session
+cleanup disconnects replication and ignores in-flight snapshots. Respawn closes
+the menu through FramewispMenus without clearing discoveries.
+
+## Customer support and required Figma work
+
+DiscoveryCatalog.GetSpecialCustomers() already supplies canonical special NPCs
+ordered by MinJumpTier then ID, including zero-weight entries and excluding regular
+NPCs. Customer deltas/snapshots continue merging in the same session state.
+Presentation.RenderCard is shared rendering infrastructure: customer adapters can
+provide DisplayName, optional rarity/value, and ScrapbookArtwork.GetSpecialCustomer.
+No customer UI is added because this export has no category controls.
+
+To expose customers later, author IngredientsButton and CustomersButton beneath
+an Index Tabs container, plus a suitable authored category-content layout. Re-export
+and prepare it before adding the category binding. Avoid overlaying runtime tabs.
 
 ## Validation
 
-Run `python tests/run_scrapbook_ui_tests.py --luau <luau.exe>` for the focused
-presentation suite. It loads the real catalog, artwork, presentation, and controller
-with fake Roblox instances/remotes. Covers monotonic merging, snapshot/delta races
-with GUI ready both before and after snapshot completion, duplicate events,
-canonical grouping/IDs, formatting, locked/unlocked card properties, missing artwork,
-missing-instance diagnostics, open/close, and tab preservation.
+Passed: focused Scrapbook presentation/controller tests using the actual exported
+hierarchy, Framewisp menu tests executing the unchanged generated action source,
+existing cash/upgrade tests with both startup orders, all 16 preparation tests,
+discovery state and discovery/inventory integration. Coverage includes duplicate
+unlocks, snapshot races, hidden identities, missing thumbnails, deterministic
+ordering, counter, four-column sizing, scrolling configuration, panel and partial
+template replacement, respawn, ambiguous imports, reimport, and cleanup/cancellation.
 
-This fixture does not simulate Roblox layout or verify appearance. No visual Studio
-verification was performed. Manually check desktop/tablet/phone sizing, long names,
-scrolling, buttons, respawn retention, and live unlocks in Studio after setup.
+Changed-module Roblox-aware typechecking passes with the existing CustomerRequests
+DisplayText dependency diagnostics excluded; the unfiltered check reports those
+existing errors. StyLua, Rojo build, and whitespace checks pass. The unrelated
+discovery-customers integration fails at CustomerService spawnForPlayer's missing
+Connect boundary and reproduces on a separate pre-pass copy; it was left isolated.
 
-Implementation checks: focused Scrapbook tests, StyLua on changed Luau files,
-Rojo build, and `git diff --check` pass. Full-src Roblox-aware Luau LSP analysis
-reports the same 24 unique diagnostics as a fresh unchanged-HEAD baseline
-(CustomerRequests missing DisplayText and CombatService optional BasePart);
-no new diagnostics were introduced.
+No Studio render/play session was run. Check actual canvas growth, fonts, padding,
+scrollbar interaction, live unlocks, and X/exclusive navigation on desktop and mobile
+in Studio. Unit tests verify engine property contracts and simulated UI lifecycles,
+not rendered Roblox geometry or network delivery.

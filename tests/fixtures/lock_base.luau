@@ -103,13 +103,12 @@ end
 local function securityAssets(plot, assemblyClass)
     plot.DescendantAdded, plot.DescendantRemoving = signal(), signal()
     local lock = lockObject("Model", "LockBase", plot)
-    -- Direct LockAttachment needs a BasePart host, not the old invalid Model fixture.
     local assembly = lockObject(assemblyClass or "Part", "LockButton", lock)
     local blackBase = lockObject("Part", "BlackBase", assembly)
     blackBase.CanCollide = true
     local button = lockObject("Part", "Button", assembly)
     button.CanCollide = true
-    local attachment = lockObject("Attachment", "LockAttachment", assembly)
+    local attachment = lockObject("Attachment", "LockAttachment", button)
     local visual = lockObject("Model", "Visual", assembly)
     visual.CFrame = env.CFrame.new(10, 20, 30)
     local laser = lockObject("Part", "Laser", visual)

@@ -139,8 +139,12 @@ SUITES = {
     "icegun-initial-owner": ("integration", ("fixtures/icegun.luau", "fixtures/icegun_input.luau", "icegun_initial_owner.spec.luau")),
     "icegun-input": ("presentation", ("fixtures/icegun.luau", "fixtures/icegun_input.luau", "icegun_input.spec.luau")),
     "icegun-presentation": ("presentation", ("fixtures/icegun.luau", "icegun_presentation.spec.luau")),
+    "ice-shotgun-vfx": ("presentation", ("fixtures/icegun.luau", "fixtures/combat_presentation.luau", "ice_shotgun_vfx.spec.luau")),
+    "character-status-outlines": ("presentation", ("fixtures/icegun.luau", "fixtures/combat_presentation.luau", "character_status_outlines.spec.luau")),
+    "ice-shotgun-results": ("integration", ("fixtures/icegun.luau", "ice_shotgun_results.spec.luau")),
     "icegun-entitlement": ("state", ("fixtures/icegun.luau", "icegun_entitlement.spec.luau")),
     "freeze-status": ("state", ("fixtures/icegun.luau", "freeze_status.spec.luau")),
+    "freeze-bat": ("integration", ("fixtures/smoothie.luau", "fixtures/bat_combat.luau", "freeze_bat.spec.luau")),
     "icegun-simulated-combat": ("integration", ("fixtures/icegun.luau", "icegun_simulated_combat.spec.luau", "icegun_combat.spec.luau")),
     "icegun-aim": ("integration", ("fixtures/icegun.luau", "icegun_aim.spec.luau")),
     "icegun-combat": ("integration", ("fixtures/icegun.luau", "icegun_combat.spec.luau")),
@@ -179,6 +183,9 @@ sources["TutorialTargets"] = (ROOT / "src/shared/TutorialTargets.luau").read_tex
 sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
 for name in ("IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):
     sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")
+for name in ("IceShotgunPresentationController", "CharacterStatusOutlineController"):
+    sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")
+sources["IceShotgunFireView"] = (ROOT / "src/client/UI/IceShotgunFireView.luau").read_text(encoding="utf-8")
 sources["IceGunDisplayComponent"] = (ROOT / "src/server/Components/IceGunDisplay.luau").read_text(encoding="utf-8")
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")

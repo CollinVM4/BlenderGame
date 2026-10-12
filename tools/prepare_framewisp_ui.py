@@ -137,7 +137,7 @@ def item_name(item):
     return item.findtext("./Properties/string[@name='Name']", "")
 
 
-def prepare(path: Path, output: Path | None = None) -> None:
+def prepare(path: Path, output: Path | None = None, external_menus: bool = False) -> None:
     text = path.read_text(encoding="utf-8")
     tree = ET.fromstring(text)
     scripts = [item for item in tree.iter("Item")
@@ -172,11 +172,37 @@ def prepare(path: Path, output: Path | None = None) -> None:
                       lambda _: '<ProtectedString name="Source"><![CDATA[' + source + ']]></ProtectedString>',
                       item, flags=re.S)
 
-    text = re.sub(r'<Item class="LocalScript".*?</Item>', replace_script, text, flags=re.S)
-    if scripts_found != 1:
+    if not external_menus:
+        text = re.sub(r'<Item class="LocalScript".*?</Item>', replace_script, text, flags=re.S)
+    if not external_menus and scripts_found != 1:
         raise ValueError("Could not locate exact generated script XML")
     # Only unambiguous registered panels, never HUD/navigation descendants.
     panel_refs = panel_referents(tree)
+    if external_menus:
+        # Delegate only major navigation/close attributes, preserving generated
+        # script bytes and unrelated actions. FramewispMenus still reads Param.
+        def delegate(item, in_panel=False, in_navigation=False):
+            in_panel = in_panel or item.attrib.get("referent") in panel_refs
+            in_navigation = in_navigation or item_name(item) in ("LeftMenu", "RightMenu")
+            if item.attrib.get("class") in ("TextButton", "ImageButton"):
+                name = item_name(item)
+                if (in_panel and name.startswith("Close")) or (in_navigation and name.removesuffix("_toggle") in PANELS):
+                    prop = item.find("./Properties/BinaryString[@name='AttributesSerialize']")
+                    if prop is not None and prop.text:
+                        old = prop.text
+                        data = base64.b64decode("".join(old.split()))
+                        key = b"FigmaAction"
+                        replacement = b"BlenderMenuAction"
+                        data = data.replace(len(key).to_bytes(4, "little") + key,
+                                            len(replacement).to_bytes(4, "little") + replacement)
+                        text_parts.append((old, base64.b64encode(data).decode()))
+            for child in item.findall("Item"):
+                delegate(child, in_panel, in_navigation)
+        text_parts = []
+        for item in tree.findall("Item"):
+            delegate(item)
+        for old, replacement in text_parts:
+            text = text.replace(old, replacement)
     for ref in panel_refs:
         pattern = (r'(<Item\b(?=[^>]*\bclass="(?:Frame|CanvasGroup)")'
                    r'(?=[^>]*\breferent="' + re.escape(ref) + r'")[^>]*>\s*<Properties>)(.*?)(</Properties>)')
@@ -203,6 +229,7 @@ def main(argv=None):
     parser.add_argument("path", nargs="?", type=Path, help="Legacy in-place export path")
     parser.add_argument("--input", type=Path, help="Source export; defaults output to the Rojo-mapped asset")
     parser.add_argument("--output", type=Path, help="Prepared .rbxmx destination")
+    parser.add_argument("--external-menus", action="store_true", help="Delegate menu attributes without modifying generated scripts")
     args = parser.parse_args(argv)
     if args.path is not None and args.input is not None:
         parser.error("Use either the legacy positional path or --input")
@@ -216,7 +243,7 @@ def main(argv=None):
     if args.input is not None and source.resolve() == destination.resolve():
         parser.error("--input must differ from output; use the legacy positional command for intentional in-place preparation")
     try:
-        prepare(source, destination)
+        prepare(source, destination, args.external_menus)
     except (OSError, ValueError, ET.ParseError) as error:
         parser.error(str(error))
 

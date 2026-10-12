@@ -14,8 +14,7 @@ tree = ET.parse(root / "Framewisp_CCWMF.rbxmx").getroot()
 actions = next(i for i in tree.iter("Item") if i.attrib["class"] == "LocalScript"
                and i.findtext("./Properties/string[@name='Name']") == "FramewispActions")
 source = actions.findtext("./Properties/ProtectedString[@name='Source']")
-assert 'local menus = require(client:WaitForChild("UI"):WaitForChild("FramewispMenus"))' in source, (
-    "Run tools/prepare_framewisp_ui.py after reimporting")
+external = 'BEGIN BLENDER MAIN MENUS' not in source
 paths = {
     "UIRegistry": "src/client/UI/UIRegistry.luau",
     "FramewispMenus": "src/client/UI/FramewispMenus.luau",
@@ -35,5 +34,5 @@ for i, parent in parents.items():
 fixture = (root / "tests/framewisp_menus.spec.luau").read_text(encoding="utf-8")
 with tempfile.TemporaryDirectory(prefix="blender-menu-tests-") as directory:
     test = Path(directory) / "menus.luau"
-    test.write_text("local actionSource = " + json.dumps(source) + "\n" + bundle + fixture, encoding="utf-8")
+    test.write_text("local externalMenus = " + str(external).lower() + "\nlocal actionSource = " + json.dumps(source) + "\n" + bundle + fixture, encoding="utf-8")
     subprocess.run([args.luau, str(test)], cwd=root, check=True)

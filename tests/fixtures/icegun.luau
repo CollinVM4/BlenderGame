@@ -23,6 +23,10 @@ local oldNew = env.Instance.new
 env.Instance.new = function(class)
     local object = oldNew(class)
     object.OnServerEvent = signal()
+    object.OnClientEvent = signal()
+    function object:FireClient(_player, ...)
+        self.OnClientEvent:Fire(...)
+    end
     object.ChildAdded = signal()
     object.ChildRemoved = signal()
     object.Died = signal()

@@ -59,7 +59,16 @@ assignTestSession(teammate)
 tycoon.RemovePlayer(teammate)
 setup(tycoon.JoinSession(teammate, owner, tycoon.GetRequestContext(owner)), "join shared admin stand")
 assignTestSession(visitor)
-admin.Init({ TycoonService = tycoon })
+local grantedTo = {}
+admin.Init({
+    TycoonService = tycoon,
+    IceGunService = {
+        GrantOnce = function(target)
+            table.insert(grantedTo, target)
+            return true
+        end,
+    },
+})
 check(not admin.HandleCommand(teammate, ";addCash 100"), "unresolved name grants no permission")
 flush()
 check(not admin.HandleCommand(visitor, ";addCash 100"), "failed username resolution fails closed")
@@ -118,6 +127,28 @@ check(tycoon.GetCash(teammate) == 1000001137, "departed player cannot execute")
 owner.Parent = players
 players.PlayerAdded:Fire(owner)
 check(admin.HandleCommand(owner, ";addCash 1"), "rejoining player has no stale cooldown")
+clock += 1
+check(not admin.HandleCommand(visitor, ";giveicegun Eatandpoop") and #grantedTo == 0, "non-admin cannot grant a weapon")
+for _, message in { ";giveicegun", ";giveicegun Missing", ";giveicegun Eatandpoop extra" } do
+    check(
+        not admin.HandleCommand(owner, message) and #grantedTo == 0,
+        "invalid target arguments cannot grant: " .. message
+    )
+end
+check(
+    admin.HandleCommand(absent, ";GIVEICEGUN eAtAnDpOoP") and grantedTo[1] == teammate,
+    "admin grant targets an exact case-insensitive username without a plot"
+)
+check(not admin.HandleCommand(absent, ";giveicegun Eatandpoop") and #grantedTo == 1, "weapon grant uses admin cooldown")
+clock += 1
+if modern then
+    local command = services.TextChatService:FindFirstChild("Admin_giveicegun")
+    setup(command and command.PrimaryAlias == ";giveicegun", "weapon command registered")
+    command.Triggered:Fire({ UserId = owner.UserId }, ";giveicegun KarmaReaper2")
+else
+    owner.Chatted:Fire(";giveicegun KarmaReaper2")
+end
+check(grantedTo[2] == visitor, "server chat dispatches grant for the specified player")
 admin.Init({})
 for _, name in config.BootstrapUsernames do
     check(lookups[name] == 1, "bootstrap identity resolved once: " .. name)

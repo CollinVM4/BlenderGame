@@ -376,6 +376,20 @@ function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?, 
         player,
         "resolved held item=" .. tostring(record.Id) .. " carryId=" .. tostring(record.CarryItemId)
     )
+    if player:GetAttribute("ThrowDebug") == true then
+        local selected = selectedItem(player)
+        IngredientThrow.Trace(
+            player,
+            "selection carryId="
+                .. tostring(if selected then selected.CarryItemId else nil)
+                .. " matchesThrown="
+                .. tostring(selected == record)
+                .. " newestFirst="
+                .. tostring(newestFirst)
+                .. " authoritativeCount="
+                .. tostring(InventoryService.GetCarryCount(player))
+        )
+    end
     local object = releaseHeld(player, true, nil, table.find(held[player], record))
     if object and record.ItemType == "Ingredient" then
         GameplaySfx.Emit("IngredientThrow", (object :: any):GetPivot().Position)

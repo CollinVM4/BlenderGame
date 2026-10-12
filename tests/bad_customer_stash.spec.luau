@@ -113,12 +113,15 @@ local legitimate = customer.SpawnForPlayer(owner)
 setup(legitimate, "spawn legitimate customer")
 flush()
 setup(customer.TakeOrder(owner, legitimate), "take legitimate order")
-check(customer.DismissCustomer(owner, legitimate, "RejectedByOwner"), "dismiss real-inventory order")
+check(
+    not customer.DismissCustomer(owner, legitimate, "RejectedByOwner"),
+    "retired dismissal cannot mutate real inventory"
+)
 check(inventory.GetHeldSmoothie(owner).BlendId == ownedCup.BlendId, "dismissal preserves prepared held smoothie")
 check(
     blend.GetSnapshot(owner).Result.BlendId == readyBatch.Result.BlendId,
     "dismissal preserves completed blender batch"
 )
 check(slot(owner, 1).Count == 1 and slot(owner, 2).Count == 1, "dismissal preserves stored ingredients")
-check(not customer.Serve(owner, legitimate), "dismissed real order cannot consume later")
+check(#customer.GetQueueSnapshot(owner) == 1, "retired dismissal preserves serviceable real order")
 print("PASS bad customer authoritative stash removal", count, "assertions;", setupCount, "setup")

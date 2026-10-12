@@ -27,6 +27,18 @@ local function signal()
     }
 end
 local function instance(class, name, parent, attributes)
+    if
+        externalMenus
+        and attributes
+        and (
+            attributes.FigmaAction == "open"
+            or attributes.FigmaAction == "toggle"
+            or attributes.FigmaAction == "close"
+        )
+    then
+        attributes.BlenderMenuAction = attributes.FigmaAction
+        attributes.FigmaAction = nil
+    end
     local self = {
         ClassName = class,
         Name = name,
@@ -199,6 +211,15 @@ local function run(tagged, wrapped, semantic, detachMode)
         { script = { Parent = gui }, game = game, TweenInfo = tweenInfo, Enum = enum, require = loadModule },
         { __index = getfenv() }
     )
+    if externalMenus then
+        for _, button in buttons do
+            button.attributes.FigmaAction = nil
+        end
+        for _, button in closes do
+            button.attributes.FigmaAction = nil
+        end
+        loadModule("FramewispMenus").Attach(gui, player)
+    end
     local actions = assert(loadstring(actionSource))
     setfenv(actions, env)
     actions()

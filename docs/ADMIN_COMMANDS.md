@@ -1,5 +1,22 @@
 # Server admin commands
 
+Type `;giveicegun ExactUsername` to give an online player one Ice Gun for their
+current life. Use their Roblox username, not their display name; username
+matching is case-insensitive. This uses the same admin permissions and cooldown
+as `;addcash` and does not require either player to have a stand.
+
+The gun appears in the target's Backpack and supports normal hotbar selection
+and firing. Death, character removal, or leaving removes the temporary grant;
+it does not return on respawn or rejoin. Repeating the command while the gun
+exists reuses it. Dead players or players without a character/Backpack cannot
+receive a grant. The command never grants or saves gamepass ownership. Players
+who already own the pass still keep their normal permanent respawn access.
+
+Sync the updated `AdminService` and `IceGunService` with Rojo and restart Play
+or publish. Existing Ice Gun assets are required; no additional Studio setup is
+needed. In a private server, grant to a nonowner, select and fire the weapon,
+then reset and confirm it is gone. Also check a non-admin cannot grant one.
+
 After claiming or joining a stand, type `;addCash 100000` in Roblox chat.
 Command names are case-insensitive and argument whitespace is tolerant.
 There is one amount argument and no player targeting. Positive finite amounts
@@ -27,7 +44,7 @@ teammate's existing `playerCash` projections both update through that publisher.
 No economy, persistence, membership, or cash UI behavior was changed.
 
 With TextChatService chat, the service registers a `TextChatCommand` for
-`;addcash`, hidden from autocomplete. Roblox intercepts recognized commands
+`;addcash` and `;giveicegun`, hidden from autocomplete. Roblox intercepts recognized commands
 without broadcasting them, including unauthorized attempts. Unknown commands
 remain ordinary chat. Legacy chat uses server `Player.Chatted` and commands
 remain visible. The chat mode is read from the existing place, not changed.

@@ -56,22 +56,10 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
 
     local display: BillboardGui? = nil
     local label: TextLabel? = nil
-    if attachment then
-        -- An Attachment under a Model has no valid world-space host. Keep the
-        -- authored instance, but repair its host rather than creating a second one.
-        local host = attachment.Parent
-        if not host or not host:IsA("BasePart") then
-            if button then
-                local world = if host and host:IsA("Model")
-                    then host:GetPivot() * attachment.CFrame
-                    else button.CFrame * attachment.CFrame
-                attachment.Parent = button
-                attachment.CFrame = button.CFrame:ToObjectSpace(world)
-            else
-                warn("[LockBase] LockAttachment needs a BasePart host: " .. attachment:GetFullName())
-                attachment = nil
-            end
-        end
+    -- Only use the authored Button attachment; never relocate it or synthesize an anchor.
+    attachment = if button then button:FindFirstChild("LockAttachment") :: Attachment? else nil
+    if attachment and not attachment:IsA("Attachment") then
+        attachment = nil
     end
     if attachment then
         local existing = attachment:FindFirstChild("LockBaseDisplay")
@@ -84,7 +72,8 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         gui.Size = UDim2.fromOffset(240, 90)
         gui.AlwaysOnTop = true
         gui.MaxDistance = 65
-        gui.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
+        gui.StudsOffset = Vector3.zero
+        gui.StudsOffsetWorldSpace = Vector3.zero
         gui.ResetOnSpawn = false
         gui.Enabled = false
         gui.Parent = attachment
@@ -96,7 +85,7 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         text.ZIndex = 2
         text.TextXAlignment = Enum.TextXAlignment.Center
         text.TextYAlignment = Enum.TextYAlignment.Center
-        TextStyle.Apply(text, 28)
+        TextStyle.Apply(text, 24)
         text.TextColor3 = Color3.fromRGB(255, 95, 95)
         text.Parent = gui
         display, label = gui, text
@@ -151,8 +140,9 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         running:Play()
     end
     function api.Update(occupied: boolean, deadline: number, now: number)
-        if display and display.Enabled ~= occupied then
-            display.Enabled = occupied
+        -- Enabled belongs to each client's distance controller. Occupancy and text replicate.
+        if display and display:GetAttribute("LockBaseOccupied") ~= occupied then
+            display:SetAttribute("LockBaseOccupied", occupied)
         end
         if label then
             local remaining = math.max(0, math.ceil(deadline - now))

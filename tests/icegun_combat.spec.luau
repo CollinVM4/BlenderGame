@@ -1,191 +1,254 @@
+-- Authoritative cone/eligibility integration. Freeze lifecycle lives in freeze-status.
 local gun = loadModule("IceGunService")
-local projectile = loadModule("IceGunProjectileService")
+local shotgun = loadModule("IceGunProjectileService")
 local freeze = loadModule("FreezeStatusService")
 local combat = loadModule("CombatService")
 deps.IceGunService, deps.IceGunProjectileService, deps.FreezeStatusService, deps.CombatService =
-    gun, projectile, freeze, combat
+    gun, shotgun, freeze, combat
 combat.Init(deps)
 freeze.Init(deps)
-projectile.Init(deps)
+shotgun.Init(deps)
 gun.Init(deps)
+check(
+    authoredConfig.MaximumRange == 22
+        and authoredConfig.ConeAngleDegrees == 50
+        and authoredConfig.ShotCooldown == 4.5
+        and authoredConfig.DirectDamage == 5,
+    "central shotgun range, full cone angle, cooldown and damage defaults"
+)
 local shooter, shooterHumanoid = fighter("A")
-local enemy, enemyHumanoid = fighter("B")
-local ally, allyHumanoid = fighter("A")
 ready(shooter)
-ready(enemy)
-ready(ally)
-freeze.ApplyCharacter(enemy, enemy.Character)
 ownership[shooter.UserId] = true
 gun.AddPlayer(shooter)
 flush()
-if not gun.IsEquipped(shooter) then
-    shooterHumanoid:EquipTool(gun.GrantIfOwned(shooter)) -- Normal hotbar selection; no pedestal request.
-end
-setup(gun.IsEquipped(shooter), "first equipped issued gun")
+shooterHumanoid:EquipTool(gun.GrantIfOwned(shooter))
 local tool = gun.GetEquipped(shooter)
 local barrel = tool:FindFirstChild("Handle"):FindFirstChild("GunBarrel")
-barrel.WorldPosition = vec(0, 1, -2)
-local aim = vec(0, 1, -100)
-local nextHit = nil
-local lastRayLength = 0
-workspaceFake.Raycast = function(_, _, direction)
-    lastRayLength = direction.Magnitude
-    return nextHit
+local muzzle = vec(0, 1, -2)
+barrel.WorldPosition = muzzle
+local aim = muzzle + vec(0, 0, -100)
+local function target(session, distance, angle, vertical)
+    local p, h = fighter(session)
+    ready(p)
+    freeze.ApplyCharacter(p, p.Character)
+    flush()
+    local r = math.rad(angle or 0)
+    local offset = if vertical then vec(0, math.sin(r), -math.cos(r)) else vec(math.sin(r), 0, -math.cos(r))
+    p.Character:FindFirstChild("HumanoidRootPart").Position = muzzle + offset * distance
+    return p, h
 end
-check(not projectile.Fire(ally, aim), "nonowner cannot fire")
-check(
-    not projectile.Fire(shooter, { Target = enemy.Character, Damage = 999 }),
-    "client target/damage requests are rejected"
-)
-advance(0.11)
-check(not projectile.Fire(shooter, vec(0 / 0, 1, -10)), "nonfinite aim rejected")
-advance(0.11)
-check(projectile.Fire(shooter, aim), "owner fires equipped issued tool")
-local first = visualProjectiles[#visualProjectiles]
-local origin = first.CFrame.Position
-check((origin - barrel.WorldPosition).Magnitude < 0.001, "projectile begins at server GunBarrel, not avatar clearance")
-advance(0.5)
-check(
-    math.abs((first.CFrame.Position - origin).Magnitude - 35) < 0.001 and math.abs(lastRayLength - 35) < 0.001,
-    "70 studs/sec visible travel uses full swept segment"
-)
-check(not projectile.Fire(shooter, aim), "server rejects rapid shots")
-nextHit = { Instance = enemy.Character:FindFirstChild("HumanoidRootPart"), Position = vec(0, 1, -45) }
-advance(0.1)
-nextHit = nil
-check(enemyHumanoid.Health == 86 and movement.IsFrozen(enemy), "direct enemy hit deals 14 HP and guaranteed freeze")
-check(first.Destroyed and #impacts == 1, "direct impact resolves once and removes simulation visual")
-advance(0.1)
-check(enemyHumanoid.Health == 86, "terminated projectile cannot damage victim twice")
-advance(2.65)
-check(not movement.IsFrozen(enemy), "direct hit freeze thaws at 2.75 seconds")
-check(projectile.Fire(shooter, aim), "two-second cooldown permits next shot")
-nextHit = { Instance = enemy.Character:FindFirstChild("HumanoidRootPart"), Position = vec(0, 1, -10) }
-advance(0.1)
-nextHit = nil
-check(enemyHumanoid.Health == 72 and not movement.IsFrozen(enemy), "shots in immunity still damage without re-freeze")
-advance(4)
-check(projectile.Fire(shooter, aim), "fire after freeze immunity")
-nextHit = { Instance = enemy.Character:FindFirstChild("HumanoidRootPart"), Position = vec(0, 1, -10) }
-advance(0.1)
-nextHit = nil
-check(enemyHumanoid.Health == 58 and movement.IsFrozen(enemy), "direct freeze resumes after immunity")
-advance(2)
-check(projectile.Fire(shooter, aim), "team shot launched")
--- Membership changes after launch must be observed at impact.
-sessions[enemy] = "A"
-nextHit = { Instance = enemy.Character:FindFirstChild("HumanoidRootPart"), Position = vec(0, 1, -10) }
-advance(0.1)
-nextHit = nil
-check(
-    enemyHumanoid.Health == 58 and allyHumanoid.Health == 100,
-    "current teammates are protected at impact, no splash damage"
-)
-sessions[enemy] = "B"
-advance(2)
-check(projectile.Fire(shooter, aim), "wall shot launched")
-local wall = instance("Part")
-wall.Parent = workspaceFake
-nextHit = { Instance = wall, Position = vec(0, 1, -10) }
-advance(0.1)
-nextHit = nil
-check(
-    enemyHumanoid.Health == 58 and visualProjectiles[#visualProjectiles].Destroyed,
-    "world obstacle shatters projectile without hitting through wall"
-)
-advance(2)
-check(projectile.Fire(shooter, aim), "NPC shot launched")
+local center, centerH = target("B", 10)
+local left, leftH = target("C", 15, -24.99)
+local right, rightH = target("D", 15, 24.99)
+local above, aboveH = target("E", 15, 24.99, true)
+local edge, edgeH = target("F", 22)
+local beyond, beyondH = target("G", 22.01)
+local outside, outsideH = target("H", 15, 25.01)
+local below, belowH = target("I", 15, -25.01, true)
+local behind, behindH = target("J", 10, 180)
+local ally, allyH = target("A", 10)
+local teammate, teammateH = target("K", 10)
+local team = {}
+shooter.Neutral, teammate.Neutral, shooter.Team, teammate.Team = false, false, team, team
+local protected, protectedH = target("L", 10)
+local forceField = instance("ForceField")
+forceField.Parent = protected.Character
+local unassigned, unassignedH = target(nil, 10)
+local dead, deadH = target("M", 10)
+deadH.Health = 0
+local removed, removedH = target("N", 10)
+removed.Parent = nil
+local missingRoot, missingRootH = target("NoRoot", 10)
+missingRoot.Character:FindFirstChild("HumanoidRootPart"):Destroy()
+local removedCharacter, removedCharacterH = target("NoWorld", 10)
+removedCharacter.Character.Parent = nil
+local invalidPose, invalidPoseH = target("InvalidPose", 10)
+invalidPose.Character:FindFirstChild("HumanoidRootPart").Position = vec(0 / 0, 1, -10)
 local npc = instance("Model")
 npc.Parent = workspaceFake
-local npcRoot = instance("Part")
-npcRoot.Parent = npc
-local npcHumanoid = instance("Humanoid")
-npcHumanoid.Health, npcHumanoid.Parent = 100, npc
-nextHit = { Instance = npcRoot, Position = vec(0, 1, -10) }
-advance(0.1)
-nextHit = nil
-check(npcHumanoid.Health == 100, "nonplayer customers take no ice weapon damage")
-advance(2)
-check(projectile.Fire(shooter, aim), "range shot launched")
-local ranged = visualProjectiles[#visualProjectiles]
-local rangeOrigin = ranged.CFrame.Position
-advance(config.ProjectileLifetime)
+local npcRoot, npcH = instance("Part"), instance("Humanoid")
+npcRoot.Name, npcRoot.Parent, npcRoot.Position = "HumanoidRootPart", npc, muzzle + vec(0, 0, -10)
+npcH.Parent, npcH.Health = npc, 100
+local blocked, blockedH = target("O", 10, 10)
+local wall = instance("Part")
+wall.Parent = workspaceFake
+local blockLaunch = false
+workspaceFake.Raycast = function(_, origin, direction)
+    if blockLaunch then
+        return { Instance = wall, Position = muzzle }
+    end
+    if (origin - muzzle).Magnitude < 0.001 and direction.Magnitude > 1 then
+        if (origin + direction - blocked.Character:FindFirstChild("HumanoidRootPart").Position).Magnitude < 0.001 then
+            return { Instance = wall, Position = origin + direction * 0.5 }
+        end
+        if (origin + direction - left.Character:FindFirstChild("HumanoidRootPart").Position).Magnitude < 0.001 then
+            return { Instance = left.Character:FindFirstChild("HumanoidRootPart"), Position = origin + direction }
+        end
+    end
+    return nil
+end
+check(not shotgun.Fire(ally, aim), "nonowner cannot fire")
+check(not shotgun.Fire(shooter, { Target = center.Character, Damage = 999 }), "client target/damage payload rejected")
+advance(0.11)
+check(not shotgun.Fire(shooter, vec(0 / 0, 0, -10)), "nonfinite aim rejected")
+advance(0.11)
+check(not shotgun.Fire(shooter, muzzle), "zero aim direction rejected")
+advance(0.11)
+check(shotgun.Fire(shooter, aim), "entitled equipped owner fires cone")
 check(
-    ranged.Destroyed and (ranged.CFrame.Position - rangeOrigin).Magnitude <= 110.001,
-    "projectiles expire at maximum range/lifetime"
+    shooter:GetAttribute("IceGunCooldownEnd") == workspaceFake:GetServerTimeNow() + config.ShotCooldown,
+    "accepted shot publishes the 4.5-second server deadline"
 )
-advance(0.5)
+for _, pair in { { center, centerH }, { left, leftH }, { right, rightH }, { above, aboveH }, { edge, edgeH } } do
+    check(
+        pair[2].Health == 95 and movement.IsFrozen(pair[1]),
+        "one shot damages/freezes every visible in-cone enemy once"
+    )
+end
+for _, pair in
+    {
+        { beyond, beyondH },
+        { outside, outsideH },
+        { below, belowH },
+        { behind, behindH },
+        { ally, allyH },
+        { teammate, teammateH },
+        { protected, protectedH },
+        { unassigned, unassignedH },
+        { removed, removedH },
+        { blocked, blockedH },
+        { missingRoot, missingRootH },
+        { removedCharacter, removedCharacterH },
+        { invalidPose, invalidPoseH },
+    }
+do
+    check(
+        pair[2].Health == 100 and not movement.IsFrozen(pair[1]),
+        "ineligible/outside/occluded target remains untouched"
+    )
+end
+check(shooterHumanoid.Health == 100 and deadH.Health == 0, "self and dead targets remain untouched")
+check(npcH.Health == 100, "NPC customers are outside player-only ice combat")
+advance(2.5)
+check(
+    centerH.Health == 95 and not movement.IsFrozen(center),
+    "shot uses existing freeze and has no delayed damage replay"
+)
+tool.Parent = shooter:FindFirstChildOfClass("Backpack")
+shotgun.ClearPlayer(shooter)
+tool.Parent = shooter.Character
+advance(config.ShotCooldown - 2.51)
+local confirmedBeforeReject = shooter:GetAttribute("IceGunCooldownEnd")
+local accepted, reason = shotgun.Fire(shooter, aim)
+check(
+    not accepted and reason == "shot cooldown",
+    "put-away/re-equip cannot bypass 4.5-second cooldown and returns specific rejection"
+)
+check(
+    shooter:GetAttribute("IceGunCooldownEnd") == confirmedBeforeReject,
+    "rejected shot never starts or extends UI cooldown"
+)
+advance(0.11)
+check(shotgun.Fire(shooter, aim), "shot eligible after server cooldown")
+check(centerH.Health == 90, "next shot deals exactly five damage")
+advance(config.ShotCooldown)
+config.TeamDamage = true
+check(shotgun.Fire(shooter, aim), "server explicitly opts in to friendly fire")
+check(
+    allyH.Health == 95 and teammateH.Health == 95 and shooterHumanoid.Health == 100,
+    "opt-in permits both teammate types, still rejects self"
+)
+config.TeamDamage = false
+check(
+    not combat.CanDamagePlayer(shooter, ally) and not combat.CanDamagePlayer(shooter, teammate),
+    "bat/default combat retains team protection"
+)
+advance(config.ShotCooldown)
+tool.Parent = shooter:FindFirstChildOfClass("Backpack")
+check(not shotgun.Fire(shooter, aim), "owned but unequipped Tool cannot fire")
+local forged = template:Clone()
+forged:SetAttribute("IceGunWeapon", true)
+forged.Parent = shooter.Character
+advance(0.11)
+check(not shotgun.Fire(shooter, aim), "forged weapon attribute cannot authorize fire")
+forged:Destroy()
+tool.Parent = shooter.Character
+advance(0.11)
 movement.SetFrozen(shooter, true)
-check(not projectile.Fire(shooter, aim), "frozen attacker cannot fire")
+check(not shotgun.Fire(shooter, aim), "frozen attacker cannot fire")
 movement.SetFrozen(shooter, false)
 advance(0.11)
+movement.SetStunned(shooter, true)
+check(not shotgun.Fire(shooter, aim), "bat-stunned attacker cannot fire")
+movement.SetStunned(shooter, false)
+advance(0.11)
+shooterHumanoid.PlatformStand = true
+check(not shotgun.Fire(shooter, aim), "physical ragdoll blocks fire")
+shooterHumanoid.PlatformStand = false
+advance(0.11)
 barrel.WorldPosition = vec(0, 1, -100)
-check(not projectile.Fire(shooter, aim), "server rejects remote manipulated muzzle pose")
-barrel.WorldPosition = vec(0, 1, -2)
+check(not shotgun.Fire(shooter, aim), "manipulated muzzle pose rejected")
+barrel.WorldPosition = muzzle
 advance(0.11)
-nextHit = { Instance = wall, Position = vec(0, 1, -2) }
-check(not projectile.Fire(shooter, aim), "obstructed launch clearance cannot spawn through geometry")
-nextHit = nil
+blockLaunch = true
+check(not shotgun.Fire(shooter, aim), "blocked root-to-muzzle path rejected")
+blockLaunch = false
 advance(0.11)
-check(projectile.Fire(shooter, aim), "final lifecycle shot")
-local last = visualProjectiles[#visualProjectiles]
-shooterHumanoid.Health = 0
-advance(0.1)
-check(last.Destroyed, "dead shooter leaves no active projectile")
-shooterHumanoid.Health = 100
-sessions[enemy] = nil
-check(
-    not combat.CanDamagePlayer(shooter, enemy) and not combat.CanDamagePlayer(shooter, shooter),
-    "existing unassigned/self PvP rules apply"
-)
-sessions[enemy] = "B"
-local forceField = instance("ForceField")
-forceField.Parent = enemy.Character
-check(
-    not combat.DamagePlayer(shooter, enemy, enemy.Character, 14) and enemyHumanoid.Health == 58,
-    "respawn ForceField blocks damage and freeze"
-)
-forceField:Destroy()
-local oldCharacter = enemy.Character
-local replacement = instance("Model")
-enemy.Character = replacement
-check(not combat.DamagePlayer(shooter, enemy, oldCharacter, 14), "stale character references cannot damage a respawn")
-enemy.Character = oldCharacter
-advance(2)
 local oversizedBody = instance("Part")
-oversizedBody.Parent, oversizedBody.CanCollide = shooter.Character, true
-oversizedBody.Size = vec(20, 20, 20)
+oversizedBody.Parent, oversizedBody.CanCollide, oversizedBody.Size = shooter.Character, true, vec(20, 20, 20)
 oversizedBody.CFrame.PointToObjectSpace = function(_, v)
     return v
 end
-check(not projectile.Fire(shooter, aim), "projectile may not originate inside shooter collision geometry")
+check(not shotgun.Fire(shooter, aim), "muzzle enclosed in shooter collision geometry rejected")
 oversizedBody:Destroy()
 advance(0.11)
-shooterHumanoid.PlatformStand = true
-check(not projectile.Fire(shooter, aim), "physical ragdoll/action block rejects new shots")
-shooterHumanoid.PlatformStand = false
+shooterHumanoid.Health = 0
+check(not shotgun.Fire(shooter, aim), "dead shooter cannot fire")
+shooterHumanoid.Health = 100
 advance(0.11)
-check(projectile.Fire(shooter, aim), "delayed heartbeat shot")
-local delayed = visualProjectiles[#visualProjectiles]
-nextHit = { Instance = enemy.Character:FindFirstChild("HumanoidRootPart"), Position = vec(0, 1, -10) }
-advance(5)
-nextHit = nil
+sessions[shooter] = nil
+local before = centerH.Health
+check(shotgun.Fire(shooter, aim) and centerH.Health == before, "pre-claim ownership permits effects but never PvP")
+sessions[shooter] = "A"
+advance(config.ShotCooldown)
+local old = center.Character
+center.Character = instance("Model")
+check(not combat.DamagePlayer(shooter, center, old, 5), "stale target character cannot receive damage")
+center.Character = old
+setup(freeze.Apply(center), "immunity test freeze")
+advance(config.FreezeSeconds)
+check(shotgun.Fire(shooter, aim), "shot during target recovery immunity")
 check(
-    delayed.Destroyed and enemyHumanoid.Health == 58,
-    "long server stall cannot replay an expired damaging projectile"
+    centerH.Health == before - 5 and not movement.IsFrozen(center),
+    "freeze immunity prevents re-freeze without blocking damage"
 )
-local respawned, respawnHumanoid = fighter("A")
-shooter.CharacterRemoving:Fire(shooter.Character)
-shooter.Character = respawned.Character
-respawned.Character = nil
-gun.ApplyCharacter(shooter, shooter.Character)
-ready(shooter)
+-- Rejection feedback must describe the actual failure even during cooldown.
+advance(0.11)
+blockLaunch = true
+local blockedAccepted, blockedReason = shotgun.Fire(shooter, aim)
+check(
+    not blockedAccepted and blockedReason ~= "shot cooldown",
+    "invalid muzzle during cooldown does not produce cooldown feedback"
+)
+blockLaunch = false
+advance(config.ShotCooldown - 0.11)
+check(shotgun.Fire(shooter, aim), "shot fires at exactly the authoritative cooldown deadline")
+-- UI authority persists across putting the weapon away and resets only with character lifecycle.
+local beforeDeadline = shooter:GetAttribute("IceGunCooldownEnd")
+check(typeof(beforeDeadline) == "number", "accepted shots publish a server-time deadline")
+shotgun.ClearPlayer(shooter)
+check(shooter:GetAttribute("IceGunCooldownEnd") == beforeDeadline, "unequip preserves replicated cooldown")
+shotgun.RemovePlayer(shooter)
+check(shooter:GetAttribute("IceGunCooldownEnd") == 0, "character lifecycle clears replicated cooldown")
+local temporaryShooter = fighter("TemporaryAdminGrant")
+ready(temporaryShooter)
+gun.AddPlayer(temporaryShooter)
 flush()
-local respawnTool = gun.GrantIfOwned(shooter)
-respawnHumanoid:EquipTool(respawnTool)
-respawnTool:FindFirstChild("Handle"):FindFirstChild("GunBarrel").WorldPosition = vec(0, 1, -2)
+local temporaryGun = gun.GrantOnce(temporaryShooter)
+setup(temporaryGun ~= nil and gun.RequestSelection(temporaryShooter, temporaryGun, true), "equip admin-issued gun")
+temporaryGun:FindFirstChild("Handle"):FindFirstChild("GunBarrel").WorldPosition = muzzle
 check(
-    guns(shooter) == 1 and projectile.Fire(shooter, aim),
-    "respawned gun fires on first hotbar selection without pedestal"
+    shotgun.Fire(temporaryShooter, aim) and not gun.PlayerOwns(temporaryShooter),
+    "one-life admin grant fires through normal combat without gamepass ownership"
 )
-print("PASS: Ice Gun projectile/combat integration")
+print("PASS: Ice Shotgun cone/combat integration")

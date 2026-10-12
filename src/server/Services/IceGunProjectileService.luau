@@ -1,11 +1,13 @@
 --!strict
--- One bounded server simulation; camera data is untrusted aim intent, never a damage target.
+-- Ice Shotgun cone resolver. Module name/API retained for existing tool lifecycle wiring.
+-- Camera data is untrusted aim intent, never a damage target or attack origin.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
+local Presentation = require(script.Parent.IceShotgunPresentationService)
 local Service = {}
-local REVISION = "icegun-reequip-2026-10-11"
+local REVISION = "ice-shotgun-2026-10-12"
 local lastDiagnostic: { [string]: number } = {}
 local function trace(player: Player, stage: string)
     if not Config.DebugLogging or not RunService:IsStudio() then
@@ -21,108 +23,69 @@ local function trace(player: Player, stage: string)
 end
 
 local deps: any
-type Projectile = {
-    Shooter: Player,
-    Character: Model,
-    Position: Vector3,
-    Direction: Vector3,
-    Travel: number,
-    Expires: number,
-    Ray: RaycastParams,
-    Visual: BasePart,
-}
-local active: { [Player]: Projectile } = {}
 local cooldown: { [Player]: number } = {}
 local requests: { [Player]: number } = {}
-local heartbeat: RBXScriptConnection? = nil
 
 local function finite(v: number): boolean
     return v == v and math.abs(v) < 1000000
 end
 
-local function stopIfIdle()
-    if next(active) == nil and heartbeat then
-        heartbeat:Disconnect()
-        heartbeat = nil
-    end
-end
-
-function Service.ClearPlayer(player: Player)
-    local shot = active[player]
-    active[player] = nil
-    if shot then
-        shot.Visual:Destroy()
-    end
-    stopIfIdle()
+function Service.ClearPlayer(_player: Player)
+    -- Shots resolve synchronously; putting away the Tool must not reset cooldown.
 end
 
 function Service.RemovePlayer(player: Player)
-    Service.ClearPlayer(player)
     cooldown[player], requests[player] = nil, nil
+    player:SetAttribute("IceGunCooldownEnd", 0)
 end
 
-local function impact(shot: Projectile, result: RaycastResult)
-    local ancestor: Instance? = result.Instance
-    while ancestor and ancestor ~= workspace do
-        if ancestor:IsA("Model") then
-            local victim = Players:GetPlayerFromCharacter(ancestor)
-            if victim then
-                if deps.CombatService.DamagePlayer(shot.Shooter, victim, ancestor, Config.DirectDamage) then
-                    deps.FreezeStatusService.Apply(victim)
-                end
-                break
-            end
-        end
-        ancestor = ancestor.Parent
-    end
-    deps.IceGunEffects.Impact(result.Position)
-end
-
-local function step(dt: number)
-    local now = os.clock()
-    for player, shot in active do
-        local h = shot.Character:FindFirstChildOfClass("Humanoid")
+local function attack(player: Player, origin: Vector3, direction: Vector3, ray: RaycastParams): { Presentation.Hit }
+    local minimumDot = math.cos(math.rad(Config.ConeAngleDegrees * 0.5))
+    -- Snapshot visibility before creating effects or triggering death/drop callbacks.
+    local targets: { { Player: Player, Character: Model, Position: Vector3 } } = {}
+    for _, victim in Players:GetPlayers() do
+        local character = victim.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
         if
-            now > shot.Expires + 0.1
-            or player.Parent ~= Players
-            or player.Character ~= shot.Character
-            or not h
-            or h.Health <= 0
-            or not shot.Visual.Parent
+            not character
+            or not root
+            or not root:IsA("BasePart")
+            or not root:IsDescendantOf(workspace)
+            or character:FindFirstChildOfClass("ForceField")
+            or not deps.CombatService.CanDamagePlayer(player, victim, Config.TeamDamage)
         then
-            trace(player, "projectile ended: lifetime/character/visual invalid travel=" .. tostring(shot.Travel))
-            Service.ClearPlayer(player)
             continue
         end
-        local distance = math.min(Config.ProjectileSpeed * dt, Config.MaximumRange - shot.Travel)
-        local result = workspace:Raycast(shot.Position, shot.Direction * distance, shot.Ray)
-        if result then
-            trace(
-                player,
-                "projectile impact travel="
-                    .. tostring(shot.Travel)
-                    .. " position="
-                    .. tostring(result.Position)
-                    .. " hit="
-                    .. tostring(result.Instance)
-            )
-            -- Remove simulation before damage can synchronously trigger any lifecycle callbacks.
-            Service.ClearPlayer(player)
-            impact(shot, result)
-        else
-            shot.Travel += distance
-            shot.Position += shot.Direction * distance
-            shot.Visual.CFrame = CFrame.lookAt(shot.Position, shot.Position + shot.Direction)
-            if shot.Travel >= Config.MaximumRange or now >= shot.Expires then
-                trace(player, "projectile ended: range/lifetime travel=" .. tostring(shot.Travel))
-                Service.ClearPlayer(player)
-            end
+        local offset = root.Position - origin
+        local distance = offset.Magnitude
+        if not (distance >= 0.001 and distance <= Config.MaximumRange and direction:Dot(offset.Unit) >= minimumDot) then
+            continue
+        end
+        local obstruction = workspace:Raycast(origin, offset, ray)
+        if not obstruction or obstruction.Instance:IsDescendantOf(character) then
+            table.insert(targets, { Player = victim, Character = character, Position = root.Position })
         end
     end
-    stopIfIdle()
+    local hits: { Presentation.Hit } = {}
+    for _, target in targets do
+        -- Revalidate current eligibility/character at damage time; never trust client targets.
+        if
+            deps.CombatService.DamagePlayer(
+                player,
+                target.Player,
+                target.Character,
+                Config.DirectDamage,
+                Config.TeamDamage
+            )
+        then
+            local frozen = deps.FreezeStatusService.Apply(target.Player)
+            table.insert(hits, { Position = target.Position, UserId = target.Player.UserId, Frozen = frozen })
+        end
+    end
+    return hits
 end
 
-function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirection: any?): boolean
+function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirection: any?): (boolean, string?)
     local now = os.clock()
     trace(player, "fire remote received")
     if Config.DebugLogging and RunService:IsStudio() then
@@ -136,9 +99,9 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
                 .. tostring(player.Character)
         )
     end
-    local function reject(reason: string): boolean
+    local function reject(reason: string): (boolean, string?)
         trace(player, "fire rejected: " .. reason)
-        return false
+        return false, reason
     end
     -- Reject spam before inspecting geometry or touching any Marketplace API.
     if now < (requests[player] or 0) then
@@ -176,10 +139,6 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
         return reject("invalid character root")
     elseif h.PlatformStand or not deps.MovementService.CanPerformGameplayAction(player) then
         return reject("gameplay action blocked")
-    elseif now < (cooldown[player] or 0) then
-        return reject("shot cooldown")
-    elseif active[player] then
-        return reject("projectile already active")
     end
     local handle = tool:FindFirstChild("Handle")
     local barrel = handle and handle:FindFirstChild("GunBarrel")
@@ -247,7 +206,7 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
     local direction = offset.Unit
     local origin = muzzle
     -- Validate the actual launch point and root-to-muzzle path, never a fabricated
-    -- four-stud clearance point. Swept collision continues from this same muzzle.
+    -- four-stud clearance point. Cone visibility uses this same muzzle.
     local start = root.Position + Vector3.new(0, 1, 0)
     for _, part in character:GetDescendants() do
         if part:IsA("BasePart") and part.CanCollide then
@@ -269,40 +228,24 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
     if workspace:Raycast(origin - direction * 0.1, direction * 0.2, ray) then
         return reject("muzzle obstruction")
     end
-    -- Entitlement permits launching before plot claim; CombatService still gates PvP at impact.
+    if now < (cooldown[player] or 0) then
+        return reject("shot cooldown")
+    end
+    -- Entitlement permits firing before plot claim; CombatService still gates PvP.
     trace(player, "fire eligible")
     cooldown[player] = now + Config.ShotCooldown
-    local visual = deps.IceGunEffects.CreateProjectile(CFrame.lookAt(origin, origin + direction))
-    active[player] = {
-        Shooter = player,
-        Character = character,
-        Position = origin,
-        Direction = direction,
-        Travel = 0,
-        Expires = now + Config.ProjectileLifetime,
-        Ray = ray,
-        Visual = visual,
-    }
-    local smoke = barrel:FindFirstChild("Smoke")
-    if smoke and smoke:IsA("ParticleEmitter") then
-        smoke:Emit(50)
-    end
-    local sound = handle:FindFirstChild("Launch")
-    if sound and sound:IsA("Sound") then
-        sound.RollOffMaxDistance = 100
-        sound:Play()
-    end
-    if not heartbeat then
-        heartbeat = RunService.Heartbeat:Connect(step)
-    end
-    trace(player, "projectile spawned")
+    player:SetAttribute("IceGunCooldownEnd", workspace:GetServerTimeNow() + Config.ShotCooldown)
+    local hits = attack(player, origin, direction, ray)
+    Presentation.Emit(player, origin, direction, hits)
+    trace(player, "cone shot resolved")
     return true
 end
 
 function Service.Init(services)
     deps = services
+    Presentation.Init()
     if Config.DebugLogging and RunService:IsStudio() then
-        warn("[IceGun] projectile initialized revision=" .. REVISION .. " module=" .. script:GetFullName())
+        warn("[IceGun] shotgun initialized revision=" .. REVISION .. " module=" .. script:GetFullName())
     end
     local event = Instance.new("RemoteEvent")
     event.Name = "IceGunFire"
@@ -319,7 +262,8 @@ function Service.Init(services)
             end
             deps.IceGunService.RequestSelection(player, origin, direction)
         else
-            Service.Fire(player, aim, origin, direction)
+            local accepted, reason = Service.Fire(player, aim, origin, direction)
+            event:FireClient(player, accepted, player.Character, player:GetAttribute("IceGunCooldownEnd") or 0, reason)
         end
     end)
     event.Parent = ReplicatedStorage

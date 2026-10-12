@@ -17,13 +17,22 @@ projectile.Init(deps)
 gun.Init(deps)
 local remote = replicated:FindFirstChild("IceGunFire")
 local accepted, requestsSent = 0, 0
+local acceptedShots = 0
+local realFire = projectile.Fire
+projectile.Fire = function(...)
+    local result = realFire(...)
+    if result then
+        acceptedShots += 1
+    end
+    return result
+end
 function remote:FireServer(aim, origin, direction, character)
     if aim ~= "Select" then
         requestsSent += 1
     end
-    local before = #visualProjectiles
+    local before = acceptedShots
     self.OnServerEvent:Fire(services.Players.LocalPlayer, aim, origin, direction, character)
-    if #visualProjectiles > before then
+    if acceptedShots > before then
         accepted += 1
     end
 end
@@ -53,6 +62,7 @@ do
     properties(p)
     ready(p)
     ownership[p.UserId] = true
+    inputTool(p)
     services.Players.LocalPlayer = p
     local character, backpack = p.Character, p:FindFirstChildOfClass("Backpack")
     if order == "Character-late" or order == "Backpack-then-Character" or order == "Character-then-Backpack" then
@@ -96,34 +106,35 @@ do
     tool:FindFirstChild("Handle"):FindFirstChild("GunBarrel").WorldPosition = vec(0, 1, -2)
     moveInputTool(tool, character)
     local before = accepted
-    tool.Activated:Fire()
-    check(accepted == before + 1, "first hotbar selection launches server projectile without pedestal/plot: " .. order)
+    fireInput(tool)
+    check(accepted == before + 1, "first hotbar selection launches server cone shot without pedestal/plot: " .. order)
     hit = { Instance = enemy.Character:FindFirstChild("HumanoidRootPart"), Position = vec(0, 1, -10) }
     advance(0.2)
     hit = nil
     check(enemyHumanoid.Health == 100, "pre-claim launch preserves unassigned-player PvP immunity")
     owner, ownerHumanoid, firstTool = p, h, tool
-    advance(2)
+    advance(config.ShotCooldown)
 end
+inputTool(owner)
 services.Players.LocalPlayer = owner
 -- Claim alone changes PvP membership, not entitlement, issued instance or launch gates.
 sessions[owner] = "OwnerPlot"
 local claimedShot = accepted
-firstTool.Activated:Fire()
+fireInput(firstTool)
 check(
     accepted == claimedShot + 1 and gun.GetEquipped(owner) == firstTool,
     "claim without pedestal keeps initial hotbar gun launchable"
 )
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 check(gun.RequestEquip(owner) and gun.GetEquipped(owner) == firstTool, "pedestal equips same registered instance")
 owner.Character.ChildAdded:Fire(firstTool)
 local before = accepted
-firstTool.Activated:Fire()
+fireInput(firstTool)
 check(accepted == before + 1, "pedestal equip remains usable")
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 local bat = inputTool(env.Instance.new("Tool"))
 bat.Name = "Bat"
 bat:SetAttribute("BatLevel", 1)
@@ -137,19 +148,19 @@ for cycle = 1, 20 do
     flush()
     moveInputTool(bat, owner.Character)
     local sentBeforeBat = requestsSent
-    bat.Activated:Fire()
+    fireInput(bat)
     check(requestsSent == sentBeforeBat, "switching to Bat sends no Ice Gun request")
     moveInputTool(bat, owner:FindFirstChildOfClass("Backpack"))
     moveInputTool(firstTool, owner.Character)
     check(gun.GetEquipped(owner) == firstTool, "same issued instance authorized on cycle " .. tostring(cycle))
     local sent, launched = requestsSent, accepted
-    firstTool.Activated:Fire()
+    fireInput(firstTool)
     check(
         requestsSent == sent + 1 and accepted == launched + 1 and guns(owner) == 1,
         "repeated transfer/re-equip sends one usable shot"
     )
     projectile.ClearPlayer(owner)
-    advance(2)
+    advance(config.ShotCooldown)
 end
 -- Approximate the supplied live trace: client Character, server Backpack.
 -- The engine double has one Parent, so swap views only at the remote boundary.
@@ -169,51 +180,51 @@ end
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 moveInputTool(firstTool, owner.Character)
 local sentBeforeMismatch, acceptedBeforeMismatch = requestsSent, accepted
-firstTool.Activated:Fire()
+fireInput(firstTool)
 check(
     requestsSent == sentBeforeMismatch + 1 and accepted == acceptedBeforeMismatch,
     "client-only equip sends fire but server Backpack rejects it, matching supplied trace"
 )
-advance(2)
+advance(config.ShotCooldown)
 forwardSelection = true
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 moveInputTool(firstTool, owner.Character)
 local beforeSelection = accepted
-firstTool.Activated:Fire()
+fireInput(firstTool)
 check(accepted == beforeSelection + 1, "hotbar intent establishes server equip before fire without pedestal")
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 for _ = 1, 20 do
     moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
     check(serverParent:IsA("Backpack"), "hotbar put-away reaches server")
     moveInputTool(firstTool, owner.Character)
     local sent, launched = requestsSent, accepted
-    firstTool.Activated:Fire()
+    fireInput(firstTool)
     check(
         requestsSent == sent + 1 and accepted == launched + 1 and guns(owner) == 1,
-        "split-view hotbar re-equip sends one authorized projectile"
+        "split-view hotbar re-equip sends one authorized cone shot"
     )
     projectile.ClearPlayer(owner)
-    advance(2)
+    advance(config.ShotCooldown)
 end
 -- Activation can precede engine equip notifications or follow a blocked selection.
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 firstTool.Parent = owner.Character -- Deliberately no ChildAdded/Equipped notification.
 local beforeEarlyActivation = accepted
-firstTool.Activated:Fire()
+fireInput(firstTool)
 check(accepted == beforeEarlyActivation + 1, "activation before equip notifications establishes server selection")
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 movement.SetStunned(owner, true)
 moveInputTool(firstTool, owner.Character)
 check(serverParent:IsA("Backpack"), "blocked selection cannot equip on server")
 movement.SetStunned(owner, false)
 local beforeRecovery = accepted
-firstTool.Activated:Fire()
+fireInput(firstTool)
 check(accepted == beforeRecovery + 1, "first eligible activation retries a previously rejected selection")
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 -- Queue the single event stream while the client rapidly switches. Server
 -- signals are a separate view, not synchronous client callbacks in this double.
 local queued = {}
@@ -236,7 +247,7 @@ local function drainSelections()
 end
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 moveInputTool(firstTool, owner.Character)
-firstTool.Activated:Fire() -- No network drain between selection and activation.
+fireInput(firstTool) -- No network drain between selection and activation.
 moveInputTool(firstTool, owner:FindFirstChildOfClass("Backpack"))
 moveInputTool(bat, owner.Character)
 moveInputTool(bat, owner:FindFirstChildOfClass("Backpack"))
@@ -253,19 +264,19 @@ check(
 check(serverParent:IsA("Backpack"), "rapid Ice Gun/Bat/empty switching ends put away on server")
 check(#queued == 0 and queuedBeforeDrain == 5, "late notifications do not enqueue stale re-equips")
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 moveInputTool(firstTool, owner.Character)
-firstTool.Activated:Fire()
+fireInput(firstTool)
 drainSelections()
 check(accepted == launchedBeforeQueue + 2, "next hotbar selection fires after rapid switching")
 projectile.ClearPlayer(owner)
-advance(2)
+advance(config.ShotCooldown)
 remote.FireServer = regularFireServer
-local rejectedShots = #visualProjectiles
+local rejectedShots = acceptedShots
 remote.OnServerEvent:Fire(owner, "Select", firstTool, false, enemy.Character)
 remote.OnServerEvent:Fire(owner, vec(0, 1, -20), nil, nil, enemy.Character)
 check(
-    gun.IsEquipped(owner) and #visualProjectiles == rejectedShots,
+    gun.IsEquipped(owner) and acceptedShots == rejectedShots,
     "old Character selection/fire cannot mutate current state"
 )
 local health = ownerHumanoid.Health
@@ -309,6 +320,6 @@ respawnTool:FindFirstChild("Handle"):FindFirstChild("GunBarrel").WorldPosition =
 check(not gun.IsEquipped(owner) and guns(owner) == 1, "respawn restores hotbar gun without forced equip")
 moveInputTool(respawnTool, owner.Character)
 before = accepted
-respawnTool.Activated:Fire()
+fireInput(respawnTool)
 check(accepted == before + 1, "respawned owner fires immediately without pedestal")
-print("PASS: Ice Gun initial-owner acquisition to server projectile")
+print("PASS: Ice Gun initial-owner acquisition to server cone shot")

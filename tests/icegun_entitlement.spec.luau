@@ -233,6 +233,61 @@ cache.StudioIceGunEntitlement = nil
 local freshSimulator = loadModule("StudioIceGunEntitlement")
 check(not freshSimulator.PlayerOwns(player2, 123), "fresh server module starts with empty simulated state")
 config.StudioGamePassSimulation = false
+local temporaryPlayer, temporaryHumanoid = fighter("Temporary")
+ready(temporaryPlayer)
+gun.AddPlayer(temporaryPlayer)
+gun.ApplyCharacter(temporaryPlayer, temporaryPlayer.Character)
+flush()
+local temporaryTool = gun.GrantOnce(temporaryPlayer)
+check(
+    temporaryTool ~= nil and guns(temporaryPlayer) == 1 and not gun.PlayerOwns(temporaryPlayer),
+    "one-life grant does not grant gamepass ownership"
+)
+check(
+    gun.GrantOnce(temporaryPlayer) == temporaryTool and guns(temporaryPlayer) == 1,
+    "repeated admin grants reuse the live weapon"
+)
+check(
+    gun.RequestSelection(temporaryPlayer, temporaryTool, true) and gun.GetEquipped(temporaryPlayer) == temporaryTool,
+    "temporary weapon qualifies for exact-instance firing authorization"
+)
+check(not gun.RequestSelection(realNonowner, temporaryTool, true), "temporary grant cannot transfer to another player")
+check(
+    gun.RequestSelection(temporaryPlayer, temporaryTool, false)
+        and gun.RequestSelection(temporaryPlayer, temporaryTool, true),
+    "temporary weapon supports putting away and re-equipping"
+)
+temporaryHumanoid.Health = 0
+temporaryHumanoid.Died:Fire()
+check(
+    guns(temporaryPlayer) == 0 and gun.GetEquipped(temporaryPlayer) == nil and gun.GrantOnce(temporaryPlayer) == nil,
+    "death revokes temporary access and dead players cannot receive a grant"
+)
+local replacement = fighter("TemporaryRespawn")
+temporaryPlayer.Character = replacement.Character
+replacement.Character = nil
+gun.ApplyCharacter(temporaryPlayer, temporaryPlayer.Character)
+flush()
+check(
+    guns(temporaryPlayer) == 0 and not gun.RequestSelection(temporaryPlayer, temporaryTool, true),
+    "temporary access never returns after respawn and stale weapons are rejected"
+)
+check(gun.GrantOnce(temporaryPlayer) ~= nil, "admin can grant again in a new life")
+gun.RemovePlayer(temporaryPlayer)
+gun.AddPlayer(temporaryPlayer)
+flush()
+check(
+    guns(temporaryPlayer) == 0 and not gun.PlayerOwns(temporaryPlayer),
+    "temporary access never returns after rejoining"
+)
+local permanentTool = gun.GrantOnce(nonowner)
+check(permanentTool ~= nil and gun.PlayerOwns(nonowner), "admin grant preserves existing permanent ownership")
+gun.ApplyCharacter(nonowner, nonowner.Character)
+flush()
+check(
+    guns(nonowner) == 1 and gun.RequestEquip(nonowner),
+    "gamepass owners retain their normal respawn access after an admin grant"
+)
 config.IceGunGamePassId = 0
 cache.IceGunService = nil
 local disabled = loadModule("IceGunService")

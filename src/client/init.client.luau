@@ -1,3 +1,9 @@
+require(script.Controllers.LockBaseVisibilityController).Init()
+-- Combat presentation registers independently of yielding menu controllers.
+require(script.Controllers.CharacterStatusOutlineController).Init()
+task.spawn(function()
+    require(script.Controllers.IceShotgunPresentationController).Init()
+end)
 -- Weapon input must not wait for unrelated UI/remote initialization.
 task.spawn(function()
     require(script.Controllers.IceGunController).Init()

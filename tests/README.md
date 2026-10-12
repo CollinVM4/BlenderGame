@@ -219,17 +219,15 @@ normal inventory, stash, theft, throw, blender input, and loose cleanup.
 `--suite player-head-stash`, `--suite player-head-blender-visual`, and the ingredient prompt runner's `--player-head-only`
 flag keep head presentation checks separate. See [setup and validation](../docs/PLAYER_HEAD_DROPS.md).
 
-## Bad customer first pass
+## Bat-only bad customers
 
-`--suite bad-customers --suite bad-customer-stash` runs the new customer lifecycle,
-queue-front/owner authority, Serve/Dismiss/Reject races, Thief/Freeloader outcomes,
-real stash isolation and real blender/smoothie preservation integration.
-`--suite bad-customer-presentation` separately verifies only new REJECT lettering
-and inert stolen geometry. Presentation is not a prerequisite for gameplay.
-Existing normal request/payout, queue, walk and ragdoll tests keep their original
-homes. See [BAD_CUSTOMERS.md](../docs/BAD_CUSTOMERS.md) for Studio smoke checks and
-baseline validation limitations.
-
+`--suite bad-customers --suite bad-customer-stash` covers derived purchased Bat
+eligibility, exact NPC hit authority for either teammate, retired actions/remotes,
+normal customer recovery, theft commit/escape/recovery, replay, reset and ownership
+changes. `bad-customers` includes real CombatService issuance and overlap dispatch.
+`--suite bad-customer-presentation` independently checks inert stolen geometry.
+Existing `customer-bat` and `npc-combat` retain normal recovery and geometry authority.
+See [BAD_CUSTOMERS.md](../docs/BAD_CUSTOMERS.md) for validation and Studio checks.
 
 ## Walk-in claiming and stand identity
 
@@ -296,3 +294,17 @@ ragdoll failure, cross-target dispatch, death/reset/respawn, and ownership inter
 contracts independently of the mixed `combat` inventory/adapter suite. Existing native
 joint/collision restoration stays in `ragdoll`; actual landing/recovery history stays in
 `fall-damage`. See [tuning, baseline blockers, and per-level multiplayer Studio checks](../docs/BAT_LAUNCH_TUNING.md).
+
+## Ice Shotgun
+
+Use `--suite icegun-combat --suite icegun-aim --suite freeze-status --suite freeze-bat`
+for cone geometry, multiplayer/occlusion, authorization, aim, freeze immunity and
+real bat/freeze overlap recovery. Existing entitlement, initial-owner and simulated
+combat suites retain acquisition coverage. Input/presentation remains separate.
+See [current configuration and Studio acceptance](../docs/ICE_SHOTGUN.md).
+
+`--suite ice-shotgun-vfx --suite character-status-outlines` independently tests
+local effect budgets/fallbacks, confirmed feedback and central outline priority,
+flashing and lifecycle. `--suite ice-shotgun-results` verifies the server-only
+notification contract and replicated immunity clocks without duplicating cone
+authority tests. See [presentation Studio checks](../docs/ICE_SHOTGUN_PRESENTATION.md).

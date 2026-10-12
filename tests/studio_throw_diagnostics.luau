@@ -69,9 +69,12 @@ end
 if localPlayer then
     local input = game:GetService("UserInputService")
     print(
-        "[Throw snapshot] input touch/mouse",
+        "[Throw snapshot] input touch/mouse/keyboard",
         input.TouchEnabled,
         input.MouseEnabled,
+        input.KeyboardEnabled,
+        "preferred",
+        input.PreferredInput,
         "last",
         input:GetLastInputType(),
         "text focus",

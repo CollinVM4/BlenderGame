@@ -5,10 +5,48 @@ local GRACE_SECONDS = 0.2
 local CLEARANCE = 0.25
 local MAX_DISTANCE = 32
 
-function IngredientThrow.Trace(player: Player, message: string)
-    if player:GetAttribute("ThrowDebug") == true then
-        print("[ThrowServer] player=" .. player.Name .. " " .. message)
+local diagnostics =
+    setmetatable({} :: { [Player]: { Attempt: string, Window: number, Count: number } }, { __mode = "k" })
+
+-- Correlation metadata never participates in gameplay validation.
+function IngredientThrow.BeginRequest(player: Player, attempt: any)
+    if player:GetAttribute("ThrowDebug") ~= true then
+        diagnostics[player] = nil
+        return
     end
+    local state: { Attempt: string, Window: number, Count: number } = diagnostics[player]
+        or { Attempt = "none", Window = os.clock(), Count = 0 }
+    state.Attempt = if type(attempt) == "number"
+            and attempt == attempt
+            and attempt >= 0
+            and attempt <= 2147483647
+            and attempt == math.floor(attempt)
+        then tostring(attempt)
+        else "none"
+    diagnostics[player] = state
+end
+
+function IngredientThrow.Trace(player: Player, message: string)
+    if player:GetAttribute("ThrowDebug") ~= true then
+        return
+    end
+    local state = diagnostics[player]
+    if not state then
+        IngredientThrow.BeginRequest(player, nil)
+        state = diagnostics[player]
+    end
+    if not state then
+        return
+    end
+    local now = os.clock()
+    if now - state.Window >= 5 then
+        state.Window, state.Count = now, 0
+    end
+    if state.Count >= 40 then
+        return
+    end
+    state.Count += 1
+    print("[ThrowServer] player=" .. player.Name .. " attempt=" .. state.Attempt .. " " .. message)
 end
 
 -- Retain the nominal facing frame for callers; placement is validated after preparation.

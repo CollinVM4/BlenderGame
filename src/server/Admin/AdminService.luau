@@ -11,6 +11,34 @@ local lastExecution: { [Player]: number? } = {}
 local chatConnections: { [Player]: RBXScriptConnection } = {}
 
 local commands: { [string]: (Player, { string }) -> boolean } = {}
+commands.giveicegun = function(player: Player, args: { string }): boolean
+    if #args ~= 1 then
+        warn("[Admin] Usage: ;giveicegun username")
+        return false
+    end
+    local username = string.lower(args[1])
+    local target: Player? = nil
+    for _, candidate in Players:GetPlayers() do
+        if string.lower(candidate.Name) == username then
+            target = candidate
+            break
+        end
+    end
+    if not target or not deps.IceGunService.GrantOnce(target) then
+        warn("[Admin] giveicegun requires an online player with a living character and Backpack")
+        return false
+    end
+    print(
+        string.format(
+            "[Admin] %s (%d) gave a one-life Ice Gun to %s (%d)",
+            player.Name,
+            player.UserId,
+            target.Name,
+            target.UserId
+        )
+    )
+    return true
+end
 commands.addcash = function(player: Player, args: { string }): boolean
     local amount = if #args == 1 then tonumber(args[1]) else nil
     if not amount or amount ~= amount or amount <= 0 or amount > Config.MaxAddCash then
@@ -59,7 +87,7 @@ function AdminService.HandleCommand(player: Player, message: string): boolean
     for argument in string.gmatch(remainder or "", "%S+") do
         table.insert(args, argument)
     end
-    -- Reserve before publishing cash, which can invoke immediate server signals.
+    -- Reserve before executing, which can invoke immediate server signals.
     lastExecution[player] = now
     local ok, accepted = pcall(command, player, args)
     if not ok or not accepted then

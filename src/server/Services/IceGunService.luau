@@ -48,6 +48,7 @@ type State = {
 local states: { [Player]: State } = {}
 local nextIssueId = 0
 local issued: { [Player]: Tool? } = {}
+local temporary: { [Player]: Tool? } = {}
 local connections: { [Player]: { RBXScriptConnection } } = {}
 
 local function stateFor(player: Player): State
@@ -118,6 +119,7 @@ end
 local function removeTool(player: Player)
     local tool = issued[player]
     issued[player] = nil
+    temporary[player] = nil
     player:SetAttribute("IceGunEquipped", false)
     if tool then
         tool:Destroy()
@@ -125,10 +127,9 @@ local function removeTool(player: Player)
     deps.IceGunProjectileService.ClearPlayer(player)
 end
 
-function Service.GrantIfOwned(player: Player): Tool?
-    -- Grant is deliberately nonyielding; only a server-confirmed cached entitlement qualifies.
+local function issueTool(player: Player): Tool?
     local state = states[player]
-    if not configured or player.Parent ~= Players or not state or state.Owned ~= true then
+    if player.Parent ~= Players or not state then
         return nil
     end
     local character = player.Character
@@ -202,19 +203,46 @@ function Service.GrantIfOwned(player: Player): Tool?
     return clone
 end
 
-function Service.IsEquipped(player: Player): boolean
+function Service.GrantIfOwned(player: Player): Tool?
+    -- Grant is deliberately nonyielding; only a server-confirmed cached entitlement qualifies.
+    local state = states[player]
+    if not configured or not state or state.Owned ~= true then
+        return nil
+    end
+    return issueTool(player)
+end
+
+-- Server-only admin grant. Authorizes this instance, never account entitlement or a future life.
+function Service.GrantOnce(player: Player): Tool?
+    if player.Parent ~= Players then
+        return nil
+    end
+    stateFor(player)
+    local tool = issueTool(player)
+    if tool then
+        temporary[player] = tool
+    end
+    return tool
+end
+
+local function authorized(player: Player): boolean
     local state, tool = states[player], issued[player]
-    return configured and state ~= nil and state.Owned == true and tool ~= nil and tool.Parent == player.Character
+    return tool ~= nil and (temporary[player] == tool or (configured and state ~= nil and state.Owned == true))
+end
+
+function Service.IsEquipped(player: Player): boolean
+    local tool = issued[player]
+    return player.Parent == Players and authorized(player) and tool ~= nil and tool.Parent == player.Character
 end
 
 function Service.GetEquipped(player: Player): Tool?
     if Service.IsEquipped(player) then
         return issued[player]
     end
-    local state, tool = states[player], issued[player]
-    local reason = if not configured
+    local tool = issued[player]
+    local reason = if not configured and not authorized(player)
         then "pass unavailable"
-        elseif not state or state.Owned ~= true then "entitlement unverified"
+        elseif not authorized(player) then "entitlement unverified"
         elseif not tool then "no registered Tool"
         else "registered Tool not in current Character"
     trace(player, "fire authorization rejected: " .. reason, tool)
@@ -223,15 +251,13 @@ end
 
 -- Hotbar selection is intent; only this server's live issued instance may move.
 function Service.RequestSelection(player: Player, requested: any, equip: any): boolean
-    local state, tool = states[player], issued[player]
+    local tool = issued[player]
     local character = player.Character
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if
         player.Parent ~= Players
-        or not configured
-        or not state
-        or state.Owned ~= true
+        or not authorized(player)
         or not tool
         or requested ~= tool
         or typeof(equip) ~= "boolean"

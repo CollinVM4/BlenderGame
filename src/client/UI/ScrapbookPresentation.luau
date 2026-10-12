@@ -4,238 +4,336 @@ local Catalog = require(Shared.Constants.DiscoveryCatalog)
 local Artwork = require(Shared.Constants.ScrapbookArtwork)
 local MoneyFormat = require(Shared.MoneyFormat)
 local Types = require(Shared.Types)
+local Registry = require(script.Parent.UIRegistry)
 local Presentation = {}
-export type Tab = "Ingredients" | "Customers"
+export type Binding = {
+    Root: ScreenGui,
+    Panel: GuiObject,
+    Scroll: ScrollingFrame,
+    Template: Frame,
+    Title: TextLabel,
+    Fields: { Instance },
+}
 export type View = {
-    SetWindow: (boolean, Tab) -> (),
     RenderState: (Types.DiscoveryState) -> (),
     UpdateDiscovery: (Types.DiscoveryEvent) -> (),
+    Destroy: () -> (),
 }
 
 function Presentation.FormatValue(value: number): string
     return MoneyFormat.Announcement(value)
 end
 
--- Preserve the catalog's ordering, including the ordering within each section.
-function Presentation.Group<T>(entries: { T }, key: (T) -> string): { { Key: string, Entries: { T } } }
-    local groups: { { Key: string, Entries: { T } } } = {}
-    local byKey: { [string]: { Key: string, Entries: { T } } } = {}
-    for _, entry in entries do
-        local id = key(entry)
-        local group: { Key: string, Entries: { T } }? = byKey[id]
-        if group then
-            table.insert(group.Entries, entry)
-        else
-            local newGroup: { Key: string, Entries: { T } } = { Key = id, Entries = { entry } }
-            byKey[id] = newGroup
-            table.insert(groups, newGroup)
-        end
-    end
-    return groups
+local function child(parent: Instance?, name: string, class: string): Instance?
+    return Registry.Child(parent, name, { name, name .. "_txt" }, class)
 end
 
-local function required(root: Instance, path: string, className: string): Instance
-    local current = root
-    local fullPath = root:GetFullName()
-    for part in path:gmatch("[^.]+") do
-        fullPath ..= "." .. part
-        local child = current:FindFirstChild(part)
-        assert(child, fullPath .. " missing")
-        current = child
-    end
-    assert(current:IsA(className), fullPath .. " must be a " .. className)
-    return current
-end
-
-function Presentation.Create(
-    gui: ScreenGui,
-    state: Types.DiscoveryState,
-    actions: { Open: () -> (), Close: () -> (), SelectTab: (Tab) -> () }
-): View
-    local window = required(gui, "Window", "Frame") :: Frame
-    window.Visible = false
-    local open = required(gui, "OpenButton", "ImageButton") :: ImageButton
-    local close = required(window, "CloseButton", "ImageButton") :: ImageButton
-    local ingredientsButton = required(window, "Tabs.IngredientsButton", "TextButton") :: TextButton
-    local customersButton = required(window, "Tabs.CustomersButton", "TextButton") :: TextButton
-    local ingredientsPage = required(window, "Pages.IngredientsPage", "Frame") :: Frame
-    local customersPage = required(window, "Pages.CustomersPage", "Frame") :: Frame
-    local ingredientsScroll = required(ingredientsPage, "Scroll", "ScrollingFrame") :: ScrollingFrame
-    local customersScroll = required(customersPage, "Scroll", "ScrollingFrame") :: ScrollingFrame
-    local rarityTemplate = required(ingredientsScroll, "RaritySectionTemplate", "Frame") :: Frame
-    local jumpTemplate = required(customersScroll, "JumpSectionTemplate", "Frame") :: Frame
-
-    -- Validate everything before cloning so setup errors cannot leave half-built pages.
-    for _, config in
-        {
-            { Template = rarityTemplate, Card = "IngredientCardTemplate", Image = "Artwork" },
-            { Template = jumpTemplate, Card = "CustomerCardTemplate", Image = "Portrait" },
-        }
-    do
-        local template = config.Template
-        local cardName = config.Card
-        required(template, "Header.Title", "TextLabel")
-        required(template, "Grid", "Frame")
-        required(template, "Grid.UIGridLayout", "UIGridLayout")
-        local card = required(template, "Grid." .. cardName, "Frame") :: Frame
-        required(card, config.Image, "ImageLabel")
-        required(card, "Name", "TextLabel")
-        if cardName == "IngredientCardTemplate" then
-            required(card, "Rarity", "TextLabel")
-            required(card, "Value", "TextLabel")
-        end
-        template.Visible = false
-        card.Visible = false
-    end
-    for _, scroll in { ingredientsScroll, customersScroll } do
-        local list = required(scroll, "UIListLayout", "UIListLayout") :: UIListLayout
-        list.SortOrder = Enum.SortOrder.LayoutOrder
-        list.FillDirection = Enum.FillDirection.Vertical
-        list.Padding = UDim.new(0, 12)
-        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        scroll.CanvasSize = UDim2.fromOffset(0, 0)
-        scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    end
-    gui.ResetOnSpawn = false
-    local ingredientCardsById: { [string]: (boolean) -> () } = {}
-    local specialCustomerCardsById: { [string]: (boolean) -> () } = {}
-
-    local function section(template: Frame, parent: ScrollingFrame, title: string, order: number): Frame
-        local clone = template:Clone()
-        clone.Name = "Section_" .. title
-        clone.LayoutOrder = order
-        clone.Size = UDim2.new(1, -12, 0, 0)
-        clone.AutomaticSize = Enum.AutomaticSize.Y
-        local header = required(clone, "Header", "Frame") :: Frame
-        header.LayoutOrder = 1
-        header.Size = UDim2.new(1, 0, 0, 30)
-        local titleLabel = required(header, "Title", "TextLabel") :: TextLabel
-        titleLabel.Text = title
-        local list = clone:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout")
-        list.SortOrder = Enum.SortOrder.LayoutOrder
-        list.FillDirection = Enum.FillDirection.Vertical
-        list.Padding = UDim.new(0, 8)
-        list.Parent = clone
-        local grid = required(clone, "Grid", "Frame") :: Frame
-        grid.LayoutOrder = 2
-        grid.AutomaticSize = Enum.AutomaticSize.None
-        local layout = required(grid, "UIGridLayout", "UIGridLayout") :: UIGridLayout
-        layout.FillDirection = Enum.FillDirection.Horizontal
-        layout.FillDirectionMaxCells = 4
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.CellPadding = UDim2.fromOffset(6, 6)
-        local function resize()
-            local width = math.max(1, math.floor((grid.AbsoluteSize.X - 18) / 4))
-            layout.CellSize = UDim2.fromOffset(width, math.floor(width * 1.35))
-        end
-        local function fitGrid()
-            grid.Size = UDim2.new(1, 0, 0, layout.AbsoluteContentSize.Y)
-        end
-        -- Grid content height is engine-measured; the scroll canvas remains automatic.
-        grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
-        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitGrid)
-        fitGrid()
-        clone.Visible = true
-        clone.Parent = parent
-        resize()
-        return grid
-    end
-
-    local function bindCard(card: Frame, imageName: string, asset: string, displayName: string): (boolean) -> ()
-        local image = required(card, imageName, "ImageLabel") :: ImageLabel
-        local name = required(card, "Name", "TextLabel") :: TextLabel
-        local tint = image.ImageColor3
-        image.Image = asset
-        image.ScaleType = Enum.ScaleType.Fit
-        return function(discovered: boolean)
-            image.ImageColor3 = if discovered then tint else Color3.new(0, 0, 0)
-            name.Text = if discovered then displayName else "???"
-        end
-    end
-
-    for order, group in
-        Presentation.Group(Catalog.GetIngredients(), function(entry)
-            return entry.Rarity
-        end)
-    do
-        local grid = section(rarityTemplate, ingredientsScroll, string.upper(group.Key), order)
-        local template = required(grid, "IngredientCardTemplate", "Frame") :: Frame
-        for index, entry in group.Entries do
-            local card = template:Clone()
-            card.Name = "Ingredient_" .. entry.Id
-            card.LayoutOrder = index
-            local reveal = bindCard(card, "Artwork", Artwork.GetIngredient(entry.Id), entry.DisplayName)
-            local rarityLabel = required(card, "Rarity", "TextLabel") :: TextLabel
-            rarityLabel.Text = entry.Rarity
-            local value = required(card, "Value", "TextLabel") :: TextLabel
-            local function update(discovered: boolean)
-                reveal(discovered)
-                value.Text = if discovered then Presentation.FormatValue(entry.Value) else "$???"
+function Presentation.Resolve(playerGui: PlayerGui): Binding?
+    local selected: Instance? = nil
+    local root: ScreenGui? = nil
+    for _, desktop in Registry.Desktops(playerGui) do
+        local active = Registry.ActiveRoot(desktop, playerGui)
+        if active then
+            if selected then
+                return nil
             end
-            ingredientCardsById[entry.Id] = update
-            update(state.Ingredients[entry.Id] == true)
-            card.Visible = true
-            card.Parent = grid
+            selected, root = desktop, active
         end
     end
-    for order, group in
-        Presentation.Group(Catalog.GetSpecialCustomers(), function(entry)
-            return tostring(entry.MinJumpTier)
-        end)
-    do
-        local grid = section(jumpTemplate, customersScroll, "JUMP " .. group.Key, order)
-        local template = required(grid, "CustomerCardTemplate", "Frame") :: Frame
-        for index, entry in group.Entries do
-            local card = template:Clone()
-            -- An ordinal name avoids showing a locked customer's identity in UI tooling.
-            card.Name = "Customer_" .. tostring(index)
-            card.LayoutOrder = index
-            local update = bindCard(card, "Portrait", Artwork.GetSpecialCustomer(entry.Id), entry.DisplayName)
-            specialCustomerCardsById[entry.Id] = update
-            update(state.SpecialCustomers[entry.Id] == true)
-            card.Visible = true
-            card.Parent = grid
-        end
+    if not selected or not root then
+        return nil
     end
-    open.Activated:Connect(actions.Open)
-    close.Activated:Connect(actions.Close)
-    ingredientsButton.Activated:Connect(function()
-        actions.SelectTab("Ingredients")
+    local panel = Registry.Child(Registry.Content(selected), "Panel:Index", { "Index", "Index_panel" }, "GuiObject")
+    local scroll =
+        Registry.Child(panel, "CardsViewport", { "CardsViewport", "CardsViewport_scroll_grid" }, "ScrollingFrame")
+    local template = child(scroll, "IndexCardTemplate", "Frame")
+    local title = child(child(panel, "Header", "GuiObject"), "INDEX", "TextLabel")
+    if not panel or not scroll or not template or not title then
+        return nil
+    end
+    local fields: { [string]: string } = {
+        FruitImage = "ImageLabel",
+        IngredientLabel = "TextLabel",
+        IngredientValue = "TextLabel",
+        RarityLabel = "TextLabel",
+    }
+    local controls: { Instance } = {}
+    for name, class in fields do
+        local control = child(template, name, class)
+        if not control then
+            return nil
+        end
+        table.insert(controls, control)
+    end
+    table.sort(controls, function(a, b)
+        return a.Name < b.Name
     end)
-    customersButton.Activated:Connect(function()
-        actions.SelectTab("Customers")
-    end)
-    local ingredientsColor, customersColor = ingredientsButton.BackgroundColor3, customersButton.BackgroundColor3
     return {
-        SetWindow = function(isOpen: boolean, tab: Tab)
-            window.Visible = isOpen
-            ingredientsPage.Visible = tab == "Ingredients"
-            customersPage.Visible = tab == "Customers"
-            ingredientsButton.BackgroundColor3 = if tab == "Ingredients"
-                then ingredientsColor:Lerp(Color3.new(1, 1, 1), 0.25)
-                else ingredientsColor
-            customersButton.BackgroundColor3 = if tab == "Customers"
-                then customersColor:Lerp(Color3.new(1, 1, 1), 0.25)
-                else customersColor
-        end,
-        RenderState = function(discoveries: Types.DiscoveryState)
-            for id, update in ingredientCardsById do
-                update(discoveries.Ingredients[id] == true)
+        Root = root,
+        Panel = panel :: GuiObject,
+        Scroll = scroll :: ScrollingFrame,
+        Template = template :: Frame,
+        Title = title :: TextLabel,
+        Fields = controls,
+    }
+end
+
+-- Pixel cell heights preserve the authored card aspect ratio without a canvas
+-- feedback loop. Four cells plus three gaps fit the padded viewport exactly.
+function Presentation.CellSize(width: number, aspect: number): UDim2
+    local cell = math.max(1, (width - 16 - 3 * 8) / 4)
+    return UDim2.fromOffset(cell, math.max(1, cell * aspect))
+end
+
+-- Both registries can use the authored card fields; category controls are
+-- intentionally absent until Figma supplies them.
+function Presentation.RenderCard(
+    card: Frame,
+    discovered: boolean,
+    metadata: { DisplayName: string, Rarity: string?, Value: number?, Image: string }
+)
+    local image = child(card, "FruitImage", "ImageLabel") :: ImageLabel
+    local name = child(card, "IngredientLabel", "TextLabel") :: TextLabel
+    local rarity = child(card, "RarityLabel", "TextLabel") :: TextLabel
+    local value = child(card, "IngredientValue", "TextLabel") :: TextLabel
+    local asset = if discovered then metadata.Image else ""
+    image.Image = asset
+    image.Visible = asset ~= ""
+    name.Text = if discovered then metadata.DisplayName else "???"
+    rarity.Text = if discovered then metadata.Rarity or "" else "LOCKED"
+    value.Text = if discovered and metadata.Value ~= nil then Presentation.FormatValue(metadata.Value) else ""
+    value.Visible = discovered and metadata.Value ~= nil
+end
+
+function Presentation.Create(binding: Binding, state: Types.DiscoveryState): View
+    local scroll, template = binding.Scroll, binding.Template
+    local grid = scroll:FindFirstChildOfClass("UIGridLayout") :: UIGridLayout?
+    local ownsGrid = grid == nil
+    if not grid then
+        local created = Instance.new("UIGridLayout")
+        created.Parent = scroll
+        grid = created
+    end
+    local layout = grid :: UIGridLayout
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.FillDirectionMaxCells = 4
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.CellPadding = UDim2.fromOffset(8, 8)
+    local padding = scroll:FindFirstChildOfClass("UIPadding") :: UIPadding?
+    local ownsPadding = padding == nil
+    if not padding then
+        local created = Instance.new("UIPadding")
+        created.Parent = scroll
+        padding = created
+    end
+    local inset = padding :: UIPadding
+    inset.PaddingLeft, inset.PaddingRight = UDim.new(0, 8), UDim.new(0, 8)
+    inset.PaddingTop, inset.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8)
+    scroll.ClipsDescendants = true
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.CanvasSize = UDim2.fromOffset(0, 0)
+    local originalTitle = binding.Title.Text
+    local examples: { GuiObject } = {}
+    local wasVisible = template.Visible
+    template.Visible = false
+    for _, instance in scroll:GetChildren() do
+        if instance:GetAttribute("ScrapbookGenerated") == true then
+            instance:Destroy()
+            continue
+        end
+        if instance.Name == "IndexCard" and instance:IsA("GuiObject") and instance.Visible then
+            instance.Visible = false
+            table.insert(examples, instance)
+        end
+    end
+    local aspect = 208 / 234 -- exported design: 234 x 208
+    local function resize()
+        layout.CellSize = Presentation.CellSize(scroll.AbsoluteWindowSize.X, aspect)
+    end
+    resize()
+    local resized = scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(resize)
+    local cards: { Frame } = {}
+    local updates: { [string]: (boolean) -> () } = {}
+    local entries = Catalog.GetIngredients()
+    local function counter()
+        local count = 0
+        for _, entry in entries do
+            if state.Ingredients[entry.Id] then
+                count += 1
             end
-            for id, update in specialCustomerCardsById do
-                update(discoveries.SpecialCustomers[id] == true)
+        end
+        binding.Title.Text = string.format("INDEX %d/%d", count, #entries)
+    end
+    for index, entry in entries do
+        local card = template:Clone()
+        card.Name = "CollectionCard_" .. index -- locked instance names never identify an ingredient
+        card:SetAttribute("ScrapbookGenerated", true)
+        card.LayoutOrder = index
+        local function render(discovered: boolean)
+            Presentation.RenderCard(card, discovered, {
+                DisplayName = entry.DisplayName,
+                Rarity = entry.Rarity,
+                Value = entry.Value,
+                Image = if discovered then Artwork.GetIngredient(entry.Id) else "",
+            })
+        end
+        updates[entry.Id] = render
+        render(state.Ingredients[entry.Id] == true)
+        card.Visible = true
+        card.Parent = scroll
+        table.insert(cards, card)
+    end
+    counter()
+    local stopped = false
+    return {
+        RenderState = function(nextState: Types.DiscoveryState)
+            if stopped then
+                return
             end
+            state = nextState
+            for id, render in updates do
+                render(state.Ingredients[id] == true)
+            end
+            counter()
         end,
         UpdateDiscovery = function(event: Types.DiscoveryEvent)
-            local cards: { [string]: (boolean) -> () } = if event.Kind == "Ingredient"
-                then ingredientCardsById
-                else specialCustomerCardsById
-            local update = cards[event.Id]
-            if update then
-                update(true)
+            if stopped then
+                return
             end
+            if event.Kind == "Ingredient" and updates[event.Id] then
+                updates[event.Id](true)
+                counter()
+            end
+        end,
+        Destroy = function()
+            if stopped then
+                return
+            end
+            stopped = true
+            resized:Disconnect()
+            for _, card in cards do
+                card:Destroy()
+            end
+            if ownsGrid then
+                layout:Destroy()
+            end
+            if ownsPadding then
+                inset:Destroy()
+            end
+            template.Visible = wasVisible
+            for _, example in examples do
+                example.Visible = true
+            end
+            binding.Title.Text = originalTitle
         end,
     }
 end
 
+-- Coalesce imported subtrees, and ignore changes from our own cloned cards.
+function Presentation.Observe(
+    playerGui: PlayerGui,
+    state: Types.DiscoveryState,
+    changed: (View?, ScreenGui?) -> ()
+): () -> ()
+    local binding: Binding? = nil
+    local view: View? = nil
+    local stopped, queued = false, false
+    local watched: { RBXScriptConnection } = {}
+    local schedule: () -> ()
+    local function scan()
+        queued = false
+        if stopped then
+            return
+        end
+        for _, connection in watched do
+            connection:Disconnect()
+        end
+        table.clear(watched)
+        for _, desktop in Registry.Desktops(playerGui) do
+            local ancestor: Instance? = desktop
+            while ancestor and ancestor ~= playerGui do
+                if ancestor:IsA("ScreenGui") or ancestor:IsA("GuiObject") then
+                    table.insert(
+                        watched,
+                        ancestor
+                            :GetPropertyChangedSignal(if ancestor:IsA("ScreenGui") then "Enabled" else "Visible")
+                            :Connect(schedule)
+                    )
+                end
+                ancestor = ancestor.Parent
+            end
+        end
+        local nextBinding = Presentation.Resolve(playerGui)
+        if nextBinding then
+            local identifiers: { Instance } =
+                { nextBinding.Panel, nextBinding.Scroll, nextBinding.Template, nextBinding.Title }
+            for _, field in nextBinding.Fields do
+                table.insert(identifiers, field)
+            end
+            for _, identifier in identifiers do
+                table.insert(watched, identifier:GetPropertyChangedSignal("Name"):Connect(schedule))
+                table.insert(watched, identifier:GetAttributeChangedSignal("BlenderUI"):Connect(schedule))
+            end
+        end
+        local sameFields = binding ~= nil and nextBinding ~= nil
+        if binding and nextBinding then
+            for index, field in binding.Fields do
+                if field ~= nextBinding.Fields[index] then
+                    sameFields = false
+                    break
+                end
+            end
+        end
+        if
+            binding
+            and nextBinding
+            and binding.Root == nextBinding.Root
+            and binding.Panel == nextBinding.Panel
+            and binding.Scroll == nextBinding.Scroll
+            and binding.Template == nextBinding.Template
+            and binding.Title == nextBinding.Title
+            and sameFields
+        then
+            return
+        end
+        if not binding and not nextBinding then
+            return
+        end
+        if view then
+            view.Destroy()
+        end
+        view, binding = nil, nextBinding
+        if nextBinding then
+            view = Presentation.Create(nextBinding, state)
+        end
+        changed(view, if nextBinding then nextBinding.Root else nil)
+    end
+    schedule = function()
+        if stopped or queued then
+            return
+        end
+        queued = true
+        task.defer(scan)
+    end
+    local added = playerGui.DescendantAdded:Connect(schedule)
+    local removing = playerGui.DescendantRemoving:Connect(schedule)
+    scan()
+    return function()
+        if stopped then
+            return
+        end
+        stopped = true
+        added:Disconnect()
+        removing:Disconnect()
+        for _, connection in watched do
+            connection:Disconnect()
+        end
+        if view then
+            view.Destroy()
+        end
+        view, binding = nil, nil
+        changed(nil, nil)
+    end
+end
 return Presentation

@@ -52,6 +52,10 @@ local focusedTextBox = nil
 local mousePosition = { X = 200, Y = 100 }
 local inputType = "MouseButton1"
 services.UserInputService = properties({
+    InputBegan = signal(),
+    TouchEnabled = true,
+    MouseEnabled = true,
+    KeyboardEnabled = true,
     PreferredInput = "KeyboardAndMouse",
     MouseBehavior = "Default",
     MouseIcon = "previous-cursor",
@@ -137,4 +141,46 @@ local function moveInputTool(tool, parent)
         tool.Unequipped:Fire()
     end
     flush()
+end
+
+-- Dedicated weapon action boundary; real placement has its own layout suite.
+env.Enum.KeyCode = { ButtonR2 = "ButtonR2" }
+env.Enum.ContextActionResult = { Sink = "Sink", Pass = "Pass" }
+env.Enum.UserInputState = { Begin = "Begin", End = "End" }
+local weaponActions = {}
+local weaponButtons = {}
+services.ContextActionService = {
+    BindAction = function(_, name, callback)
+        weaponActions[name] = callback
+    end,
+    BindActionAtPriority = function(_, name, callback, touch, priority, key)
+        weaponActions[name] = callback
+        weaponButtons[name] = env.Instance.new("ImageButton")
+        weaponButtons[name].Name = name
+        weaponButtons[name].Key = key
+    end,
+    UnbindAction = function(_, name)
+        weaponActions[name] = nil
+        if weaponButtons[name] then
+            weaponButtons[name]:Destroy()
+        end
+        weaponButtons[name] = nil
+    end,
+    GetButton = function(_, name)
+        return weaponButtons[name]
+    end,
+    SetTitle = function() end,
+}
+cache.MobileControlLayout = { Register = function() end, Unregister = function() end }
+replicated.ChildAdded = signal()
+local function fireInput(tool)
+    if services.UserInputService.PreferredInput == "KeyboardAndMouse" then
+        tool.Activated:Fire()
+    elseif weaponActions.IceShotgunFire then
+        weaponActions.IceShotgunFire("IceShotgunFire", "Begin")
+    end
+end
+
+env.UDim2.new = function(xs, xo, ys, yo)
+    return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } }
 end
