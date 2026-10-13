@@ -1,0 +1,41 @@
+<roblox version="4">
+  <Item class="Model" referent="RBX0">
+    <Properties>
+      <string name="Name">LuckyBlock</string>
+      <Ref name="PrimaryPart">RBX1</Ref>
+    </Properties>
+    <Item class="Part" referent="RBX1">
+      <Properties>
+        <string name="Name">Root</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">false</bool>
+        <bool name="CanTouch">false</bool>
+        <bool name="CanQuery">false</bool>
+        <Vector3 name="size"><X>3</X><Y>3</Y><Z>3</Z></Vector3>
+        <Color3 name="Color"><R>1</R><G>0.72</G><B>0.08</B></Color3>
+        <token name="Material">256</token>
+        <token name="TopSurface">0</token>
+        <token name="BottomSurface">0</token>
+      </Properties>
+      <Item class="SurfaceGui" referent="RBX2">
+        <Properties>
+          <string name="Name">QuestionMark</string>
+          <Vector2 name="CanvasSize"><X>256</X><Y>256</Y></Vector2>
+          <token name="Face">5</token>
+        </Properties>
+        <Item class="TextLabel" referent="RBX3">
+          <Properties>
+            <string name="Name">Label</string>
+            <string name="Text">?</string>
+            <float name="BackgroundTransparency">1</float>
+            <bool name="TextScaled">true</bool>
+            <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+            <Color3 name="TextStrokeColor3"><R>0.2</R><G>0.12</G><B>0</B></Color3>
+            <float name="TextStrokeTransparency">0</float>
+            <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+</roblox>

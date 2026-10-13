@@ -1,4 +1,6 @@
 require(script.Controllers.LockBaseVisibilityController).Init()
+require(script.Controllers.LuckyBlockPresentationController).Init()
+require(script.Controllers.LuckyBlockRouletteController).Init()
 -- Combat presentation registers independently of yielding menu controllers.
 require(script.Controllers.CharacterStatusOutlineController).Init()
 task.spawn(function()
@@ -13,6 +15,7 @@ task.spawn(function()
     require(script.Controllers.IceGunDisplayController).Init()
 end)
 require(script.Controllers.TutorialGleamController).Init()
+require(script.Controllers.TutorialHintController).Init()
 -- Subscribe to committed claims before other controller initialization can yield.
 require(script.Controllers.StandIdentityController).Init()
 require(script.Controllers.GameplayAudioController).Init()

@@ -5,6 +5,9 @@ local Artwork = require(Shared.Constants.ScrapbookArtwork)
 local MoneyFormat = require(Shared.MoneyFormat)
 local Types = require(Shared.Types)
 local Registry = require(script.Parent.UIRegistry)
+local RarityStyle = require(script.Parent.IngredientPickupPromptStyle)
+local Viewport = require(script.Parent.IngredientViewport)
+local PreviewIds = require(Shared.Constants.ScrapbookPreviews)
 local Presentation = {}
 export type Binding = {
     Root: ScreenGui,
@@ -100,7 +103,10 @@ function Presentation.RenderCard(
     image.Image = asset
     image.Visible = asset ~= ""
     name.Text = if discovered then metadata.DisplayName else "???"
-    rarity.Text = if discovered then metadata.Rarity or "" else "LOCKED"
+    local tier = metadata.Rarity or "Common"
+    rarity.Text = string.upper(tier)
+    local palette = (RarityStyle.RarityStyles :: any)[tier] or RarityStyle.RarityStyles.Common
+    rarity.TextColor3 = palette.TextColor
     value.Text = if discovered and metadata.Value ~= nil then Presentation.FormatValue(metadata.Value) else ""
     value.Visible = discovered and metadata.Value ~= nil
 end
@@ -154,6 +160,72 @@ function Presentation.Create(binding: Binding, state: Types.DiscoveryState): Vie
     resize()
     local resized = scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(resize)
     local cards: { Frame } = {}
+    local stopped = false
+    local previews: { [Frame]: () -> () } = {}
+    local previewDiscovered: { [Frame]: boolean } = {}
+    local previewCards: { { Card: Frame, Image: ImageLabel, Id: string } } = {}
+    local previewConnections: { RBXScriptConnection } = {}
+    local pending = false
+    local function refreshPreviews()
+        pending = false
+        if stopped then
+            return
+        end
+        local open = binding.Root.Enabled
+        local ancestor: Instance? = scroll
+        while ancestor and ancestor ~= binding.Root do
+            if ancestor:IsA("GuiObject") and not ancestor.Visible then
+                open = false
+            end
+            ancestor = ancestor.Parent
+        end
+        for _, item in previewCards do
+            local card, image = item.Card, item.Image
+            local top, bottom = scroll.AbsolutePosition.Y, scroll.AbsolutePosition.Y + scroll.AbsoluteWindowSize.Y
+            local visible = open
+                and card.Visible
+                and card.Parent == scroll
+                and card.AbsolutePosition.Y < bottom
+                and card.AbsolutePosition.Y + card.AbsoluteSize.Y > top
+            local discovered = state.Ingredients[item.Id] == true
+            if previews[card] and (not visible or previewDiscovered[card] ~= discovered) then
+                previews[card]()
+                previews[card] = nil
+                previewDiscovered[card] = nil
+            end
+            if visible and not previews[card] then
+                local cleanup = Viewport.Create(image, item.Id, not discovered)
+                if cleanup then
+                    previews[card] = cleanup
+                    previewDiscovered[card] = discovered
+                end
+            end
+            image.Visible = state.Ingredients[item.Id] == true and image.Image ~= "" and previews[card] == nil
+        end
+    end
+    local function schedulePreviews()
+        if stopped or pending then
+            return
+        end
+        pending = true
+        task.defer(refreshPreviews)
+    end
+    local function watch(instance: Instance, property: string)
+        table.insert(previewConnections, instance:GetPropertyChangedSignal(property):Connect(schedulePreviews))
+    end
+    watch(scroll, "CanvasPosition")
+    watch(scroll, "AbsoluteWindowSize")
+    watch(scroll, "AbsolutePosition")
+    local ancestor: Instance? = scroll
+    while ancestor do
+        if ancestor:IsA("GuiObject") then
+            watch(ancestor, "Visible")
+        elseif ancestor:IsA("ScreenGui") then
+            watch(ancestor, "Enabled")
+        end
+        ancestor = ancestor.Parent
+    end
+    table.insert(previewConnections, Shared.DescendantAdded:Connect(schedulePreviews))
     local updates: { [string]: (boolean) -> () } = {}
     local entries = Catalog.GetIngredients()
     local function counter()
@@ -171,21 +243,41 @@ function Presentation.Create(binding: Binding, state: Types.DiscoveryState): Vie
         card:SetAttribute("ScrapbookGenerated", true)
         card.LayoutOrder = index
         local function render(discovered: boolean)
+            if previews[card] and previewDiscovered[card] ~= discovered then
+                previews[card]()
+                previews[card] = nil
+                previewDiscovered[card] = nil
+            end
             Presentation.RenderCard(card, discovered, {
                 DisplayName = entry.DisplayName,
                 Rarity = entry.Rarity,
                 Value = entry.Value,
                 Image = if discovered then Artwork.GetIngredient(entry.Id) else "",
             })
+            if previews[card] then
+                (child(card, "FruitImage", "ImageLabel") :: ImageLabel).Visible = false
+            end
+            schedulePreviews()
         end
         updates[entry.Id] = render
         render(state.Ingredients[entry.Id] == true)
         card.Visible = true
         card.Parent = scroll
         table.insert(cards, card)
+        if not (PreviewIds :: { [string]: boolean })[entry.Id] then
+            continue
+        end
+        table.insert(previewCards, {
+            Card = card,
+            Image = child(card, "FruitImage", "ImageLabel") :: ImageLabel,
+            Id = entry.Id,
+        })
+        watch(card, "Visible")
+        watch(card, "AbsolutePosition")
+        watch(card, "AbsoluteSize")
+        table.insert(previewConnections, card.AncestryChanged:Connect(schedulePreviews))
     end
     counter()
-    local stopped = false
     return {
         RenderState = function(nextState: Types.DiscoveryState)
             if stopped then
@@ -212,6 +304,14 @@ function Presentation.Create(binding: Binding, state: Types.DiscoveryState): Vie
             end
             stopped = true
             resized:Disconnect()
+            for _, connection in previewConnections do
+                connection:Disconnect()
+            end
+            for _, cleanup in previews do
+                cleanup()
+            end
+            table.clear(previews)
+            table.clear(previewDiscovered)
             for _, card in cards do
                 card:Destroy()
             end

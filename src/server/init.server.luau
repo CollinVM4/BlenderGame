@@ -21,6 +21,7 @@ local services: { [string]: any } = {
     InitialSpawnService = require(script.Services.InitialSpawnService),
     TutorialService = require(script.Services.TutorialService),
     IngredientService = require(script.Services.IngredientService),
+    LuckyBlockService = require(script.Services.LuckyBlockService),
     PlayerHeadDropService = require(script.Services.PlayerHeadDropService),
     FarmService = require(script.Services.FarmService),
     SmoothieWorldItemService = require(script.Services.SmoothieWorldItemService),
@@ -43,6 +44,7 @@ local services: { [string]: any } = {
 require(script.Services.FilmingUtil).Init()
 require(script.Services.GameplaySfxService).Init()
 require(script.Services.PlayerOnlyCollisionService).Init()
+require(script.Services.ScrapbookPreviewAssets).Init()
 
 -- Migrate existing named plot fixtures to tags without yielding for absent assets.
 local folder = workspace:FindFirstChild("Plots")
@@ -65,6 +67,7 @@ services.LockBaseService.Init(services)
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
 services.IngredientService.Init(services)
+services.LuckyBlockService.Init()
 services.PlayerHeadDropService.Init(services)
 services.DiscoveryService.Init(services)
 services.MovementService.Init(services)

@@ -58,7 +58,8 @@ function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): {
         end
         return roots
     end
-    local stagePaths: { { string } } = paths[stage] or {}
+    local targetStage = if stage == "DrainBatch" then "Dispenser" elseif stage == "FinishBatch" then "Turbine" else stage
+    local stagePaths: { { string } } = paths[targetStage] or {}
     for _, path in stagePaths do
         local object: Instance? = plot
         for _, name in path do
@@ -75,7 +76,7 @@ function Targets.Resolve(plot: Instance?, stage: string, stashSlot: number?, cus
     if not plot or not plot:IsDescendantOf(workspace) then
         return result
     end
-    if stage == "Serve" then
+    if stage == "Serve" or stage == "Order" then
         if
             customer
             and customer:IsDescendantOf(workspace)

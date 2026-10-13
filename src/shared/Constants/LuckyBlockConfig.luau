@@ -1,0 +1,21 @@
+--!strict
+return {
+    ModelName = "LuckyBlock", -- Direct child of ServerStorage.LuckyBlockTemplates.
+    TemplateFolderName = "LuckyBlockTemplates",
+    MarkerTag = "LuckyBlockSpawn",
+    WorldTag = "LuckyBlockWorld",
+    WorldFolderName = "LuckyBlocks",
+    RewardEventName = "LuckyBlockPickedUp",
+    Rewards = {
+        { Id = "DoubleCash", Weight = 18, DurationSeconds = 30 },
+        { Id = "SuperJump", Weight = 22, DurationSeconds = 12 },
+        { Id = "RainbowRampage", Weight = 8, DurationSeconds = 10 },
+        { Id = "MegaBat", Weight = 15, DurationSeconds = 15 },
+        { Id = "IngredientMagnet", Weight = 20, DurationSeconds = 15 },
+        { Id = "Invincibility", Weight = 17, DurationSeconds = 8 },
+    },
+    Spawn = { ActiveLimit = 5, RecommendedMarkerMin = 8, RecommendedMarkerMax = 12, HeightOffset = 3 },
+    Respawn = { MinSeconds = 25, MaxSeconds = 40 },
+    Pickup = { Radius = 4, PollSeconds = 0.15, PlayerCooldownSeconds = 0.75 },
+    Animation = { BobAmplitude = 0.5, BobPeriodSeconds = 2.5, RotationDegreesPerSecond = 45 },
+}

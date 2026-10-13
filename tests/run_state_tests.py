@@ -38,8 +38,13 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "lucky-block": ("state", ("lucky_block.spec.luau",)),
+    "lucky-block-roulette": ("presentation", ("lucky_block_roulette.spec.luau",)),
+    "lucky-block-view": ("presentation", ("lucky_block_view.spec.luau",)),
+    "lucky-block-controller": ("presentation", ("lucky_block_controller.spec.luau",)),
     "tutorial": ("state", ("tutorial.spec.luau",)),
     "initial-spawn": ("integration", ("initial_spawn.spec.luau",)),
+    "tutorial-hints": ("presentation", ("tutorial_hints.spec.luau",)),
     "tutorial-targets": ("presentation", ("tutorial_targets.spec.luau",)),
     "tutorial-claim": ("integration", ("fixtures/smoothie.luau", "tutorial_claim.spec.luau")),
     "tutorial-gameplay": ("integration", ("fixtures/smoothie.luau", "tutorial_gameplay.spec.luau")),
@@ -180,6 +185,10 @@ for directory in ("src/shared/Constants", "src/server/Services", "src/server/Adm
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
 sources["TutorialTargets"] = (ROOT / "src/shared/TutorialTargets.luau").read_text(encoding="utf-8")
+for name in ("AnnouncementBanner", "TutorialHintText"):
+    sources[name] = (ROOT / f"src/client/UI/{name}.luau").read_text(encoding="utf-8")
+sources["RareIngredientPresentationController"] = (ROOT / "src/client/Controllers/RareIngredientPresentationController.luau").read_text(encoding="utf-8")
+sources["TutorialHintController"] = (ROOT / "src/client/Controllers/TutorialHintController.luau").read_text(encoding="utf-8")
 sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
 for name in ("IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):
     sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")
@@ -230,6 +239,10 @@ sources["PanelManager"] = (ROOT / "src/client/UI/PanelManager.luau").read_text(e
 sources["PlotIdentityController"] = (ROOT / "src/client/Controllers/PlotIdentityController.luau").read_text(encoding="utf-8")
 sources["UnstuckController"] = (ROOT / "src/client/Controllers/UnstuckController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
+for name in ("LuckyBlockSequence", "LuckyBlockView", "LuckyBlockVisual"):
+    sources[name] = (ROOT / f"src/client/UI/{name}.luau").read_text(encoding="utf-8")
+sources["LuckyBlockRouletteController"] = (ROOT / "src/client/Controllers/LuckyBlockRouletteController.luau").read_text(encoding="utf-8")
+sources["IngredientPreviewGeometry"] = (ROOT / "src/shared/IngredientPreviewGeometry.luau").read_text(encoding="utf-8")
 source_bundle = (
     "local customerOnly = " + str(args.customer_only).lower() + "\nlocal sources = {\n"
     + "\n".join(f"[{json.dumps(name)}] = {json.dumps(source, ensure_ascii=False)}," for name, source in sources.items())

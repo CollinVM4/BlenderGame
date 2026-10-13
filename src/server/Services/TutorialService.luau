@@ -15,6 +15,8 @@ type State = {
     Plot: Instance?,
     SessionId: string?,
     Version: number,
+    OrderIndex: number?,
+    BatchOrders: { [number]: number },
 }
 local states: { [Player]: State } = {}
 local function climbedOwnLadder(player: Player, plot: Instance?): boolean
@@ -50,7 +52,7 @@ local function climbedOwnLadder(player: Player, plot: Instance?): boolean
     end
     return false
 end
-local function currentTarget(player: Player, state: State): (string, number?, number?)
+local function currentTarget(player: Player, state: State, plot: Instance): (string, number?, number?)
     local orders = deps.CustomerService.GetTutorialSnapshot(player)
     if not orders then
         return "Complete", nil, nil
@@ -61,7 +63,23 @@ local function currentTarget(player: Player, state: State): (string, number?, nu
         end
         local slot = Orders[index].Slot
         if not order.OrderTaken then
-            return "Counter", index, slot
+            if index == 1 and not state.Milestones.ReachedCounter then
+                local character = player.Character
+                local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+                local counter = Targets.Resolve(plot, "Counter")[1]
+                if counter and counter:IsA("BasePart") and root and root:IsA("BasePart") then
+                    if (root.Position - counter.Position).Magnitude <= 16 then
+                        state.Milestones.ReachedCounter = true
+                    end
+                elseif #Targets.Resolve(plot, "Counter") == 0 then
+                    -- Missing scenery must not block the real order interaction.
+                    state.Milestones.ReachedCounter = true
+                end
+                if not state.Milestones.ReachedCounter then
+                    return "Counter", index, slot
+                end
+            end
+            return "Order", index, slot
         end
         -- Reconcile early dispensing and stored cups from actual ownership.
         local request
@@ -71,6 +89,15 @@ local function currentTarget(player: Player, state: State): (string, number?, nu
                 break
             end
         end
+        local batch = deps.BlendService.GetSnapshot(player)
+        if
+            batch
+            and batch.BatchId
+            and batch.AcceptedIngredientCount > 0
+            and state.BatchOrders[batch.BatchId] == nil
+        then
+            state.BatchOrders[batch.BatchId] = index
+        end
         if request then
             for _, cup in deps.InventoryService.GetSmoothieInventory(player) do
                 local evaluation = Evaluation.Evaluate(SmoothieItem.Result(cup.Data), request)
@@ -79,7 +106,31 @@ local function currentTarget(player: Player, state: State): (string, number?, nu
                 end
             end
         end
-        local batch = deps.BlendService.GetSnapshot(player)
+        if batch and batch.BatchId and batch.AcceptedIngredientCount > 0 then
+            local batchOrder = state.BatchOrders[batch.BatchId]
+            if batchOrder ~= index then
+                local prepared = if request and batch.Ingredients
+                    then Evaluation.Evaluate(
+                        SmoothieItem.Result({ BlendId = tostring(batch.BatchId), Ingredients = batch.Ingredients }),
+                        request
+                    )
+                    else nil
+                if prepared and prepared.IsValid and prepared.IsFulfilled then
+                    state.BatchOrders[batch.BatchId] = index
+                else
+                    -- Clear an old full batch through normal gameplay without crediting
+                    -- its ingredients to the new order or stranding a full blender.
+                    if batch.State ~= "DISPENSED" then
+                        if batch.ReadyToDispense and batch.ProgressPercent >= 100 then
+                            return "DrainBatch", index, slot
+                        elseif batch.AcceptedIngredientCount >= 3 then
+                            return "FinishBatch", index, slot
+                        end
+                    end
+                    batch = nil
+                end
+            end
+        end
         if batch and batch.ReadyToDispense and batch.ProgressPercent >= 100 then
             return "Dispenser", index, slot
         end
@@ -95,7 +146,7 @@ local function currentTarget(player: Player, state: State): (string, number?, nu
                 and not state.Milestones.UsedLadder
                 and not state.Milestones.LoadedBlender
                 and (not batch or batch.AcceptedIngredientCount == 0)
-                and #Targets.Resolve(state.Plot, "Ladder") > 0
+                and #Targets.Resolve(plot, "Ladder") > 0
             then
                 return "Ladder", index, slot
             end
@@ -113,6 +164,7 @@ local function refresh(player: Player, state: State)
     local sessionId = deps.TycoonService.GetSessionId(player)
     if state.SessionId ~= sessionId then
         state.Milestones = {}
+        state.BatchOrders = {}
         state.SessionId = sessionId
         player:SetAttribute("TutorialTookStashItem", false)
     end
@@ -123,7 +175,7 @@ local function refresh(player: Player, state: State)
         if state.Stage == "Ladder" and climbedOwnLadder(player, plot) then
             state.Milestones.UsedLadder = true
         end
-        stage, order, slot = currentTarget(player, state)
+        stage, order, slot = currentTarget(player, state, plot)
     end
     player:SetAttribute("TutorialOrderIndex", order)
     player:SetAttribute("TutorialStashSlot", slot)
@@ -138,13 +190,16 @@ local function refresh(player: Player, state: State)
         local orders = if plot then deps.CustomerService.GetTutorialSnapshot(player) else nil
         target.Value = if orders and order then orders[order].Model else nil
     end
-    if state.Stage == stage and state.Plot == plot then
+    if state.Stage == stage and state.Plot == plot and state.OrderIndex == order then
         return
     end
     state.Stage, state.Plot = stage, plot
+    state.OrderIndex = order
     state.Version += 1
     local version = state.Version
-    player:SetAttribute("TutorialHintReady", false)
+    if stage == "ClaimPlot" or stage == "Complete" then
+        player:SetAttribute("TutorialHintReady", false)
+    end
     player:SetAttribute("TutorialStage", stage)
     player:SetAttribute("TutorialActive", stage ~= "Complete")
     if stage == "ClaimPlot" then
@@ -164,7 +219,16 @@ function Tutorial.AddPlayer(player: Player)
     if states[player] then
         return
     end
-    states[player] = { Milestones = {}, Started = false, Stage = "", Plot = nil, SessionId = nil, Version = 0 }
+    states[player] = {
+        Milestones = {},
+        Started = false,
+        Stage = "",
+        Plot = nil,
+        SessionId = nil,
+        Version = 0,
+        OrderIndex = nil,
+        BatchOrders = {},
+    }
     player:SetAttribute("TutorialActive", false)
     player:SetAttribute("TutorialStage", "ClaimPlot")
     player:SetAttribute("TutorialTookStashItem", false)

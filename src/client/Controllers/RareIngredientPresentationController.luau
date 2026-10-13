@@ -2,10 +2,9 @@
 -- One presentation path for spawn, acquisition, serving and future server events.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
+local Banner = require(script.Parent.Parent.UI.AnnouncementBanner)
 local SoundService = game:GetService("SoundService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Style = require(Shared.Constants.DialogueTextStyle)
 local Format = require(Shared.AnnouncementFormat)
 local Controller = {}
 local started = false
@@ -20,36 +19,8 @@ function Controller.Init()
         local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
         local remote = Shared:WaitForChild("Events"):WaitForChild("RareIngredientSpawned")
         assert(remote:IsA("RemoteEvent"), "RareIngredientSpawned must be a RemoteEvent")
-        local gui = Instance.new("ScreenGui")
-        gui.Name = "RareIngredientAnnouncement"
-        gui.ResetOnSpawn = false
-        gui.IgnoreGuiInset = false
-        gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
-        gui.DisplayOrder = 20
-        gui.Parent = playerGui
-        local banner = Instance.new("TextLabel")
-        banner.Name = "Announcement"
-        banner.AnchorPoint = Vector2.new(0.5, 0)
-        local resting = UDim2.fromScale(0.5, 0.065)
-        banner.Position = resting
-        banner.Size = UDim2.new(0.92, 0, 0, 104)
-        banner.BackgroundTransparency = 1
-        Style.Apply(banner, 32)
-        banner.TextWrapped = true
-        banner.TextScaled = true
-        banner.RichText = true
-        banner.Visible = false
-        banner.Parent = gui
-        local width = Instance.new("UISizeConstraint")
-        width.MaxSize = Vector2.new(780, 104)
-        width.Parent = banner
-        local textSize = Instance.new("UITextSizeConstraint")
-        textSize.MinTextSize = 18
-        textSize.MaxTextSize = 32
-        textSize.Parent = banner
-        local stroke = Style.Outline(banner)
-        local scale = Instance.new("UIScale")
-        scale.Parent = banner
+        local surface = Banner.Create(playerGui, "RareIngredientAnnouncement")
+        local banner = surface.Label
         local cue = Instance.new("Sound")
         cue.Name = "AnnouncementCue"
         cue.Volume = 0.35
@@ -63,16 +34,8 @@ function Controller.Init()
                 if not text then
                     continue -- Expired countdowns must not replay after a backlog.
                 end
-                banner.Text = text
-                banner.Position = resting - UDim2.fromOffset(0, 14)
-                banner.TextTransparency = 1
-                stroke.Transparency = 1
-                scale.Scale = 0.93
-                banner.Visible = true
-                local enter = TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-                TweenService:Create(banner, enter, { Position = resting, TextTransparency = 0 }):Play()
-                TweenService:Create(scale, enter, { Scale = 1 }):Play()
-                TweenService:Create(stroke, TweenInfo.new(0.16), { Transparency = 0 }):Play()
+                Banner.SetGlobalActive(true)
+                surface.Show(text)
                 local soundId = if message.SoundType then sounds[message.SoundType] else nil
                 if soundId then
                     cue.SoundId = soundId
@@ -91,14 +54,11 @@ function Controller.Init()
                 until not text
                     or (message.CountdownEndsAt == nil and os.clock() >= holdUntil)
                     or Format.ShouldInterrupt(queue)
-                local exit = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-                TweenService
-                    :Create(banner, exit, { Position = resting - UDim2.fromOffset(0, 10), TextTransparency = 1 })
-                    :Play()
-                TweenService:Create(stroke, exit, { Transparency = 1 }):Play()
+                surface.Exit()
                 task.wait(0.18)
-                banner.Visible = false
+                surface.Hide()
             end
+            Banner.SetGlobalActive(false)
             showing = false
         end
         remote.OnClientEvent:Connect(function(payload: any)

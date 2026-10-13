@@ -206,6 +206,12 @@ for index = 3, 5 do
 end
 player:SetAttribute("TutorialStashSlot", nil)
 check(#gleams() == 0, "slot loss clears previous stash gleams without broad fallback")
+local npc = object("Model", "TutorialCustomer", workspaceFake)
+npc:SetAttribute("PlotSessionId", "local-session")
+plot:SetAttribute("PlotSessionId", "local-session")
+check(targets.Resolve(plot, "Order", nil, npc)[1] == npc, "order acceptance targets the current customer")
+npc:SetAttribute("PlotSessionId", "foreign-session")
+check(#targets.Resolve(plot, "Order", nil, npc) == 0, "order guidance excludes another plot's customer")
 -- Claim presentation uses only the replicated arrival target, with no membership.
 player:SetAttribute("TutorialActive", true)
 player:SetAttribute("PlotSessionId", nil)

@@ -8,6 +8,18 @@ local MobileControlLayout = require(script.Parent.Parent.UI.MobileControlLayout)
 local Controller = {}
 local started = false
 
+-- Read the live CAS binding; observing input never invokes the throw handler.
+function Controller.GetThrowButtonLabel(): string
+    local info = ContextActionService:GetBoundActionInfo("ThrowHeld")
+    for _, key in (info.inputTypes or {}) do
+        if key.EnumType == Enum.KeyCode and string.sub(key.Name, 1, 6) == "Button" then
+            local label = UserInputService:GetStringForKeyCode(key)
+            return if label ~= "" then label else key.Name
+        end
+    end
+    return "Throw"
+end
+
 function Controller.Init()
     if started then
         return

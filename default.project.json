@@ -5,6 +5,10 @@
     "ServerStorage": {
       "$className": "ServerStorage",
       "$ignoreUnknownInstances": true,
+      "LuckyBlockTemplates": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      },
       "CustomerNPCs": {
         "$className": "Folder",
         "$ignoreUnknownInstances": true
@@ -25,6 +29,10 @@
     },
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
+      "LuckyBlockVisuals": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      },
       "Shared": {
         "$path": "src/shared"
       }

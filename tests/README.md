@@ -1,5 +1,13 @@
 # Test suite boundaries
 
+Lucky Blocks: `--suite lucky-block` owns authoritative spawning, proximity claims,
+weighted selection, contention/cooldown, replacement and nearby notification contracts.
+Separate presentation suites `lucky-block-roulette`, `lucky-block-view` and
+`lucky-block-controller` own five-beat timing, fixed-position world models,
+opaque silhouettes, asset fallback, and client lifecycle.
+See [Pass 1 setup](../docs/LUCKY_BLOCKS.md) and [Pass 2 Studio acceptance](../docs/LUCKY_BLOCK_ROULETTE.md).
+No buff mechanics are included.
+
 Fall damage: `--suite fall-damage` runs authoritative impact/jump/ragdoll/reset
 contracts, brief-contact and avatar replacement regressions, and bounded
 observer checks. The formerly failing bunny-hop, held-Jump and replaced-torso

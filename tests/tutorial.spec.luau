@@ -57,7 +57,22 @@ tutorial.Init({
         end,
     },
 })
-authority.Init({ MemberChanged = tutorial.MembershipChanged, MemberRemoved = tutorial.MembershipChanged })
+local counterBase
+local function membershipChanged(member)
+    local plot = authority.GetPlot(member)
+    if plot and not plot:FindFirstChild("Customer Area") then
+        local object = plot
+        for _, name in { "Customer Area", "Counter", "Base Structure", "Base" } do
+            local child = instance(if name == "Base" then "Part" else "Model")
+            child.Name, child.Parent = name, object
+            object = child
+        end
+        counterBase = object
+        counterBase.Position = vec(100, 0, 0)
+    end
+    tutorial.MembershipChanged(member)
+end
+authority.Init({ MemberChanged = membershipChanged, MemberRemoved = tutorial.MembershipChanged })
 local p = instance("Player")
 p.Name, p.UserId, p.Parent = "Learner", 801, workspaceFake
 p.Character = instance("Model")
@@ -82,11 +97,15 @@ check(
 local plot = assignTestSession(p)
 check(
     p:GetAttribute("TutorialStage") == "Counter" and p:GetAttribute("TutorialHintReady"),
-    "claim immediately directs to customer counter"
+    "claim preserves the environmental counter introduction"
 )
+root.Position = counterBase.Position
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Order", "reaching the counter guides to the customer without a timer")
+root.Position = vec(0, 0, 0)
 orders[1].Model = instance("Model")
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Counter", "spawn alone cannot accept order")
+check(p:GetAttribute("TutorialStage") == "Order", "spawn alone cannot accept order")
 orders[1].OrderTaken = true
 heartbeat:Fire(0.1)
 check(
@@ -125,13 +144,21 @@ heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Blender", "in-flight throw keeps glass guidance")
 flight = false
 for count = 1, 2 do
-    batch = { AcceptedIngredientCount = count, State = "LOADING", ProgressPercent = 0, ReadyToDispense = false }
+    batch = {
+        BatchId = 1,
+        AcceptedIngredientCount = count,
+        State = "LOADING",
+        ProgressPercent = 0,
+        ReadyToDispense = false,
+    }
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Stash", "underfilled batch requires another ingredient")
 end
 batch.AcceptedIngredientCount, batch.State = 3, "READY"
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Turbine", "three accepted ingredients enable turbine")
+tutorial.Mark(p, "UsedTurbine")
+check(p:GetAttribute("TutorialStage") == "Turbine", "turbine activation alone cannot complete blending")
 batch.State, batch.ProgressPercent = "BLENDING", 99.9
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Turbine", "partial progress cannot enable dispenser")
@@ -145,6 +172,8 @@ batch.ProgressPercent = 99
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Turbine", "readiness without 100 percent cannot enable dispenser")
 batch.ProgressPercent = 100
+tutorial.Mark(p, "DispensedSmoothie")
+check(p:GetAttribute("TutorialStage") == "Dispenser", "dispense telemetry cannot replace actual cup ownership")
 cups = { { Data = { BlendId = "red-cup", Ingredients = { "Cherries", "Cherries", "Strawberry" } } } }
 batch = { AcceptedIngredientCount = 0, State = "EMPTY", ProgressPercent = 0, ReadyToDispense = false }
 heartbeat:Fire(0.1)
@@ -171,15 +200,34 @@ check(
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialOrderIndex") == 2, "respawn preserves current order")
+batch = { BatchId = 2, AcceptedIngredientCount = 3, State = "READY", ProgressPercent = 0, ReadyToDispense = false }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Turbine", "new batch belongs to current cold order")
 orders[2].Served = true
 heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialOrderIndex") == 3 and p:GetAttribute("TutorialStage") == "Counter",
+    p:GetAttribute("TutorialOrderIndex") == 3 and p:GetAttribute("TutorialStage") == "Order",
     "third order needs normal acceptance"
 )
 orders[3].OrderTaken = true
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStashSlot") == 5, "yellow uses slot five")
+check(
+    p:GetAttribute("TutorialStage") == "FinishBatch",
+    "old batch count cannot complete the new order's loading objective"
+)
+batch.ReadyToDispense, batch.ProgressPercent = true, 100
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "DrainBatch", "stale full batches recover through actual dispensing")
+batch.Ingredients = { "Banana", "Banana", "Banana" }
+heartbeat:Fire(0.1)
+check(
+    p:GetAttribute("TutorialStage") == "Dispenser",
+    "a genuinely prepared next-order recipe reconciles early completion"
+)
+batch = { BatchId = 3, AcceptedIngredientCount = 0, State = "EMPTY", ReadyToDispense = false, ProgressPercent = 0 }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Stash", "cleared previous batch resumes the current recipe")
 orders[3].Served = true
 heartbeat:Fire(0.1)
 check(

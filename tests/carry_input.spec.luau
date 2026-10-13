@@ -82,6 +82,25 @@ for _, t in player:FindFirstChildOfClass("Backpack"):GetChildren() do
     end
 end
 humanoid:EquipTool(selectedTool)
+local boundButton = { EnumType = env.Enum.KeyCode, Name = "ButtonR2" }
+services.ContextActionService.GetBoundActionInfo = function()
+    return { inputTypes = { boundButton } }
+end
+services.UserInputService.GetStringForKeyCode = function()
+    return "R2"
+end
+local beforeDeviceSwitch = #requestedIds
+for _, preferred in { "Touch", "Gamepad", "KeyboardAndMouse" } do
+    services.UserInputService.PreferredInput = preferred
+    check(
+        controller.GetThrowButtonLabel() == "R2",
+        "tutorial resolves the actual throw action without dispatching input"
+    )
+end
+check(
+    #requestedIds == beforeDeviceSwitch and inventory.GetCarryCount(player) == 3,
+    "switching preferred devices and reading hints never throws"
+)
 textFocused = true
 action("ThrowHeld", "Begin")
 check(inventory.GetCarryCount(player) == 3, "typing does not throw")

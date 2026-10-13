@@ -11,6 +11,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "IngredientPickupPromptStyle": "src/client/UI/IngredientPickupPromptStyle.luau",
+    "IngredientViewport": "src/client/UI/IngredientViewport.luau",
+    "IngredientPreviewGeometry": "src/shared/IngredientPreviewGeometry.luau",
+    "ScrapbookPreviews": "src/shared/Constants/ScrapbookPreviews.luau",
+    "ScrapbookPreviewAssets": "src/server/Services/ScrapbookPreviewAssets.luau",
     "UIRegistry": "src/client/UI/UIRegistry.luau",
     "FramewispMenus": "src/client/UI/FramewispMenus.luau",
     "PanelManager": "src/client/UI/PanelManager.luau",

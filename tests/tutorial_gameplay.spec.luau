@@ -116,8 +116,17 @@ check(
 local input, wheel = references[p].BlenderInput, references[p].TurbineWheel
 for orderIndex, order in config do
     local beforeCash = dependency.TycoonService.GetCash(p)
+    loadModule("Upgrades").CarryCapacity[1].Value = 1 -- Exercise requested one-item flow without changing the economy.
+    capacities[p] = if orderIndex == 2 then 2 else 1
+    if orderIndex == 2 then
+        for _ = 1, 3 do
+            setup(inventory.Withdraw(p, order.Slot), "multi-carry starter TAKE")
+        end
+    end
     for count, expectedId in order.Ingredients do
-        setup(inventory.Withdraw(p, order.Slot), "normal starter TAKE")
+        if orderIndex ~= 2 then
+            setup(inventory.Withdraw(p, order.Slot), "normal starter TAKE")
+        end
         check(inventory.GetHeldIngredientId(p) == expectedId, "mixed slot withdraws each real ingredient normally")
         heartbeat:Fire(0.1)
         if orderIndex == 1 and count == 1 then
@@ -142,7 +151,8 @@ for orderIndex, order in config do
             "batch snapshot reports authoritative accepted count"
         )
         check(
-            p:GetAttribute("TutorialStage") == (if count == 3 then "Turbine" else "Stash"),
+            p:GetAttribute("TutorialStage")
+                == (if count == 3 then "Turbine" elseif orderIndex == 2 then "Blender" else "Stash"),
             "only three accepted ingredients enable turbine"
         )
     end
@@ -286,17 +296,10 @@ flush()
 check(outsider:GetAttribute("TutorialStage") == "Complete", "non-tutorial plot has no onboarding gleams")
 local recoverable = customer.GetQueueSnapshot(q)[1].Model
 local cashBeforeDismiss = dependency.TycoonService.GetCash(q)
-setup(customer.DismissCustomer(q, recoverable), "reject normal tutorial customer")
-advance(0.5)
-local afterDismiss = customer.GetQueueSnapshot(q)[1].Model
-check(
-    afterDismiss ~= recoverable
-        and customer.GetQueueSnapshot(q)[1].RequestId == "Red"
-        and not customer.GetTutorialSnapshot(q)[1].Served,
-    "rejected customer replaced without tutorial completion"
-)
-check(dependency.TycoonService.GetCash(q) == cashBeforeDismiss, "rejection grants no automatic payout")
-setup(customer.TakeOrder(q, afterDismiss), "accept replacement after rejection")
+check(not customer.DismissCustomer(q, recoverable), "retired dismiss interaction cannot complete an order")
+check(not customer.GetTutorialSnapshot(q)[1].Served, "invalid interaction preserves active tutorial request")
+check(dependency.TycoonService.GetCash(q) == cashBeforeDismiss, "invalid interaction grants no payout")
+setup(customer.TakeOrder(q, recoverable), "accept current replacement")
 setup(inventory.Withdraw(q, 3), "take replacement recipe ingredient")
 advance(0.4)
 local missedThrow = inventory.ThrowHeld(q)
