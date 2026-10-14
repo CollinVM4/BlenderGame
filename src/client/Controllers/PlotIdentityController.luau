@@ -194,12 +194,8 @@ function Controller.Init()
             return
         end
         elapsed = 0
-        local assigned = player:GetAttribute("PlotSessionId") ~= nil
-        status.Text = if os.clock() < failureUntil
-            then "Plot action unavailable. Move closer or try again."
-            elseif not assigned then "Claim an available PLOT!"
-            else ""
-        status.TextSize = if not assigned and os.clock() >= failureUntil then 20 else 17
+        status.Text = if os.clock() < failureUntil then "Plot action unavailable. Move closer or try again." else ""
+        status.TextSize = 17
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         local live: { [Instance]: boolean } = {}
         local liveLabels: { [Instance]: boolean } = {}

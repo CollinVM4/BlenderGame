@@ -4,6 +4,8 @@ local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Targets = require(game:GetService("ReplicatedStorage").Shared.TutorialTargets)
+local Presentation = require(script.Parent.TutorialPresentationState)
+local Flow = require(script.Parent.Parent.UI.TutorialBeamFlow)
 local Controller = {}
 local DEBUG_TUTORIAL_GLEAM = false
 local debugSignature = ""
@@ -23,6 +25,10 @@ local glassProxy: UnionOperation? = nil
 local glassSource: UnionOperation? = nil
 local failedGlassSource: UnionOperation? = nil
 local targetConnections: { RBXScriptConnection } = {}
+local stashBeam: Beam? = nil
+local stashFlow: Beam? = nil
+local beamStartedAt = 0
+local beamAttachments: { Attachment } = {}
 local function clearClaimPin()
     activeClaimHintPlot = nil
     table.clear(activeClaimHintTargets)
@@ -31,6 +37,18 @@ local function claimAvailable(plot: Instance?): boolean
     return plot ~= nil and plot:IsDescendantOf(workspace) and plot:GetAttribute("PlotSessionId") == nil
 end
 local function clear()
+    if stashFlow then
+        stashFlow:Destroy()
+        stashFlow = nil
+    end
+    if stashBeam then
+        stashBeam:Destroy()
+        stashBeam = nil
+    end
+    for _, attachment in beamAttachments do
+        attachment:Destroy()
+    end
+    table.clear(beamAttachments)
     for _, tween in tweens do
         tween:Cancel()
     end
@@ -182,13 +200,53 @@ local function createGlassProxy(source: UnionOperation): UnionOperation?
     clone.Parent = workspace
     return clone
 end
+local function createStashBeam(character: Model, target: Instance)
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local destination = if target:IsA("BasePart") then target else target:FindFirstChildWhichIsA("BasePart", true)
+    if not root or not root:IsA("BasePart") or not destination or not destination:IsA("BasePart") then
+        return
+    end
+    local start = Instance.new("Attachment")
+    start.Name = "TutorialStashBeamStart"
+    start.Position = Vector3.new(0, -0.5, 1.25) -- Local +Z is behind the avatar.
+    start.Parent = root
+    local finish = Instance.new("Attachment")
+    finish.Name = "TutorialStashBeamEnd"
+    finish.Parent = destination
+    local beam = Instance.new("Beam")
+    beam.Name = "TutorialStashBeam"
+    beam.Attachment0, beam.Attachment1 = start, finish
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 224, 65))
+    beam.Transparency = NumberSequence.new(0.6)
+    beam.Width0, beam.Width1 = 0.26, 0.195
+    beam.CurveSize0, beam.CurveSize1 = 1.5, -1.5
+    beam.Segments = 20
+    beam.FaceCamera = true
+    beam.LightEmission = 0.35
+    beam.Parent = root
+    stashBeam = beam
+    local flow = Instance.new("Beam")
+    flow.Name = "TutorialStashFlow"
+    flow.Attachment0, flow.Attachment1 = start, finish
+    flow.Color = ColorSequence.new(Color3.fromRGB(255, 250, 185))
+    flow.Width0, flow.Width1 = 0.11, 0.085
+    flow.CurveSize0, flow.CurveSize1 = beam.CurveSize0, beam.CurveSize1
+    flow.Segments, flow.FaceCamera = 20, true
+    flow.LightEmission, flow.LightInfluence = 1, 0
+    flow.Transparency = Flow.Transparency(0)
+    flow.Parent = root
+    stashFlow, beamStartedAt = flow, os.clock()
+    table.insert(beamAttachments, start)
+    table.insert(beamAttachments, finish)
+end
 local function refresh()
     if stopped then
         return
     end
+    local textAllowed, presentationReady, presentationStage = Presentation.Read(player)
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
-    local stage = player:GetAttribute("TutorialStage")
+    local stage = presentationStage
     if
         stage ~= "ClaimPlot"
         or player:GetAttribute("TutorialActive") ~= true
@@ -208,6 +266,7 @@ local function refresh()
         and player:GetAttribute("TutorialActive") == true
         and player:GetAttribute("TutorialHintReady") == true
         and type(stage) == "string"
+        and presentationReady
     then
         if stage ~= "ClaimPlot" or player:GetAttribute("PlotSessionId") == nil then
             local slot = player:GetAttribute("TutorialStashSlot")
@@ -249,10 +308,45 @@ local function refresh()
             glassProxy.CFrame, glassProxy.Size = glassSource.CFrame, glassSource.Size
         end
     end
+    if same and stashBeam then
+        if not stashFlow or not stashFlow:IsDescendantOf(workspace) then
+            same = false
+        else
+            stashFlow.Transparency = Flow.Transparency(os.clock() - beamStartedAt)
+        end
+        if not stashBeam:IsDescendantOf(workspace) then
+            same = false
+        end
+        for _, attachment in beamAttachments do
+            if not attachment:IsDescendantOf(workspace) then
+                same = false
+                break
+            end
+        end
+    end
     if same then
+        if
+            stage == "Stash"
+            and textAllowed
+            and player:GetAttribute("TutorialOrderIndex") == 1
+            and not stashBeam
+            and character
+            and targets[1]
+        then
+            createStashBeam(character, targets[1])
+        end
         return
     end
     clear()
+    if
+        stage == "Stash"
+        and textAllowed
+        and player:GetAttribute("TutorialOrderIndex") == 1
+        and character
+        and targets[1]
+    then
+        createStashBeam(character, targets[1])
+    end
     for _, object in targets do
         local adornee = object
         if stage == "Blender" and object:IsA("UnionOperation") and Targets.GetRoots(plot, "Blender")[1] == object then
@@ -385,6 +479,9 @@ function Controller.Init()
         connections,
         player.CharacterRemoving:Connect(function(character)
             removingCharacter = character
+            if character then
+                Presentation.CharacterRemoving(character)
+            end
             clear()
         end)
     )
@@ -392,6 +489,7 @@ function Controller.Init()
         connections,
         player.CharacterAdded:Connect(function()
             removingCharacter = nil
+            Presentation.CharacterAdded()
             clear()
             refresh()
         end)

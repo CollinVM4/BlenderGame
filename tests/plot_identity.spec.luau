@@ -101,6 +101,7 @@ local function findText(text)
 end
 tick()
 tick()
+check(not findText("Claim an available PLOT!"), "unassigned player has no startup claim instruction")
 for _, object in playerGui:GetDescendants() do
     if object.Name == "ClaimZoneLabel" or object.Name == "TeammateZoneLabel" then
         check(object.MaxDistance == 22, "pad labels are restricted to close range")
@@ -179,6 +180,6 @@ check(
 t.RemovePlayer(viewer)
 tick()
 check(
-    findText("Claim an available PLOT!") and not findText("Empty Slot"),
+    not findText("Claim an available PLOT!") and not findText("Empty Slot"),
     "departure closes management and returns unassigned"
 )

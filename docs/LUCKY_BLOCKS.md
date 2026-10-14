@@ -4,7 +4,10 @@ This is the Pass 1 foundation record. [Pass 2](LUCKY_BLOCK_ROULETTE.md) now adds
 roulette presentation and supersedes the original default-model Rojo mapping:
 the template is preserved as a Studio-authored asset and is no longer synced from
 `assets/luckyblock/LuckyBlock.rbxmx`. The runtime world spawning/pickup/animation
-behavior below is unchanged; roulette does not apply buffs.
+presentation below is unchanged; roulette does not apply buffs.
+
+The current level spawning pass supersedes the historical spawn count and timers
+below. See [level spawning setup](LUCKY_BLOCK_LEVEL_SPAWNING.md).
 
 Pass 1 spawns instant world pickups, selects a server-owned reward, and publishes
 the result. It does not apply buffs, start buff timers, grant inventory items, or
@@ -126,19 +129,12 @@ outside this static-model compatibility inspection.
 
 ## Behavior and configuration
 
-Five random distinct markers receive initial stock. `Spawn.ActiveLimit` can be
-set to four through six. The limit includes active blocks and reserved replacement
-slots, so rapid pickups cannot schedule extra stock. The visible count can fall
-below the target during cooldown or when fewer markers are available.
-
-Each removal reserves exactly one replacement for a randomized **25–40 seconds**
-later, then chooses a currently unused authored marker. A block can return to the
-same marker, but replacement is not tied to that location. Server load/polling may
-delay publication past a deadline; the poll adds up to 0.15 seconds under normal
-conditions. No replacement appears early. Missing markers/assets retain pending
-slots until authoring becomes usable. Untagging/moving a marker out of Workspace
-retires its active stock; externally destroyed or reparented clones also replenish
-through the same capped lifecycle, without a reward.
+The current spawn target is one block in each of Level0?Level3 (four globally).
+Each level independently waits 180?240 seconds after collection or unexpected
+removal, then randomly selects a valid unused marker in that same level, excluding
+the previous marker when alternatives exist. Missing assets or markers retry every
+five seconds without losing the reserved slot. The existing pickup poll does not
+drive spawning. See [the current Studio hierarchy and configuration](LUCKY_BLOCK_LEVEL_SPAWNING.md).
 
 The server checks physical root proximity every 0.15 seconds. A connected player
 with a living Humanoid and an unlocked gameplay action state must be within four

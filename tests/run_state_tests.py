@@ -185,9 +185,10 @@ for directory in ("src/shared/Constants", "src/server/Services", "src/server/Adm
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
 sources["TutorialTargets"] = (ROOT / "src/shared/TutorialTargets.luau").read_text(encoding="utf-8")
-for name in ("AnnouncementBanner", "TutorialHintText"):
+for name in ("AnnouncementBanner", "TutorialHintText", "TutorialBeamFlow"):
     sources[name] = (ROOT / f"src/client/UI/{name}.luau").read_text(encoding="utf-8")
 sources["RareIngredientPresentationController"] = (ROOT / "src/client/Controllers/RareIngredientPresentationController.luau").read_text(encoding="utf-8")
+sources["TutorialPresentationState"] = (ROOT / "src/client/Controllers/TutorialPresentationState.luau").read_text(encoding="utf-8")
 sources["TutorialHintController"] = (ROOT / "src/client/Controllers/TutorialHintController.luau").read_text(encoding="utf-8")
 sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
 for name in ("IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):

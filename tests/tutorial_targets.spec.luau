@@ -136,6 +136,7 @@ player:SetAttribute("TutorialActive", true)
 player:SetAttribute("TutorialStage", "Turbine")
 player:SetAttribute("TutorialHintReady", false)
 local controllerScript = instance("ModuleScript")
+controllerScript.Parent = parent
 local chunk = assert(loadstring(sources.TutorialGleamController))
 setfenv(chunk, setmetatable({ script = controllerScript }, { __index = env }))
 local controller = chunk()
@@ -413,6 +414,7 @@ end
 check(leaked == 0, "no Glass proxies leak after lifecycle transitions")
 -- A new local controller reconstructs only the current target after teardown.
 local rebuiltScript = instance("ModuleScript")
+rebuiltScript.Parent = parent
 local rebuiltChunk = assert(loadstring(sources.TutorialGleamController))
 setfenv(rebuiltChunk, setmetatable({ script = rebuiltScript }, { __index = env }))
 local rebuiltController = rebuiltChunk()

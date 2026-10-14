@@ -139,7 +139,7 @@ end
 local old = sources.DoubleCash
 old:Destroy()
 local multipart = instance("Model")
-multipart.Name, multipart.Parent = "DoubleCash", folder
+multipart.Name, multipart.Parent = config.Rewards.DoubleCash.Visual, folder
 sources.DoubleCash = multipart
 local first, second = sourcePart("A", "Part", vec(-2, 0, 0)), sourcePart("B", "MeshPart", vec(2, 0, 0))
 first.Parent, second.Parent = multipart, multipart
@@ -179,6 +179,29 @@ do
 end
 local special = instance("SpecialMesh")
 special.Parent, special.TextureId, special.VertexColor = first, "authored-special-texture", vec(1, 0.3, 0.2)
+-- Imported metadata can be read/native-cloned, but ordinary scripts cannot assign
+-- or clear it. Enforce that boundary on roots and nested reward geometry.
+multipart.Attributes.RBX_ReimportId = "imported-model"
+first.Attributes.RBX_ReimportId = "imported-part"
+second.Attributes.RBX_OtherMetadata = "imported-nested-part"
+multipart:SetAttribute("RewardCategory", "Powerup")
+first:SetAttribute("GameplayVariant", 7)
+local importedClone = multipart.Clone
+function multipart:Clone()
+    local copy = importedClone(self)
+    local objects = copy:GetDescendants()
+    table.insert(objects, copy)
+    for _, object in objects do
+        local setAttribute = object.SetAttribute
+        function object:SetAttribute(name, value)
+            if string.sub(name, 1, 4) == "RBX_" then
+                error("Attempt to assign attribute " .. name .. ". CoreScript permission required")
+            end
+            setAttribute(self, name, value)
+        end
+    end
+    return copy
+end
 local renderer = loadModule("LuckyBlockView")
 local position = vec(12, 6, 9)
 local view = renderer.Create(position)
@@ -264,6 +287,11 @@ for id in config.Rewards do
     if id == "DoubleCash" then
         local a, b = model:FindFirstChild("A", true), model:FindFirstChild("B", true)
         check(
+            model:FindFirstChild(config.Rewards.DoubleCash.Visual):GetAttribute("RewardCategory") == "Powerup"
+                and a:GetAttribute("GameplayVariant") == 7,
+            "imported silhouettes preserve legitimate model and descendant attributes"
+        )
+        check(
             math.abs((b.CFrame.Position - a.CFrame.Position).Magnitude / a.Size.X - 2) < 1e-6,
             "multipart relative placement survives centering and uniform scaling"
         )
@@ -272,7 +300,31 @@ end
 check(#created == cachedCount, "silhouette beats reuse cached geometry without constructing tick resources")
 view.Show("DoubleCash", false)
 local winner = activeModels()[1]
+local tickSound, popSound
+-- Select by configured sound IDs instead of descendant order.
+for _, child in anchor:GetChildren() do
+    if child.ClassName == "Sound" then
+        if child.SoundId == config.TickSoundId then
+            tickSound = child
+        elseif child.SoundId == config.PopSoundId then
+            popSound = child
+        end
+    end
+end
+setup(tickSound and popSound, "configured tick and reveal sounds exist")
+check(popSound.IsPlaying and not tickSound.IsPlaying, "winner stops rolling ticks and plays the reveal sound")
 local colored = winner:FindFirstChild("A", true)
+check(
+    winner:FindFirstChild(config.Rewards.DoubleCash.Visual):GetAttribute("RewardCategory") == "Powerup"
+        and colored:GetAttribute("GameplayVariant") == 7,
+    "colored reward preserves legitimate attributes without writing protected RBX_ metadata"
+)
+check(
+    multipart:GetAttribute("RBX_ReimportId") == "imported-model"
+        and first:GetAttribute("RBX_ReimportId") == "imported-part"
+        and second:GetAttribute("RBX_OtherMetadata") == "imported-nested-part",
+    "imported Studio template metadata is untouched"
+)
 check(
     colored.Color.R == first.Color.R
         and colored.Transparency == first.Transparency
@@ -334,6 +386,7 @@ check(tweens[#tweens - 1].Properties.Value == 0.01, "winner shrinks away at fade
 local owner = anchor.Parent
 view.Destroy()
 view.Destroy()
+check(not tickSound.IsPlaying and not popSound.IsPlaying, "completed reveal stops both sounds")
 check(
     owner.Destroyed and winner.Destroyed and #activeModels() == 0,
     "cleanup releases current world model, sounds, glow and anchor"
@@ -367,3 +420,53 @@ for _, object in allInstances do
     noUiCamera = noUiCamera and object.ClassName ~= "ViewportFrame" and object.ClassName ~= "Camera"
 end
 check(noUiCamera, "world roulette creates no viewport or UI camera")
+
+-- A malformed native clone must use the same text fallback and complete the
+-- real sequence, releasing partial art before a later healthy reveal.
+local sequence = loadModule("LuckyBlockSequence")
+local callbacks = {}
+local manager = sequence.new(function(seconds, callback)
+    local timer = { At = seconds, Callback = callback, Cancelled = false }
+    table.insert(callbacks, timer)
+    return function()
+        timer.Cancelled = true
+    end
+end)
+local function finish(expectModel)
+    table.sort(callbacks, function(a, b)
+        return a.At < b.At
+    end)
+    for _, timer in callbacks do
+        if not timer.Cancelled then
+            timer.Callback()
+            if timer.At == config.RevealSeconds then
+                check(
+                    #activeModels() == (if expectModel then 1 else 0),
+                    "sequence reaches the colored winner or text fallback before cleanup"
+                )
+            end
+        end
+    end
+    callbacks = {}
+end
+local healthyClone = sources.IngredientMagnet.Clone
+local partial
+function sources.IngredientMagnet:Clone()
+    partial = healthyClone(self)
+    partial.Size = nil -- Simulates unusable imported geometry during normalization.
+    return partial
+end
+local broken = renderer.Create(position)
+check(manager.Start("collector", "IngredientMagnet", true, broken), "malformed art cannot abort roulette startup")
+finish(false)
+check(partial.Destroyed and #activeModels() == 0, "failed visual is cleaned and text-only reveal finishes")
+sources.IngredientMagnet.Clone = healthyClone
+local recovered = renderer.Create(position)
+check(manager.Start("collector", "IngredientMagnet", true, recovered), "later valid pickup starts after malformed art")
+finish(true)
+check(#activeModels() == 0, "recovered reveal also finishes and cleans up")
+local allReleased = true
+for _, object in created do
+    allReleased = allReleased and object.Destroyed == true
+end
+check(allReleased, "malformed and subsequent reveals leave no renderer resources behind")

@@ -145,7 +145,7 @@ advance(2)
 check(#views[5].Shows == 0, "cancelled observer never reappears from stale callbacks")
 collector.Character.Parent = workspaceFake
 pickup.OnClientEvent:Fire(message(collector, 7))
-advance(1.7)
+advance(config.RevealSeconds + config.HoldSeconds + config.FadeSeconds)
 check(views[6].Destroyed and views[6].Faded, "normal completion fades and destroys all presentation resources")
 local invalid = message(collector, 8)
 invalid.Position = nil

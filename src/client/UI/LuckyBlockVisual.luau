@@ -3,18 +3,7 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.LuckyBlockPresentation)
 local Visual = {}
 
--- Clone imported art without gameplay, physics, or inherited world-item tags.
-function Visual.Clone(source: Instance?, silhouette: boolean): Model?
-    if not source or not (source:IsA("BasePart") or source:IsA("Model")) then
-        return nil
-    end
-    local ok, cloned = pcall(function()
-        return source:Clone()
-    end)
-    if not ok or not cloned then
-        return nil
-    end
-    local copy = cloned :: Instance
+local function prepare(copy: Instance, model: Model, silhouette: boolean): Model?
     local descendants = copy:GetDescendants()
     table.insert(descendants, 1, copy)
     local parts = 0
@@ -40,9 +29,8 @@ function Visual.Clone(source: Instance?, silhouette: boolean): Model?
         for _, tag in CollectionService:GetTags(object) do
             CollectionService:RemoveTag(object, tag)
         end
-        for name in object:GetAttributes() do
-            object:SetAttribute(name, nil)
-        end
+        -- Native Clone preserves authored attributes. Never manually write/clear RBX_ attributes:
+        -- imported metadata such as RBX_ReimportId requires CoreScript permission.
         if object:IsA("BasePart") then
             parts += 1
             object.Anchored = true
@@ -71,7 +59,6 @@ function Visual.Clone(source: Instance?, silhouette: boolean): Model?
         copy:Destroy()
         return nil
     end
-    local model = Instance.new("Model")
     model.Name = "LuckyBlockRewardVisual"
     copy.Parent = model
     local _, size = model:GetBoundingBox()
@@ -79,6 +66,28 @@ function Visual.Clone(source: Instance?, silhouette: boolean): Model?
     local bounds = model:GetBoundingBox()
     model:PivotTo(model:GetPivot() - bounds.Position)
     return model
+end
+
+-- Clone imported art without gameplay, physics, or inherited world-item tags.
+function Visual.Clone(source: Instance?, silhouette: boolean): Model?
+    if not source or not (source:IsA("BasePart") or source:IsA("Model")) then
+        return nil
+    end
+    local ok, cloned = pcall(function()
+        return source:Clone()
+    end)
+    if not ok or not cloned then
+        return nil
+    end
+    local copy = cloned :: Instance
+    local model = Instance.new("Model")
+    local prepared, result = pcall(prepare, copy, model, silhouette)
+    if not prepared or not result then
+        copy:Destroy()
+        model:Destroy()
+        return nil
+    end
+    return result
 end
 
 return Visual

@@ -3,9 +3,9 @@ local gameplay = loadModule("LuckyBlockConfig")
 local audio = loadModule("GameplayAudio")
 for id, expected in
     {
-        DoubleCash = "DoubleCash",
-        SuperJump = "SuperJump",
-        RainbowRampage = "RainbowRampage",
+        DoubleCash = "2xCash",
+        SuperJump = "Jump",
+        RainbowRampage = "Star",
         MegaBat = "MegaBat",
         IngredientMagnet = "Magnet",
         Invincibility = "Invincibility",
@@ -89,11 +89,11 @@ check(
     #first.Shows == 6 and first.Shows[6].Id == "RainbowRampage" and not first.Shows[6].Shadow,
     "0.78-second reveal always matches the server reward"
 )
-advance(1.479)
-check(first.Fades == 0 and not first.Destroyed, "final reward remains for approximately 0.7 seconds")
-advance(1.48)
-check(first.Fades == 1, "fade starts 0.7 seconds after reveal")
-advance(1.63)
+advance(config.RevealSeconds + config.HoldSeconds - 0.001)
+check(first.Fades == 0 and not first.Destroyed, "final reward remains for the configured hold duration")
+advance(config.RevealSeconds + config.HoldSeconds)
+check(first.Fades == 1, "fade starts after the configured hold duration")
+advance(config.RevealSeconds + config.HoldSeconds + config.FadeSeconds)
 check(first.Destroyed, "timeline releases presentation after fade")
 local old, replacement = view(), view()
 manager.Start("collector", "SuperJump", true, old)
@@ -127,7 +127,13 @@ check(
 )
 local expired = view()
 check(
-    not manager.Start("expired", "DoubleCash", true, expired, 2) and expired.Destroyed,
+    not manager.Start(
+            "expired",
+            "DoubleCash",
+            true,
+            expired,
+            config.RevealSeconds + config.HoldSeconds + config.FadeSeconds
+        ) and expired.Destroyed,
     "expired presentation is discarded"
 )
 local invalid = view()

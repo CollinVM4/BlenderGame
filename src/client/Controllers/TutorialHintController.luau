@@ -5,6 +5,7 @@ local Input = game:GetService("UserInputService")
 local Banner = require(script.Parent.Parent.UI.AnnouncementBanner)
 local Text = require(script.Parent.Parent.UI.TutorialHintText)
 local Carry = require(script.Parent.CarryInputController)
+local Presentation = require(script.Parent.TutorialPresentationState)
 local Controller = {}
 local initialized = false
 local connections: { RBXScriptConnection } = {}
@@ -16,12 +17,6 @@ local function stopPresentation()
     table.clear(presentationConnections)
 end
 local surface: Banner.Surface? = nil
-local objective = ""
-local session: any = nil
-local seen: { [string]: boolean } = {}
-local eligible = false
-local activity = ""
-local idleSince = 0
 local displayed: string? = nil
 local exitingUntil: number? = nil
 local removingCharacter: Model? = nil
@@ -35,40 +30,14 @@ end
 local function refresh()
     local player = Players.LocalPlayer
     local now = os.clock()
-    local newSession = player:GetAttribute("PlotSessionId")
-    if session ~= newSession then
-        session = newSession
-        objective = ""
-        table.clear(seen)
-    end
-    local stage = player:GetAttribute("TutorialStage")
-    local order = player:GetAttribute("TutorialOrderIndex") or 1
-    local key = tostring(order) .. ":" .. tostring(stage)
-    if key ~= objective then
-        objective = key
-        eligible = false
-        activity = ""
-        idleSince = now
-    end
-    local progress = tostring(player:GetAttribute("BlendIngredientCount"))
-        .. ":"
-        .. tostring(player:GetAttribute("BlendProgress"))
-        .. ":"
-        .. tostring(player:GetAttribute("CarryCount"))
-    if progress ~= activity then
-        activity = progress
-        idleSince = now
-    end
-    if Text.ShouldShow(order, seen[key] == true, now - idleSince) then
-        eligible = true -- Once shown, keep the objective visible until it changes.
-    end
+    local textAllowed, presentationReady, stage = Presentation.Read(player)
     local gui = player:FindFirstChildOfClass("PlayerGui")
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
     local active = player:GetAttribute("TutorialActive") == true
-        and player:GetAttribute("TutorialHintReady") == true
+        and (player:GetAttribute("TutorialHintReady") == true or stage == "ClaimPlot")
         and type(stage) == "string"
-    if not active then
+    if not active or not textAllowed then
         stopPresentation()
         clearSurface()
         return
@@ -81,7 +50,7 @@ local function refresh()
     if surface and (not gui or not surface.Gui:IsDescendantOf(gui)) then
         clearSurface()
     end
-    local visible = eligible
+    local visible = presentationReady
         and character ~= nil
         and character ~= removingCharacter
         and character:IsDescendantOf(workspace)
@@ -106,10 +75,12 @@ local function refresh()
         surface = Banner.Create(gui :: PlayerGui, "TutorialHint")
     end
     local banner = surface :: Banner.Surface
-    if text == displayed then
+    if text == displayed and not exitingUntil then
         return
     end
-    if displayed and not exitingUntil then
+    if stage == "Dispenser" then
+        exitingUntil = nil -- Smoothie readiness shows collection immediately, including during another exit.
+    elseif displayed and not exitingUntil then
         banner.Exit()
         exitingUntil = now + 0.18
         return
@@ -119,7 +90,6 @@ local function refresh()
     end
     banner.Show(text)
     displayed, exitingUntil = text, nil
-    seen[key] = true
 end
 function Controller.Destroy()
     initialized = false
@@ -140,6 +110,9 @@ function Controller.Init()
         connections,
         player.CharacterRemoving:Connect(function(character)
             removingCharacter = character
+            if character then
+                Presentation.CharacterRemoving(character)
+            end
             clearSurface()
         end)
     )
@@ -147,10 +120,13 @@ function Controller.Init()
         connections,
         player.CharacterAdded:Connect(function()
             removingCharacter = nil
+            Presentation.CharacterAdded()
             refresh()
         end)
     )
-    for _, attribute in { "TutorialStage", "TutorialOrderIndex", "TutorialActive", "TutorialHintReady" } do
+    for _, attribute in
+        { "TutorialStage", "TutorialOrderIndex", "TutorialActive", "TutorialHintReady", "PlotSessionId" }
+    do
         table.insert(connections, player:GetAttributeChangedSignal(attribute):Connect(refresh))
     end
     table.insert(connections, script.Destroying:Connect(Controller.Destroy))

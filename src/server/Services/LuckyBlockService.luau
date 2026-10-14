@@ -8,10 +8,13 @@ local Config = require(Shared.Constants.LuckyBlockConfig)
 local Presentation = require(Shared.Constants.LuckyBlockPresentation)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Service = {}
-type Record = { Marker: BasePart, Origin: CFrame, Connections: { RBXScriptConnection } }
+type Slot = { Level: string, Model: Model?, Previous: BasePart?, Waiting: boolean }
+type Record = { Marker: BasePart, Origin: CFrame, Connections: { RBXScriptConnection }, Slot: Slot }
 local markers: { [BasePart]: boolean } = {}
 local records: { [Model]: Record } = {}
-local pending: { number } = {}
+local levelWarnings: { [string]: boolean } = {}
+local markerWarnings: { [BasePart]: boolean } = {}
+local schedule: (Slot, number) -> ()
 local lastClaim: { [Player]: number } = {}
 local folder: Folder
 local remote: RemoteEvent
@@ -30,9 +33,11 @@ local function retire(model: Model, alreadyDestroying: boolean?)
     for _, connection in record.Connections do
         connection:Disconnect()
     end
-    table.insert(
-        pending,
-        os.clock() + Config.Respawn.MinSeconds + math.random() * (Config.Respawn.MaxSeconds - Config.Respawn.MinSeconds)
+    record.Slot.Model = nil
+    schedule(
+        record.Slot,
+        Config.Respawn.MinRespawnSeconds
+            + math.random() * (Config.Respawn.MaxRespawnSeconds - Config.Respawn.MinRespawnSeconds)
     )
     if not alreadyDestroying then
         model:Destroy()
@@ -102,7 +107,7 @@ function Service.TryClaim(player: Player, model: Model): boolean
     return true
 end
 
-local function spawnAt(marker: BasePart): boolean
+local function spawnAt(marker: BasePart, slot: Slot): boolean
     local templates = ServerStorage:FindFirstChild(Config.TemplateFolderName)
     local template = templates and templates:FindFirstChild(Config.ModelName)
     if not template or not template:IsA("Model") or not template.PrimaryPart or not template.Archivable then
@@ -139,7 +144,10 @@ local function spawnAt(marker: BasePart): boolean
     model:PivotTo(origin)
     model:SetAttribute("LuckyBlockOrigin", origin)
     model:SetAttribute("LuckyBlockSpawnTime", workspace:GetServerTimeNow())
-    records[model] = { Marker = marker, Origin = origin, Connections = {} }
+    model:SetAttribute("Level", slot.Level)
+    records[model] = { Marker = marker, Origin = origin, Connections = {}, Slot = slot }
+    slot.Model = model
+    slot.Previous = marker
     model.Parent = folder
     local connections = records[model].Connections
     table.insert(
@@ -160,28 +168,104 @@ local function spawnAt(marker: BasePart): boolean
     return true
 end
 
-local function tick()
+local function markerLevel(marker: BasePart): string?
+    local attribute = marker:GetAttribute("Level")
+    if attribute ~= nil then
+        local name = if typeof(attribute) == "number" then "Level" .. tostring(attribute) else attribute
+        if typeof(name) == "string" and table.find(Config.Spawn.Levels, name) then
+            return name
+        end
+        if not markerWarnings[marker] then
+            warn("[LuckyBlock] Invalid Level attribute on " .. marker:GetFullName() .. "; use 0–3 or Level0–Level3")
+            markerWarnings[marker] = true
+        end
+        return nil
+    end
+    local ancestor = marker.Parent
+    while ancestor and ancestor ~= workspace do
+        if table.find(Config.Spawn.Levels, ancestor.Name) then
+            local parent = ancestor.Parent
+            if
+                (ancestor:IsA("Folder") or ancestor:IsA("Model"))
+                and parent
+                and parent.Name == Config.Spawn.ContainerName
+                and (parent:IsA("Folder") or parent:IsA("Model"))
+            then
+                return ancestor.Name
+            end
+            return nil
+        end
+        ancestor = ancestor.Parent
+    end
+    if not markerWarnings[marker] then
+        warn(
+            "[LuckyBlock] Unassigned marker "
+                .. marker:GetFullName()
+                .. "; defaulting to Level0. Set Level or group under "
+                .. Config.Spawn.ContainerName
+        )
+        markerWarnings[marker] = true
+    end
+    return "Level0"
+end
+
+local function populate(slot: Slot): boolean
+    if slot.Model then
+        return true
+    end
     local available: { BasePart } = {}
     local occupied: { [BasePart]: boolean } = {}
-    for model, record in records do
+    for _, record in records do
         occupied[record.Marker] = true
-        for _, player in Players:GetPlayers() do
-            if Service.TryClaim(player, model) then
-                break
+    end
+    local validCount = 0
+    for marker in markers do
+        if marker:IsDescendantOf(workspace) and markerLevel(marker) == slot.Level then
+            validCount += 1
+            if not occupied[marker] then
+                table.insert(available, marker)
             end
         end
     end
-    for marker in markers do
-        if marker:IsDescendantOf(workspace) and not occupied[marker] then
-            table.insert(available, marker)
+    if validCount == 0 then
+        if not levelWarnings[slot.Level] then
+            warn("[LuckyBlock] " .. slot.Level .. " has no valid LuckyBlockSpawn markers; retrying until configured")
+            levelWarnings[slot.Level] = true
+        end
+    else
+        levelWarnings[slot.Level] = nil
+    end
+    if #available == 0 then
+        return false
+    end
+    if #available > 1 then
+        local previousMarker = slot.Previous
+        local previous = if previousMarker then table.find(available, previousMarker) else nil
+        if previous then
+            table.remove(available, previous)
         end
     end
-    for index = #pending, 1, -1 do
-        if pending[index] <= os.clock() and #available > 0 then
-            local choice = math.random(1, #available)
-            local marker = assert(table.remove(available, choice))
-            if spawnAt(marker) then
-                table.remove(pending, index)
+    return spawnAt(available[math.random(1, #available)], slot)
+end
+
+schedule = function(slot: Slot, seconds: number)
+    if slot.Waiting or slot.Model then
+        return
+    end
+    slot.Waiting = true
+    task.delay(seconds, function()
+        slot.Waiting = false
+        if not populate(slot) then
+            schedule(slot, Config.Spawn.RetrySeconds)
+        end
+    end)
+end
+
+local function tick()
+    for model in records do
+        for _, player in Players:GetPlayers() do
+            if Service.TryClaim(player, model) then
+                break
             end
         end
     end
@@ -221,6 +305,7 @@ function Service.Init()
         markers[object] = true
         return function()
             markers[object] = nil
+            markerWarnings[object] = nil
             for model, record in records do
                 if record.Marker == object then
                     retire(model)
@@ -228,8 +313,13 @@ function Service.Init()
             end
         end
     end)
-    for _ = 1, Config.Spawn.ActiveLimit do
-        table.insert(pending, 0)
+    for _, level in Config.Spawn.Levels do
+        for _ = 1, Config.Spawn.MaxActivePerLevel do
+            local slot: Slot = { Level = level, Model = nil, Previous = nil, Waiting = false }
+            if not populate(slot) then
+                schedule(slot, Config.Spawn.RetrySeconds)
+            end
+        end
     end
     Players.PlayerRemoving:Connect(Service.RemovePlayer)
     tick()
