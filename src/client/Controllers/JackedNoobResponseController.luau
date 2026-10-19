@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
@@ -21,16 +22,17 @@ function Controller.Init()
         local gui = Instance.new("BillboardGui")
         gui.Name = "JackedNoobResponse"
         gui.Adornee = head
-        gui.Size = UDim2.fromOffset(320, 58)
+        -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+        BillboardStyle.ApplyBillboard(gui, { WidthStuds = 5, HeightStuds = 1.5, MaxDistance = 30, ResetOnSpawn = true })
         gui.StudsOffsetWorldSpace = Vector3.new(0, head.Size.Y / 2 + 1.7, 0)
         gui.AlwaysOnTop = true
-        gui.MaxDistance = 65
         local label = Instance.new("TextLabel")
         label.Name = "Text"
         label.Size = UDim2.fromScale(1, 1)
         label.BackgroundTransparency = 1
         label.Text = line
         TextStyle.Apply(label, 23)
+        label.TextScaled = true
         label.TextWrapped = true
         label.TextTransparency = 1
         local outline = label:FindFirstChild("DialogueOutline") :: UIStroke

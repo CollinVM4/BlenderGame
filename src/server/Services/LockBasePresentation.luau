@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local TweenService = game:GetService("TweenService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Config = require(Shared.Constants.LockBaseConfig)
@@ -69,9 +70,9 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         local gui = Instance.new("BillboardGui")
         gui.Name = "LockBaseDisplay"
         gui.Adornee = attachment
-        gui.Size = UDim2.fromOffset(240, 90)
+        -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+        BillboardStyle.ApplyBillboard(gui, { WidthStuds = 6.4, HeightStuds = 2.4, MaxDistance = 35 })
         gui.AlwaysOnTop = true
-        gui.MaxDistance = 65
         gui.StudsOffset = Vector3.zero
         gui.StudsOffsetWorldSpace = Vector3.zero
         gui.ResetOnSpawn = false
@@ -86,6 +87,7 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         text.TextXAlignment = Enum.TextXAlignment.Center
         text.TextYAlignment = Enum.TextYAlignment.Center
         TextStyle.Apply(text, 24)
+        text.TextScaled = true
         text.TextColor3 = Color3.fromRGB(255, 95, 95)
         text.Parent = gui
         display, label = gui, text

@@ -72,8 +72,8 @@ function Presentation.Create(
     -- Reuse the existing keyboard/gamepad/touch and hold lifecycle implementation.
     local cleanup, gui = InputPresentation.Create(prompt, anchor, parent, inputType, {
         InputOnly = true,
-        Width = Style.BillboardSize.X,
-        Height = canvasHeight,
+        WidthStuds = 8.5,
+        HeightStuds = if mobile then 4.9 else 3.8,
         Available = function()
             local owner = object:GetAttribute("OwnerUserId")
             return object:IsDescendantOf(workspace)
@@ -83,7 +83,7 @@ function Presentation.Create(
         end,
         TouchWidth = if mobile then Style.MobileTouchSize else nil,
         TouchHeight = if mobile then Style.MobileTouchSize else nil,
-        TouchCenterY = if mobile then inputCenter else nil,
+        TouchCenterY = if mobile then inputCenter / canvasHeight else nil,
         TextSize = Style.InputTextSize,
         MaxDistance = Style.MaxDistance,
     })
@@ -98,8 +98,9 @@ function Presentation.Create(
         strokeColor: Color3
     )
         local label = text :: TextLabel
-        label.Position = UDim2.fromOffset(0, y)
-        label.Size = UDim2.new(1, 0, 0, height)
+        label.Active = not mobile and label:IsA("TextButton")
+        label.Position = UDim2.fromScale(0, y / canvasHeight)
+        label.Size = UDim2.fromScale(1, height / canvasHeight)
         label.BackgroundTransparency = 1
         label.Font = Style.Font
         label.TextSize = size
@@ -107,8 +108,8 @@ function Presentation.Create(
         label.TextStrokeTransparency = 1
         label.TextScaled = true
         local limit = Instance.new("UITextSizeConstraint")
-        limit.MinTextSize = 12
-        limit.MaxTextSize = size
+        limit.MinTextSize = 1
+        limit.MaxTextSize = 1000
         limit.Parent = label
         local stroke = Instance.new("UIStroke")
         stroke.Color = strokeColor
@@ -172,15 +173,17 @@ function Presentation.Create(
             -- Keep the visible row above the ingredient's bottom/contact plane even
             -- when a tiny ingredient or a steep camera angle compresses its height.
             local lift = 0
+            local renderedHeight = gui.AbsoluteSize.Y
             local camera = workspace.CurrentCamera
             if camera then
                 local point, visible = camera:WorldToViewportPoint(position)
                 local bottom = camera:WorldToViewportPoint(Vector3.new(position.X, minimum.Y, position.Z))
                 if visible and bottom.Z > 0 then
-                    lift = math.max(0, point.Y + Style.InputHeight / 2 + 2 - bottom.Y)
+                    lift = math.max(0, point.Y + renderedHeight * Style.InputHeight / canvasHeight / 2 + 2 - bottom.Y)
                 end
             end
-            gui.SizeOffset = Vector2.new(0, (inputCenter - canvasHeight / 2 + lift) / canvasHeight)
+            gui.SizeOffset =
+                Vector2.new(0, (inputCenter - canvasHeight / 2) / canvasHeight + lift / math.max(1, renderedHeight))
         else
             gui.StudsOffsetWorldSpace = Presentation.Top(object) - anchor.Position + Style.PromptStudsOffset
         end

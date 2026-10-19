@@ -104,7 +104,7 @@ tick()
 check(not findText("Claim an available PLOT!"), "unassigned player has no startup claim instruction")
 for _, object in playerGui:GetDescendants() do
     if object.Name == "ClaimZoneLabel" or object.Name == "TeammateZoneLabel" then
-        check(object.MaxDistance == 22, "pad labels are restricted to close range")
+        check(object.MaxDistance == 60, "pad labels use explicit landmark culling")
     end
 end
 check(findText("CLAIM PLOT") and findText("CLAIM PLOT").ClassName == "TextLabel", "claim pad label has no click action")

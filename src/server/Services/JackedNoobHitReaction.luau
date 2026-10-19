@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Shared = game:GetService("ReplicatedStorage").Shared
 local TweenService = game:GetService("TweenService")
 local Config = require(Shared.Constants.JackedNoob)
@@ -27,15 +28,16 @@ function Reaction.Play(head: BasePart)
     local gui = Instance.new("BillboardGui")
     gui.Name = "JackedNoobHitReaction"
     gui.Adornee = head
-    gui.Size = UDim2.fromOffset(320, 58)
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 5, HeightStuds = 1.5, MaxDistance = 30, ResetOnSpawn = true })
     gui.StudsOffsetWorldSpace = Vector3.new(0, head.Size.Y / 2 + 2.5, 0)
     gui.AlwaysOnTop = true
-    gui.MaxDistance = 65
     local label = Instance.new("TextLabel")
     label.Size = UDim2.fromScale(1, 1)
     label.BackgroundTransparency = 1
     label.Text = "HEY STOP THAT"
     TextStyle.Apply(label, 27)
+    label.TextScaled = true
     label.Parent = gui
     local scale = Instance.new("UIScale")
     scale.Scale = 0.7

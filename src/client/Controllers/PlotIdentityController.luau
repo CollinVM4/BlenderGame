@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 -- Replicated identity is presentation only. Every action is revalidated by the server.
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -33,6 +34,12 @@ local function label(parent: Instance, text: string, y: number): TextLabel
     result.Size = UDim2.new(1, 0, 0, 28)
     result.Position = UDim2.fromOffset(0, y)
     TextStyle.Apply(result, 17)
+    if parent:IsA("BillboardGui") then
+        local canvasHeight = if parent.Name == "PlotIdentity" then 200 else 32
+        result.Size = UDim2.fromScale(1, 28 / canvasHeight)
+        result.Position = UDim2.fromScale(0, y / canvasHeight)
+        result.TextScaled = true
+    end
     result.Text = text
     result.Parent = parent
     return result
@@ -42,9 +49,14 @@ local function button(parent: Instance, text: string, y: number, callback: () ->
     result.Size = UDim2.new(1, -24, 0, 30)
     result.AnchorPoint = Vector2.new(0.5, 0.5)
     result.Position = UDim2.new(0.5, 0, 0, y + 15)
+    if parent:IsA("BillboardGui") then
+        result.Size = UDim2.fromScale(256 / 280, 30 / 200)
+        result.Position = UDim2.fromScale(0.5, (y + 15) / 200)
+    end
     result.BackgroundColor3 = Color3.fromRGB(35, 92, 108)
     result.BorderSizePixel = 0
     TextStyle.Apply(result, 17)
+    result.TextScaled = parent:IsA("BillboardGui")
     result.Text = text
     result.Parent = parent
     Instance.new("UICorner", result).CornerRadius = UDim.new(0, 12)
@@ -210,8 +222,12 @@ function Controller.Init()
                         if not display then
                             local created = Instance.new("BillboardGui")
                             created.Name = role .. "ZoneLabel"
-                            created.Size = UDim2.fromOffset(180, 32)
-                            created.AlwaysOnTop, created.MaxDistance, created.Active = true, 22, false
+                            -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+                            BillboardStyle.ApplyBillboard(
+                                created,
+                                { WidthStuds = 4.8, HeightStuds = 0.9, MaxDistance = 60, ResetOnSpawn = true }
+                            )
+                            created.Active = false
                             created.Adornee, created.Parent = labelOrigin, gui
                             label(created, if role == "Claim" then "CLAIM PLOT" else "JOIN STAND", 0)
                             padLabels[labelOrigin] = created
@@ -234,9 +250,12 @@ function Controller.Init()
             if not displays[plot] then
                 local display = Instance.new("BillboardGui")
                 display.Name = "PlotIdentity"
-                display.Size = UDim2.fromOffset(280, 200)
-                display.ClipsDescendants = false -- Allow fixed-width member columns around the existing action footprint.
-                display.AlwaysOnTop, display.MaxDistance, display.Active = true, 160, true
+                BillboardStyle.ApplyBillboard(
+                    display,
+                    { WidthStuds = 7.5, HeightStuds = 5.3, MaxDistance = 60, ResetOnSpawn = true }
+                )
+                display.ClipsDescendants = false -- Allow proportional member columns around the existing action footprint.
+                display.Active = true
                 display.Parent = gui
                 displays[plot] = display
             end
@@ -244,7 +263,7 @@ function Controller.Init()
             display.Adornee = origin
             local owner = plot:GetAttribute("OwnerUserId")
             local teammate = plot:GetAttribute("TeammateUserId")
-            display.MaxDistance = if type(owner) == "number" then 160 else 80
+            display.MaxDistance = 60
             local position = if origin:IsA("Attachment") then origin.WorldPosition else (origin :: BasePart).Position
             local nearby = root and root:IsA("BasePart") and (root.Position - position).Magnitude <= 32
             local action = if not nearby
@@ -265,19 +284,20 @@ function Controller.Init()
                 if type(owner) == "number" then
                     local function member(id: number, name: string, x: number, role: string)
                         local head = Instance.new("ImageLabel")
-                        head.Size, head.Position = UDim2.fromOffset(64, 64), UDim2.fromOffset(x, 0)
+                        head.Size, head.Position = UDim2.fromScale(64 / 280, 64 / 200), UDim2.fromScale(x / 280, 0)
                         head.Image, head.BackgroundTransparency, head.Parent = portrait(id), 1, display
                         Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
                         local nameLabel = label(display, name, 72)
                         nameLabel.TextSize = 24
                         nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
                         local width = if teammate then 260 else 420
-                        nameLabel.Size = UDim2.fromOffset(width, 32)
-                        nameLabel.Position = UDim2.fromOffset(x + 32 - width / 2, 72)
+                        nameLabel.Size = UDim2.fromScale(width / 280, 32 / 200)
+                        nameLabel.Position = UDim2.fromScale((x + 32 - width / 2) / 280, 72 / 200)
                         if role ~= "" then
                             local roleLabel = label(display, role, 106)
                             roleLabel.Size, roleLabel.Position =
-                                UDim2.fromOffset(width, 24), UDim2.fromOffset(x + 32 - width / 2, 106)
+                                UDim2.fromScale(width / 280, 24 / 200),
+                                UDim2.fromScale((x + 32 - width / 2) / 280, 106 / 200)
                             roleLabel.TextSize = 14
                         end
                     end

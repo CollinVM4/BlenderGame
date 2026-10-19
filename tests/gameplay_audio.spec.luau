@@ -92,3 +92,12 @@ receive("FarmHarvest", "position")
 receive(config.IngredientThrowSoundId, "position")
 receive("IngredientPickup", false)
 check(#played == 4, "unknown events, raw asset IDs and invalid positions are ignored")
+
+controller.PlayCashFeedback("Pop")
+controller.PlayCashFeedback("Pop")
+controller.PlayCashFeedback("Collect")
+controller.PlayCashFeedback("Collect")
+check(
+    #played == 6 and played[5] == config.IngredientPickupSoundId and played[6] == config.IngredientThrowSoundId,
+    "cash feedback reuses verified clips and throttles overlapping cues"
+)

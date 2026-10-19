@@ -10,8 +10,19 @@ local Item = require(Shared.IngredientItem)
 local Types = require(Shared.Types)
 local IngredientService = {}
 -- Tags/attributes are presentation metadata, never proof of ownership or validity.
-type Record = { Id: string, Owner: Player?, Claimable: boolean, Item: Types.IngredientItem, FarmManaged: boolean }
+type Record = {
+    Id: string,
+    Owner: Player?,
+    Claimable: boolean,
+    Item: Types.IngredientItem,
+    FarmManaged: boolean,
+    FeedingActor: Player?,
+    FeedingSessionId: string?,
+    MuncherImmune: boolean,
+    Reserved: boolean?,
+}
 local records: { [Instance]: Record } = {}
+local reservations: { [Instance]: {} } = {}
 
 function IngredientService.GetDefinition(id: string)
     return (Definitions :: any)[id]
@@ -29,6 +40,9 @@ function IngredientService.Spawn(
         VisualTemplate: Instance?,
         FreezeUntilPickup: boolean?,
         FarmManaged: boolean?,
+        FeedingActor: Player?,
+        FeedingSessionId: string?,
+        MuncherImmune: boolean?,
         PrepareSpawn: ((Instance, CFrame) -> CFrame?)?,
         BeforePublish: ((Instance) -> ())?,
     }?
@@ -83,6 +97,9 @@ function IngredientService.Spawn(
     records[object] = {
         Id = id,
         Owner = owner,
+        FeedingActor = if options then options.FeedingActor else nil,
+        FeedingSessionId = if options then options.FeedingSessionId else nil,
+        MuncherImmune = options ~= nil and options.MuncherImmune == true,
         Claimable = claimable ~= false,
         Item = item,
         -- Server lifecycle state, deliberately separate from presentation/item metadata.
@@ -91,6 +108,7 @@ function IngredientService.Spawn(
     }
     object.Destroying:Connect(function()
         records[object] = nil
+        reservations[object] = nil
     end)
     CollectionService:AddTag(object, "IngredientWorldItem")
     return object
@@ -112,16 +130,35 @@ function IngredientService.GetRecord(object: Instance): Record?
     end
     local copy = table.clone(record)
     copy.Item = table.clone(record.Item)
+    copy.Reserved = reservations[object] ~= nil
     return copy
 end
--- Pickup callers set pickedUp only after inventory authorization/reservation succeeds.
--- Other removal paths (including cleanup) never release frozen physics.
-function IngredientService.Consume(object: Instance, pickedUp: boolean?): string?
-    local record = IngredientService.GetRecord(object)
-    if not record then
+-- Short, non-yielding claims shared by world consumers. Existing callers without a
+-- token cannot consume a reserved item; pickup/blender callers already handle nil.
+function IngredientService.Reserve(object: Instance): {}?
+    if not IngredientService.GetRecord(object) or reservations[object] then
         return nil
     end
+    local token = {}
+    reservations[object] = token
+    return token
+end
+function IngredientService.ReleaseReservation(object: Instance, token: {})
+    if reservations[object] == token then
+        reservations[object] = nil
+    end
+end
+
+-- Pickup callers set pickedUp only after inventory authorization/reservation succeeds.
+-- Other removal paths (including cleanup) never release frozen physics.
+function IngredientService.Consume(object: Instance, pickedUp: boolean?, token: {}?): string?
+    local record = IngredientService.GetRecord(object)
+    if not record or (reservations[object] ~= nil and reservations[object] ~= token) then
+        return nil
+    end
+    -- Pickup retires this spawn and its immunity; item metadata never inherits it.
     records[object] = nil
+    reservations[object] = nil
     if pickedUp and object:GetAttribute("FrozenUntilPickup") == true then
         local parts = object:GetDescendants()
         table.insert(parts, object)

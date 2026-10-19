@@ -1,7 +1,8 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 -- Cosmetic stash indicators and their paired monetary label.
 local Style = {
-    StashMaxDistance = 36,
+    StashMaxDistance = 35,
     IndicatorGold = Color3.fromRGB(255, 221, 48),
 }
 
@@ -15,8 +16,8 @@ end
 
 function Style.ConfigureIndicator(gui: BillboardGui, slot: BasePart)
     gui.Adornee = Style.ResolveOrigin(slot)
-    gui.Size = UDim2.fromOffset(120, 24)
-    gui.MaxDistance = Style.StashMaxDistance
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 3.2, HeightStuds = 0.6, MaxDistance = Style.StashMaxDistance })
 end
 
 return Style

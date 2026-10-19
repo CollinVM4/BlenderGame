@@ -1,10 +1,9 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
-local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 local CustomerPresentation = {}
 
 local RESULT_DURATION = 4
-local RESULT_GAP = 6
 local RESULT_DROP = 32
 local GRADE_COLORS: { [string]: string } = {
     A = "rgb(100,225,120)",
@@ -21,6 +20,11 @@ function CustomerPresentation.CreateAnchor(root: BasePart, head: BasePart?): Att
     anchor.Name = "ServePromptOrigin"
     anchor.Position = Vector3.new(0, math.max(0, height) + 0.35, 0)
     anchor.Parent = root
+    local reward = Instance.new("Attachment")
+    reward.Name = "CustomerRewardOrigin"
+    -- Measure in the resting pose, independent of head animation/card height.
+    reward.Position = Vector3.new(0, if head then head.Position.Y - root.Position.Y - 0.35 else 0.65, 0)
+    reward.Parent = root
     return anchor
 end
 
@@ -32,7 +36,7 @@ end
 local function styleDialogueText(text: TextLabel, size: number)
     text.Font = TextStyle.Font
     text.TextSize = size
-    text.TextScaled = false
+    text.TextScaled = true
     text.TextWrapped = true
     text.TextColor3 = Color3.new(1, 1, 1)
     text.LineHeight = 1
@@ -41,7 +45,11 @@ end
 
 function CustomerPresentation.StyleDialogue(bubble: BillboardGui, text: TextLabel, special: boolean)
     if not special then
-        bubble.Size = UDim2.fromOffset(300, 112)
+        -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+        BillboardStyle.ApplyBillboard(
+            bubble,
+            { WidthStuds = 7, HeightStuds = 2.6, MaxDistance = 45, ResetOnSpawn = true }
+        )
         text.Size = UDim2.fromScale(1, 1)
     end
     styleDialogueText(text, 21)
@@ -58,35 +66,40 @@ function CustomerPresentation.ShowResult(
     order: BillboardGui,
     grade: string?,
     payout: number,
-    ingredientValue: number?
+    _ingredientValue: number?
 ): BillboardGui
-    -- Serving has disabled both action prompts. Lower the reaction and reward as
-    -- one fixed-pixel stack, keeping their gap and special name row intact.
-    order.SizeOffset = Vector2.new(order.SizeOffset.X, 0.5 - RESULT_DROP / order.Size.Y.Offset)
+    -- Keep the existing reaction-card drop and special name row. Cash has its
+    -- own body-relative anchor, so dialogue size cannot lift the payout.
+    order.SizeOffset = Vector2.new(order.SizeOffset.X, 0.5 - RESULT_DROP / (order.Size.Y.Scale * 37.5))
     local cash = tostring(math.abs(payout)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
     local reward = (if payout < 0 then "-$" else "+$") .. cash
     local rewardColor = if payout < 0 then "rgb(255,95,95)" else "rgb(255,222,115)"
     local gui = Instance.new("BillboardGui")
     gui.Name = "CustomerResult"
-    gui.Adornee = order.Adornee
+    local anchor = order.Adornee
+    local root = if anchor and anchor:IsA("Attachment") then anchor.Parent else nil
+    gui.Adornee = (if root then root:FindFirstChild("CustomerRewardOrigin") else nil) or anchor
     gui.StudsOffset = Vector3.zero
-    local height = if ingredientValue == nil then 32 elseif grade == "D" then 76 else 54
-    gui.Size = UDim2.fromOffset(300, height)
-    -- Same stable anchor, fixed pixel rows above the entire reaction dialogue.
-    local dialogueTop = (order.SizeOffset.Y + 0.5) * order.Size.Y.Offset
-    gui.SizeOffset = Vector2.new(0, (dialogueTop + height / 2 + RESULT_GAP) / height)
+    local height = if grade == "D" then 54 else 32
+    BillboardStyle.ApplyBillboard(
+        gui,
+        { WidthStuds = 8, HeightStuds = math.round(height / 37.5 * 10) / 10, MaxDistance = 30, ResetOnSpawn = true }
+    )
+    -- Cash stays centered on the body-relative anchor; retry extends below it.
+    gui.SizeOffset = Vector2.new(0, (16 - height / 2) / height)
     gui.AlwaysOnTop = true
-    gui.MaxDistance = order.MaxDistance
+    gui.MaxDistance = 30
     gui.Enabled = false
+    local canvasHeight = height
     local function row(name: string, y: number, height: number, size: number, content: string): TextLabel
         local text = Instance.new("TextLabel")
         text.Name = name
-        text.Size = UDim2.fromOffset(300, height)
-        text.Position = UDim2.fromOffset(0, y)
+        text.Size = UDim2.fromScale(1, height / canvasHeight)
+        text.Position = UDim2.fromScale(0, y / canvasHeight)
         text.BackgroundTransparency = 1
         text.Font = TextStyle.Font
         text.TextSize = size
-        text.TextScaled = false
+        text.TextScaled = true
         text.TextColor3 = Color3.new(1, 1, 1)
         text.RichText = true
         text.Text = content
@@ -96,7 +109,7 @@ function CustomerPresentation.ShowResult(
     end
     local resultText = if grade
         then string.format(
-            '<font color="%s">%s</font>  <font color="%s">%s</font>',
+            '<font color="%s">%s</font> \u{00B7} <font color="%s">%s</font>',
             GRADE_COLORS[grade] or "rgb(255,255,255)",
             grade,
             rewardColor,
@@ -104,17 +117,8 @@ function CustomerPresentation.ShowResult(
         )
         else '<font color="' .. rewardColor .. '">' .. reward .. "</font>"
     row("Result", 0, 32, 24, resultText)
-    if ingredientValue ~= nil then
-        row(
-            "Ingredients",
-            34,
-            20,
-            18,
-            'Ingredients: <font color="rgb(100,225,120)">' .. MoneyFormat.Compact(ingredientValue) .. "</font>"
-        )
-    end
     if grade == "D" then
-        local retry = row("Retry", 56, 20, 16, "TRY AGAIN \u{00B7} 15% PAYOUT")
+        local retry = row("Retry", 34, 20, 16, "TRY AGAIN \u{00B7} 15% PAYOUT")
         retry.TextColor3 = Color3.fromRGB(255, 95, 95)
     end
     gui.Parent = order.Parent
@@ -182,6 +186,7 @@ function CustomerPresentation.PreserveResult(gui: BillboardGui)
     local holder = Instance.new("Model")
     holder.Name = "CustomerResultHold"
     holder:SetAttribute("OwnerUserId", customer:GetAttribute("OwnerUserId"))
+    holder:SetAttribute("PlotSessionId", customer:GetAttribute("PlotSessionId"))
     local origin = Instance.new("Part")
     origin.Name = "ResultOrigin"
     origin.Anchored = true

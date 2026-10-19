@@ -228,7 +228,10 @@ plot:SetAttribute("PlotSessionId", nil)
 reserved.Value = plot
 player:SetAttribute("TutorialHintReady", false)
 player.ChildAdded:Fire(reserved)
-check(#gleams() == 0, "arrival target cannot render before conditional hint activation")
+check(
+    #gleams() == 1 and gleams()[1].Adornee == visual,
+    "claim guidance appears with immediate instruction once arrival target exists"
+)
 player:SetAttribute("TutorialHintReady", true)
 check(
     #gleams() == 1 and gleams()[1].Adornee == visual,

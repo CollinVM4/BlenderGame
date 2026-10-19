@@ -5,8 +5,8 @@ local started = false
 
 -- Scoped visibility ranges; Roblox performs camera-distance culling.
 local MAX_DISTANCES: { [string]: number } = {
-    IngredientCountDisplay = 60,
-    TurbineStatusDisplay = 28,
+    IngredientCountDisplay = 40,
+    TurbineStatusDisplay = 40,
 }
 
 function Controller.Init()
@@ -42,10 +42,10 @@ function Controller.Init()
             gui.MaxDistance = maxDistance
         end
         if gui.Name == "IngredientCountDisplay" then
-            -- Retain the label's existing centered layout inside the pixel canvas.
+            -- Retain the label's existing centered layout inside the stud canvas.
             object.AnchorPoint = Vector2.new(0.5, 0.5)
             object.Position = UDim2.fromScale(0.5, 0.5)
-            object.TextScaled = false
+            object.TextScaled = true
             if not cleanups[object] then
                 local scale = Instance.new("UIScale")
                 scale.Scale = 1

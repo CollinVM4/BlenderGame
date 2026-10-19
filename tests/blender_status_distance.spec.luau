@@ -43,7 +43,7 @@ local function display(name, width, height)
     marker.WorldPosition = vec(0, 0, 0)
     local gui = instance("BillboardGui")
     gui.Name, gui.Adornee, gui.Parent = name, marker, marker
-    gui.Size = env.UDim2.fromOffset(width, height)
+    gui.Size = env.UDim2.fromScale(width / 37.5, height / 37.5)
     gui.StudsOffsetWorldSpace = vec(0, 0, 0)
     local label = instance("TextLabel")
     local textChanged = signal()
@@ -52,7 +52,7 @@ local function display(name, width, height)
     end
     label.Name, label.Parent = "Status", gui
     label.TextTransparency, label.TextStrokeTransparency = 0, 0.25
-    label.Text, label.TextSize, label.TextScaled = "UNCHANGED", 24, false
+    label.Text, label.TextSize, label.TextScaled = "UNCHANGED", 24, true
     label.Visible = true
     return {
         Label = label,
@@ -72,22 +72,19 @@ local controller = loadModule("BlenderStatusDistanceController")
 controller.Init()
 controller.Init()
 workspaceFake.DescendantAdded:Fire(turbine.Label)
-check(counter.Gui.MaxDistance == 60 and turbine.Gui.MaxDistance == 40, "non-guidance visibility ranges retained")
+check(counter.Gui.MaxDistance == 40 and turbine.Gui.MaxDistance == 40, "non-guidance visibility ranges retained")
 check(counter.Label.AnchorPoint.X == 0.5 and counter.Label.Position.X.Scale == 0.5, "centered count layout retained")
 local countPosition, countAnchor = counter.Label.Position, counter.Label.AnchorPoint
 for _, distance in { 0, 12, 15, 21, 35, 45, 50, 55, 59.9, 60, 80, 0 } do
     workspaceFake.CurrentCamera = { CFrame = frame(distance, 0, 0) }
     services.RunService.RenderStepped:Fire()
     for _, refs in { counter, turbine } do
-        check(
-            refs.Gui.Size == refs.Size and refs.Size.X.Scale == 0 and refs.Size.Y.Scale == 0,
-            "pixel canvas stays fixed"
-        )
+        check(refs.Gui.Size == refs.Size and refs.Size.X.Scale > 0 and refs.Size.Y.Scale > 0, "stud canvas stays fixed")
         check(
             refs.Gui.Adornee == refs.Origin and refs.Gui.StudsOffsetWorldSpace == refs.Offset,
             "world anchor/offset unchanged"
         )
-        check(refs.Label.TextSize == 24 and not refs.Label.TextScaled, "fixed font regardless of camera distance")
+        check(refs.Label.TextSize == 24 and refs.Label.TextScaled, "font scales within the stud canvas")
         check(refs.Label.TextTransparency == 0 and refs.Label.TextStrokeTransparency == 0.25, "no distance fade")
         check(
             refs.Label.Text == "UNCHANGED" and refs.Label.Visible,
@@ -106,7 +103,7 @@ workspaceFake.DescendantRemoving:Fire(counter.Label)
 workspaceFake.DescendantAdded:Fire(counter.Label)
 workspaceFake.DescendantAdded:Fire(counter.Label)
 check(
-    #counter.Label:GetChildren() == 1 and counter.Gui.MaxDistance == 60,
+    #counter.Label:GetChildren() == 1 and counter.Gui.MaxDistance == 40,
     "stream-in and repeated registration retain a single presentation scale"
 )
 counter.Label.Text = "3 / 3\nLOADING COMPLETE!"

@@ -1,5 +1,10 @@
 # Test suite boundaries
 
+World billboard sizing: `python tests/run_billboard_tests.py --luau <luau.exe>`
+owns the shared stud-size/culling/text contracts and repository-wide direct-size
+lint. This is an independent presentation check, not a prerequisite for gameplay
+state suites. See [the convention, sizing table and Studio acceptance](../docs/BILLBOARD_CONVENTION.md).
+
 Lucky Blocks: `--suite lucky-block` owns authoritative spawning, proximity claims,
 weighted selection, contention/cooldown, replacement and nearby notification contracts.
 Separate presentation suites `lucky-block-roulette`, `lucky-block-view` and
@@ -316,3 +321,27 @@ local effect budgets/fallbacks, confirmed feedback and central outline priority,
 flashing and lifecycle. `--suite ice-shotgun-results` verifies the server-only
 notification contract and replicated immunity clocks without duplicating cone
 authority tests. See [presentation Studio checks](../docs/ICE_SHOTGUN_PRESENTATION.md).
+
+## Muncher ingredient conversion (Pass 1)
+
+`--suite muncher-rewards` owns catalog base values, exact thresholds, head fallback,
+normalized configurable pools and deterministic mystery selection. `--suite muncher`
+covers real inventory/registry/session transactions, purchase/reveal gating, registered
+prompt feeding, authorization, contention, throw/feed ordering, head input, retry,
+landing fallback and reset/removal settlement. `--suite muncher-presentation` independently
+checks disabled feedback, preserved reveal, local hearts/chew/actual-rarity glow and
+interrupted-effect cleanup. Existing carry-selection, carry-input, and player-head
+suites retain the shared contracts. See [Muncher setup and validation](../docs/MUNCHER.md)
+for provisional EV limitations, required mouth orientation, and Studio acceptance.
+
+
+## Muncher physical-ingestion correction
+
+`--suite muncher-vacuum` owns physical ingestion, server attribution, eligibility,
+per-spawn output immunity, common world-item claims, protected crop/carry/stash
+exclusions, overlapping plots, release behavior and deliberate pickup/rethrow.
+`--suite blender-vacuum` runs the existing unchanged blender vacuum spec through
+the current fixture/bundler. Keep `muncher`, `muncher-rewards` and
+`muncher-presentation` for their existing transaction/reward/presentation contracts.
+See [Muncher correction and baseline failures](../docs/MUNCHER.md) for the focused
+regression command, legacy world/blender harness failures and Studio smoke checklist.

@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 -- Cosmetic Instances only: never register, spawn, or consume world inventory here.
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
@@ -68,7 +69,11 @@ local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value:
     local gui = Instance.new("BillboardGui")
     gui.Name = "SlotValue"
     gui.Adornee = slot
-    gui.Size = UDim2.fromOffset(180, 44)
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(
+        gui,
+        { WidthStuds = 4.8, HeightStuds = 1.2, MaxDistance = RipenessStyle.StashMaxDistance }
+    )
     gui.StudsOffsetWorldSpace = surface.Position - slot.Position + Vector3.new(0, 5, 0)
     gui.AlwaysOnTop = true
     gui.ResetOnSpawn = false
@@ -80,6 +85,7 @@ local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value:
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
     label.TextSize = 28
+    label.TextScaled = true
     label.TextColor3 = Color3.fromRGB(100, 235, 120)
     label.Text = MoneyFormat.Compact(value)
     local stroke = Instance.new("UIStroke")

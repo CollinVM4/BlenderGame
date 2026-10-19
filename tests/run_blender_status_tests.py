@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 sources = {
+    "WorldBillboardStyle": (ROOT / "src/shared/WorldBillboardStyle.luau").read_text(),
     "DialogueTextStyle": (ROOT / "src/shared/Constants/DialogueTextStyle.luau").read_text(),
     "Economy": (ROOT / "src/shared/Constants/Economy.luau").read_text(),
     "BlenderStatusPresentation": (ROOT / "src/server/Components/BlenderStatusPresentation.luau").read_text(),

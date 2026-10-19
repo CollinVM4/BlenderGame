@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Config = require(ReplicatedStorage.Shared.Constants.LuckyBlockPresentation)
@@ -20,10 +21,13 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
     local labelGui = Instance.new("BillboardGui")
     labelGui.Name = "RewardName"
     labelGui.Adornee = anchor
-    labelGui.Size = UDim2.fromOffset(160, 22)
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(
+        labelGui,
+        { WidthStuds = 4, HeightStuds = 0.8, MaxDistance = 45, AlwaysOnTop = false, ResetOnSpawn = true }
+    )
     labelGui.StudsOffsetWorldSpace = Vector3.new(0, -Config.ModelSize / 2 - 0.35, 0)
     labelGui.AlwaysOnTop = false
-    labelGui.MaxDistance = Config.NearbyDistance
     labelGui.Enabled = false
     labelGui.Active = false
     labelGui.Parent = anchor

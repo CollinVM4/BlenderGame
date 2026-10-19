@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.GameplayAudio)
 local Controller = {}
 local started = false
+local lastCashCue = { Pop = -math.huge, Collect = -math.huge }
 local templates: { [string]: Sound } = {}
 local eventAssets: { [string]: string } = {
     IngredientPickup = Config.IngredientPickupSoundId,
@@ -13,6 +14,26 @@ local eventAssets: { [string]: string } = {
     BatSwing = Config.BatSwingSoundId,
     CustomerHurt = Config.CustomerHurtSoundId,
 }
+
+-- Reuse the authored pickup/throw assets for brief local UI cues.
+function Controller.PlayCashFeedback(kind: "Pop" | "Collect")
+    local now = os.clock()
+    if now - lastCashCue[kind] < 0.18 then
+        return
+    end
+    lastCashCue[kind] = now
+    local id = if kind == "Pop" then Config.IngredientPickupSoundId else Config.IngredientThrowSoundId
+    local template = templates[id]
+    if not template then
+        return
+    end
+    local sound = template:Clone()
+    sound.Name = "CashFeedback"
+    sound.Volume = 0.22
+    sound.Parent = game:GetService("SoundService")
+    sound:Play()
+    Debris:AddItem(sound, 0.4)
+end
 
 local function play(template: Sound, position: Vector3)
     local camera = workspace.CurrentCamera

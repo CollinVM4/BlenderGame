@@ -18,4 +18,23 @@ function Physics.Steer(velocity: Vector3, position: Vector3, target: Vector3, ra
     return velocity + clampMagnitude(delta, Config.MaxAcceleration * step)
 end
 
+-- Side-facing openings reuse bounded velocity steering without blender's downward bias.
+function Physics.SteerToward(
+    velocity: Vector3,
+    position: Vector3,
+    target: Vector3,
+    radius: number,
+    dt: number,
+    tuning: any
+): Vector3
+    local offset = target - position
+    local proximity = 1 - math.clamp(offset.Magnitude / math.max(radius, 0.01), 0, 1)
+    local strength = tuning.EdgeStrength + (1 - tuning.EdgeStrength) * proximity
+    local desired = clampMagnitude(offset * tuning.CenteringStrength, tuning.MaxSpeed)
+    local step = math.clamp(dt, 0, tuning.MaxStep)
+    local delta = (desired - velocity) * (1 - math.exp(-tuning.PullStrength * strength * step))
+        + Vector3.new(0, workspace.Gravity * step, 0)
+    return velocity + clampMagnitude(delta, tuning.MaxAcceleration * step)
+end
+
 return Physics

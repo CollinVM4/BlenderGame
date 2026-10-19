@@ -2,74 +2,104 @@
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Muncher)
 local WorldUtil = require(script.Parent.WorldUtil)
 local MovementService = require(script.Parent.MovementService)
+local Rewards = require(script.Parent.MuncherRewards)
+local Output = require(script.Parent.MuncherOutput)
+local WorldInput = require(script.Parent.MuncherWorldInput)
+local Diagnostics = require(script.Parent.MuncherDiagnostics)
 local Service = {}
 local deps: any
-type State = {
-    Progress: number,
-    Multiplier: number,
-    ExpiresAt: number,
-    ActiveBuff: string?,
-    Purchased: boolean,
-    Revealed: boolean,
-    ReadyAt: number,
-}
-local states: { [string]: State } = {}
-local nextFeed: { [Player]: number } = {}
+local states: { [string]: any } = {}
+local pending: { [any]: boolean } = {}
 local random = Random.new()
+local logCount = 0
+
+local function log(transaction: any, result: string)
+    if not Config.DebugLogging or logCount >= Config.LogLimit then
+        return
+    end
+    logCount += 1
+    print(
+        string.format(
+            "[Muncher] time=%.2f plot=%s input=%s value=%g tier=%d output=%s value=%g rarity=%s result=%s",
+            workspace:GetServerTimeNow(),
+            transaction.SessionId,
+            transaction.Input,
+            transaction.Value,
+            transaction.Tier,
+            transaction.Reward,
+            transaction.OutputValue,
+            transaction.Rarity,
+            result
+        )
+    )
+end
+
+function Service.Step()
+    local now = workspace:GetServerTimeNow()
+    for transaction in pending do
+        if now < transaction.NextAt then
+            continue
+        end
+        local state = transaction.State
+        state.Phase = "Spitting"
+        transaction.Attempts += 1
+        local ok, spawned = pcall(Output.Spawn, deps.IngredientService, transaction)
+        if ok and spawned then
+            pending[transaction] = nil
+            log(transaction, "Success")
+            Diagnostics.Log("RewardPublished", transaction.InputZone, transaction.Output, nil, transaction.Source)
+            if state.Transaction == transaction then
+                state.Transaction = nil
+                state.Phase = "Idle"
+                state.AvailableAt = now + Config.SpitSeconds
+            end
+        else
+            transaction.NextAt = now
+                + (if transaction.Attempts < Config.QuickRetries then Config.RetrySeconds else Config.RecoverySeconds)
+            log(transaction, "SpawnRetry")
+            if transaction.Attempts == Config.QuickRetries then
+                warn("[Muncher] Output pending recovery for plot " .. transaction.SessionId)
+            end
+        end
+    end
+end
 
 function Service.Init(services: any)
     deps = services
+    game:GetService("RunService").Heartbeat:Connect(Service.Step)
 end
 
 function Service.Reset(player: Player)
     local id = deps.TycoonService.GetSessionId(player)
     if id then
-        states[id] = { Progress = 0, Multiplier = 1, ExpiresAt = 0, Purchased = false, Revealed = false, ReadyAt = 0 }
+        -- Detached committed transactions remain in the recovery queue at their captured location.
+        states[id] = { Purchased = false, Revealed = false, ReadyAt = 0, Phase = "Idle", AvailableAt = 0, Sequence = 0 }
     end
 end
-
 function Service.CleanupSession(id: string)
     states[id] = nil
 end
-
-function Service.RemovePlayer(player: Player)
-    nextFeed[player] = nil
+function Service.RemovePlayer(_player: Player)
+    -- A consumed ingredient belongs to its committed transaction, not the actor's lifetime.
 end
-
-local function activate(state: State)
-    local buff = Config.Buffs[random:NextInteger(1, #Config.Buffs)]
-    state.ActiveBuff = buff.Id
-    state.Multiplier = buff.CashMultiplier
-    state.ExpiresAt = workspace:GetServerTimeNow() + Config.BuffDuration
-    state.Progress = 0
-end
-
-local function expire(state: State)
-    if state.ActiveBuff and workspace:GetServerTimeNow() >= state.ExpiresAt then
-        state.ActiveBuff, state.Multiplier, state.ExpiresAt = nil, 1, 0
-        if state.Progress == Config.Required then
-            activate(state)
-        end
-    end
-end
-
 function Service.GetSnapshot(player: Player): any
     local id = deps.TycoonService.GetSessionId(player)
     local state = if id then states[id] else nil
     if not state then
         return nil
     end
-    expire(state)
+    local transaction = state.Transaction
     return {
-        Progress = state.Progress,
-        Target = Config.Required,
-        Multiplier = state.Multiplier,
-        ExpiresAt = state.ExpiresAt,
-        ActiveBuff = state.ActiveBuff,
-        BuffExpiresAt = state.ExpiresAt,
         Purchased = state.Purchased,
         Active = state.Revealed,
         ReadyAt = state.ReadyAt,
+        Phase = state.Phase,
+        AvailableAt = state.AvailableAt,
+        Sequence = state.Sequence,
+        StartedAt = if transaction then transaction.StartedAt else 0,
+        OutputRarity = if transaction then transaction.Rarity else nil,
+        Multiplier = 1,
+        ExpiresAt = 0,
     }
 end
 
@@ -116,104 +146,174 @@ function Service.CompleteReveal(player: Player, model: Instance): boolean
     then
         return false
     end
+    if not state.Revealed then
+        local input = model:FindFirstChild("InputZone")
+        if input and input:IsA("BasePart") then
+            Diagnostics.Log("RevealCompleted", input, nil, nil, "Lifecycle")
+        end
+    end
     state.Revealed = true
     return true
 end
 
-function Service.GetCashMultiplier(player: Player): number
-    local snapshot = Service.GetSnapshot(player)
-    return if snapshot then snapshot.Multiplier else 1
+-- Compatibility for customer payout callers; Muncher no longer grants cash buffs.
+function Service.GetCashMultiplier(_player: Player): number
+    return 1
 end
 
-local function inputFor(player: Player): BasePart?
-    local plot = deps.TycoonService.GetPlot(player)
-    local muncher = plot and plot:FindFirstChild("Muncher")
-    local input = muncher and muncher:FindFirstChild("InputZone")
-    return if input and input:IsA("BasePart") then input else nil
-end
-
-local function advance(state: State)
-    state.Progress += 1
-    if state.Progress == Config.Required and not state.ActiveBuff then
-        activate(state)
-    end
-end
-
--- Both intake paths commit synchronously under the plot's existing lifecycle lock.
--- Returns only cosmetic data after authoritative removal has succeeded.
-function Service.TryFeed(player: Player, input: BasePart, object: Instance?, context: any): (boolean, string?, CFrame?)
+-- UI-independent machine gate; both attraction and conversion use this state.
+function Service.CanVacuum(player: Player, input: BasePart): boolean
     local id = deps.TycoonService.GetSessionId(player)
     local state = if id then states[id] else nil
-    if state then
-        expire(state)
-    end
-    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    local plot = deps.TycoonService.GetPlot(player)
+    local model = plot and plot:FindFirstChild("Muncher")
+    return state ~= nil
+        and state.Revealed
+        and state.Phase == "Idle"
+        and workspace:GetServerTimeNow() >= state.AvailableAt
+        and model ~= nil
+        and model:FindFirstChild("InputZone") == input
+        and input:IsDescendantOf(workspace)
+end
+
+-- Exactly one preparation, roll, consume and commitment implementation for both sources.
+function Service.TryStartConversion(
+    player: Player,
+    input: BasePart,
+    object: Instance?,
+    source: string,
+    context: any
+): (boolean, string?)
     if
-        not state
-        or not state.Revealed
-        or state.Progress >= Config.Required
-        or inputFor(player) ~= input
+        (source ~= "CarriedPrompt" and source ~= "WorldVacuum")
+        or not Service.CanVacuum(player, input)
         or not MovementService.CanPerformGameplayAction(player)
-        or not humanoid
-        or humanoid.Health <= 0
     then
-        return false
+        return false, "MachineBusy"
     end
+    local id = deps.TycoonService.GetSessionId(player)
+    local state = states[id]
+    local model = deps.TycoonService.GetPlot(player):FindFirstChild("Muncher")
     local ingredientId: string?
-    local at: CFrame?
-    if object then
-        local record = deps.IngredientService.GetRecord(object)
-        local part = WorldUtil.Part(object)
-        if
-            not record
-            or not part
-            or object:GetAttribute("FrozenUntilPickup") == true
-            or (record.Owner ~= nil and record.Owner ~= player)
-            or (record.Owner == nil and not record.Claimable)
-            or not deps.IngredientService.GetDefinition(record.Id)
-        then
+    if source == "CarriedPrompt" then
+        if object or not WorldUtil.Near(player, input, Config.FeedDistance) then
             return false
         end
-        local overlaps = false
-        for _, touching in workspace:GetPartsInPart(input) do
-            if deps.IngredientService.Resolve(touching) == object then
-                overlaps = true
-                break
+        local tools: { Instance } = if player.Character then player.Character:GetChildren() else {}
+        for _, tool in tools do
+            if tool:IsA("Tool") and tool:GetAttribute("IngredientId") == nil then
+                return false
             end
         end
-        if not overlaps then
-            return false
-        end
-        ingredientId, at = record.Id, part.CFrame
+        ingredientId = deps.InventoryService.GetHeldIngredientId(player, true)
     else
-        if
-            not WorldUtil.Near(player, input, Config.FeedDistance)
-            or workspace:GetServerTimeNow() < (nextFeed[player] or 0)
-        then
-            return false
+        if not object then
+            return false, "InvalidWorldItem"
         end
-        ingredientId = deps.InventoryService.GetHeldIngredientId(player)
-        if not ingredientId or not deps.IngredientService.GetDefinition(ingredientId) then
-            return false
+        local actor, reason, root = WorldInput.Eligible(deps, input, object)
+        if actor ~= player or not root then
+            return false, reason or "UnauthorizedOwner"
         end
-        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-        at = if root and root:IsA("BasePart") then root.CFrame * CFrame.new(0, 4, 0) else input.CFrame
+        local distance = (root.Position - input.Position).Magnitude
+        if distance > Config.Vacuum.CaptureTolerance then
+            local overlaps = false
+            for _, touching in workspace:GetPartsInPart(input) do
+                if deps.IngredientService.Resolve(touching) == object then
+                    overlaps = true
+                    break
+                end
+            end
+            if not overlaps or distance > Config.Vacuum.OverlapTolerance then
+                return false, "OutsideIntake"
+            end
+        end
+        ingredientId = deps.IngredientService.GetRecord(object).Id
+    end
+    if not ingredientId then
+        return false, "InvalidWorldItem"
+    end
+    local value = Rewards.BaseValue(ingredientId, deps.IngredientService.GetDefinition(ingredientId))
+    if not value then
+        return false
     end
     local token = deps.TycoonService.BeginTransaction(player, context or deps.TycoonService.GetRequestContext(player))
     if not token then
         return false
     end
-    local consumed = if object
-        then deps.IngredientService.Consume(object)
-        else deps.InventoryService.ConsumeHeldIngredient(player, ingredientId)
-    if consumed then
-        advance(state)
-        if not object then
-            nextFeed[player] = workspace:GetServerTimeNow() + Config.FeedCooldown
+    local reservation = nil
+    if object then
+        -- Revalidate under the lifecycle lock, then claim the specific registry identity.
+        local actor, reason = WorldInput.Eligible(deps, input, object)
+        if actor ~= player then
+            deps.TycoonService.EndTransaction(token)
+            return false, reason
+        end
+        reservation = deps.IngredientService.Reserve(object)
+        if not reservation then
+            deps.TycoonService.EndTransaction(token)
+            return false, "AlreadyReserved"
         end
     end
+    if object then
+        Diagnostics.Log("CandidateReserved", input, object)
+    end
+    state.Phase = "Processing"
+    -- Prepare every fallible decision before removing ownership. No yield under lifecycle lock.
+    local ok, transaction = pcall(function()
+        local tier = Rewards.Tier(value)
+        local reward = Rewards.Roll(tier, random, deps.IngredientService.GetDefinition)
+        local definition = deps.IngredientService.GetDefinition(reward)
+        return {
+            SessionId = id,
+            Source = source,
+            InputZone = input,
+            State = state,
+            Model = model,
+            At = Output.Location(model, input),
+            Input = ingredientId,
+            Value = value,
+            Tier = tier,
+            Reward = reward,
+            OutputValue = definition.Value,
+            Rarity = definition.Rarity or "Common",
+            StartedAt = workspace:GetServerTimeNow(),
+            NextAt = workspace:GetServerTimeNow() + Config.ChewSeconds,
+            Attempts = 0,
+        }
+    end)
+    if not ok then
+        if object and reservation then
+            deps.IngredientService.ReleaseReservation(object, reservation)
+        end
+        state.Phase = "Idle"
+        deps.TycoonService.EndTransaction(token)
+        warn("[Muncher] Invalid reward configuration: " .. tostring(transaction))
+        return false
+    end
+    local consumed = if object
+        then deps.IngredientService.Consume(object, false, reservation)
+        else deps.InventoryService.ConsumeHeldIngredient(player, ingredientId, true)
+    if object and reservation then
+        deps.IngredientService.ReleaseReservation(object, reservation)
+    end
+    if consumed then
+        state.Transaction = transaction
+        state.Sequence += 1
+        pending[transaction] = true
+        if value < Config.TierMinimums[1] then
+            warn("[Muncher] Positive input below Tier 1 minimum")
+        end
+        log(transaction, "Committed")
+        if object then
+            Diagnostics.Log("ConversionCommitted", input, object)
+        end
+    else
+        state.Phase = "Idle"
+    end
     deps.TycoonService.EndTransaction(token)
-    return consumed ~= nil, consumed, at
+    return consumed ~= nil, consumed
 end
-
+function Service.TryFeed(player: Player, input: BasePart, object: Instance?, context: any): (boolean, string?)
+    return Service.TryStartConversion(player, input, object, if object then "WorldVacuum" else "CarriedPrompt", context)
+end
 return Service

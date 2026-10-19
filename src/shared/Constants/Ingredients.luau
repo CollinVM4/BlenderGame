@@ -133,8 +133,8 @@ local Ingredients: { [string]: IngredientDefinition } = {
         JumpLocation = 0,
     },
 
-    PlayerHead = {
-        Id = "PlayerHead",
+    Player_Head = {
+        Id = "Player_Head",
         Farmable = false,
         DisplayName = "Player Head", -- This will need to be dynamic
         Tags = { "Weird" },
@@ -548,4 +548,15 @@ local Ingredients: { [string]: IngredientDefinition } = {
     },
 }
 
-return Ingredients
+-- Keep the authored prefab/catalog name while accepting existing dynamic head units.
+-- __index preserves one enumerable catalog entry for discovery and reward definitions.
+setmetatable(Ingredients, {
+    __index = function(definitions, id: string)
+        if id == "PlayerHead" then
+            return rawget(definitions, "Player_Head")
+        end
+        return nil
+    end,
+})
+
+return (Ingredients :: any) :: { [string]: IngredientDefinition }

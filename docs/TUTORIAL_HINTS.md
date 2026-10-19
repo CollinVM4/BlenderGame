@@ -1,65 +1,83 @@
-# Three-customer hint polish - Pass 3
+# Three-customer tutorial guidance
 
-The opening stand-claim and counter-navigation instructions are preserved. Only customer 1 (RED) receives the customer instructional walkthrough. After its committed successful serve, text stays disabled for COLD and YELLOW, including on hesitation or respawn. Their server progression and existing yellow highlights continue. Global announcements remain independent and take priority over tutorial text.
+The opening stand claim and first RED customer receive top-center instructions and a directional yellow beam. After RED is successfully served, the beam retires for the rest of onboarding, including respawns and plot membership changes. COLD and YELLOW keep their normal yellow world highlights. Text, beams, and world highlights have independent eligibility; retiring the beam never disables TutorialGleamController.
 
-All presentation is owner-local. Plot claiming, spawn assignment, customer order acceptance, stash withdrawals, carry mechanics, accepted blender ingestion, completed blending, cup grants and committed serving/payout remain server-authoritative. No new Studio-authored assets or remotes are required.
+All visuals are owner-local. This change does not modify server progression, ingredient ingestion, blending, dispensing, economy, carry authority, customer evaluation, or global announcements. No new Studio-authored assets or remotes are required.
 
-## Current instruction sequence
+## Instructions and destinations
 
-1. On joining without a stand, show **"Claim your smoothie stand!"** immediately as the FIRST tutorial instruction. This banner does not wait for the existing server-controlled claim-world-highlight readiness. Remove only the separate PlotIdentityController status message "Claim an available PLOT!". Claim/join labels and actual plot actions remain available.
-2. After successfully claiming a stand, clear the claim banner and wait three seconds before showing **"Head to your customer counter!"** for the initial Counter objective. Reaching the counter early advances to Order and cancels this obsolete hint.
-3. At the first-customer order interaction, show **"Take the customer's order!"**.
-4. On the first RED Stash objective following accepted order, clear the order banner immediately. After 2.5 seconds, show **"Grab ingredients from the stash!"**, the correct slot/base gleam and the directional beam together. Advancing early cancels this presentation delay; repeated one-item pickups resume immediately.
-5. Preserve Ladder teaching, then show device-specific sentence-case wording from PreferredInput and the real CAS throw binding: "Click to throw into the blender!", "Tap Throw to toss it in!", or "Press <bound button> to throw into the blender!". Reading/changing the hint never dispatches input.
-6. **"Spin to blend smoothie!"** and the existing turbine highlights continue until authoritative completion.
-7. Preserve the original post-blending Dispenser objective and **"Dispense your smoothie!"** instruction. Show it immediately on readiness, even if another hint was animating out. Keep the dispenser highlighted until the server observes actual smoothie ownership.
-8. After smoothie collection, show **"Serve customer and get PAYED!"** and highlight the active customer. There is no additional counter-navigation substage or three-second delay here. This hint remains until authoritative progression changes after a successful serve/payout. Early successful service cancels all pending RED hints.
+| Objective | Instruction / timing | Beam destination |
+|---|---|---|
+| ClaimPlot | "Claim your smoothie stand!" immediately on joining | Available stand's ClaimVisual from TutorialSpawnTarget |
+| Counter | "Head to your customer counter!" three seconds after claiming, while Counter remains current | Assigned plot's Customer Area/Counter/Base Structure/Base |
+| Order | "Take the customer's order!" | Current TutorialCustomerTarget |
+| Stash | "Grab ingredients from the stash!" 2.5 seconds after first accepted RED order | Exact TutorialStashSlot on the assigned plot (RED slot 3) |
+| Ladder | Existing ladder instruction | Assigned plot's ladder |
+| Blender | Existing device-specific throw instruction | Assigned plot's tagged BlenderInput, preferring VacuumTarget; Glass fallback |
+| Turbine | "Spin to blend smoothie!" | Stationary central stem/shaft, preferably its existing stable attachment |
+| Dispenser | "Dispense your smoothie!" immediately on readiness | Stable DispenserTextOrigin or actual dispenser interaction attachment; stable output part fallback |
+| Serve | "Serve customer and get PAYED!" | Current TutorialCustomerTarget |
 
-## Directional beam
+Claim guidance appears with the immediate instruction once a valid arrival target and living character exist; it does not wait for TutorialHintReady. The reserved/pinned stand must remain available. After claiming, targets resolve exclusively from the local player's PlotSessionId, and customers must match that session.
 
-The yellow outer Beam is 62.5% thicker than Pass 2: widths 0.26/0.195 studs, with transparency 0.6. Two local Attachments connect HumanoidRootPart local position (0, -0.5, +1.25), behind the avatar, to the current stash slot part. Parenting these attachments naturally follows avatar and slot movement without continuously moving world-space attachments.
+Counter and initial Stash delays remain shared by text, beam, and highlights through TutorialPresentationState. Deadlines cannot restore obsolete objectives. Character removal cancels pending delays; an unfinished delay restarts for the replacement avatar. Repeated Stash/Blender cycles resume immediately until authoritative ingestion advances the objective. Three accepted ingredients advance to Turbine; completed blending advances to Dispenser. FinishBatch and DrainBatch use the same stable turbine/dispenser targets.
 
-A narrower, brighter yellow-white inner Beam shares the same endpoints and gentle 1.5/-1.5 curves. Its soft transparency segment advances from normalized distance 0 (player Attachment0) to 1 (stash Attachment1) over 2.4 seconds, fading at both ends before repeating. It uses an animated gradient, avoiding texture assets and texture-speed direction assumptions. Seventeen ordered keypoints stay below the engine's twenty-keypoint limit; twenty Beam segments render the gradient.
+Throw wording still follows PreferredInput and the live CAS binding: "Click to throw into the blender!", "Tap Throw to toss it in!", or "Press <bound button> to throw into the blender!". Global announcements retain banner priority without changing world guidance.
 
-The implementation follows the [Roblox Beam reference](https://create.roblox.com/docs/reference/engine/classes/Beam) and [NumberSequence reference](https://create.roblox.com/docs/reference/engine/datatypes/NumberSequence). Automated tests verify increasing peak position and repeat direction. Native rendering and visual direction have **not** been verified in Studio: the current tools do not expose a live Studio surface. This remains a required visual acceptance check, not a claimed result.
+## Single continuous beam
 
-Both Beams and both Attachments are destroyed on pickup/objective changes, death/respawn, target removal, tutorial cancellation/completion or controller shutdown. Flow uses the gleam controller's existing Heartbeat; no extra animation connection survives cleanup. Missing/recreated targets recover through the existing resolver. Only RED's active Stash objective gets these Beams; COLD/YELLOW retain their normal gleams.
+Every objective uses one outer Beam plus its existing inner directional highlight. There are no waypoint chains, obstruction queries, floor probes, pathfinding requests, intermediate holders, or route segments. Intersecting the blender, its base, or other geometry cannot suppress the beam. Reliability takes priority over obstacle avoidance.
 
-## Lifecycle and authority
+The outer Beam retains widths 0.26/0.195 studs, transparency 0.6, its yellow color, 20 segments and gentle 1.5/-1.5 curves. The bright inner Beam retains widths 0.11/0.085 and the same endpoints. The source is an Attachment on the current character's HumanoidRootPart at local (0, -0.5, +1.25), slightly behind the avatar.
 
-TutorialPresentationState coordinates text and world guidance using local deadlines. It creates no delayed tasks, sends no remotes and writes no gameplay attributes. Character removal cancels pending deadlines. If a still-valid objective survives respawn, its pending presentation delay restarts for the new avatar. Completed presentation milestones stay completed, and obsolete messages cannot override a later objective. UI recreation preserves current progression and timing.
+TutorialBeamFlow retains its cached seventeen-keypoint gradient: a soft bright segment travels from Attachment0 (player) toward Attachment1 (objective) over 2.4 seconds, fades at the ends and repeats forward. The existing gleam Heartbeat selects a cached 30 Hz frame; it creates no sequences or extra animation connections per frame.
 
-TutorialOrderIndex > 1 latches instructional text off until a genuinely new PlotSessionId. Later customers retain the original target selection and progression, without instructional messages or RED beams. TutorialHintController disconnects active rendering/input/announcement subscriptions when text is disabled; its player lifecycle observers remain for a fresh session. Destroy disconnects all observers.
+Consecutive objectives retarget the same beam pair and retain its source and animation phase. Both Beams remain enabled while valid active guidance exists. Only the destination Attachment changes when necessary. Repeated refreshes and player movement reuse the existing instances. Authored Attachments are never destroyed by tutorial cleanup.
 
-The current checkout configures base carry capacity as 3 in Upgrades. This pass leaves the economy unchanged; integration tests exercise both a one-item capacity and upgraded stacks.
+## Stable turbine and dispenser endpoints
 
-## Pass 3 changed files
+Turbine target resolution no longer uses TurbineWheel tags or a global TurbinePromptOrigin: the tag can intentionally identify the rotating blade, and the marker can be attached to moving geometry. The resolver searches the assigned plot's `Turbine Wheel` assembly (or its named `Turbine`/`turbine` equivalent) for `stem`/`Stem` or `shaft`/`Shaft`. The selected BasePart must be anchored or rigidly joined to an anchored assembly. It never substitutes a rotating blade, a temporary highlight proxy, or a calculated approach position.
 
-- `src/client/Controllers/PlotIdentityController.luau`: removes the actual startup claim-status prompt, preserving plot actions, labels and failure feedback.
-- `src/client/Controllers/TutorialPresentationState.luau`: three-second initial counter timing, 2.5-second first-stash timing, cancellation and first-customer text latch.
-- `src/client/Controllers/TutorialHintController.luau`: shows the initial stand-claim instruction immediately and retains immediate smoothie collection readiness.
-- `src/client/Controllers/TutorialGleamController.luau`: synchronizes objective highlights and thicker outer/animated inner stash Beams; shared cleanup for both Beams.
-- `src/client/UI/TutorialBeamFlow.luau`: asset-free, forward-only repeating transparency segment.
-- `src/client/UI/TutorialHintText.luau`: preserves ClaimPlot, Counter and Dispenser instructions; provides exact Serve, sentence-case throw and turbine wording.
-- `tests/tutorial_hints.spec.luau`, `tests/plot_identity.spec.luau`, `tests/run_state_tests.py`: focused timing, direction, startup removal, lifecycle and new-module test loading.
-- This guide: behavior, changed files and Studio checks.
+A `TurbineBeamTarget` or `TurbinePromptOrigin` directly parented to that stationary stem is reused when available. Otherwise the client creates one Attachment on the stem, centered on a short stem or 2.5 studs above its local lower end on a tall vertical shaft. This local position is fixed throughout spinning and movement. Existing stationary stem/shaft geometry must remain part of the replicated plot; an unanchored spinning stem is deliberately not a valid substitute.
 
-No server service, customer order, economy, inventory/carry dispatcher, announcement producer, Framewisp menu or Rojo mapping changed in Pass 3.
+Dispenser guidance prefers the assigned plot's stable `DispenserTextOrigin`, followed by an actual ProximityPrompt Attachment inside `Dispenser`, then a stationary dispenser/output BasePart. Every reused Attachment must have a valid stationary BasePart parent. No route planner replaces this endpoint, and curvature never depends on obstruction tests.
+
+Beam eligibility is independent of decorative highlight availability. Destroying or streaming a highlighted blade/anchor clears those highlights without tearing down a beam attached to the valid stationary stem. If the actual endpoint or character disappears, invalid effects are removed safely and the existing refresh loop retries. Replication of the stem, dispenser or authored attachment restores the current objective without a gameplay restart. Temporary local endpoint attachments are replaced only when the actual resolved target changes or disappears.
+
+## Lifecycle
+
+Death, character replacement, lost membership, tutorial cancellation/completion and controller shutdown remove invalid beams and locally owned Attachments. Authoritative objective changes retarget immediately; intentional Counter/Stash delays hide obsolete guidance. No navigation task or callback can revive an old objective because that routing layer has been removed.
+
+TutorialOrderIndex > 1 permanently latches beam generation off for this local onboarding, including after respawn, membership changes or a stale return to index 1. Complete also retires beams. Text retains its existing session-scoped first-customer latch. Highlights continue for all three customers until TutorialActive becomes false.
+
+## Changed files
+
+- `src/client/Controllers/TutorialGleamController.luau`: one beam pair, fixed local stem endpoint, independent highlight cleanup and existing shared timing.
+- `src/shared/TutorialTargets.luau`: stationary own-plot stem and stable dispenser target selection; other objective resolution and yellow highlight paths remain unchanged.
+- `src/client/UI/TutorialBeamFlow.luau`: cached original single-beam animation; unused routed-gradient support removed.
+- `src/client/UI/TutorialBeamNavigation.luau` and `TutorialBeamPath.luau`: removed along with their obstacle and multi-segment rendering code.
+- `tests/tutorial_hints.spec.luau`: controller persistence, movement/spinning/geometry, retargeting, recovery and first-customer cleanup.
+- `tests/tutorial_beam_stability.spec.luau`: fixed stem/shaft selection, stable authored endpoints, foreign/rotating target exclusion and late replication.
+- `tests/run_state_tests.py`: replaces the obsolete routing suite with `tutorial-beam-stability` and removes deleted module loading.
 
 ## Validation
 
-PASS: tutorial-hints, tutorial-targets, plot-identity, tutorial and tutorial-gameplay. Presentation cases cover immediate stand claiming before world-highlight readiness, three-second initial counter navigation, shared 2.5-second stash timing, thicker forward-flowing beams, repeated pickup, original dispensing, direct serving, reset/rapid objective cancellation, later-customer silence and real global announcement priority. Retained state/integration suites cover all three customers, accepted ingestion, completed blending, cup grants and committed payout.
+Run `python tests/run_state_tests.py --luau <luau.exe> --suite tutorial-beam-stability --suite tutorial-hints --suite tutorial-targets --suite tutorial --suite tutorial-gameplay`. Presentation suites remain separate from authoritative state and integration suites. Persistence regressions make geometry/pathfinding APIs fail if called, then verify that moving the avatar and spinning/removing decorative turbine parts retain the same enabled beam pair and fixed destination. Existing suites retain direction, timing, all other targets, first-serve retirement and later-customer highlights.
 
-PASS: Roblox-aware typecheck of the tutorial presentation modules, changed-file StyLua, fresh Rojo sourcemap/build and whitespace validation. No new Studio setup is required.
+Latest stability pass: all five focused suites pass. Roblox-aware Luau LSP typechecking, changed-file StyLua, Rojo build and whitespace checks pass.
 
-The tutorial-claim integration suite reproduces on HEAD with a pre-existing bootstrap fixture failure while loading UnstuckService's shared event dependency; it is reported separately from the passing tutorial suites. CLI tests use engine doubles and do not prove native render appearance, multiplayer replication or contact physics. No live Studio session was run.
+Also run Roblox-aware Luau LSP analysis with a fresh Rojo sourcemap, StyLua on changed Luau files, Rojo build and `git diff --check`.
 
-## Studio multiplayer/mobile/controller checklist
+The earlier `tutorial-claim` fixture dependency failure and four test-runner self-test manifest expectation failures were reproduced on isolated HEAD archives in previous passes. They are separate from these focused gameplay and presentation contracts.
 
-1. Start two clients and claim separate plots. Confirm "Claim your smoothie stand!" appears immediately before claiming and "Claim an available PLOT!" never appears. After claiming, wait three seconds for "Head to your customer counter!". Reach the counter and confirm "Take the customer's order!". Spawn/claim labels, claim interaction and environmental highlights should work.
-2. Accept RED and time 2.5 seconds: the order hint clears immediately, then stash text, slot 3/base gleam and both Beams appear together. Pick up before the deadline and confirm no delayed stash text/beam later. Repeat with one-item carry and upgraded stacks.
-3. **Visually verify beam direction in Studio:** stand, walk and turn while looking along the beam. The bright portion must move from behind the avatar toward slot 3 and repeat at a comfortable pace, never moving back toward the avatar. Check at multiple camera angles and phone/desktop sizes; the thicker translucent outer curve should remain visible without obscuring the face/view. Pickup and respawn must remove both Beams and Attachments, with no jitter or accumulating instances.
-4. Switch mouse/touch/controller while carrying. Confirm sentence-case wording and the actual R2/RT binding, with no unintended throw. Test real throw ingestion/misses, turbine activation without completion and "Spin to blend smoothie!".
-5. Finish blending: "Dispense your smoothie!" and dispenser highlight must appear immediately. Failed/full-inventory collection attempts must retain them. After successful collection, exact "Serve customer and get PAYED!" and the correct customer highlight should appear without another counter hint or delay, and persist through failed serves until real successful payout.
-6. Reach the initial counter or accept the first order before either opening delay ends, reset during either delay, destroy/recreate the tutorial GUI and stream targets out/in. Verify no stale instruction, beam or highlight returns. Early serving must remain valid without waiting.
-7. Trigger mystery/cleanup announcements during each RED stage and during COLD/YELLOW. Confirm announcement priority through entrance/hold/exit and no text overlap. After RED is successfully served, pause at all COLD/YELLOW actions for 20 seconds and respawn: no tutorial text or RED beam, but correct highlights, real gameplay progression and ordinary global announcements remain. Confirm other clients never see the owner's local hints/beams.
+CLI doubles do not prove native Beam rendering or the live authored plot's stem orientation/anchoring. A live Studio surface is unavailable through the current tools; the visual checks below remain pending.
+
+## Required Studio acceptance
+
+1. Claim a stand and confirm the unchanged immediate claim instruction, three-second counter delay and correct own-plot navigation. Accept RED and verify the shared 2.5-second stash delay and normal pickup/throw guidance.
+2. Throw the third ingredient into the upper input. Confirm immediate "Spin to blend smoothie!" and one continuous beam to the stationary lower stem. Inspect its Attachment parent: it must be the fixed stem/shaft, never the spinning blade or a highlight proxy.
+3. Move around, beneath and behind the blender. Spin the turbine. The stem endpoint must remain completely stationary, both Beam layers must stay connected, and intersecting machinery must never hide or rebuild them.
+4. Reach 100% blend progress. Confirm immediate "Dispense your smoothie!" and the same beam pair retargeted to the actual stable dispenser interaction. Walk around the base and verify continuous connection even when the gentle curve passes through walls.
+5. Verify the bright highlight always travels away from the player toward the destination. Check multiple camera angles, rotated plots, desktop/mobile sizes, and mouse/touch/controller throw wording.
+6. Reset during blending/dispensing; stream out and restore the actual stem/dispenser; remove decorative highlight pieces. Valid fixed endpoints must survive decorative removal, replacement characters must receive a fresh source, and genuinely missing endpoints must recover without a stage reset.
+7. Successfully serve RED and verify beam/temporary Attachment cleanup. Pause and respawn throughout COLD and YELLOW: no beam or top-center walkthrough hints return, but all normal yellow highlights continue until tutorial completion. Verify owner-only visibility with two clients and unchanged global announcements.

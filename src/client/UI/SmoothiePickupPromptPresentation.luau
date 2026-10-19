@@ -35,8 +35,11 @@ function Presentation.Create(
     assert(anchor and anchor:IsA("BasePart"))
     local cleanup, gui = Input.Create(prompt, anchor, parent, inputType, {
         InputOnly = true,
-        Width = Presentation.Width,
-        Height = Presentation.Height,
+        WidthStuds = 12.3,
+        HeightStuds = 5.2,
+        TouchWidth = if inputType == Enum.ProximityPromptInputType.Touch then Style.MobileTouchSize else nil,
+        TouchHeight = Style.MobileTouchSize,
+        TouchCenterY = (114 + Style.ValueHeight + Style.InputSpacing + Style.InputHeight / 2) / Presentation.Height,
         TextSize = Style.InputTextSize,
         MaxDistance = Style.MaxDistance,
     })
@@ -47,8 +50,8 @@ function Presentation.Create(
         local palette = (Style.RarityStyles :: any)[row.Rarity]
         local container = Instance.new("Frame")
         container.Name = "IngredientRow" .. index
-        container.Position = UDim2.fromOffset(0, (index - 1) * 38)
-        container.Size = UDim2.new(1, 0, 0, 36)
+        container.Position = UDim2.fromScale(0, (index - 1) * 38 / Presentation.Height)
+        container.Size = UDim2.fromScale(1, 36 / Presentation.Height)
         container.BackgroundTransparency = 1
         container.Parent = gui
         for _, column in
@@ -75,13 +78,13 @@ function Presentation.Create(
         do
             local label = Instance.new("TextLabel")
             label.Name, label.Text = column.Name, column.Text
-            label.Position = UDim2.fromOffset(column.X, 0)
-            label.Size = UDim2.fromOffset(column.Width, 36)
+            label.Position = UDim2.fromScale(column.X / Presentation.Width, 0)
+            label.Size = UDim2.fromScale(column.Width / Presentation.Width, 1)
             label.BackgroundTransparency = 1
             label.Font, label.TextSize, label.TextScaled = Style.Font, 25, true
             label.TextColor3, label.TextXAlignment = column.Color, column.Align
             local limit = Instance.new("UITextSizeConstraint")
-            limit.MinTextSize, limit.MaxTextSize, limit.Parent = 12, 25, label
+            limit.MinTextSize, limit.MaxTextSize, limit.Parent = 1, 1000, label
             local stroke = Instance.new("UIStroke")
             stroke.Color, stroke.Thickness = column.Stroke, Style.StrokeThickness
             stroke.Transparency, stroke.Parent = Style.TextStrokeTransparency, label
@@ -94,22 +97,22 @@ function Presentation.Create(
     end
     local value = Instance.new("TextLabel")
     value.Name, value.Text = "SmoothieValue", MoneyFormat.Compact(total)
-    value.Position = UDim2.fromOffset(0, 114)
-    value.Size = UDim2.new(1, 0, 0, Style.ValueHeight)
+    value.Position = UDim2.fromScale(0, 114 / Presentation.Height)
+    value.Size = UDim2.fromScale(1, Style.ValueHeight / Presentation.Height)
     value.BackgroundTransparency = 1
     value.Font, value.TextSize = Style.Font, Style.ValueTextSize
     value.TextColor3 = Style.ValueColor
     value.TextStrokeTransparency = 1
     value.TextScaled = true
     local limit = Instance.new("UITextSizeConstraint")
-    limit.MinTextSize, limit.MaxTextSize, limit.Parent = 12, Style.ValueTextSize, value
+    limit.MinTextSize, limit.MaxTextSize, limit.Parent = 1, 1000, value
     local stroke = Instance.new("UIStroke")
     stroke.Color, stroke.Thickness = Style.StrokeColor, Style.StrokeThickness
     stroke.Transparency, stroke.Parent = Style.TextStrokeTransparency, value
     value.Parent = gui
     local action = gui:FindFirstChild("Action") :: TextButton
-    action.Position = UDim2.fromOffset(0, 114 + Style.ValueHeight + Style.InputSpacing)
-    action.Size = UDim2.new(1, 0, 0, Style.InputHeight)
+    action.Position = UDim2.fromScale(0, (114 + Style.ValueHeight + Style.InputSpacing) / Presentation.Height)
+    action.Size = UDim2.fromScale(1, Style.InputHeight / Presentation.Height)
     local function update()
         gui.StudsOffsetWorldSpace = IngredientPresentation.Top(object) - anchor.Position + Style.PromptStudsOffset
     end

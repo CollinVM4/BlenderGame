@@ -22,15 +22,15 @@ local function pip(parent: BillboardGui, order: number): Pip
     local root = Instance.new("Frame")
     root.Name = "RipenessPip"
     root.BackgroundTransparency = 1
-    root.Size = UDim2.fromOffset(22, 22)
-    root.Position = UDim2.fromOffset(18 + (order - 1) * 28, 1)
+    root.Size = UDim2.fromScale(22 / 120, 22 / 24)
+    root.Position = UDim2.fromScale((18 + (order - 1) * 28) / 120, 1 / 24)
     root.Parent = parent
     local radial = RadialProgress.Create(root, gold, track)
     local center = Instance.new("Frame")
     center.Name = "Center"
     center.AnchorPoint = Vector2.new(0.5, 0.5)
-    center.Position = UDim2.fromOffset(11, 11)
-    center.Size = UDim2.fromOffset(7, 7)
+    center.Position = UDim2.fromScale(0.5, 0.5)
+    center.Size = UDim2.fromScale(7 / 22, 7 / 22)
     center.BackgroundColor3 = fresh
     center.BorderSizePixel = 0
     Instance.new("UICorner", center).CornerRadius = UDim.new(1, 0)
@@ -44,11 +44,11 @@ local function renderPip(view: Pip, amount: number, ripe: boolean)
         RadialProgress.SetProgress(view.RadialProgress, amount)
     end
     view.Center.BackgroundColor3 = if ripe then gold else fresh
-    view.Center.Size = if ripe then UDim2.fromOffset(15, 15) else UDim2.fromOffset(7, 7)
+    view.Center.Size = if ripe then UDim2.fromScale(15 / 22, 15 / 22) else UDim2.fromScale(7 / 22, 7 / 22)
     if ripe and not view.Ripe then
-        view.Center.Size = UDim2.fromOffset(19, 19)
+        view.Center.Size = UDim2.fromScale(19 / 22, 19 / 22)
         TweenService:Create(view.Center, TweenInfo.new(0.22, Enum.EasingStyle.Back), {
-            Size = UDim2.fromOffset(15, 15),
+            Size = UDim2.fromScale(15 / 22, 15 / 22),
         }):Play()
     end
     view.Ripe = ripe

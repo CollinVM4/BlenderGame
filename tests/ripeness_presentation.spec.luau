@@ -21,7 +21,10 @@ local radial = loadModule("RadialProgress")
 local host = instance("Frame")
 local first = radial.Create(host, style.IndicatorGold, Color3.fromRGB(58, 68, 62))
 local second = radial.Create(host, style.IndicatorGold, Color3.fromRGB(58, 68, 62))
-check(first.Root.Name == "RadialProgress" and first.Root.Size.X.Offset == 22, "aging view has a compact radial loader")
+check(
+    first.Root.Name == "RadialProgress" and first.Root.Size.X.Scale == 1 and first.Root.Size.X.Offset == 0,
+    "aging view has a compact radial loader"
+)
 check(
     first.Root:FindFirstChild("Track") ~= nil and first.Root:FindFirstChild("InnerCutout") ~= nil,
     "radial view keeps a subtle unfilled track"
@@ -33,13 +36,21 @@ for _, sample in { 0, 0.25, 0.5, 0.75, 1 } do
     check(first.Left.Rotation == math.max(sample * 360, 180), "second half continues clockwise to 100 percent")
 end
 radial.SetProgress(second, 0.25)
-check(first.Left.Rotation == 360 and second.Left.Rotation == 180, "each physical ingredient owns independent fill state")
+check(
+    first.Left.Rotation == 360 and second.Left.Rotation == 180,
+    "each physical ingredient owns independent fill state"
+)
 check(
     sources.RipenessPresentationController:find("view.RadialProgress.Root.Visible = not ripe", 1, true) ~= nil
-        and sources.RipenessPresentationController:find("view.Center.BackgroundColor3 = if ripe then gold else fresh", 1, true) ~= nil,
+        and sources.RipenessPresentationController:find(
+                "view.Center.BackgroundColor3 = if ripe then gold else fresh",
+                1,
+                true
+            )
+            ~= nil,
     "Ripe hides the loader and uses the solid gold center"
 )
-check(style.StashMaxDistance == 36, "stash value and ripeness indicators share near visibility distance")
+check(style.StashMaxDistance == 35, "stash value and ripeness indicators share near visibility distance")
 check(
     style.IndicatorGold.R == 1 and style.IndicatorGold.G == 221 / 255 and style.IndicatorGold.B == 48 / 255,
     "completed pip and progress ring use clear golden yellow"
@@ -63,11 +74,13 @@ check(
     "ripeness resolves its own authored attachment independently of the value billboard"
 )
 check(
-    indicator.Size.X.Scale == 0 and indicator.Size.X.Offset == 120
-        and indicator.Size.Y.Scale == 0 and indicator.Size.Y.Offset == 24,
-    "ripeness billboard keeps fixed pixel dimensions"
+    indicator.Size.X.Scale == 3.2
+        and indicator.Size.X.Offset == 0
+        and indicator.Size.Y.Scale == 0.6
+        and indicator.Size.Y.Offset == 0,
+    "ripeness billboard keeps stud dimensions"
 )
-check(indicator.MaxDistance == 36, "ripeness billboard keeps nearby visibility")
+check(indicator.MaxDistance == 35, "ripeness billboard keeps nearby visibility")
 display:Destroy()
 style.ConfigureIndicator(indicator, slot)
 check(indicator.Adornee == origin, "ripeness origin remains available without the value display")

@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 local Targets = require(game:GetService("ReplicatedStorage").Shared.TutorialTargets)
 local Presentation = require(script.Parent.TutorialPresentationState)
 local Flow = require(script.Parent.Parent.UI.TutorialBeamFlow)
+local beamFinish: Attachment? = nil
 local Controller = {}
 local DEBUG_TUTORIAL_GLEAM = false
 local debugSignature = ""
@@ -36,7 +37,9 @@ end
 local function claimAvailable(plot: Instance?): boolean
     return plot ~= nil and plot:IsDescendantOf(workspace) and plot:GetAttribute("PlotSessionId") == nil
 end
-local function clear()
+local beamTarget: Instance? = nil
+local function clearBeam()
+    beamFinish = nil
     if stashFlow then
         stashFlow:Destroy()
         stashFlow = nil
@@ -49,6 +52,9 @@ local function clear()
         attachment:Destroy()
     end
     table.clear(beamAttachments)
+    beamTarget = nil
+end
+local function clear()
     for _, tween in tweens do
         tween:Cancel()
     end
@@ -200,19 +206,31 @@ local function createGlassProxy(source: UnionOperation): UnionOperation?
     clone.Parent = workspace
     return clone
 end
-local function createStashBeam(character: Model, target: Instance)
+local function beamEnd(target: BasePart | Attachment, stage: string?): Attachment
+    if target:IsA("Attachment") then
+        return target
+    end
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "TutorialStashBeamEnd"
+    if stage == "Turbine" or stage == "FinishBatch" then
+        -- Lower on a tall stationary shaft; centered on short stems.
+        attachment.Position = Vector3.new(0, math.min(0, 2.5 - target.Size.Y * 0.5), 0)
+    end
+    attachment.Parent = target
+    table.insert(beamAttachments, attachment)
+    return attachment
+end
+local function createStashBeam(character: Model, target: BasePart | Attachment, stage: string?)
     local root = character:FindFirstChild("HumanoidRootPart")
-    local destination = if target:IsA("BasePart") then target else target:FindFirstChildWhichIsA("BasePart", true)
-    if not root or not root:IsA("BasePart") or not destination or not destination:IsA("BasePart") then
+    if not root or not root:IsA("BasePart") then
         return
     end
     local start = Instance.new("Attachment")
     start.Name = "TutorialStashBeamStart"
     start.Position = Vector3.new(0, -0.5, 1.25) -- Local +Z is behind the avatar.
     start.Parent = root
-    local finish = Instance.new("Attachment")
-    finish.Name = "TutorialStashBeamEnd"
-    finish.Parent = destination
+    local finish = beamEnd(target, stage)
+    beamTarget, beamFinish = target, finish
     local beam = Instance.new("Beam")
     beam.Name = "TutorialStashBeam"
     beam.Attachment0, beam.Attachment1 = start, finish
@@ -223,6 +241,7 @@ local function createStashBeam(character: Model, target: Instance)
     beam.Segments = 20
     beam.FaceCamera = true
     beam.LightEmission = 0.35
+    beam.Enabled = true
     beam.Parent = root
     stashBeam = beam
     local flow = Instance.new("Beam")
@@ -234,16 +253,60 @@ local function createStashBeam(character: Model, target: Instance)
     flow.Segments, flow.FaceCamera = 20, true
     flow.LightEmission, flow.LightInfluence = 1, 0
     flow.Transparency = Flow.Transparency(0)
+    flow.Enabled = true
     flow.Parent = root
     stashFlow, beamStartedAt = flow, os.clock()
     table.insert(beamAttachments, start)
-    table.insert(beamAttachments, finish)
+end
+-- Retarget the existing effect; only locally created attachments are owned here.
+local function updateBeam(character: Model?, target: (BasePart | Attachment)?, stage: string?)
+    local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+    if
+        not root
+        or not root:IsA("BasePart")
+        or not target
+        or not target:IsDescendantOf(workspace)
+        or (target:IsA("Attachment") and (not target.Parent or not target.Parent:IsA("BasePart")))
+    then
+        clearBeam()
+        return
+    end
+    if stashBeam and stashFlow then
+        local start, finish = stashBeam.Attachment0, beamFinish
+        if
+            not start
+            or start.Parent ~= root
+            or not stashBeam:IsDescendantOf(workspace)
+            or not stashFlow:IsDescendantOf(workspace)
+        then
+            clearBeam()
+        elseif beamTarget ~= (target :: Instance) or not finish or not finish:IsDescendantOf(workspace) then
+            if finish and table.find(beamAttachments, finish) then
+                table.remove(beamAttachments, table.find(beamAttachments, finish) :: number)
+                finish:Destroy()
+            end
+            finish = beamEnd(target, stage)
+            stashBeam.Attachment1, stashFlow.Attachment1 = finish, finish
+            beamTarget, beamFinish = target, finish
+        end
+    end
+    if not stashBeam then
+        createStashBeam(character :: Model, target, stage)
+    end
+    if stashBeam and stashFlow and beamFinish then
+        stashBeam.Enabled, stashFlow.Enabled = true, true
+        stashBeam.Attachment1, stashFlow.Attachment1 = beamFinish, beamFinish
+        local transparency = Flow.Transparency(os.clock() - beamStartedAt)
+        if stashFlow.Transparency ~= transparency then
+            stashFlow.Transparency = transparency
+        end
+    end
 end
 local function refresh()
     if stopped then
         return
     end
-    local textAllowed, presentationReady, presentationStage = Presentation.Read(player)
+    local _, presentationReady, presentationStage, beamAllowed = Presentation.Read(player)
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
     local stage = presentationStage
@@ -256,18 +319,17 @@ local function refresh()
     end
     local targets: { Instance } = {}
     local plot = if type(stage) == "string" then plotFor(stage) else nil
-    if
-        player.Parent ~= nil
+    local worldReady = player.Parent ~= nil
         and character
         and character ~= removingCharacter
         and character:IsDescendantOf(workspace)
         and humanoid
         and humanoid.Health > 0
         and player:GetAttribute("TutorialActive") == true
-        and player:GetAttribute("TutorialHintReady") == true
+        and (player:GetAttribute("TutorialHintReady") == true or stage == "ClaimPlot")
         and type(stage) == "string"
         and presentationReady
-    then
+    if worldReady and type(stage) == "string" then
         if stage ~= "ClaimPlot" or player:GetAttribute("PlotSessionId") == nil then
             local slot = player:GetAttribute("TutorialStashSlot")
             local customer = player:FindFirstChild("TutorialCustomerTarget")
@@ -308,45 +370,16 @@ local function refresh()
             glassProxy.CFrame, glassProxy.Size = glassSource.CFrame, glassSource.Size
         end
     end
-    if same and stashBeam then
-        if not stashFlow or not stashFlow:IsDescendantOf(workspace) then
-            same = false
-        else
-            stashFlow.Transparency = Flow.Transparency(os.clock() - beamStartedAt)
-        end
-        if not stashBeam:IsDescendantOf(workspace) then
-            same = false
-        end
-        for _, attachment in beamAttachments do
-            if not attachment:IsDescendantOf(workspace) then
-                same = false
-                break
-            end
-        end
-    end
+    local destination = if beamAllowed
+            and worldReady
+            and type(stage) == "string"
+        then Targets.ResolveBeam(plot, stage, player:GetAttribute("TutorialStashSlot"), targets[1])
+        else nil
+    updateBeam(character, destination, stage)
     if same then
-        if
-            stage == "Stash"
-            and textAllowed
-            and player:GetAttribute("TutorialOrderIndex") == 1
-            and not stashBeam
-            and character
-            and targets[1]
-        then
-            createStashBeam(character, targets[1])
-        end
         return
     end
     clear()
-    if
-        stage == "Stash"
-        and textAllowed
-        and player:GetAttribute("TutorialOrderIndex") == 1
-        and character
-        and targets[1]
-    then
-        createStashBeam(character, targets[1])
-    end
     for _, object in targets do
         local adornee = object
         if stage == "Blender" and object:IsA("UnionOperation") and Targets.GetRoots(plot, "Blender")[1] == object then
@@ -470,7 +503,9 @@ function Controller.Init()
         table.insert(
             connections,
             player:GetAttributeChangedSignal(attribute):Connect(function()
-                clear() -- invalidate immediately, before resolving the next replicated target
+                if attribute == "PlotMembershipRevision" or attribute == "DebugTutorialGleam" then
+                    clear()
+                end
                 refresh()
             end)
         )
@@ -482,6 +517,7 @@ function Controller.Init()
             if character then
                 Presentation.CharacterRemoving(character)
             end
+            clearBeam()
             clear()
         end)
     )
@@ -490,6 +526,7 @@ function Controller.Init()
         player.CharacterAdded:Connect(function()
             removingCharacter = nil
             Presentation.CharacterAdded()
+            clearBeam()
             clear()
             refresh()
         end)
@@ -503,6 +540,7 @@ function Controller.Init()
             spawnTargetConnection:Disconnect()
             spawnTargetConnection = nil
         end
+        clearBeam()
         clear()
         for _, connection in connections do
             connection:Disconnect()

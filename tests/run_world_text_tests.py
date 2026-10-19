@@ -12,7 +12,7 @@ args = parser.parse_args()
 paths = {
     "DialogueTextStyle": "src/shared/Constants/DialogueTextStyle.luau",
     "WorldTextController": "src/client/Controllers/WorldTextController.luau",
-    "WorldBillboardStyle": "src/client/UI/WorldBillboardStyle.luau",
+    "WorldBillboardStyle": "src/shared/WorldBillboardStyle.luau",
     "WorldTextPresentation": "src/client/UI/WorldTextPresentation.luau",
 }
 bundle = "local sources = {\n" + "\n".join(

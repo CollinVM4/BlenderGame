@@ -16,9 +16,9 @@ local mask = NumberSequence.new({
 local function circle(parent: Instance, name: string, size: number, color: Color3): Frame
     local frame = Instance.new("Frame")
     frame.Name = name
-    frame.Size = UDim2.fromOffset(size, size)
+    frame.Size = UDim2.fromScale(size / diameter, size / diameter)
     frame.AnchorPoint = Vector2.new(0.5, 0.5)
-    frame.Position = UDim2.fromOffset(half, half)
+    frame.Position = UDim2.fromScale(0.5, 0.5)
     frame.BackgroundColor3 = color
     frame.BorderSizePixel = 0
     local corner = Instance.new("UICorner")
@@ -33,12 +33,13 @@ local function fillHalf(parent: Frame, name: string, x: number, gold: Color3): U
     clip.Name = name
     clip.BackgroundTransparency = 1
     clip.ClipsDescendants = true
-    clip.Position = UDim2.fromOffset(x, 0)
-    clip.Size = UDim2.fromOffset(half, diameter)
+    clip.Position = UDim2.fromScale(x / diameter, 0)
+    clip.Size = UDim2.fromScale(0.5, 1)
     clip.Parent = parent
 
     local disc = circle(clip, "Fill", diameter, gold)
-    disc.Position = UDim2.fromOffset(half - x, half)
+    disc.Size = UDim2.fromScale(2, 1)
+    disc.Position = UDim2.fromScale((half - x) / half, 0.5)
     local gradient = Instance.new("UIGradient")
     gradient.Transparency = mask
     gradient.Parent = disc
@@ -49,7 +50,7 @@ function RadialProgress.Create(parent: Frame, gold: Color3, track: Color3): View
     local root = Instance.new("Frame")
     root.Name = "RadialProgress"
     root.BackgroundTransparency = 1
-    root.Size = UDim2.fromOffset(diameter, diameter)
+    root.Size = UDim2.fromScale(1, 1)
     root.Parent = parent
     circle(root, "Track", diameter, track)
     local right = fillHalf(root, "RightHalf", half, gold)

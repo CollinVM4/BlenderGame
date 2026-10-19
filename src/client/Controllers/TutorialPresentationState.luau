@@ -4,6 +4,7 @@ local State = {}
 local session: any = nil
 local character: Model? = nil
 local removedCharacter: Model? = nil
+local beamFinished = false -- Permanent for this onboarding, including respawns and membership changes.
 local textFinished = false
 local initialStashFinished = false
 local stashDeadline: number? = nil
@@ -17,7 +18,7 @@ end
 function State.CharacterAdded()
     removedCharacter = nil
 end
-function State.Read(player: Player): (boolean, boolean, string?)
+function State.Read(player: Player): (boolean, boolean, string?, boolean)
     local nextSession = player:GetAttribute("PlotSessionId")
     if session ~= nextSession then
         session = nextSession
@@ -32,7 +33,11 @@ function State.Read(player: Player): (boolean, boolean, string?)
     local stage = player:GetAttribute("TutorialStage")
     local order = player:GetAttribute("TutorialOrderIndex")
     if type(order) == "number" and order > 1 then
+        beamFinished = true
         textFinished = true -- Only a new plot session may re-enable instructions.
+    end
+    if stage == "Complete" then
+        beamFinished = true
     end
     if previousStage == "Stash" and stage ~= "Stash" then
         initialStashFinished = true
@@ -92,6 +97,9 @@ function State.Read(player: Player): (boolean, boolean, string?)
             ready = counterReady
         end
     end
-    return not textFinished or stage == "ClaimPlot", ready, if type(stage) == "string" then stage else nil
+    return not textFinished or stage == "ClaimPlot",
+        ready,
+        if type(stage) == "string" then stage else nil,
+        not beamFinished and (stage == "ClaimPlot" or order == 1)
 end
 return State

@@ -104,11 +104,7 @@ do
         graphic and string.find(graphic:FindFirstChild("Result").Text, case[5], 1, true) ~= nil,
         "serve graphic shows actual award"
     )
-    check(
-        graphic:FindFirstChild("Ingredients").Text
-            == 'Ingredients: <font color="rgb(100,225,120)">' .. case[6] .. "</font>",
-        "serve shows authoritative ingredient subtotal"
-    )
+    check(not graphic:FindFirstChild("Ingredients"), "serve shows only the final credited payout")
     flush()
     check(
         model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text == case[4],

@@ -4,16 +4,16 @@ local Reveal = require(script.Parent.MuncherReveal)
 local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Muncher)
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
-local Presentation = require(script.Parent.MuncherPresentation)
+local Vacuum = require(script.Parent.Parent.Services.MuncherVacuum)
 local Component = {}
 
 function Component.Init(services: any)
     WorldUtil.BindTag("PlayerPlot", function(plot)
         local warned: { [string]: boolean } = {}
         local input: BasePart? = nil
-        local display: (BasePart | Attachment)? = nil
-        local gui: BillboardGui? = nil
-        local update: ((any, boolean?) -> ())? = nil
+        local prompt: ProximityPrompt? = nil
+        local vacuumUpdate: ((number) -> ())? = nil
+        local vacuumCleanup: (() -> ())? = nil
         local elapsed = 0
         local assembly: Instance? = nil
         local reveal: ((any) -> boolean)? = nil
@@ -54,24 +54,15 @@ function Component.Init(services: any)
             if not zone then
                 warning("InputZone BasePart")
             end
-            local mouth = Presentation.Marker(muncher and muncher:FindFirstChild("MouthOrigin"))
-            if not mouth then
-                warning("MouthOrigin")
-            end
-            local origin = Presentation.Marker(muncher and muncher:FindFirstChild("DisplayOrigin"))
-            if not origin then
-                warning("DisplayOrigin")
-            end
-            if origin ~= display then
-                if gui then
-                    gui:Destroy()
-                end
-                display, gui, update = origin, nil, nil
-                if origin then
-                    gui, update = Presentation.Display(origin)
-                end
-            end
             if zone ~= input then
+                if vacuumCleanup then
+                    vacuumCleanup()
+                end
+                vacuumUpdate, vacuumCleanup = nil, nil
+                if prompt then
+                    prompt:Destroy()
+                end
+                prompt = nil
                 input = zone
                 if zone then
                     zone.Anchored = true
@@ -79,6 +70,23 @@ function Component.Init(services: any)
                     zone.CanTouch = false
                     zone.CanQuery = true
                     zone.Transparency = 1
+                    for _, child in zone:GetDescendants() do
+                        if child:IsA("ProximityPrompt") then
+                            child:Destroy()
+                        end
+                    end
+                    local feed = WorldUtil.Prompt(zone, "FeedMuncher", "FEED MUNCHER")
+                    feed.Style = Enum.ProximityPromptStyle.Custom
+                    feed.KeyboardKeyCode = Enum.KeyCode.E
+                    feed.GamepadKeyCode = Enum.KeyCode.ButtonX
+                    feed:SetAttribute("MuncherPrompt", true)
+                    services.GameplayService.RegisterPlotInteraction(feed, function(actor, context)
+                        services.MuncherService.TryFeed(actor, zone, nil, context)
+                    end)
+                    prompt = feed
+                    if muncher then
+                        vacuumUpdate, vacuumCleanup = Vacuum.Bind(services, zone, muncher)
+                    end
                 end
             end
             local owner = services.TycoonService.GetOwner(plot)
@@ -147,60 +155,41 @@ function Component.Init(services: any)
                 services.MuncherService.CompleteReveal(owner, muncher)
                 snapshot = services.MuncherService.GetSnapshot(owner)
             end
-            local function publish(consumed: boolean?)
+            if
+                snapshot
+                and snapshot.Purchased
+                and not snapshot.Active
+                and workspace:GetServerTimeNow() > snapshot.ReadyAt + 3
+                and not warned.RevealStalled
+            then
+                warned.RevealStalled = true
+                warn(
+                    "[Muncher] Reveal stalled at " .. plot:GetFullName() .. "; inspect authored assembly and InputZone"
+                )
+            end
+            if muncher then
                 local current = if owner then services.MuncherService.GetSnapshot(owner) else nil
-                if muncher then
-                    local attributes: { [string]: any } = {
-                        Purchased = current ~= nil and current.Purchased == true,
-                        Active = current ~= nil and current.Active == true,
-                        Progress = if current then current.Progress else 0,
-                        BuffExpiresAt = if current then current.BuffExpiresAt else 0,
-                    }
-                    for name, value in attributes do
-                        if muncher:GetAttribute(name) ~= value then
-                            muncher:SetAttribute(name, value)
-                        end
-                    end
-                    local buff = if current then current.ActiveBuff else nil
-                    if muncher:GetAttribute("ActiveBuff") ~= buff then
-                        muncher:SetAttribute("ActiveBuff", buff)
+                local attributes: { [string]: any } = {
+                    Purchased = current ~= nil and current.Purchased == true,
+                    Active = current ~= nil and current.Active == true,
+                    Phase = if current then current.Phase else "Idle",
+                    Sequence = if current then current.Sequence else 0,
+                    StartedAt = if current then current.StartedAt else 0,
+                    AvailableAt = if current then current.AvailableAt else 0,
+                }
+                for name, value in attributes do
+                    if muncher:GetAttribute(name) ~= value then
+                        muncher:SetAttribute(name, value)
                     end
                 end
-                if update then
-                    update(if current and current.Active then current else nil, consumed)
-                end
-            end
-            if zone then
-                -- Remove legacy/authored intake prompts without touching Visual artwork.
-                for _, child in zone:GetDescendants() do
-                    if child:IsA("ProximityPrompt") then
-                        child:Destroy()
-                    end
+                muncher:SetAttribute("OutputRarity", if current then current.OutputRarity else nil)
+                -- Retire old buff projections on existing Studio models.
+                muncher:SetAttribute("ActiveBuff", nil)
+                muncher:SetAttribute("BuffExpiresAt", nil)
+                if prompt then
+                    prompt.Enabled = current ~= nil and current.Active
                 end
             end
-            publish() -- Prime the display before any accepted feeds (including completion).
-            if owner and zone and snapshot and snapshot.Active then
-                local seen: { [Instance]: boolean } = {}
-                for _, part in workspace:GetPartsInPart(zone) do
-                    local item = services.IngredientService.Resolve(part)
-                    if item and not seen[item] then
-                        seen[item] = true
-                        local record = services.IngredientService.GetRecord(item)
-                        local actor = if record and record.Owner then record.Owner else owner
-                        local accepted, id, at = services.MuncherService.TryFeed(actor, zone, item, nil)
-                        if accepted then
-                            publish(true)
-                            task.spawn(function()
-                                local ok = pcall(Presentation.Feed, services, id, at, mouth)
-                                if not ok then
-                                    warning("feed feedback unavailable")
-                                end
-                            end)
-                        end
-                    end
-                end
-            end
-            publish() -- Also clears expired buffs on server time, including idle plots.
         end
         refresh()
         local connection = RunService.Heartbeat:Connect(function(dt)
@@ -208,6 +197,9 @@ function Component.Init(services: any)
             if reveal then
                 local owner = services.TycoonService.GetOwner(plot)
                 reveal(if owner then services.MuncherService.GetSnapshot(owner) else nil)
+            end
+            if vacuumUpdate then
+                vacuumUpdate(dt)
             end
             elapsed += dt
             if elapsed >= Config.ScanInterval then
@@ -217,6 +209,9 @@ function Component.Init(services: any)
         end)
         return function()
             connection:Disconnect()
+            if vacuumCleanup then
+                vacuumCleanup()
+            end
             if padConnection then
                 padConnection:Disconnect()
             end
@@ -224,8 +219,8 @@ function Component.Init(services: any)
             if restore then
                 restore()
             end
-            if gui then
-                gui:Destroy()
+            if prompt then
+                prompt:Destroy()
             end
         end
     end)

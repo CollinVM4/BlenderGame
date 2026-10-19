@@ -19,8 +19,10 @@ local function label(gui: BillboardGui, y: number, text: string): TextLabel
     result.Name = if y == 0 then "Title" else "Detail"
     Style.ApplyText(result, {})
     TextStyle.Apply(result, 24)
-    result.Size = UDim2.new(1, 0, 0, 32)
-    result.Position = UDim2.fromOffset(0, y)
+    local canvasHeight = if gui.Name == "FarmPlantDisplay" then 100 else 64
+    result.Size = UDim2.fromScale(1, 32 / canvasHeight)
+    result.TextScaled = true
+    result.Position = UDim2.fromScale(0, y / canvasHeight)
     result.Text = text
     result.Parent = gui
     return result
@@ -30,7 +32,8 @@ local function billboard(origin: Instance, parent: Instance, height: number): Bi
     local gui = Instance.new("BillboardGui")
     gui.Name = "FarmDisplay"
     gui.Adornee = origin
-    Style.ApplyBillboard(gui, { Width = 340, Height = height, MaxDistance = 40 })
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    Style.ApplyBillboard(gui, { WidthStuds = 9.1, HeightStuds = math.round(height / 37.5 * 10) / 10, MaxDistance = 35 })
     gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
     gui.Parent = parent
     return gui
@@ -131,7 +134,7 @@ function Controller.Init()
             if pad and pad:IsA("BasePart") and price then
                 row.Pad = pad
                 local padGui = billboard(pad, playerGui, 64)
-                padGui.MaxDistance = 28 -- Purchase signage only; growing/ready displays retain 40.
+                padGui.MaxDistance = 35
                 row.PadGui = padGui
                 label(padGui, 0, "FARM ROW")
                 local amount = tostring(price):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
@@ -159,17 +162,19 @@ function Controller.Init()
         hide(prompt)
         local cleanup, gui = Input.Create(prompt, row.Origin, playerGui, inputType, {
             InputOnly = true,
-            Width = 340,
-            Height = 100,
+            WidthStuds = 9.1,
+            HeightStuds = 2.7,
+            MaxDistance = 35,
             TextSize = 24,
         })
         gui.Name = "FarmPlantDisplay"
         gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
         local action = gui:FindFirstChild("Action") :: TextButton
         TextStyle.Apply(action, 24)
+        action.TextScaled = true
         -- Full-canvas hit target; fixed padding places its key below the two labels.
         local padding = Instance.new("UIPadding")
-        padding.PaddingTop = UDim.new(0, 64)
+        padding.PaddingTop = UDim.new(0.64, 0)
         padding.Parent = action
         row.Cleanup, row.InputGui = cleanup, gui
         row.InputTitle, row.InputName = label(gui, 0, ""), label(gui, 32, "")

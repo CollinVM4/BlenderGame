@@ -11,7 +11,7 @@ parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = [root / path for path in (
     "src/client/Controllers/FarmPresentationController.luau",
-    "src/client/UI/WorldBillboardStyle.luau",
+    "src/shared/WorldBillboardStyle.luau",
     "src/shared/MobilePromptDebug.luau",
     "src/client/UI/MobilePromptTouchTargets.luau",
     "src/client/UI/InteractionPromptPresentation.luau",

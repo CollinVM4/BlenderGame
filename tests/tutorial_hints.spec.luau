@@ -48,6 +48,15 @@ services.TweenService = {
         }
     end,
 }
+-- Attachments follow their parent in the engine; supply positions at this test boundary.
+local originalInstance = env.Instance.new
+env.Instance.new = function(class)
+    local object = originalInstance(class)
+    if class == "Attachment" then
+        object.WorldPosition = vec(0, 0, 0)
+    end
+    return object
+end
 local p = instance("Player")
 p.Parent, p.Character = workspaceFake, instance("Model")
 p.Character.Parent = workspaceFake
@@ -141,6 +150,44 @@ local customerRoot = instance("Part")
 customerRoot.Name, customerRoot.Parent, customerRoot.Position = "HumanoidRootPart", customer, counter.Position
 local customerTarget = instance("ObjectValue")
 customerTarget.Name, customerTarget.Parent, customerTarget.Value = "TutorialCustomerTarget", p, customer
+local function part(name, owner)
+    local result = instance("Part")
+    result.Name, result.Parent = name, owner
+    return result
+end
+local identity = instance("Folder")
+identity.Name, identity.Parent = "PlotIdentity", plot
+local claimPad = part("ClaimVisual", identity)
+local arrival = instance("ObjectValue")
+arrival.Name, arrival.Parent, arrival.Value = "TutorialSpawnTarget", p, plot
+arrival.GetPropertyChangedSignal = function()
+    return signal()
+end
+local blender = instance("Model")
+blender.Name, blender.Parent = "Blender", plot
+part("Glass", blender)
+local input = part("InputZone", blender)
+services.CollectionService:AddTag(input, "BlenderInput")
+local inputMarker = instance("Attachment")
+inputMarker.Name, inputMarker.Parent = "VacuumTarget", input
+local wheel = instance("Model")
+wheel.Name, wheel.Parent = "Turbine Wheel", plot
+local turbine = instance("Model")
+turbine.Name, turbine.Parent = "turbine", wheel
+part("anchor", turbine)
+part("blade", turbine)
+local stem = part("stem", turbine)
+stem.Anchored, stem.Size = true, vec(2, 12, 2)
+local turbineOrigin = instance("Attachment")
+turbineOrigin.WorldPosition = vec(0, 0, 0)
+turbineOrigin.Name, turbineOrigin.Parent = "TurbineBeamTarget", stem
+local dispenserPart = part("Output", dispenser)
+dispenserPart.Anchored = true
+local dispenserMarker = instance("Attachment")
+dispenserMarker.Parent = dispenserPart
+dispenserMarker.WorldPosition = vec(0, 0, 0)
+local dispensePrompt = instance("ProximityPrompt")
+dispensePrompt.Parent = dispenserMarker
 local gleam, gleamScript = controllerModule("TutorialGleamController")
 local function beams(name)
     local result = {}
@@ -167,26 +214,44 @@ p:SetAttribute("TutorialOrderIndex", 1)
 p:SetAttribute("TutorialActive", true)
 p:SetAttribute("TutorialHintReady", false)
 p:SetAttribute("TutorialStage", "ClaimPlot")
+plot:SetAttribute("PlotSessionId", nil)
 controller.Init()
 gleam.Init()
 check(
     hintContains("Claim your smoothie stand!"),
     "stand claiming is the first immediate instruction, before world hint readiness"
 )
+check(
+    #beams() == 1 and beams()[1].Attachment1.Parent == claimPad,
+    "claim beam and highlight activate with the immediate claim instruction"
+)
+plot:SetAttribute("PlotSessionId", "tutorial")
 p:SetAttribute("PlotSessionId", "tutorial")
 p:SetAttribute("TutorialHintReady", true)
 p:SetAttribute("TutorialStage", "Counter")
-check(noHint(), "claim clears immediately while initial counter navigation waits")
+check(noHint() and #beams() == 0, "claim beam clears while initial counter navigation waits")
 advance(2.9)
 check(noHint(), "counter navigation waits three seconds after claiming")
 advance(0.1)
 check(
-    hintContains("Head to your customer counter!") and highlights()[1].Adornee == counter,
+    hintContains("Head to your customer counter!")
+        and highlights()[1].Adornee == counter
+        and beams()[1].Attachment1.Parent == counter,
     "initial counter instruction appears three seconds after claiming"
 )
 p:SetAttribute("TutorialStage", "Order")
 advance()
-check(hintContains("Take the customer's order!"), "first customer receives immediate order instruction")
+check(
+    hintContains("Take the customer's order!") and beams()[1].Attachment1.Parent == customerRoot,
+    "first order instruction guides to the active customer"
+)
+local navigationBeam = beams()[1]
+customerRoot.Position = vec(65, 0, 0)
+advance()
+check(
+    beams()[1] == navigationBeam and navigationBeam.Attachment1.Parent == customerRoot,
+    "moving customer retains its attached endpoint and beam"
+)
 check(
     label().Font == "FredokaOne" and label().BackgroundTransparency == 1,
     "hints reuse outlined announcement typography without a panel"
@@ -248,8 +313,12 @@ root.Position = vec(0, 0, 0)
 local start, finish = beam.Attachment0, beam.Attachment1
 p:SetAttribute("TutorialStage", "Blender")
 check(
-    #beams() == 0 and #beams("TutorialStashFlow") == 0 and start.Destroyed and finish.Destroyed,
-    "completing pickup destroys beam and both local attachments"
+    beams()[1] == beam
+        and beams("TutorialStashFlow")[1] == flow
+        and not start.Destroyed
+        and finish.Destroyed
+        and beam.Attachment1 == inputMarker,
+    "pickup retargets the same beam to the authored blender input attachment"
 )
 advance()
 check(hintContains("Click to throw into the blender!"), "mouse wording")
@@ -275,14 +344,129 @@ check(
 )
 p:SetAttribute("TutorialStage", "Blender")
 advance()
-check(#beams() == 0, "returning to throwing clears the repeated pickup beam")
+check(beams()[1] == beam and beam.Attachment1 == inputMarker, "repeated pickup/throw retargets without rebuilding")
+for _ = 1, 2 do
+    p:SetAttribute("TutorialStage", "Stash")
+    check(beams()[1] == beam and beam.Attachment1.Parent == slot, "next ingredient returns to exact RED stash")
+    p:SetAttribute("TutorialStage", "Blender")
+    check(beams()[1] == beam and beam.Attachment1 == inputMarker, "next throw returns to blender until ingested")
+end
+check(
+    not inputMarker.Destroyed and not turbineOrigin.Destroyed and not dispenserMarker.Destroyed,
+    "retargeting never destroys authored interaction attachments"
+)
+-- Losing an authored endpoint recovers on the same outer/inner beam.
+inputMarker:Destroy()
+advance()
+check(beams()[1] == beam and beam.Attachment1.Parent == input, "missing input marker falls back to the input part")
+local temporaryEnd = beam.Attachment1
+inputMarker = instance("Attachment")
+inputMarker.Name, inputMarker.Parent = "VacuumTarget", input
+advance()
+check(
+    beams()[1] == beam and beam.Attachment1 == inputMarker and temporaryEnd.Destroyed,
+    "recreated interaction marker replaces only the temporary endpoint"
+)
+local foreignCustomer = instance("Model")
+foreignCustomer.Parent = workspaceFake
+foreignCustomer:SetAttribute("PlotSessionId", "someone-else")
+part("HumanoidRootPart", foreignCustomer)
+p:SetAttribute("TutorialStage", "Order")
+customerTarget.Value = foreignCustomer
+advance()
+check(#beams() == 0 and #highlights() == 0, "foreign customer cannot receive local guidance")
+customerTarget.Value = customer
+advance()
+check(beams()[1].Attachment1.Parent == customerRoot, "same-stage customer replacement recovers own target")
+p:SetAttribute("PlotSessionId", nil)
+check(#beams() == 0, "membership loss immediately removes the beam")
+p:SetAttribute("PlotSessionId", "tutorial")
+p:SetAttribute("TutorialStage", "Blender")
+advance()
+check(beams()[1].Attachment1 == inputMarker, "membership restoration resolves only the assigned plot")
 banner.SetGlobalActive(true)
 check(not label().Visible, "announcement priority hides tutorial synchronously")
 p:SetAttribute("TutorialStage", "Turbine")
 advance(20)
 check(not label().Visible, "progress continues without visual overlap during announcements")
 banner.SetGlobalActive(false)
-check(hintContains("Spin to blend smoothie!"), "priority release resumes the current objective")
+check(
+    hintContains("Spin to blend smoothie!") and beams()[1].Attachment1 == turbineOrigin,
+    "turbine navigation uses its interaction origin"
+)
+-- Geometry can never suppress the single connected beam.
+local originalBlockcast, originalRaycast = workspaceFake.Blockcast, workspaceFake.Raycast
+local originalPath = services.PathfindingService.CreatePath
+workspaceFake.Blockcast = function()
+    error("beam must not query obstacles")
+end
+workspaceFake.Raycast = function()
+    error("beam must not probe approaches")
+end
+services.PathfindingService.CreatePath = function()
+    error("beam must not request routes")
+end
+local turbineBeam, turbineFlow = beams()[1], beams("TutorialStashFlow")[1]
+local turbineStart, turbineFinish = turbineBeam.Attachment0, turbineBeam.Attachment1
+local blade = turbine:FindFirstChild("blade")
+services.CollectionService:AddTag(blade, "TurbineWheel")
+local rotatingMarker = instance("Attachment")
+rotatingMarker.Name, rotatingMarker.Parent = "TurbinePromptOrigin", blade
+local stemConnectionPersisted = true
+for index = 1, 30 do
+    root.Position = vec(index * 2, -index, index)
+    blade.CFrame = frame(index, index, index)
+    advance(0.1)
+    stemConnectionPersisted = stemConnectionPersisted
+        and beams()[1] == turbineBeam
+        and beams("TutorialStashFlow")[1] == turbineFlow
+        and turbineBeam.Enabled
+        and turbineFlow.Enabled
+        and turbineBeam.Attachment0 == turbineStart
+        and turbineBeam.Attachment1 == turbineFinish
+        and turbineFinish.Parent == stem
+end
+check(stemConnectionPersisted, "movement, turbine rotation and intervening geometry preserve the fixed stem connection")
+blade:Destroy()
+turbine:FindFirstChild("anchor"):Destroy()
+check(not turbineBeam.Destroyed, "decorative highlight destruction cannot remove the beam")
+stem.Parent = wheel -- Stem remains replicated but decorative highlight paths disappear.
+advance()
+check(
+    #highlights() == 0 and beams()[1] == turbineBeam and turbineBeam.Attachment1 == turbineOrigin,
+    "turbine beam is independent of highlight target availability"
+)
+turbineOrigin.Parent = wheel -- Invalid marker is ignored; use a client attachment on the same fixed stem.
+advance()
+local localStemEnd = turbineBeam.Attachment1
+check(
+    beams()[1] == turbineBeam and localStemEnd.Parent == stem and localStemEnd.Position.Y == -3.5,
+    "missing or invalid stable marker uses a fixed lower stem attachment without rebuilding"
+)
+advance(5)
+check(
+    beams()[1] == turbineBeam and turbineBeam.Attachment1 == localStemEnd and hintContains("Spin to blend smoothie!"),
+    "stem fallback persists until authoritative progression changes"
+)
+turbineOrigin.Parent = stem
+advance()
+check(
+    turbineBeam.Attachment1 == turbineOrigin and localStemEnd.Destroyed and not turbineOrigin.Destroyed,
+    "valid authored stem marker is reused without retaining the temporary endpoint"
+)
+stem.Parent = nil
+advance()
+check(#beams() == 0, "streamed-out stem removes the invalid endpoint safely")
+stem.Parent = turbine
+part("anchor", turbine)
+part("blade", turbine)
+advance()
+check(
+    #beams() == 1 and beams()[1].Attachment1 == turbineOrigin,
+    "replicated stem restores guidance without an objective reset"
+)
+workspaceFake.Blockcast, workspaceFake.Raycast = originalBlockcast, originalRaycast
+services.PathfindingService.CreatePath = originalPath
 -- Exercise the actual announcement producer, including entrance/exit and queue drain.
 shared.AnnouncementFormat = "AnnouncementFormat"
 services.ReplicatedStorage.WaitForChild = function(_, name)
@@ -318,20 +502,74 @@ flush()
 check(observedGlobal and overlaps == 0, "real global announcement never overlaps a tutorial hint, including exit")
 check(hintContains("Spin to blend smoothie!"), "real announcement drain restores the ongoing tutorial")
 local previous = label()
+local removedBeam = beams()[1]
+local removedStart = removedBeam.Attachment0
 p.CharacterRemoving:Fire(p.Character)
-check(label() == nil, "respawn clears visible UI")
+check(label() == nil and #beams() == 0 and removedStart.Destroyed, "respawn clears UI, beam and character attachment")
 p.CharacterAdded:Fire(p.Character)
-check(hintContains("Spin to blend smoothie!"), "respawn resumes current stage rather than restarting")
+check(
+    hintContains("Spin to blend smoothie!") and beams()[1].Attachment1 == turbineOrigin,
+    "respawn resumes the current beam destination"
+)
+local oldCharacter = p.Character
+local oldRoot = root
+p.CharacterRemoving:Fire(oldCharacter)
+local replacementCharacter = instance("Model")
+replacementCharacter.Parent = workspaceFake
+root = part("HumanoidRootPart", replacementCharacter)
+local newHumanoid = instance("Humanoid")
+newHumanoid.Health, newHumanoid.Parent = 100, replacementCharacter
+p.Character = replacementCharacter
+p.CharacterAdded:Fire(replacementCharacter)
+check(
+    beams()[1].Attachment0.Parent == root and beams()[1].Attachment0.Parent ~= oldRoot,
+    "replacement character receives the only beam origin"
+)
 label().Parent:Destroy()
 advance()
 check(hintContains("Spin to blend smoothie!") and label() ~= previous, "GUI destruction is recovered")
 p:SetAttribute("TutorialStage", "Dispenser")
 check(
-    hintContains("Dispense your smoothie!") and highlights()[1].Adornee == dispenser,
+    hintContains("Dispense your smoothie!")
+        and highlights()[1].Adornee == dispenser
+        and beams()[1].Attachment1 == dispenserMarker,
     "ready smoothie shows the original dispensing instruction with dispenser highlight"
 )
+local dispenserBeam = beams()[1]
+local dispensingStart = dispenserBeam.Attachment0
+workspaceFake.Blockcast = function()
+    error("dispenser beam must not query obstacles")
+end
+workspaceFake.Raycast = function()
+    error("dispenser beam must not probe approaches")
+end
+services.PathfindingService.CreatePath = function()
+    error("dispenser beam must not request routes")
+end
+local dispenserConnectionPersisted = true
+for index = 1, 30 do
+    root.Position = vec(-index * 3, index % 5, index * 2)
+    advance(0.1)
+    dispenserConnectionPersisted = dispenserConnectionPersisted
+        and beams()[1] == dispenserBeam
+        and dispenserBeam.Enabled
+        and dispenserBeam.Attachment0 == dispensingStart
+        and dispenserBeam.Attachment1 == dispenserMarker
+        and beams("TutorialStashFlow")[1].Attachment1 == dispenserMarker
+end
+check(dispenserConnectionPersisted, "dispenser retains one connected pair through movement and geometry")
+workspaceFake.Blockcast, workspaceFake.Raycast = originalBlockcast, originalRaycast
+services.PathfindingService.CreatePath = originalPath
 p:SetAttribute("TutorialStage", "Turbine")
+check(
+    beams()[1] == dispenserBeam and dispenserBeam.Attachment1 == turbineOrigin,
+    "blending transition retargets the existing pair to the stationary stem"
+)
 p:SetAttribute("TutorialStage", "Dispenser")
+check(
+    beams()[1] == dispenserBeam and dispenserBeam.Attachment1 == dispenserMarker,
+    "completed blend retargets the existing pair immediately to the dispenser"
+)
 check(
     hintContains("Dispense your smoothie!") and label().TextTransparency == 0,
     "dispensing readiness cancels an outgoing animation immediately"
@@ -339,7 +577,9 @@ check(
 p:SetAttribute("TutorialStage", "Serve")
 advance()
 check(
-    hintContains("Serve customer and get PAYED!") and highlights()[1].Adornee == customer,
+    hintContains("Serve customer and get PAYED!")
+        and highlights()[1].Adornee == customer
+        and beams()[1].Attachment1.Parent == customerRoot,
     "smoothie collection proceeds directly to serving, without relocating counter navigation"
 )
 advance(5)
@@ -348,15 +588,21 @@ check(
     "failed serve without authoritative progression retains Serve guidance"
 )
 root.Position = vec(0, 0, 0)
+local serveBeam = beams()[1]
+local serveStart, serveEnd = serveBeam.Attachment0, serveBeam.Attachment1
 for _, index in { 2, 3 } do
     p:SetAttribute("TutorialOrderIndex", index)
+    check(
+        #beams() == 0 and #beams("TutorialStashFlow") == 0 and serveStart.Destroyed and serveEnd.Destroyed,
+        "committed first serve immediately removes both beams and temporary endpoints"
+    )
+    p.CharacterRemoving:Fire(p.Character)
+    p.CharacterAdded:Fire(p.Character)
     for _, stage in { "Order", "Stash", "Blender", "Turbine", "Dispenser", "Serve" } do
         p:SetAttribute("TutorialStage", stage)
         advance(20)
         check(noHint() and #beams() == 0, "later tutorial customers never show text or stash beams, even on hesitation")
-        if stage == "Stash" then
-            check(#highlights() == 2, "later customers retain existing yellow stash highlights")
-        end
+        check(#highlights() > 0, "later customers retain yellow highlights for every objective")
     end
 end
 p:SetAttribute("TutorialOrderIndex", 1)
@@ -388,12 +634,12 @@ advance(2.4)
 check(noHint() and #beams() == 0, "respawn cannot revive the removed avatar's old deadline")
 advance(0.1)
 check(
-    hintContains("Grab ingredients") and #beams() == 1,
-    "respawn can resume the still-valid pickup objective with a fresh delay"
+    hintContains("Grab ingredients") and #beams() == 0,
+    "beam retirement persists across membership changes; text can resume the still-valid pickup objective with a fresh delay"
 )
 p:SetAttribute("TutorialStage", "Blender")
 advance()
-check(#beams() == 0, "respawn beam clears on real objective change")
+check(#beams() == 0, "retired beam stays disabled on real objective change")
 p:SetAttribute("TutorialStage", "Order")
 p:SetAttribute("PlotSessionId", "rapid-session")
 plot:SetAttribute("PlotSessionId", "rapid-session")
@@ -447,3 +693,18 @@ check(
     label() == nil and #beams() == 0 and #beams("TutorialStashFlow") == 0,
     "shutdown cannot resurrect tutorial UI or beam"
 )
+
+local routingArtifact = false
+for _, object in allInstances do
+    if
+        not object.Destroyed
+        and (
+            object.Name == "TutorialBeamWaypoints"
+            or object.Name == "TutorialRouteBeam"
+            or object.Name == "TutorialRouteFlow"
+        )
+    then
+        routingArtifact = true
+    end
+end
+check(not routingArtifact, "single-beam guidance creates no routing artifacts")

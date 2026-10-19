@@ -3,7 +3,10 @@ local Style = require(script.Parent.WorldBillboardStyle)
 local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local Presentation = {}
 
-export type Settings = Style.Settings & {
+export type Settings = Style.TextSettings & {
+    WidthStuds: number?,
+    HeightStuds: number?,
+    MaxDistance: number?,
     Origin: Instance?,
     Text: string?,
     StudsOffset: Vector3?,
@@ -29,7 +32,12 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
     local gui = Instance.new("BillboardGui")
     gui.Name = "WorldTextDisplay"
     gui.Adornee = origin
-    Style.ApplyBillboard(gui, config)
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    Style.ApplyBillboard(gui, {
+        WidthStuds = config.WidthStuds or 8,
+        HeightStuds = config.HeightStuds or 2,
+        MaxDistance = config.MaxDistance or 60,
+    })
     gui.StudsOffset = config.StudsOffset or Vector3.zero
     gui.Active = false
     gui.Enabled = true
@@ -65,6 +73,7 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
             end
             text.Text = value
         end
+        text.TextScaled = config.TextScaled ~= false
     end
     setText(config.Text or "")
     text.Parent = gui

@@ -181,10 +181,10 @@ function Controller.Init()
             local dispenser = origin.Name == "DispenserTextOrigin" and not customerAction
             local touch = dispenser and entry.InputType == Enum.ProximityPromptInputType.Touch
             local cleanup, gui = Presentation.Create(prompt, origin, playerGui, entry.InputType, {
-                Height = if touch then 80 else nil,
+                HeightStuds = if touch then 2.1 else nil,
                 TouchWidth = if touch then 220 else nil,
                 TouchHeight = if touch then 80 else nil,
-                TouchCenterY = if touch then 40 else nil,
+                TouchCenterY = if touch then 0.5 else nil,
                 CustomerAction = if typeof(customerAction) == "string" then customerAction else nil,
                 ActionText = if typeof(action) == "string" then action else nil,
                 KeyText = if typeof(key) == "string" then key else nil,
@@ -192,8 +192,8 @@ function Controller.Init()
             })
             if touch then
                 local text = gui:FindFirstChild("Action") :: TextLabel
-                text.Size = UDim2.new(1, 0, 0, 56)
-                text.Position = UDim2.fromOffset(0, 12)
+                text.Size = UDim2.fromScale(1, 56 / 80)
+                text.Position = UDim2.fromScale(0, 12 / 80)
             end
             entry.Cleanup = cleanup
             log(prompt, "BillboardGui created=" .. gui:GetFullName() .. " | Adornee=" .. origin:GetFullName())

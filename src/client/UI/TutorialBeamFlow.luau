@@ -1,8 +1,8 @@
 --!strict
--- The origin is Attachment0 (player), the destination Attachment1 (stash).
+-- The origin is Attachment0 (player), the destination Attachment1 (objective).
 -- Move a soft bright segment from normalized distance 0 to 1, then fade/repeat.
 local Flow = {}
-function Flow.Transparency(elapsed: number): NumberSequence
+local function transparency(elapsed: number): NumberSequence
     local phase = (elapsed % 2.4) / 2.4
     local fade = math.min(1, phase / 0.12, (1 - phase) / 0.12)
     local points: { NumberSequenceKeypoint } = {}
@@ -13,5 +13,15 @@ function Flow.Transparency(elapsed: number): NumberSequence
         table.insert(points, NumberSequenceKeypoint.new(position, 1 - 0.85 * strength * fade))
     end
     return NumberSequence.new(points)
+end
+-- Cache one 30 Hz cycle; Heartbeat only selects a sequence, with no per-frame allocations.
+local frames: { NumberSequence } = {}
+function Flow.Transparency(elapsed: number): NumberSequence
+    if #frames == 0 then
+        for index = 0, 71 do
+            table.insert(frames, transparency(index / 30))
+        end
+    end
+    return frames[math.floor((elapsed % 2.4) * 30) + 1]
 end
 return Flow

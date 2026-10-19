@@ -1,137 +1,65 @@
-local descendants = {}
-workspaceFake.GetDescendants = function()
-    return descendants
-end
-workspaceFake.DescendantAdded, workspaceFake.DescendantRemoving = signal(), signal()
-services.Players.LocalPlayer = { UserId = 51 }
+local presentation = loadModule("CustomerPresentation")
 local model = instance("Model")
-model:SetAttribute("OrderRevealed", true)
 model:SetAttribute("OwnerUserId", 51)
-local ownership = signal()
-model.GetAttributeChangedSignal = function()
-    return ownership
-end
+model:SetAttribute("PlotSessionId", "session")
 local root = instance("Part")
 root.Parent = model
 local head = instance("Part")
-head.Parent = model
 head.Position = vec(0, 3, 0)
-local presentation = loadModule("CustomerPresentation")
 local anchor = presentation.CreateAnchor(root, head)
-local restingPosition = anchor.Position
-head.Position = vec(0, 4, 0)
-check(anchor.Parent == root and anchor.Position == restingPosition, "head animation cannot move UI anchor")
-local order = instance("BillboardGui")
-order.Name, order.Parent, order.Adornee = "OrderBubble", root, anchor
-order.Size = env.UDim2.fromOffset(300, 112)
-order.SizeOffset = env.Vector2.new(0, 0.5)
-order.StudsOffset, order.MaxDistance = vec(0, 0, 0), 30
+local rewardAnchor = root:FindFirstChild("CustomerRewardOrigin")
+local resting = rewardAnchor.Position
+check(resting.Y == 2.65, "cash anchor sits 0.35 studs below resting head center")
+head.Position = vec(0, 5, 0)
+check(rewardAnchor.Position == resting, "head animation cannot move cash anchor")
 local expirations = {}
 services.Debris.AddItem = function(_, object, seconds)
     expirations[object] = seconds
 end
+local order = instance("BillboardGui")
+order.Parent, order.Adornee = root, anchor
+order.Size, order.SizeOffset = env.UDim2.fromScale(7, 2.6), env.Vector2.new(0, 0.5)
+order.MaxDistance = 30
 local result = presentation.ShowResult(order, "A", 1313, 4500)
-local main, ingredients = result:FindFirstChild("Result"), result:FindFirstChild("Ingredients")
 check(
-    math.abs((0.5 - order.SizeOffset.Y) * order.Size.Y.Offset - 32) < 0.001,
-    "served reaction and reward move down 32 fixed pixels"
+    result:FindFirstChild("Result").Text
+        == '<font color="rgb(100,225,120)">A</font> \u{00B7} <font color="rgb(255,222,115)">+$1,313</font>',
+    "grade and final cash share one row"
 )
+check(not result:FindFirstChild("Ingredients"), "no ingredient subtotal or second cash amount")
+check(result.Adornee == rewardAnchor and result.StudsOffset.Magnitude == 0, "cash uses its stable body attachment")
+local text = result:FindFirstChild("Result")
 check(
-    main.Text == '<font color="rgb(100,225,120)">A</font>  <font color="rgb(255,222,115)">+$1,313</font>',
-    "grade and gold awarded cash occupy primary row"
+    text.Font == "FredokaOne" and text.TextScaled and text:FindFirstChildOfClass("UIStroke").Thickness == 2.5,
+    "existing readable lettering retained"
 )
-check(
-    ingredients.Text == 'Ingredients: <font color="rgb(100,225,120)">$4.5K</font>'
-        and ingredients.TextSize < main.TextSize,
-    "ingredients has smaller second row"
-)
-check(ingredients.Position.Y.Offset >= main.Size.Y.Offset, "result rows have separate pixel regions")
-for _, text in { main, ingredients } do
-    check(
-        text.Font == "FredokaOne" and not text.TextScaled and text:FindFirstChildOfClass("UIStroke").Thickness == 2.5,
-        "rounded fixed-size result lettering with thick outline"
-    )
-end
-check(
-    not result.Enabled and result.Adornee == anchor and result.StudsOffset.Magnitude == 0,
-    "result uses same stable root anchor"
-)
-check(
-    result.Size.X.Scale == 0 and result.Size.Y.Scale == 0 and result.Size.X.Offset <= 300,
-    "pixel canvas fits narrow screens"
-)
--- Pixel separation translates with the common projected anchor; it cannot collapse with distance/pitch.
-for _, projectedY in { 100, 240, 450 } do
-    local resultBottom = projectedY - result.SizeOffset.Y * result.Size.Y.Offset + result.Size.Y.Offset / 2
-    local dialogueTop = projectedY - order.SizeOffset.Y * order.Size.Y.Offset - order.Size.Y.Offset / 2
-    check(
-        math.abs(dialogueTop - resultBottom - 6) < 0.001,
-        "result remains 6 pixels clear of reaction at any projected height"
-    )
-end
-check(expirations[result] == 4, "result holds fully readable for four seconds")
-local wildcardResult = presentation.ShowResult(order, nil, 1313, 4500)
-check(
-    wildcardResult:FindFirstChild("Result").Text == '<font color="rgb(255,222,115)">+$1,313</font>',
-    "wildcard reward displays cash without a grade"
-)
-check(
-    wildcardResult:FindFirstChild("Ingredients").Text
-        == 'Ingredients: <font color="rgb(100,225,120)">$4.5K</font>'
-        and not wildcardResult:FindFirstChild("Retry"),
-    "wildcard keeps the ingredient subtotal without failure messaging"
-)
-table.insert(descendants, result)
-table.insert(descendants, order)
-loadModule("CustomerOrderController").Init()
-check(result.Enabled and order.Enabled, "owner sees both separate displays")
-model:SetAttribute("OwnerUserId", 99)
-ownership:Fire()
-check(not result.Enabled and not order.Enabled, "other owner cannot see either display")
-model:SetAttribute("OwnerUserId", 51)
-ownership:Fire()
-local missed = presentation.ShowResult(order, "D", 197, 4500)
-workspaceFake.DescendantAdded:Fire(missed)
-check(
-    missed.Enabled
-        and missed:FindFirstChild("Result").Text
-            == '<font color="rgb(255,95,95)">D</font>  <font color="rgb(255,222,115)">+$197</font>',
-    "missed result shows actual cash in first row"
-)
-check(
-    missed:FindFirstChild("Retry").Text == "TRY AGAIN \u{00B7} 15% PAYOUT",
-    "missed result explains consolation and retry"
-)
-check(
-    missed:FindFirstChild("Retry").Position.Y.Offset
-        >= missed:FindFirstChild("Ingredients").Position.Y.Offset
-            + missed:FindFirstChild("Ingredients").Size.Y.Offset,
-    "retry has a reserved row below ingredients"
-)
-workspaceFake.DescendantRemoving:Fire(missed)
-ownership:Fire()
-check(not missed.Enabled, "removed result stays hidden")
-local large = presentation.ShowResult(order, "A", 1234567, 6500)
-check(string.find(large:FindFirstChild("Result").Text, "+$1,234,567", 1, true) ~= nil, "multiple thousands separators")
-
--- Both outcomes stay above the full special card, including its name row.
-local specialOrder = instance("BillboardGui")
-specialOrder.Parent, specialOrder.Adornee = root, anchor
-specialOrder.Size = env.UDim2.fromOffset(270, 84)
-specialOrder.SizeOffset = env.Vector2.new(0, 0.5)
-specialOrder.MaxDistance = 30
-for _, orderGui in { order, specialOrder } do
-    for _, grade in { "A", "D" } do
-        local reward = presentation.ShowResult(orderGui, grade, 750, 1.5)
-        local bottom = -reward.SizeOffset.Y * reward.Size.Y.Offset + reward.Size.Y.Offset / 2
-        local top = -(orderGui.SizeOffset.Y + 0.5) * orderGui.Size.Y.Offset
-        check(math.abs(top - bottom - 6) < 0.001, "success and failure clear regular reaction and full special card")
-        local white = reward:FindFirstChild("Ingredients").TextColor3
-        check(white.R == 1 and white.G == 1 and white.B == 1, "ingredients cannot inherit gold cash tint")
+check(expirations[result] == 4, "existing four-second hold retained")
+for _, size in { 84, 112 } do
+    order.Size = env.UDim2.fromScale(8, size / 37.5)
+    for _, grade in { "A", "B", "C", "D" } do
+        local gui = presentation.ShowResult(order, grade, 197, 4500)
+        local primaryCenter = -gui.SizeOffset.Y - 0.5 + gui:FindFirstChild("Result").Size.Y.Scale / 2
+        check(math.abs(primaryCenter) < 0.001, "grade and special-card height cannot lift cash row")
+        check(not gui:FindFirstChild("Ingredients"), "all grades omit ingredient subtotal")
+        if grade == "D" then
+            check(
+                gui:FindFirstChild("Retry").Position.Y.Scale >= gui:FindFirstChild("Result").Size.Y.Scale,
+                "retry stays separate below payout"
+            )
+        end
     end
 end
-
--- Finishing a short route retains only the remaining presentation lifetime.
+local wildcard = presentation.ShowResult(order, nil, 1234567, 6500)
+check(
+    wildcard:FindFirstChild("Result").Text == '<font color="rgb(255,222,115)">+$1,234,567</font>'
+        and not wildcard:FindFirstChild("Retry"),
+    "wildcard has only cash and no letter grade"
+)
+local debit = presentation.ShowResult(order, nil, -500)
+check(
+    debit:FindFirstChild("Result").Text == '<font color="rgb(255,95,95)">-$500</font>',
+    "freeloader debit keeps actual signed amount"
+)
 presentation.PreserveResult(result)
 local hold
 for object in expirations do
@@ -139,38 +67,25 @@ for object in expirations do
         hold = object
     end
 end
-setup(hold ~= nil, "short exit creates a remaining result display")
-check(expirations[hold] > 0 and expirations[hold] <= 4, "exit never restarts the four-second hold")
-check(hold:GetAttribute("OwnerUserId") == 51, "remaining display retains owner isolation")
-hold.GetAttributeChangedSignal = function()
-    return signal()
-end
+setup(hold ~= nil, "short exit retains presentation")
+check(expirations[hold] > 0 and expirations[hold] <= 4, "exit does not restart reward lifetime")
+check(hold:GetAttribute("PlotSessionId") == "session", "remaining display retains shared-plot visibility")
 local copy = hold:FindFirstChild("CustomerResult", true)
-workspaceFake.DescendantAdded:Fire(copy)
-check(copy.Enabled, "owner controller enables the remaining display")
-local fixedOrigin = copy.Adornee.Parent
 check(
-    fixedOrigin.CFrame == root.CFrame and copy.Adornee.Position == anchor.Position,
-    "remaining display uses the final stable root transform"
-)
-check(
-    fixedOrigin.Anchored
-        and not fixedOrigin.CanCollide
-        and not fixedOrigin.CanTouch
-        and not fixedOrigin.CanQuery
-        and fixedOrigin.Transparency == 1,
-    "remaining origin has no gameplay presence"
+    copy.Adornee.Position == resting and copy.Adornee.Parent.CFrame == root.CFrame,
+    "exit preserves final cash anchor"
 )
 model:Destroy()
-check(not copy.Destroyed and copy.Parent ~= nil, "customer cleanup cannot truncate the result")
+check(not copy.Destroyed, "customer cleanup cannot truncate payout text")
+
 result:SetAttribute("ResultExpiresAt", 0)
-local count = 0
+local before = 0
 for _ in expirations do
-    count += 1
+    before += 1
 end
 presentation.PreserveResult(result)
 local after = 0
 for _ in expirations do
     after += 1
 end
-check(after == count, "expired results cannot be revived")
+check(before == after, "expired results cannot restart their hold")

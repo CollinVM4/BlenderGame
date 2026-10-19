@@ -11,14 +11,14 @@ export type Settings = {
     FormatText: ((string, boolean) -> string)?,
     KeyText: string?,
     MaxDistance: number?,
-    Width: number?,
-    Height: number?,
+    WidthStuds: number?,
+    HeightStuds: number?,
     TextSize: number?,
     InputOnly: boolean?,
     CustomerAction: string?,
     TouchWidth: number?,
     TouchHeight: number?,
-    TouchCenterY: number?,
+    TouchCenterY: number?, -- Fraction of the stud-sized visual canvas height.
     Available: (() -> boolean)?,
 }
 
@@ -35,7 +35,15 @@ function Presentation.Create(
     local gui = Instance.new("BillboardGui")
     gui.Name = "InteractionPromptDisplay"
     gui.Adornee = origin
-    Style.ApplyBillboard(gui, config)
+    local customer = config.CustomerAction ~= nil and not stashPrompt
+    -- Preserve the existing overlay so an available interaction stays readable.
+    Style.ApplyBillboard(gui, {
+        WidthStuds = if customer then 5.9 else config.WidthStuds or 7,
+        HeightStuds = if customer then 1.2 else config.HeightStuds or 1.4,
+        MaxDistance = config.MaxDistance or (if stashPrompt then 30 else 25),
+    })
+    -- Billboard input gate: only the explicit TouchTarget is active on padded touch views.
+    -- Decorative labels stay inactive; do not add a full-canvas button behind them.
     gui.Active = true
 
     -- A transparent button preserves touch/click input through the prompt's API.
@@ -46,14 +54,13 @@ function Presentation.Create(
     if paddedTouch then
         text.Active = false
     end
-    Style.ApplyText(text, config)
+    Style.ApplyText(text, { TextSize = config.TextSize, TextScaled = true })
     if origin.Name == "DispenserTextOrigin" or stashPrompt or prompt:GetAttribute("JackedNoobPrompt") == true then
         TextStyle.Apply(text, config.TextSize or 24)
     end
     if config.CustomerAction and not stashPrompt then
         -- Shared input behavior, with a compact customer-only visual treatment.
         local billboard = gui :: BillboardGui
-        billboard.Size = UDim2.fromOffset(220, 44)
         billboard.StudsOffset = Vector3.zero
         billboard.SizeOffset = Vector2.new(0, -(22 + 12) / 44) -- Top edge 12px below the shared rig anchor.
         if config.CustomerAction == "Serve" and origin:IsA("Attachment") then
@@ -72,6 +79,7 @@ function Presentation.Create(
     if inputButton then
         inputButton.AutoButtonColor = false
     end
+    text.TextScaled = true
     text.Parent = gui
     gui.Parent = parent
 
@@ -174,7 +182,7 @@ function Presentation.Create(
         target.Selectable = false
         target.ZIndex = text.ZIndex + 1
         target.AnchorPoint = Vector2.new(0.5, 0.5)
-        target.Position = UDim2.new(0.5, 0, 0, config.TouchCenterY or (config.Height or 56) / 2)
+        target.Position = UDim2.fromScale(0.5, config.TouchCenterY or 0.5)
         target.Size = UDim2.fromOffset(assert(config.TouchWidth), config.TouchHeight or 80)
         target.Parent = gui
         unregister = TouchTargets.Register(prompt, gui, target, begin, config.Available)

@@ -43,6 +43,19 @@ local function uiInstance(class, name, parentObject)
         self.AttributeChanged:Fire(attribute)
         self:GetAttributeChangedSignal(attribute):Fire()
     end
+    if class == "BillboardGui" then
+        setmetatable(object, {
+            __index = function(self, key)
+                if key == "AbsoluteSize" then
+                    return vec2(
+                        self.Size.X.Scale * 20 + self.Size.X.Offset,
+                        self.Size.Y.Scale * 20 + self.Size.Y.Offset
+                    )
+                end
+                return nil
+            end,
+        })
+    end
     return object
 end
 env.Instance.new = uiInstance
@@ -92,14 +105,14 @@ local function renderedCenter(gui, button)
     local point = workspaceFake.CurrentCamera:WorldToViewportPoint(world)
     return vec2(
         point.X
-            + gui.SizeOffset.X * gui.Size.X.Offset
-            - gui.Size.X.Offset / 2
-            + button.Position.X.Scale * gui.Size.X.Offset
+            + gui.SizeOffset.X * (gui.Size.X.Scale * 20 + gui.Size.X.Offset)
+            - (gui.Size.X.Scale * 20 + gui.Size.X.Offset) / 2
+            + button.Position.X.Scale * (gui.Size.X.Scale * 20 + gui.Size.X.Offset)
             + button.Position.X.Offset,
         point.Y
-            - gui.SizeOffset.Y * gui.Size.Y.Offset
-            - gui.Size.Y.Offset / 2
-            + button.Position.Y.Scale * gui.Size.Y.Offset
+            - gui.SizeOffset.Y * (gui.Size.Y.Scale * 20 + gui.Size.Y.Offset)
+            - (gui.Size.Y.Scale * 20 + gui.Size.Y.Offset) / 2
+            + button.Position.Y.Scale * (gui.Size.Y.Scale * 20 + gui.Size.Y.Offset)
             + button.Position.Y.Offset
     )
 end
@@ -170,8 +183,8 @@ check(gui().Adornee == origin, "nested attachment beneath containing model resol
 origin.Parent = object
 check(label().Text == "[E] DISPENSE", "configured action and actual key")
 check(gui().AlwaysOnTop and label().BackgroundTransparency == 1, "transparent outlined world UI")
-check(label().TextScaled == false and label().TextSize == 24, "fixed font size")
-check(gui().Size.X.Scale == 0 and gui().Size.Y.Scale == 0, "pixel-only canvas")
+check(label().TextScaled == true and label().TextSize == 24, "proportional font size")
+check(gui().Size.X.Scale == 7 and gui().Size.Y.Scale == 1.4, "stud canvas")
 local stashDisplay = uiInstance("Folder", "StashDisplay", originPart)
 local stashValue = uiInstance("BillboardGui", "SlotValue", stashDisplay)
 stashValue.Adornee = originPart
@@ -187,12 +200,12 @@ check(
         and gui().StudsOffsetWorldSpace.Y == 0
         and gui().StudsOffset.Y == 0
         and gui().SizeOffset.Y == 0
-        and gui().Size.X.Offset == 300
-        and gui().Size.Y.Offset == 56
-        and gui().Size.X.Scale == 0
-        and gui().Size.Y.Scale == 0
-        and not label().TextScaled,
-    "stash prompt uses authored attachment with fixed pixel size and no positioning offsets"
+        and gui().Size.X.Offset == 0
+        and gui().Size.Y.Offset == 0
+        and gui().Size.X.Scale == 7
+        and gui().Size.Y.Scale == 1.4
+        and label().TextScaled,
+    "stash prompt uses authored attachment with stud size and no positioning offsets"
 )
 check(label().Text == "[E] STORE", "stash store retains key and action")
 stashDisplay:Destroy()
@@ -403,10 +416,7 @@ check(logged("PromptShown received by controller"), "engine callback logs receiv
 check(logged("BillboardGui created="), "presentation creation logged after return")
 check(gui().Adornee == dayOrigin and dayOrigin.CFrame == originFrame, "Start Day exact origin retained without moving")
 check(label().Text == "[F] START DAY", "Start Day key label comes from prompt, clears hardcoded override")
-check(
-    gui().Size.X.Offset == 300 and gui().Size.Y.Offset == 56 and not label().TextScaled,
-    "Start Day uses shared fixed pixel view"
-)
+check(gui().Size.X.Offset == 0 and gui().Size.Y.Offset == 0 and label().TextScaled, "Start Day uses shared stud view")
 for _ = 1, 3 do
     prompts.PromptHidden:Fire(dayPrompt)
     check(#playerGui:GetChildren() == 0, "Start Day exit destroys view")

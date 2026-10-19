@@ -224,6 +224,8 @@ local function releaseHeld(
         local at = IngredientThrow.Origin(root)
         local object = deps.IngredientService.Spawn(record.Id :: string, at, nil, true, {
             Item = record.Item,
+            FeedingActor = player,
+            FeedingSessionId = deps.TycoonService.GetSessionId(player),
             PrepareSpawn = function(prepared: Instance): CFrame?
                 local origin, reason = IngredientThrow.FindOrigin(root, character, prepared)
                 IngredientThrow.Trace(player, "placement: " .. reason)
@@ -272,7 +274,11 @@ local function releaseHeld(
         else at * offset
     local object = if record.Smoothie
         then deps.SmoothieWorldItemService.Spawn(record.Smoothie, at * offset)
-        else deps.IngredientService.Spawn(record.Id :: string, spawnAt, nil, true, { Item = record.Item })
+        else deps.IngredientService.Spawn(record.Id :: string, spawnAt, nil, true, {
+            Item = record.Item,
+            FeedingActor = player,
+            FeedingSessionId = deps.TycoonService.GetSessionId(player),
+        })
     if not object then
         record.Releasing = false
         return nil
@@ -784,8 +790,8 @@ function InventoryService.GetStashLayout(player: Player)
     end
     return { Slots = Upgrades.SecondStorage[tier].Value, Protected = protected }
 end
-function InventoryService.GetHeldIngredientId(player: Player): string?
-    local record = resolveActionItem(player)
+function InventoryService.GetHeldIngredientId(player: Player, newestFirst: boolean?): string?
+    local record = resolveActionItem(player, nil, newestFirst)
     return if record and record.ItemType == "Ingredient" and not record.Releasing then record.Id else nil
 end
 function InventoryService.HasCarriedIngredient(player: Player): boolean
@@ -894,8 +900,8 @@ end
 -- Server-only consumption of the same selected/fallback carry record as throw.
 -- Remove the reservation before destroying its Tool so reentrant actions cannot
 -- consume it twice. Attributes and caller-provided ingredient IDs grant no rights.
-function InventoryService.ConsumeHeldIngredient(player: Player, expectedId: string): string?
-    local record = resolveActionItem(player)
+function InventoryService.ConsumeHeldIngredient(player: Player, expectedId: string, newestFirst: boolean?): string?
+    local record = resolveActionItem(player, nil, newestFirst)
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if

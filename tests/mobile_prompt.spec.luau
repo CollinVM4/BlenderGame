@@ -157,13 +157,16 @@ ap.Size = vec(0.1, 0.1, 0.1)
 services.RunService.RenderStepped:Fire()
 local center = renderedCenter(g, g:FindFirstChild("TouchTarget"))
 local ground = workspaceFake.CurrentCamera:WorldToViewportPoint(vec(5, 3.95, 0))
-check(center.Y + style.InputHeight / 2 <= ground.Y - 1.999, "visible TAP cannot clip into projected contact plane")
+check(
+    center.Y + g.AbsoluteSize.Y * style.InputHeight / style.MobileCanvasHeight / 2 <= ground.Y - 1.999,
+    "visible TAP cannot clip into projected contact plane"
+)
 prompts.PromptHidden:Fire(p)
 for _, kind in { "Keyboard", "Gamepad" } do
     prompts.PromptShown:Fire(p, kind)
     local desktop = playerGui:FindFirstChild("IngredientPickupPromptDisplay")
     check(
-        desktop:FindFirstChild("TouchTarget") == nil and desktop.Size.Y.Offset == 142,
+        desktop:FindFirstChild("TouchTarget") == nil and desktop.Size.Y.Scale == 3.8 and desktop.Size.Y.Offset == 0,
         "desktop/console keep original UI and input row"
     )
     check(desktop.SizeOffset.Y == 0.5, "desktop/console remain above ingredient")

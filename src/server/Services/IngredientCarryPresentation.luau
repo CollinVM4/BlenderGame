@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.IngredientCarry)
 local Item = require(game:GetService("ReplicatedStorage").Shared.IngredientItem)
 local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
@@ -49,19 +50,20 @@ function Presentation.RefreshValue(player: Player, stack: { any })
     if staleDetails then
         staleDetails:Destroy()
     end
-    gui.Size = UDim2.fromOffset(180, 44)
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 4.8, HeightStuds = 1.2, MaxDistance = 35 })
     if not previous then
         gui.Name = "CarryValue"
         gui.Adornee = root
         gui.AlwaysOnTop = true
         gui.ResetOnSpawn = false
-        gui.MaxDistance = 100
         local label = Instance.new("TextLabel")
         label.Name = "Value"
         label.Size = UDim2.fromScale(1, 1)
         label.BackgroundTransparency = 1
         label.Font = Enum.Font.GothamBold
         label.TextSize = 28
+        label.TextScaled = true
         label.TextColor3 = Color3.fromRGB(100, 235, 120)
         local stroke = Instance.new("UIStroke")
         stroke.Color = Color3.new(0, 0, 0)

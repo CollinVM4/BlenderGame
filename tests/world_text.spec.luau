@@ -49,10 +49,10 @@ check(#origin:GetChildren() == 1 and gui:IsA("BillboardGui"), "one BillboardGui 
 check(gui.Adornee == origin, "authored Attachment is exact Adornee")
 check(text:IsA("TextLabel") and text.Text == "READY", "plain authored text without key affordance")
 check(not gui.Active and not text.Active and not text.Selectable, "label cannot capture interaction")
-check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0, "canvas uses only pixel offsets")
-check(gui.Size.X.Offset == 300 and gui.Size.Y.Offset == 56, "default canvas matches prompt")
+check(gui.Size.X.Scale == 8 and gui.Size.Y.Scale == 2, "canvas uses world studs")
+check(gui.Size.X.Offset == 0 and gui.Size.Y.Offset == 0, "canvas has no pixel offsets")
 check(gui.AlwaysOnTop and not gui.ResetOnSpawn, "shared billboard treatment")
-check(text.TextSize == 24 and not text.TextScaled, "font remains fixed size")
+check(text.TextSize == 24 and text.TextScaled, "font scales with the frame")
 check(text.TextXAlignment == "Center" and text.TextYAlignment == "Center", "text is centered")
 check(text.BackgroundTransparency == 1 and text.TextStrokeTransparency == 0.2, "transparent outlined text")
 check(text.Font == "GothamBold" and text.TextWrapped, "prompt font and wrapping retained")
@@ -81,14 +81,14 @@ local offset = vec(0, 2, 0)
 local second = assert(worldText.Create({
     Origin = origin,
     Text = "3 / 3 INGREDIENTS",
-    Width = 400,
-    Height = 80,
+    WidthStuds = 10.7,
+    HeightStuds = 2.1,
     TextSize = 28,
     StudsOffset = offset,
     MaxDistance = 60,
 }))
 local secondGui = origin:FindFirstChild("WorldTextDisplay")
-check(secondGui.Size.X.Offset == 400 and secondGui.Size.Y.Offset == 80, "optional canvas uses pixels")
+check(secondGui.Size.X.Scale == 10.7 and secondGui.Size.Y.Scale == 2.1, "optional canvas uses studs")
 check(secondGui:FindFirstChild("Text").TextSize == 28, "optional font size")
 check(secondGui.StudsOffset == offset and secondGui.MaxDistance == 60, "offset and engine distance culling applied")
 origin:Destroy()
@@ -109,7 +109,10 @@ check(#allInstances == beforeInvalid, "invalid input never allocates a GUI")
 
 -- All rendering uses engine billboard projection; no scaling or polling path exists.
 for _, source in sources do
-    for _, forbidden in { "ProximityPrompt", "UserInputService", "RunService", "CurrentCamera", "UIScale", "task." } do
+    -- The style checks IsStudio only for invalid configuration; no frame connection.
+    for _, forbidden in
+        { "ProximityPrompt", "UserInputService", "RenderStepped", "Heartbeat", "CurrentCamera", "UIScale", "task." }
+    do
         check(not string.find(source, forbidden, 1, true), "no interaction/frame dependency: " .. forbidden)
     end
 end

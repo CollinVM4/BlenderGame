@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Shared = game:GetService("ReplicatedStorage").Shared
 local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
@@ -66,8 +67,7 @@ end
 local warnedTemplates = setmetatable({} :: { [Instance]: boolean }, { __mode = "k" })
 local activeTypingTasks = setmetatable({}, { __mode = "k" })
 local CustomerNameHeight = 28
-local CUSTOMER_ORDER_MAX_DISTANCE = 30
-local CUSTOMER_ORDER_WIDTH = 270
+local CUSTOMER_ORDER_MAX_DISTANCE = 45
 local CUSTOMER_ORDER_TEXT_HEIGHT = 56
 local CUSTOMER_ORDER_TEXT_SIZE = 21
 
@@ -1426,7 +1426,11 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
     ownedModels[key(player)][model] = true
     local bubble = Instance.new("BillboardGui")
     bubble.Name = "OrderBubble"
-    bubble.Size = UDim2.fromOffset(CUSTOMER_ORDER_WIDTH, CUSTOMER_ORDER_TEXT_HEIGHT)
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(
+        bubble,
+        { WidthStuds = 7.2, HeightStuds = 1.5, MaxDistance = 45, ResetOnSpawn = true }
+    )
     bubble.AlwaysOnTop = true
     bubble.MaxDistance = CUSTOMER_ORDER_MAX_DISTANCE
     -- Fail closed on every client; the owner's controller enables this locally.
@@ -1454,13 +1458,17 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
     local displayName = if candidate then candidate.DisplayName else "CustomerNPC"
     if displayName then
         -- Fixed separate rows keep the smaller name below the floating dialogue.
-        bubble.Size = UDim2.fromOffset(CUSTOMER_ORDER_WIDTH, CUSTOMER_ORDER_TEXT_HEIGHT + CustomerNameHeight)
-        text.Size = UDim2.fromOffset(CUSTOMER_ORDER_WIDTH, CUSTOMER_ORDER_TEXT_HEIGHT)
+        BillboardStyle.ApplyBillboard(
+            bubble,
+            { WidthStuds = 7.2, HeightStuds = 2.2, MaxDistance = 45, ResetOnSpawn = true }
+        )
+        text.Size = UDim2.fromScale(1, CUSTOMER_ORDER_TEXT_HEIGHT / (CUSTOMER_ORDER_TEXT_HEIGHT + CustomerNameHeight))
         text.Position = UDim2.fromOffset(0, 0)
         local nameText = text:Clone()
         nameText.Name = "CustomerName"
-        nameText.Size = UDim2.fromOffset(CUSTOMER_ORDER_WIDTH, CustomerNameHeight)
-        nameText.Position = UDim2.fromOffset(0, CUSTOMER_ORDER_TEXT_HEIGHT)
+        nameText.Size = UDim2.fromScale(1, CustomerNameHeight / (CUSTOMER_ORDER_TEXT_HEIGHT + CustomerNameHeight))
+        nameText.Position =
+            UDim2.fromScale(0, CUSTOMER_ORDER_TEXT_HEIGHT / (CUSTOMER_ORDER_TEXT_HEIGHT + CustomerNameHeight))
         nameText.TextSize = 18
         nameText.Text = displayName
         nameText.Parent = bubble

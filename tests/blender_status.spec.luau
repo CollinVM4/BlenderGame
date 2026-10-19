@@ -49,17 +49,14 @@ for _, refs in labels do
     refs.Count = refs.CountGui:FindFirstChild("Status")
     refs.Prompt = refs.PromptGui:FindFirstChild("Status")
     check(refs.CountGui.Adornee == refs.CountOrigin, "Attachment is the adornee")
-    check(
-        refs.CountGui.AlwaysOnTop and refs.CountGui.MaxDistance == 5,
-        "conservative range before client configures culling"
-    )
+    check(refs.CountGui.AlwaysOnTop and refs.CountGui.MaxDistance == 40, "explicit plot read distance")
     check(
         refs.Count.BackgroundTransparency == 1 and refs.Count:FindFirstChild("DialogueOutline").Thickness == 2.5,
         "NPC outline treatment"
     )
     check(
-        refs.Count.Font == "FredokaOne" and not refs.Count.TextScaled and not refs.Count.TextWrapped,
-        "fixed NPC lettering without automatic reflow"
+        refs.Count.Font == "FredokaOne" and refs.Count.TextScaled and not refs.Count.TextWrapped,
+        "proportional NPC lettering without automatic reflow"
     )
     check(refs.Count.Text == "0 / 3", "initial empty count")
 end

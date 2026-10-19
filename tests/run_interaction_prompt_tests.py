@@ -15,7 +15,7 @@ paths = {
     "MobilePromptDebug": "src/shared/MobilePromptDebug.luau",
     "MobilePromptTouchTargets": "src/client/UI/MobilePromptTouchTargets.luau",
     "DialogueTextStyle": "src/shared/Constants/DialogueTextStyle.luau",
-    "WorldBillboardStyle": "src/client/UI/WorldBillboardStyle.luau",
+    "WorldBillboardStyle": "src/shared/WorldBillboardStyle.luau",
     "Presentation": "src/client/UI/InteractionPromptPresentation.luau",
     "Controller": "src/client/Controllers/InteractionPromptController.luau",
     "CustomerOrderController": "src/client/Controllers/CustomerOrderController.luau",

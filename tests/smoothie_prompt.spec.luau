@@ -37,7 +37,7 @@ for index, id in { "Strawberry", "Banana", "Strawberry" } do
         "full rarity and ingredient name without separator"
     )
     check(
-        rarity.Position.X.Offset + rarity.Size.X.Offset < name.Position.X.Offset,
+        rarity.Position.X.Scale + rarity.Size.X.Scale < name.Position.X.Scale,
         "rarity first with spacing before name"
     )
     check(rarity.TextColor3 == style.RarityStyles[definitions[id].Rarity].TextColor, "existing rarity color")

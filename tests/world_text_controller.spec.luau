@@ -51,12 +51,12 @@ check(
 labelOrigin:SetAttribute("WorldTextTextSize", 32)
 configuredGui = display(labelOrigin)
 check(configuredGui:FindFirstChild("Text").TextSize == 32, "optional text size applied")
-check(configuredGui.Size.X.Scale == 0 and configuredGui.Size.Y.Scale == 0, "optional settings keep pixel canvas")
+check(configuredGui.Size.X.Scale == 8 and configuredGui.Size.Y.Scale == 2, "optional settings keep stud canvas")
 labelOrigin:SetAttribute("WorldTextMaxDistance", -1)
 labelOrigin:SetAttribute("WorldTextTextSize", "bad")
 configuredGui = display(labelOrigin)
 check(
-    configuredGui.MaxDistance == math.huge and configuredGui:FindFirstChild("Text").TextSize == 24,
+    configuredGui.MaxDistance == 60 and configuredGui:FindFirstChild("Text").TextSize == 24,
     "invalid settings use defaults"
 )
 labelOrigin:SetAttribute("Unrelated", "ignored")

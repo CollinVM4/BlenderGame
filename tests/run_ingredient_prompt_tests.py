@@ -12,7 +12,7 @@ parser.add_argument("--player-head-only", action="store_true", help="Run focused
 args = parser.parse_args()
 paths = list((root / "src/client/UI").glob("*Prompt*.luau"))
 paths += [root / path for path in (
-    "src/client/UI/WorldBillboardStyle.luau",
+    "src/shared/WorldBillboardStyle.luau",
     "src/shared/MobilePromptDebug.luau",
     "src/client/Controllers/IngredientPickupPromptController.luau",
     "src/shared/Constants/Ingredients.luau",

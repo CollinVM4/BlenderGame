@@ -43,6 +43,7 @@ SUITES = {
     "lucky-block-view": ("presentation", ("lucky_block_view.spec.luau",)),
     "lucky-block-controller": ("presentation", ("lucky_block_controller.spec.luau",)),
     "tutorial": ("state", ("tutorial.spec.luau",)),
+    "tutorial-beam-stability": ("presentation", ("tutorial_beam_stability.spec.luau",)),
     "initial-spawn": ("integration", ("initial_spawn.spec.luau",)),
     "tutorial-hints": ("presentation", ("tutorial_hints.spec.luau",)),
     "tutorial-targets": ("presentation", ("tutorial_targets.spec.luau",)),
@@ -53,6 +54,9 @@ SUITES = {
     "bad-customer-presentation": ("presentation", ("bad_customer_presentation.spec.luau",)),
     "bad-customers": ("integration", ("fixtures/customer_queue.luau", "bad_customers.spec.luau")),
     "bad-customer-stash": ("integration", ("fixtures/smoothie.luau", "bad_customer_stash.spec.luau")),
+    "muncher-rewards": ("state", ("muncher_rewards.spec.luau",)),
+    "muncher-vacuum": ("integration", ("fixtures/smoothie.luau", "muncher_vacuum.spec.luau")),
+    "blender-vacuum": ("integration", ("blender_vacuum.spec.luau",)),
     "muncher": ("integration", ("fixtures/smoothie.luau", "muncher.spec.luau")),
     "muncher-presentation": ("presentation", ("muncher_presentation.spec.luau",)),
     "ingredient-cleanup": ("integration", ("fixtures/smoothie.luau", "ingredient_cleanup.spec.luau")),
@@ -112,6 +116,7 @@ SUITES = {
     "smoothie-roundtrip": ("integration", ("fixtures/smoothie.luau", "smoothie_roundtrip.spec.luau")),
     "smoothie-survivors": ("integration", ("fixtures/smoothie.luau", "smoothie_survivors.spec.luau")),
     "bat-controller": ("presentation", ("bat_controller.spec.luau",)),
+    "ingredient-hold": ("presentation", ("ingredient_hold.spec.luau",)),
     "unstuck-ui": ("presentation", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "unstuck_ui.spec.luau")),
     "unstuck": ("state", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "fixtures/unstuck_service.luau", "unstuck.spec.luau")),
     "unstuck-fallback": ("integration", ("fixtures/smoothie.luau", "fixtures/ragdoll_physics.luau", "fixtures/unstuck_geometry.luau", "fixtures/unstuck_service.luau", "unstuck_fallback.spec.luau")),
@@ -200,6 +205,8 @@ sources["IceGunDisplayComponent"] = (ROOT / "src/server/Components/IceGunDisplay
 sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").read_text(encoding="utf-8")
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
+sources["IngredientPickupPromptStyle"] = (ROOT / "src/client/UI/IngredientPickupPromptStyle.luau").read_text(encoding="utf-8")
+sources["MuncherEffects"] = (ROOT / "src/client/UI/MuncherEffects.luau").read_text(encoding="utf-8")
 sources["MuncherPresentation"] = (ROOT / "src/server/Components/MuncherPresentation.luau").read_text(encoding="utf-8")
 sources["MuncherReveal"] = (ROOT / "src/server/Components/MuncherReveal.luau").read_text(encoding="utf-8")
 sources["TutorialTooltip"] = (ROOT / "src/client/UI/TutorialTooltip.luau").read_text(encoding="utf-8")
@@ -220,8 +227,9 @@ sources["BlendVFXTests"] = (ROOT / "tests/blend_vfx.spec.luau").read_text(encodi
 sources["InteractionPromptPresentation"] = (ROOT / "src/client/UI/InteractionPromptPresentation.luau").read_text(encoding="utf-8")
 sources["MobilePromptDebug"] = (ROOT / "src/shared/MobilePromptDebug.luau").read_text(encoding="utf-8")
 sources["MobilePromptTouchTargets"] = (ROOT / "src/client/UI/MobilePromptTouchTargets.luau").read_text(encoding="utf-8")
-sources["WorldBillboardStyle"] = (ROOT / "src/client/UI/WorldBillboardStyle.luau").read_text(encoding="utf-8")
+sources["WorldBillboardStyle"] = (ROOT / "src/shared/WorldBillboardStyle.luau").read_text(encoding="utf-8")
 sources["Types"] = (ROOT / "src/shared/Types.luau").read_text(encoding="utf-8")
+sources["BlenderVacuumComponent"] = (ROOT / "src/server/Components/BlenderVacuum.luau").read_text(encoding="utf-8")
 sources["BlenderInputComponent"] = (ROOT / "src/server/Components/BlenderInput.luau").read_text(encoding="utf-8")
 sources["IngredientSpawnComponent"] = (ROOT / "src/server/Components/IngredientSpawn.luau").read_text(encoding="utf-8")
 sources["AnnouncedIngredientSpawn"] = (ROOT / "src/server/Components/AnnouncedIngredientSpawn.luau").read_text(encoding="utf-8")
@@ -233,6 +241,7 @@ sources["ServerBootstrap"] = (ROOT / "src/server/init.server.luau").read_text(en
 sources["ClientBootstrap"] = (ROOT / "src/client/init.client.luau").read_text(encoding="utf-8")
 sources["CustomerOrderController"] = (ROOT / "src/client/Controllers/CustomerOrderController.luau").read_text(encoding="utf-8")
 sources["CarryInputController"] = (ROOT / "src/client/Controllers/CarryInputController.luau").read_text(encoding="utf-8")
+sources["IngredientHoldController"] = (ROOT / "src/client/Controllers/IngredientHoldController.luau").read_text(encoding="utf-8")
 sources["SessionInteractionController"] = (ROOT / "src/client/Controllers/SessionInteractionController.luau").read_text(encoding="utf-8")
 sources["StandIdentityController"] = (ROOT / "src/client/Controllers/StandIdentityController.luau").read_text(encoding="utf-8")
 sources["StandNameEditor"] = (ROOT / "src/client/UI/StandNameEditor.luau").read_text(encoding="utf-8")

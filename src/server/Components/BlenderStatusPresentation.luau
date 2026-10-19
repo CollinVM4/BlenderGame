@@ -1,4 +1,5 @@
 --!strict
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Players = game:GetService("Players")
 local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
@@ -7,10 +8,9 @@ local BlenderStatusPresentation = {}
 
 -- Cosmetic tuning only. Capacity comes from the same config as BlendService.
 local TEXT_SIZE = 24
-local MAX_DISTANCE = 5
--- Offset-only canvases keep both displays at a fixed screen-space pixel size.
-local COUNT_SIZE = UDim2.fromOffset(240, 72)
-local PROMPT_SIZE = UDim2.fromOffset(380, 80)
+local MAX_DISTANCE = 40
+local COUNT_SIZE = Vector2.new(6.4, 1.9)
+local PROMPT_SIZE = Vector2.new(10.1, 2.1)
 local COUNT_OFFSET = Vector3.new(0, 0, 0)
 local PROMPT_OFFSET = Vector3.new(0, 0, 0)
 local WHITE = TextStyle.White
@@ -39,12 +39,16 @@ local function origin(root: Instance, name: string): Instance?
     return found
 end
 
-local function billboard(marker: Instance, name: string, size: UDim2, offset: Vector3): (BillboardGui, TextLabel)
+local function billboard(marker: Instance, name: string, size: Vector2, offset: Vector3): (BillboardGui, TextLabel)
     local gui = Instance.new("BillboardGui")
     gui.Name = name
     gui.Adornee = marker
-    gui.Size = size
-    gui.ClipsDescendants = false -- Keep the fixed completion line and brief count pop clear of the canvas edge.
+    -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
+    BillboardStyle.ApplyBillboard(
+        gui,
+        { WidthStuds = size.X, HeightStuds = size.Y, MaxDistance = MAX_DISTANCE, ResetOnSpawn = true }
+    )
+    gui.ClipsDescendants = false -- Keep the completion line and brief count pop clear of the canvas edge.
     gui.StudsOffsetWorldSpace = offset
     gui.AlwaysOnTop = true
     gui.MaxDistance = MAX_DISTANCE
@@ -54,6 +58,7 @@ local function billboard(marker: Instance, name: string, size: UDim2, offset: Ve
     text.BackgroundTransparency = 1
     text.BorderSizePixel = 0
     TextStyle.Apply(text, TEXT_SIZE)
+    text.TextScaled = true
     text.Text = ""
     text.Parent = gui
     gui.Parent = marker
@@ -106,8 +111,13 @@ function BlenderStatusPresentation.Init(services: any)
                 local guidance = promptText.Text == "LOAD INGREDIENTS TO BLEND!"
                 promptText.TextSize = if guidance then TEXT_SIZE * 0.85 else TEXT_SIZE
                 if promptGui then
-                    promptGui.Size = if guidance then UDim2.fromOffset(323, 68) else PROMPT_SIZE
-                    promptGui.MaxDistance = if guidance then MAX_DISTANCE * 0.70 else MAX_DISTANCE
+                    BillboardStyle.ApplyBillboard(promptGui, {
+                        WidthStuds = if guidance then 8 else PROMPT_SIZE.X,
+                        HeightStuds = if guidance then 1.7 else PROMPT_SIZE.Y,
+                        MaxDistance = MAX_DISTANCE,
+                        ResetOnSpawn = true,
+                    })
+                    promptGui.MaxDistance = MAX_DISTANCE
                 end
             end
         end
