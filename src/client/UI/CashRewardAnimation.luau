@@ -3,6 +3,7 @@ local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.CashFeedback)
 local Audio = require(script.Parent.Parent.Controllers.GameplayAudioController)
 local Hud = require(script.Parent.CashHud)
+local Debug = require(script.Parent.CashRewardDebug)
 local Animation = {}
 local random = Random.new()
 type Burst = { Collected: boolean }
@@ -84,13 +85,13 @@ local function step()
     end
     local now = os.clock()
     local target = Hud.Resolve(container)
-    local destination = if target then Hud.Center(target, layer) else nil
+    local destination = if target then Hud.Center(target, layer) else layer.AbsoluteSize / 2
     for index = #icons, 1, -1 do
         local icon = icons[index]
         local age = now - icon.Start
         local flightStart = 0.12 + icon.Float
         local duration = flightStart + 0.32
-        if not target or not destination or age >= duration then
+        if age >= duration then
             if target and age >= duration and not icon.Burst.Collected then
                 icon.Burst.Collected = true
                 collect(target)
@@ -152,19 +153,37 @@ end
 
 function Animation.Play(player: Player)
     if Config.Image == "" then
+        Debug.Log(player, "asset failed to load: empty image; burst skipped")
         return
     end
     local container = player:FindFirstChildOfClass("PlayerGui")
     local camera = workspace.CurrentCamera
     local character = player.Character
     local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-    if not container or not camera or not root or not root:IsA("BasePart") or not Hud.Resolve(container) then
+    if not container then
+        Debug.Log(player, "burst skipped: no PlayerGui")
+        return
+    end
+    if not camera then
+        Debug.Log(player, "burst skipped: no camera")
+        return
+    end
+    if not root or not root:IsA("BasePart") then
+        Debug.Log(player, "burst skipped: no character/HumanoidRootPart")
         return
     end
     local torso = character and (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
     local position = if torso and torso:IsA("BasePart") then torso.Position else root.Position + Vector3.new(0, 1, 0)
     local projected, onScreen = camera:WorldToScreenPoint(position)
+    local target = Hud.Resolve(container)
+    if not target then
+        Debug.Log(
+            player,
+            "HUD target missing: Desktop.Content.TOP.CashDisplay.Cash/{Coins} and aliases; centered burst"
+        )
+    end
     if not onScreen or projected.Z <= 0 then
+        Debug.Log(player, "burst skipped: off-screen character")
         return
     end
     if gui and (playerGui ~= container or not gui:IsDescendantOf(container)) then
@@ -172,6 +191,7 @@ function Animation.Play(player: Player)
     end
     local count = math.min(random:NextInteger(5, 8), Config.MaxIcons - #icons)
     if count < 5 then
+        Debug.Log(player, "burst skipped: icon capacity")
         return
     end
     if not gui then
@@ -188,7 +208,9 @@ function Animation.Play(player: Player)
         gui, canvas, playerGui = overlay, layer, container
     end
     local layer = canvas :: Frame
-    local origin = Vector2.new(projected.X, projected.Y) - layer.AbsolutePosition
+    local origin = if target
+        then Vector2.new(projected.X, projected.Y) - layer.AbsolutePosition
+        else layer.AbsoluteSize / 2
     local viewport = camera.ViewportSize
     local radius = math.clamp(math.min(viewport.X, viewport.Y) * 0.065, 22, 44)
     origin = Vector2.new(
@@ -206,6 +228,9 @@ function Animation.Play(player: Player)
         view.AnchorPoint = Vector2.new(0.5, 0.5)
         view.Visible = false
         view.Parent = layer
+        if index == 1 then
+            Debug.WatchImage(player, view)
+        end
         local angle = (index - 1) / count * math.pi * 2 + random:NextNumber(-0.25, 0.25)
         local spread = radius * random:NextNumber(0.65, 1)
         table.insert(icons, {

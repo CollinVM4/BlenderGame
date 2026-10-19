@@ -4,13 +4,20 @@ local function event(id, payout, owner, moment)
     return accept(moment or "CustomerReaction", owner or 51, { BlendId = id, Payout = payout }, 51)
 end
 check(not event("foreign", 100, 99), "other players' payouts cannot animate")
+for _, id in { "", 12, false } do
+    local accepted, reason = event(id, 10)
+    check(not accepted and reason == "bad BlendId", "bad blend IDs report rejection")
+end
+check(not event(nil, 10), "missing BlendId rejected")
 for _, value in { 0, -100, math.huge, 0 / 0, "100" } do
-    check(not event("invalid", value), "nonpositive/nonfinite/malformed payout cannot animate")
+    local accepted, reason = event("invalid", value)
+    check(not accepted and reason == "bad payout", "nonpositive/nonfinite/malformed payout cannot animate")
 end
 check(not event("blend", 100, 51, "SmoothieDispensed"), "dispense is not confirmed payout")
 check(not accept(nil, nil, nil, 51), "malformed event ignored")
 check(event("served-1", 100), "committed positive local payout accepted")
-check(not event("served-1", 100), "repeated committed event suppressed")
+local repeated, reason = event("served-1", 100)
+check(not repeated and reason == "duplicate", "repeated committed event suppressed with diagnostic reason")
 check(event("served-2", 50), "consecutive distinct serves accepted")
 for index = 1, 1100 do
     event("long-session-" .. index, 10)
@@ -27,6 +34,9 @@ local function ui(class, name, parent)
     object.Name, object.Parent = name, parent
     object.Visible, object.Enabled = true, true
     object.AbsolutePosition, object.AbsoluteSize = vec(0, 0, 0), vec(360, 640, 0)
+    object.GetPropertyChangedSignal = function()
+        return signal()
+    end
     if class == "UIScale" then
         object.Scale = 1
     end
@@ -65,6 +75,23 @@ end
 local screen, firstDesktop, top, cash = desktop("GeneratedRoot")
 local hud = loadModule("CashHud")
 check(hud.Resolve(playerGui) == cash, "actual active Framewisp cash frame resolved")
+local label = cash:FindFirstChild("{Coins}")
+local content = top.Parent
+label.Parent = top
+check(hud.Resolve(playerGui) == label, "direct TOP {Coins} alias resolves without CashDisplay")
+label.Parent = cash
+cash.Parent = content
+check(hud.Resolve(playerGui) == cash, "content-level cash fallback resolves")
+cash.Parent = firstDesktop
+check(hud.Resolve(playerGui) == cash, "desktop-level cash fallback resolves with optional Content")
+cash.Parent = top
+local originalParent = top.Parent
+top.Parent = firstDesktop
+check(hud.Resolve(playerGui) == cash, "desktop TOP resolves alongside content wrapper")
+top.Parent = originalParent
+label.Visible = false
+check(hud.Resolve(playerGui) == nil, "hidden counter cannot receive punch")
+label.Visible = true
 local canvas = ui("Frame", "Canvas")
 canvas.AbsolutePosition = vec(-7, -48, 0)
 local center = hud.Center(cash, canvas)
@@ -85,6 +112,17 @@ check(hud.Resolve(playerGui) == cash, "semantic rename survives reimport")
 local duplicate = ui("Frame", "CashDisplay", top)
 check(hud.Resolve(playerGui) == nil, "duplicate cash contract skipped")
 duplicate:Destroy()
+screen.Enabled = false
+local alternate = ui("ScreenGui", "RenamedDesktop", playerGui)
+alternate:SetAttribute("BlenderUI", "Desktop")
+local alternateTop = ui("Frame", "TOP", alternate)
+local alternateCash = ui("TextLabel", "Cash", alternateTop)
+check(hud.Resolve(playerGui) == alternateCash, "semantic ScreenGui desktop without Content resolves Cash alias")
+alternate.Enabled = false
+screen.Enabled = true
+local emptyDesktop = ui("ScreenGui", "Be a Blender! Desktop", playerGui)
+check(hud.Resolve(playerGui) == cash, "empty alternate root does not veto valid cash target")
+emptyDesktop:Destroy()
 
 local player = instance("Player")
 player.UserId, player.Character = 51, instance("Model")
@@ -101,6 +139,22 @@ workspaceFake.CurrentCamera = {
 local render = signal()
 services.RunService.RenderStepped = render
 local cues = {}
+local logs, timers = {}, {}
+env.warn = function(message)
+    table.insert(logs, message)
+end
+env.task.delay = function(_, callback)
+    table.insert(timers, callback)
+end
+env.Enum.AssetFetchStatus = { Success = "Success", Failure = "Failure" }
+local fetchStatus = "Success"
+services.ContentProvider = {
+    PreloadAsync = function(_, _, callback)
+        if fetchStatus then
+            callback("test", fetchStatus)
+        end
+    end,
+}
 parent.Parent.Controllers = parent
 cache.GameplayAudioController = {
     PlayCashFeedback = function(kind)
@@ -109,6 +163,7 @@ cache.GameplayAudioController = {
 }
 local animation = loadModule("CashRewardAnimation")
 local config = loadModule("CashFeedback")
+config.Image = ""
 animation.Play(player)
 check(not playerGui:FindFirstChild("CashRewardEffects"), "unset uploaded icon skips without substituted artwork")
 config.Image = "test://supplied-icon"
@@ -176,7 +231,19 @@ check(authored.Scale == 0.85, "respawn cleanup restores authored scale")
 animation.Play(player)
 top.Visible = false
 render:Fire()
-check(activeIcons() == 0, "disappearing HUD cleans pending flight gracefully")
+check(activeIcons() == 8, "disappearing HUD preserves pending burst")
+now += 1
+render:Fire()
+check(activeIcons() == 0, "centered fallback completes without HUD")
+animation.Play(player)
+check(activeIcons() == 8, "missing HUD still starts centered burst")
+local fallbackIcon = playerGui:FindFirstChild("CashIcon", true)
+render:Fire()
+check(
+    fallbackIcon.Position.X.Offset == 180 and fallbackIcon.Position.Y.Offset == 320,
+    "missing HUD pops at screen center"
+)
+animation.Clear()
 top.Visible = true
 onScreen = false
 animation.Play(player)
@@ -206,6 +273,11 @@ player.CharacterRemoving:Fire()
 check(activeIcons() == 0, "respawn cancels transient presentation")
 remote.OnClientEvent:Fire("CustomerReaction", 51, { BlendId = "controller-1", Payout = 100 })
 check(activeIcons() == 0, "respawn does not reset replay protection")
+remote.OnClientEvent:Fire("CustomerReaction", 51, { BlendId = "consolation", Payout = 1, Grade = "D" })
+check(activeIcons() == 8, "positive D consolation animates through controller")
+animation.Clear()
+remote.OnClientEvent:Fire("CustomerReaction", 51, { BlendId = "unpaid", Payout = 0 })
+check(activeIcons() == 0, "non-paying event cannot start burst")
 screen:Destroy()
 secondScreen.Enabled = true
 local replacementCash = secondScreen:FindFirstChild("CashDisplay", true)
@@ -216,4 +288,48 @@ now += 1
 render:Fire()
 check(replacementCash:FindFirstChildOfClass("UIScale") ~= nil, "arrival reacts on replacement frame")
 animation.Clear()
+-- Diagnostics exercise actual image observations and engine fetch outcomes.
+local debug = loadModule("CashRewardDebug")
+check(not debug.Enabled(player), "diagnostics default off")
+player:SetAttribute("CashRewardDebug", true)
+studio = false
+check(not debug.Enabled(player), "diagnostics disabled outside Studio even with attribute")
+studio = true
+now += 5
+table.clear(logs)
+config.Image = ""
+animation.Play(player)
+check(string.find(logs[1], "asset failed to load: empty image", 1, true), "empty asset identifies the failing gate")
+config.Image = "test://invalid"
+fetchStatus = "Failure"
+animation.Play(player)
+flush()
+check(string.find(logs[#logs], "asset failed to load", 1, true), "failed fetch is diagnosed")
+animation.Clear()
+config.Image = "test://valid"
+fetchStatus = "Success"
+animation.Play(player)
+flush()
+check(string.find(logs[#logs], "asset loaded", 1, true), "successful fetch is diagnosed")
+animation.Clear()
+fetchStatus = nil
+animation.Play(player)
+flush()
+for _, callback in timers do
+    callback()
+end
+check(string.find(logs[#logs], "five-second timeout", 1, true), "pending fetch has bounded timeout diagnosis")
+animation.Clear()
+table.clear(timers)
+local cached = ui("ImageLabel", "CachedIcon")
+cached.Image, cached.IsLoaded = config.Image, true
+debug.WatchImage(player, cached)
+check(string.find(logs[#logs], "ImageLabel.IsLoaded", 1, true), "cached label reports loaded")
+now += 5
+table.clear(logs)
+for _ = 1, 40 do
+    debug.Log(player, "bounded")
+end
+check(#logs == 20, "diagnostic output bounded per five seconds")
+player:SetAttribute("CashRewardDebug", false)
 print("PASS: cash reward presentation contracts")

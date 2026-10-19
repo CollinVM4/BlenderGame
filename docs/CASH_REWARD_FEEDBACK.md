@@ -24,13 +24,16 @@ the remaining reward stays visible to members of the same plot.
 The supplied attachment contained the request text but no PNG binary. Upload your
 original **Green Cash 1st Outline 64px.png** through Studio's Asset Manager and set:
 
-- Repository: `src/shared/Constants/CashFeedback.luau`, `Image` (line 5).
+- Repository: `src/shared/Constants/CashFeedback.luau`, `Image`.
 - Studio: `ReplicatedStorage.Shared.Constants.CashFeedback`, `Image`.
 - Value: `"rbxassetid://<your uploaded image ID>"`.
 
-The default empty reference deliberately skips the cosmetic burst. Server payouts
-and world reward text work immediately. No replacement icon or invented asset ID
-is provided. There is no required Workspace or Framewisp export edit.
+The current repository reference is `rbxassetid://122284146591659`. Its ownership,
+permissions, moderation status and appearance have not been verified in Studio.
+Collin must confirm it resolves to the supplied green cash image, or upload that
+original and update both locations above. No replacement ID was invented. An empty
+reference skips the burst; server payouts and world reward text remain independent.
+There is no required Workspace or Framewisp export edit.
 
 ## Animation and Framewisp lifecycle
 
@@ -42,7 +45,13 @@ bursts; excess cosmetic bursts skip without affecting balance updates.
 
 The destination uses the same UIRegistry semantic/reimport contract as UpgradesGui:
 Desktop ? optional Content ? TOP ? CashDisplay ? Cash/{Coins}. Hidden, disabled,
-missing, zero-size and ambiguous imports skip safely. Each animation frame resolves
+missing, zero-size and ambiguous targets cannot receive a HUD punch. Resolution
+first uses the primary path, then direct Cash/{Coins} labels and CashDisplay at
+Content/Desktop level (including TOP directly under Desktop). Semantic roles,
+optional Content and Frame/ScreenGui desktops retain the UIRegistry contract;
+arbitrary descendant names are never used. Empty alternate desktops do not veto
+one valid target; two valid active targets remain ambiguous. With no target, the
+burst starts at screen center and flies back to center, with no HUD punch. Each animation frame resolves
 the current target, so reimports and resize do not retain stale screen coordinates.
 Absolute centers are converted relative to the effects canvas's actual origin;
 WorldToScreenPoint projects the torso into the same inset coordinate system.
@@ -74,15 +83,50 @@ Studio to confirm these existing clips fit the intended cash feel.
    CashRewardEffects instances disappear after completion/reset.
 6. Use Device Emulator for phone portrait/landscape and tablet, then resize desktop.
    Check torso origin, compact spread, GUI insets and correct cash destination.
-7. Hide/delete the active cash HUD during flight; payouts must continue with graceful
-   cosmetic cleanup. Replace/reimport the Framewisp root, retaining its semantic
+7. Hide/delete the active cash HUD before and during flight; the burst must still
+   complete, centered when started without a target. Replace/reimport the Framewisp root, retaining its semantic
    roles; the next serve must target the replacement. Test two active imports:
-   effects should pause while ownership is ambiguous, then resume on a new serve.
+   effects should use screen center while ownership is ambiguous, then target the
+   remaining valid HUD on a new serve.
 8. Confirm authored cash sizing/strokes and the existing replicated cash balance
    binding remain intact after pulses, respawn and reimport. Listen for brief cues
    without excessive overlap.
 
-## Validation
+## Opt-in Studio diagnostics (2026-10-19 repair)
+
+On the Studio server Command Bar, enable the serving player:
+`game:GetService("Players"):FindFirstChild("PLAYER_NAME"):SetAttribute("CashRewardDebug", true)`.
+Read that client's Output. Disable by setting the attribute to false. Diagnostics
+are off by default, disabled outside Studio, and capped at 20 lines per five seconds.
+
+The controller logs the received moment/owner and the accept result: wrong moment,
+owner mismatch, bad payload, bad BlendId, bad payout, duplicate or accepted. The
+animation names empty-image, PlayerGui, camera, character/root, off-screen and
+capacity gates, plus missing HUD targets and centered fallback. One real ImageLabel
+per burst is sampled, with at most four pending probes. IsLoaded changes/cached
+loads and ContentProvider fetch status identify successful versus failed loads;
+a five-second timeout reports failure to load within that window (which can also
+mean slow networking, not necessarily a bad ID). These probes do not delay animation.
+
+Code inspection confirms the old missing-HUD gate both skipped new bursts and
+deleted in-flight icons. The stale empty-default documentation/test also disagreed
+with the configured ID. This establishes failure mechanisms, not which one occurred
+in Collin's live session. No connected Studio session or Windows-control runtime
+was available for this repair, so asset resolution and live acceptance remain unverified.
+
+Studio acceptance still required: valid PNG renders pop/float/flight/punch on desktop
+and mobile; invalid and empty references emit asset failures with diagnostics enabled;
+hidden/reimported HUD keeps a visible burst and reports a missing target; teammate
+serves animate only for their owner; D consolation animates while rejected serves do not.
+
+Repair validation passed: `tests/run_cash_reward_tests.py` (real production modules
+with engine doubles), Roblox-aware typecheck of all five changed runtime modules,
+StyLua check of changed Luau files, fresh Rojo sourcemap/build and whitespace checks.
+The suite covers malformed IDs/payouts, duplicate suppression, owner filtering,
+D consolation, aliases/alternate roots, centered fallback and mocked asset load,
+failure and timeout diagnostics. It does not verify image pixels or live serves.
+
+## Previous implementation validation
 
 Passed: standalone cash presentation contracts (actual gate/controller/animation/
 HUD modules), customer-result and gameplay-audio suites, existing upgrade/cash UI

@@ -2,25 +2,38 @@
 local Registry = require(script.Parent.UIRegistry)
 local Hud = {}
 
+local function resolveWithin(root: Instance?, playerGui: Instance): GuiObject?
+    local cash = Registry.Child(root, "CashDisplay", { "CashDisplay" }, "GuiObject")
+    local label = Registry.Child(cash, "Cash", { "{Coins}", "Cash" }, "TextLabel")
+    local target = if cash and label then cash else Registry.Child(root, "Cash", { "{Coins}", "Cash" }, "TextLabel")
+    if target and target:IsA("GuiObject") and Registry.ActiveRoot(label or target, playerGui) then
+        if target.AbsoluteSize.X > 0 and target.AbsoluteSize.Y > 0 then
+            return target
+        end
+    end
+    return nil
+end
+
 function Hud.Resolve(playerGui: Instance): GuiObject?
     local selected: GuiObject? = nil
-    local active = 0
     for _, desktop in Registry.Desktops(playerGui) do
         if Registry.ActiveRoot(desktop, playerGui) then
-            active += 1
             local content = Registry.Content(desktop)
             local top = Registry.Child(content, "TOP", { "TOP" }, "GuiObject")
-            local cash = Registry.Child(top, "CashDisplay", { "CashDisplay" }, "GuiObject")
-            local label = Registry.Child(cash, "Cash", { "{Coins}", "Cash" }, "TextLabel")
-            if cash and label and Registry.ActiveRoot(label, playerGui) then
-                local frame = cash :: GuiObject
-                if frame.AbsoluteSize.X > 0 and frame.AbsoluteSize.Y > 0 then
-                    selected = frame
+            local target = resolveWithin(top, playerGui) or resolveWithin(content, playerGui)
+            if not target and content ~= desktop then
+                local desktopTop = Registry.Child(desktop, "TOP", { "TOP" }, "GuiObject")
+                target = resolveWithin(desktopTop, playerGui) or resolveWithin(desktop, playerGui)
+            end
+            if target then
+                if selected and selected ~= target then
+                    return nil
                 end
+                selected = target
             end
         end
     end
-    return if active == 1 then selected else nil
+    return selected
 end
 
 -- All AbsolutePositions share the CoreUISafeInsets coordinate system, even

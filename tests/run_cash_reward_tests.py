@@ -12,6 +12,7 @@ args = parser.parse_args()
 paths = {
     "CashFeedback": "src/shared/Constants/CashFeedback.luau",
     "CashRewardState": "src/client/UI/CashRewardState.luau",
+    "CashRewardDebug": "src/client/UI/CashRewardDebug.luau",
     "CashHud": "src/client/UI/CashHud.luau",
     "UIRegistry": "src/client/UI/UIRegistry.luau",
     "CashRewardAnimation": "src/client/UI/CashRewardAnimation.luau",
