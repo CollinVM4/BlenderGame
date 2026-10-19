@@ -62,6 +62,17 @@ function Controller.Init()
     local mouseIcon = Input.MouseIconEnabled
     local serial = 0
 
+    local function syncPanelToggle()
+        local inBar = boxed and not ui.Frame.Visible
+        ui.HidePanel.Text = if ui.Frame.Visible then "Hide" else "Show"
+        ui.HidePanel.AnchorPoint = if inBar then Vector2.new(0.5, 0.5) else Vector2.new(1, 0)
+        ui.HidePanel.Position = if inBar then UDim2.fromScale(0.5, 0.06) else UDim2.new(1, -12, 0, 12)
+    end
+    local function togglePanel()
+        ui.Frame.Visible = not ui.Frame.Visible
+        syncPanelToggle()
+    end
+
     local function connect(signal: RBXScriptSignal, fn: any)
         table.insert(connections, signal:Connect(fn))
     end
@@ -198,6 +209,7 @@ function Controller.Init()
             bar.Visible = false
         end
         ui.Letterbox.Text = "Letterbox: off"
+        syncPanelToggle()
         if camera and original then
             restore(camera, original)
         end
@@ -305,6 +317,7 @@ function Controller.Init()
         cam.CameraType = Enum.CameraType.Scriptable
         syncAngles()
         ui.Frame.Visible = true
+        syncPanelToggle()
         ui.Gui.Enabled = true
         CAS:BindActionAtPriority(
             "FilmCamFly",
@@ -408,10 +421,12 @@ function Controller.Init()
             bar.Visible = boxed
         end
         ui.Letterbox.Text = if boxed then "Letterbox: on" else "Letterbox: off"
+        syncPanelToggle()
     end)
     connect(ui.Hide.Activated, function()
         setHidden(not hidden)
     end)
+    connect(ui.HidePanel.MouseButton1Click, togglePanel)
     connect(ui.Scrub.InputBegan, function(input: InputObject)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 or not active then
             return
@@ -438,8 +453,8 @@ function Controller.Init()
             else
                 enter()
             end
-        elseif active and input.KeyCode == Config.PanelKey and not processed and not Input:GetFocusedTextBox() then
-            ui.Frame.Visible = not ui.Frame.Visible
+        elseif active and input.KeyCode == Config.PanelKey and not processed then
+            togglePanel()
         elseif
             active
             and not playing

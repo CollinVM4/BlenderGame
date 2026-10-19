@@ -117,6 +117,17 @@ local function frame(x, y, z)
         end,
     })
 end
+local guiObjectClasses = {
+    Frame = true,
+    TextLabel = true,
+    TextBox = true,
+    TextButton = true,
+    ImageLabel = true,
+    ImageButton = true,
+    ViewportFrame = true,
+    ScrollingFrame = true,
+    CanvasGroup = true,
+}
 local function instance(class)
     local object = { ClassName = class, Children = {}, Attributes = {}, Archivable = true }
     table.insert(allInstances, object)
@@ -285,6 +296,8 @@ local function instance(class)
     end
     function object:IsA(name)
         return name == self.ClassName
+            or (name == "GuiObject" and guiObjectClasses[self.ClassName] == true)
+            or (name == "GuiButton" and (self.ClassName == "TextButton" or self.ClassName == "ImageButton"))
             or (name == "BasePart" and (self.ClassName == "Part" or self.ClassName == "MeshPart"))
             or (name == "DataModelMesh" and self.ClassName == "SpecialMesh")
             or (name == "Attachment" and self.ClassName == "Bone")

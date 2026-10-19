@@ -1,4 +1,19 @@
 -- Presentation policy is independent of authoritative gameplay suites.
+local function inactiveView(root)
+    local subtree = root:GetDescendants()
+    table.insert(subtree, root)
+    for _, object in subtree do
+        if
+            object:IsA("GuiObject")
+            or object:IsA("GuiBase3d")
+            or object:IsA("BillboardGui")
+            or object:IsA("SurfaceGui")
+        then
+            check(object.Active == false, root.Name .. " never consumes world or Throw taps: " .. object.ClassName)
+        end
+        check(not object:IsA("GuiButton"), "decorative view contains no input target")
+    end
+end
 cache.MuncherEffects = {
     Bind = function()
         return function() end, function() end
@@ -59,6 +74,9 @@ do
         return signal()
     end
     plot.Parent, model.Parent, model.Name = workspaceFake, plot, "Muncher"
+    local pad = instance("Part")
+    pad.Name, pad.Parent = "PurchasePoint1", model
+    pad.CanTouch, pad.Transparency = true, 0
     services.CollectionService:AddTag(plot, "PlayerPlot")
     controller.Init()
     local function inactiveHint(expected)
@@ -67,10 +85,15 @@ do
         check(hint and hint.Enabled and hint.Active == false, "visible hint billboard is explicitly inactive")
         local label = hint:FindFirstChildOfClass("TextLabel")
         check(label.Text == expected and label.Active == false, "hint/banner label never consumes Throw taps")
-        for _, descendant in hint:GetDescendants() do
-            check(descendant.Active ~= true, "entire decorative subtree has no active element")
-            check(not descendant:IsA("GuiButton"), "hint/banner contains no input target")
-        end
+        inactiveView(hint)
+        local purchase = playerGui:FindFirstChild("MuncherPurchase")
+        check(purchase and purchase.Enabled and purchase.Adornee == pad, "purchase view remains visible on its pad")
+        check(
+            purchase:FindFirstChild("Title").Text == "MUNCHER" and purchase:FindFirstChild("Detail").Text == "$100K",
+            "purchase view includes title and price"
+        )
+        inactiveView(purchase)
+        check(pad.CanTouch and pad.Transparency == 0, "informational view preserves purchase pad interaction")
     end
     inactiveHint("FEED ME")
     model:SetAttribute("Phase", "Processing")
@@ -106,7 +129,7 @@ do
         render:Fire(0)
         check(not hint.Enabled, "pending spit/retry never announces output early")
         completeResult()
-        local expected = if result == "Win" then "FREEDOKA YOU WIN" else "FREEDOKA YOU LOOSE"
+        local expected = if result == "Win" then "YOU WIN!" else "YOU LOSE!"
         local expectedColor = if result == "Win" then color(120 / 255, 1, 140 / 255) else color(1, 120 / 255, 120 / 255)
         check(hint.Enabled and label.Text == expected, "spawn completion shows exact " .. result .. " banner")
         check(
@@ -178,6 +201,7 @@ do
     services.CollectionService:RemoveTag(plot, "PlayerPlot")
     render:Fire(config.ScanInterval)
     check(playerGui:FindFirstChild("MuncherHint") == nil, "view removal destroys the shared result/hint billboard")
+    check(playerGui:FindFirstChild("MuncherPurchase") == nil, "view removal destroys purchase billboard")
     plot.Parent = nil
 end
 
@@ -262,6 +286,7 @@ cache.GameplayAudioController = {
 cache.IngredientViewport = {
     Create = function(image, id)
         local viewport = instance("ViewportFrame")
+        viewport.Active = false
         viewport.Name, viewport.Parent = "IngredientPreview", image.Parent
         viewport:SetAttribute("PreviewId", id)
     end,
@@ -297,6 +322,7 @@ local animate, stop = effects.Bind(effectModel, guiRoot)
 animate(now)
 local reels = guiRoot:FindFirstChildOfClass("SurfaceGui")
 check(reels ~= nil and #reels:GetChildren() == 3, "three clipped reels replace fading heart burst")
+inactiveView(reels)
 check(
     reels.Adornee == display
         and reels.Face == env.Enum.NormalId.Front

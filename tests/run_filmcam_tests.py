@@ -14,6 +14,7 @@ paths = {
     "FilmCam": "src/shared/Constants/FilmCam.luau",
     "FilmCamTakes": "src/client/UI/FilmCamTakes.luau",
     "FilmCamController": "src/client/Controllers/FilmCamController.luau",
+    "FilmCamPanel": "src/client/UI/FilmCamPanel.luau",
 }
 bundle = "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((ROOT / path).read_text(encoding='utf-8'))},"

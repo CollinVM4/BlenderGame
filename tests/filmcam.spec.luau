@@ -10,6 +10,14 @@ env.Enum.RenderPriority = { Camera = { Value = 200 } }
 env.Enum.MouseBehavior = { Default = "Default", LockCurrentPosition = "Locked" }
 env.Enum.UserInputType = { MouseButton1 = "Left", MouseButton2 = "Right", MouseMovement = "Move", MouseWheel = "Wheel" }
 env.Vector3.zAxis = vec(0, 0, 1)
+env.UDim2.new = function(xs, xo, ys, yo)
+    return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } }
+end
+env.UDim = {
+    new = function(scale, offset)
+        return { Scale = scale, Offset = offset }
+    end,
+}
 
 local Path = loadModule("FilmCamPath")
 local Config = loadModule("FilmCam")
@@ -248,6 +256,7 @@ cache.StandIdentityController = {
 cache.FilmTakes = {}
 local function control()
     local c = instance("TextButton")
+    c.MouseButton1Click = signal()
     c.InputBegan = signal()
     c.Text = ""
     function c:CaptureFocus()
@@ -268,6 +277,7 @@ cache.FilmCamPanel = {
                 "Name",
                 "Select",
                 "Hide",
+                "HidePanel",
                 "Record",
                 "Stop",
                 "Play",
@@ -324,17 +334,73 @@ local function step(dt)
         callbacks.FilmCamRender(dt)
     end
 end
+local function docked(text, inBar)
+    local button = ui.HidePanel
+    local position, anchor = button.Position, button.AnchorPoint
+    check(button.Text == text, "panel toggle reads " .. text)
+    if inBar then
+        check(
+            position.X.Scale == 0.5
+                and position.Y.Scale == 0.06
+                and position.X.Offset == 0
+                and position.Y.Offset == 0
+                and anchor.X == 0.5
+                and anchor.Y == 0.5,
+            "Show pill is centered inside top black bar"
+        )
+    else
+        check(
+            position.X.Scale == 1
+                and position.X.Offset == -12
+                and position.Y.Scale == 0
+                and position.Y.Offset == 12
+                and anchor.X == 1
+                and anchor.Y == 0,
+            "panel toggle docks at viewport top-right"
+        )
+    end
+end
+local function hidePanelWithFocus(context)
+    ui.Export:CaptureFocus()
+    ui.HidePanel.MouseButton1Click:Fire()
+    check(not ui.Frame.Visible, "Hide button hides focused panel " .. context)
+    docked("Show", false)
+    ui.HidePanel.MouseButton1Click:Fire()
+    check(ui.Frame.Visible, "Hide button restores focused panel " .. context)
+    docked("Hide", false)
+    input.Focused = nil
+end
 press("F6")
 check(
     ui.Gui.Enabled and cam.CameraType == "Scriptable" and turbineState and standState,
     "film mode borrows camera and suspends owners"
 )
 check(action() == "Sink", "framing consumes movement input")
+hidePanelWithFocus("while framing")
+for _, name in { "Name", "Speed", "Export" } do
+    ui[name]:CaptureFocus()
+    press("F7")
+    check(not ui.Frame.Visible, "F7 hides panel with " .. name .. " focused")
+    press("F7")
+    check(ui.Frame.Visible, "F7 shows panel with " .. name .. " focused")
+    input.InputBegan:Fire({ KeyCode = "F7" }, true)
+    check(ui.Frame.Visible, "processed F7 remains ignored with " .. name .. " focused")
+    press("F6")
+    check(ui.Gui.Enabled and cam.CameraType == "Scriptable", "focused F6 does not exit film mode")
+    check(action() == "Pass", "focused text input passes movement through")
+    local before = cam.CFrame
+    input.Down.W = true
+    step(0.5)
+    input.Down.W = false
+    check(cam.CFrame == before, "typing does not move the freecam")
+end
+input.Focused = nil
 input.Down.W = true
 step(0.5)
 input.Down.W = false
 check(close(cam.CFrame.Position.Z, 3 - Config.FlySpeed * 0.5), "fly camera moves independently of character")
 click("Record")
+hidePanelWithFocus("while recording")
 step(0.05)
 click("Copy")
 check(ui.Export.Text == "", "recording does not create a premature session take")
@@ -347,6 +413,11 @@ input.Down.D = false
 click("Stop")
 click("Copy")
 local recorded = copy(wire)
+check(input.Focused == ui.Export, "Copy Take focuses the export box")
+press("F7")
+check(not ui.Frame.Visible, "F7 hides panel immediately after Copy Take")
+press("F7")
+check(ui.Frame.Visible, "F7 restores panel after Copy Take")
 input.Focused = nil
 check(
     Path.Validate(recorded) and recorded.Keys[1].Time == 0 and close(recorded.Duration, 1.1),
@@ -360,6 +431,7 @@ check(
 )
 local framing = cam.CFrame
 click("Play")
+hidePanelWithFocus("during playback")
 check(action() == "Pass", "playback allows live character performance")
 step(0.3)
 check(cam.CFrame.Position.X < framing.Position.X, "playback replays prior framing")
@@ -407,6 +479,23 @@ check(not late.Enabled, "new HUD hidden during capture")
 click("Letterbox")
 press("F7")
 check(not ui.Frame.Visible and ui.Bars[1].Visible, "clean capture hides panel while keeping letterbox")
+docked("Show", true)
+ui.Export:CaptureFocus()
+ui.HidePanel.MouseButton1Click:Fire()
+check(ui.Frame.Visible and ui.Bars[1].Visible, "Show restores panel without removing letterbox")
+docked("Hide", false)
+ui.HidePanel.MouseButton1Click:Fire()
+check(not ui.Frame.Visible and not visible.Enabled, "Hide preserves hidden HUD and letterbox")
+docked("Show", true)
+click("Letterbox")
+docked("Show", false)
+click("Letterbox")
+docked("Show", true)
+press("F7")
+docked("Hide", false)
+press("F7")
+docked("Show", true)
+input.Focused = nil
 press("F6")
 check(
     visible.Enabled and not disabled.Enabled and late.Enabled and dev.Enabled,
@@ -445,4 +534,23 @@ controller.Init()
 press("F6")
 check(ui.Gui.Enabled and cam.CameraType == "Scriptable", "non-allowlisted Studio client can film")
 controller.Destroy()
+-- The real view leaves its restore control reachable while its content is hidden.
+cache.FilmCamPanel = nil
+env.Enum.Font.Code = "Code"
+local panel = loadModule("FilmCamPanel").Create(playerGui)
+panel.Gui.Enabled, panel.Frame.Visible = true, false
+check(
+    panel.HidePanel:IsA("TextButton") and panel.HidePanel.Text == "Hide" and panel.HidePanel.Parent == panel.Gui,
+    "real Hide button remains reachable when panel content is hidden"
+)
+check(panel.HidePanel ~= panel.Hide, "panel toggle is separate from the Hide UI control")
+check(
+    panel.HidePanel.Size.X.Offset == 64
+        and panel.HidePanel.Size.Y.Offset == 28
+        and panel.HidePanel.TextSize == 12
+        and panel.HidePanel.Position.X.Scale == 1
+        and panel.HidePanel.Position.Y.Scale == 0,
+    "real panel creates a compact pill at viewport top-right"
+)
+panel.Gui:Destroy()
 print(string.format("PASS: %d FilmCam presentation/math contracts", count))

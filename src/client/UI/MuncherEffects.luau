@@ -120,6 +120,7 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
                 glow = light
                 local gui = Instance.new("SurfaceGui")
                 gui.Name, gui.Adornee = "MuncherReels", display
+                -- Decorative roll view: never consume world or Throw taps.
                 gui.Active = false
                 gui.Face = Enum.NormalId.Front
                 gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
@@ -130,6 +131,7 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
                 rollGui = gui
                 for index = 1, 3 do
                     local window = Instance.new("Frame")
+                    window.Active = false
                     window.Name = "Reel" .. index
                     window.BackgroundColor3 = Color3.fromRGB(35, 20, 45)
                     window.BackgroundTransparency = 0.15
@@ -146,11 +148,13 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
                     -- Build each candidate once per reel; spinning only moves cached visuals.
                     for _, entry in pool do
                         local symbol = Instance.new("Frame")
+                        symbol.Active = false
                         symbol.Name = entry.Id
                         symbol.BackgroundTransparency = 1
                         symbol.Size = UDim2.fromScale(1, 1)
                         symbol.Parent = window
                         local image = Instance.new("ImageLabel")
+                        image.Active = false
                         image.Name = "IngredientIcon"
                         image.BackgroundTransparency = 1
                         image.Size = UDim2.fromScale(0.88, 0.88)

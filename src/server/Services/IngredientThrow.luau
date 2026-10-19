@@ -1,5 +1,6 @@
 --!strict
 local Debris = game:GetService("Debris")
+local CollectionService = game:GetService("CollectionService")
 local IngredientThrow = {}
 local GRACE_SECONDS = 0.2
 local CLEARANCE = 0.25
@@ -97,13 +98,21 @@ function IngredientThrow.FindOrigin(root: BasePart, character: Model, object: In
     end
     local start = root.CFrame.Position + Vector3.new(0, math.max(2, itemRadius), 0)
     local boxSize = Vector3.new(2, 2, 2) * itemRadius
+    local excluded: { Instance } = { character }
+    -- Running receptors resolve arrivals through their vacuum, including busy shake-off.
+    for _, plot in CollectionService:GetTagged("PlayerPlot") do
+        local muncher = plot:FindFirstChild("Muncher")
+        if muncher and muncher:GetAttribute("Purchased") == true and muncher:GetAttribute("Active") == true then
+            table.insert(excluded, muncher)
+        end
+    end
     local overlap = OverlapParams.new()
     overlap.FilterType = Enum.RaycastFilterType.Exclude
-    overlap.FilterDescendantsInstances = { character }
+    overlap.FilterDescendantsInstances = excluded
     overlap.RespectCanCollide = true
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
-    ray.FilterDescendantsInstances = { character }
+    ray.FilterDescendantsInstances = excluded
     ray.RespectCanCollide = true
     local vertical = workspace:Raycast(root.CFrame.Position, start - root.CFrame.Position, ray)
     if vertical then

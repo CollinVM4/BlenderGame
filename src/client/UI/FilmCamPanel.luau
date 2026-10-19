@@ -43,6 +43,18 @@ function Panel.Create(parent: PlayerGui)
         return object
     end
     local title = control("TextLabel", "FilmCam | F6 exit | F7 panel", 8, 6, 324)
+    local hidePanel = control("TextButton", "Hide", 0, 0, 64) :: TextButton
+    hidePanel.Name = "HidePanel"
+    hidePanel.TextSize = 12
+    hidePanel.BorderSizePixel = 0
+    hidePanel.ZIndex = 3
+    -- Survive panel hiding; the controller docks Show inside the top letterbox bar.
+    hidePanel.Parent = gui
+    hidePanel.AnchorPoint = Vector2.new(1, 0)
+    hidePanel.Position = UDim2.new(1, -12, 0, 12)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.5, 0)
+    corner.Parent = hidePanel
     local name = control("TextBox", "", 8, 40, 324) :: TextBox
     name.PlaceholderText = "Take name (automatic if blank)"
     local record = control("TextButton", "Record", 8, 74, 102) :: TextButton
@@ -90,6 +102,7 @@ function Panel.Create(parent: PlayerGui)
         Orbit = orbit,
         Letterbox = letterbox,
         Hide = hide,
+        HidePanel = hidePanel,
         Scrub = scrub,
         Fill = fill,
         Status = status,

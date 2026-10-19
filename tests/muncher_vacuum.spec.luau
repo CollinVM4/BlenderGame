@@ -139,6 +139,65 @@ update(0.1)
 check(ingredients.GetRecord(rethrown) == nil and rolls == 2, "deliberate re-gamble succeeds once")
 finish()
 
+-- Integrate the real vacuum's velocity under gravity at engine-step boundaries.
+-- The conservative sphere threshold must capture even without an overlap hit.
+do
+    check(
+        config.Vacuum.Radius == 10
+            and config.Vacuum.PullStrength == 30
+            and config.Vacuum.CenteringStrength == 12
+            and config.Vacuum.MaxSpeed == 40
+            and config.Vacuum.MaxAcceleration == 600
+            and config.Vacuum.MaxPullSeconds == 1.5,
+        "approved aggressive vacuum tuning"
+    )
+    check(config.Vacuum.MaxStep == 1 / 30, "aggressive tuning retains bounded simulation step")
+    local slowest = 0
+    for _, dt in { 1 / 30, 1 / 60, 1 / 120 } do
+        for _, direction in { vec(1, 0, 0), vec(0, -1, 0), vec(0.6, 0.8, 0) } do
+            for _, initialSpeed in { 0, config.Vacuum.MaxSpeed } do
+                local edge, edgeRoot = loose(owner, input.Position + direction * config.Vacuum.Radius)
+                edgeRoot.AssemblyLinearVelocity = direction * -initialSpeed
+                candidates = { edge }
+                local edgeUpdate, edgeStop = vacuum.Bind(dependency, input, model)
+                local elapsed, passedMouth = 0, false
+                while ingredients.GetRecord(edge) and elapsed < config.Vacuum.MaxPullSeconds do
+                    now += dt
+                    elapsed += dt
+                    edgeUpdate(dt)
+                    if ingredients.GetRecord(edge) then
+                        edgeRoot.AssemblyLinearVelocity -= vec(0, workspaceFake.Gravity * dt, 0)
+                        edgeRoot.Position += edgeRoot.AssemblyLinearVelocity * dt
+                        edgeRoot.CFrame = frame(edgeRoot.Position)
+                        passedMouth = passedMouth or (edgeRoot.Position - input.Position):Dot(direction) < 0
+                    end
+                end
+                check(
+                    ingredients.GetRecord(edge) == nil,
+                    "radius-edge item captures at "
+                        .. dt
+                        .. "s step, speed="
+                        .. initialSpeed
+                        .. " direction="
+                        .. direction.X
+                        .. ","
+                        .. direction.Y
+                        .. ","
+                        .. direction.Z
+                        .. " final distance="
+                        .. (edgeRoot.Position - input.Position).Magnitude
+                )
+                check(not passedMouth, "max-speed approach never steps through the mouth before capture")
+                check(elapsed < config.Vacuum.MaxPullSeconds / 2, "edge capture takes well under pull timeout")
+                slowest = math.max(slowest, elapsed)
+                edgeStop()
+                finish()
+            end
+        end
+    end
+    print(string.format("Radius-edge capture: slowest %.3fs (timeout %.1fs)", slowest, config.Vacuum.MaxPullSeconds))
+end
+
 -- Authoritative eligibility: crops remain excluded even after anchoring/visual flags change.
 for _, state in { "Growing", "Ready" } do
     local crop, cropRoot = loose(owner, nil, { FarmManaged = true, FreezeUntilPickup = state == "Ready" })

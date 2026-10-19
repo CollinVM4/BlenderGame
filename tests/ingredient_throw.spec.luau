@@ -225,4 +225,92 @@ check(
 )
 workspaceFake.Blockcast = oldBlock
 inventory.ClearHeld(player)
+-- Only purchased, active receptors can resolve a point-blank spawn inside their geometry.
+do
+    local throw = loadModule("IngredientThrow")
+    local plot = instance("Model")
+    plot.Name, plot.Parent = "ReceptorPlot", workspaceFake
+    services.CollectionService:AddTag(plot, "PlayerPlot")
+    local muncher = instance("Model")
+    muncher.Name, muncher.Parent = "Muncher", plot
+    local mouth = instance("Part")
+    mouth.Name, mouth.Parent = "mouth", muncher
+    local otherPlot = instance("Model")
+    otherPlot.Name, otherPlot.Parent = "OtherPlot", workspaceFake
+    services.CollectionService:AddTag(otherPlot, "PlayerPlot")
+    local otherMuncher = instance("Model")
+    otherMuncher.Name, otherMuncher.Parent = "Muncher", otherPlot
+    otherMuncher:SetAttribute("Purchased", true)
+    otherMuncher:SetAttribute("Active", true)
+    local otherMouth = instance("Part")
+    otherMouth.Name, otherMouth.Parent = "mouth", otherMuncher
+    local otherPlayer = instance("Model")
+    otherPlayer.Name = "OtherPlayer"
+    local body = instance("Part")
+    body.Name, body.Parent = "Torso", otherPlayer
+    local item = instance("Part")
+    item.Size = vec(1, 1, 1)
+    for _, state in { "active", "busy", "unpurchased", "inactive", "unset", "other-receptor", "wall", "player" } do
+        muncher:SetAttribute("Purchased", if state == "unset" then nil else state ~= "unpurchased")
+        muncher:SetAttribute("Active", if state == "unset" then nil else state ~= "inactive")
+        muncher:SetAttribute("Phase", if state == "busy" then "Processing" else "Idle")
+        local blocker = if state == "wall"
+            then wall
+            elseif state == "player" then body
+            elseif state == "other-receptor" then otherMouth
+            else mouth
+        local accepted = state == "active" or state == "busy" or state == "other-receptor"
+        for _, gate in { "height", "initial", "path", "destination" } do
+            local function obstruction(params)
+                check(
+                    params.FilterType == env.Enum.RaycastFilterType.Exclude
+                        and params.FilterDescendantsInstances[1] == character
+                        and params.RespectCanCollide == true,
+                    "receptor clearance preserves character exclusion and collidable world queries"
+                )
+                for _, excluded in params.FilterDescendantsInstances do
+                    if blocker == excluded or blocker:IsDescendantOf(excluded) then
+                        return nil
+                    end
+                end
+                return blocker
+            end
+            workspaceFake.Raycast = function(_, _, _, params)
+                local hit = obstruction(params)
+                return if gate == "height" and hit then { Instance = hit } else nil
+            end
+            workspaceFake.Blockcast = function(_, _, _, _, params)
+                local hit = obstruction(params)
+                return if gate == "path" and hit then { Instance = hit } else nil
+            end
+            local queries = 0
+            workspaceFake.GetPartBoundsInBox = function(_, _, _, params)
+                queries += 1
+                local hit = obstruction(params)
+                return if hit and ((gate == "initial" and queries == 1) or (gate == "destination" and queries > 1))
+                    then { hit }
+                    else {}
+            end
+            local origin, reason = throw.FindOrigin(root, character, item)
+            check((origin ~= nil) == accepted, state .. " receptor clearance at " .. gate)
+            check(
+                string.find(
+                    reason,
+                    if accepted then "clear origin=" else "obstructed by " .. blocker:GetFullName(),
+                    1,
+                    true
+                ) ~= nil,
+                state .. " clearance diagnostics identify the result at " .. gate
+            )
+        end
+    end
+    workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
+    services.CollectionService:RemoveTag(plot, "PlayerPlot")
+    services.CollectionService:RemoveTag(otherPlot, "PlayerPlot")
+    plot:Destroy()
+    otherPlot:Destroy()
+    otherPlayer:Destroy()
+    item:Destroy()
+end
+
 data.GetUpgrade = getUpgrade

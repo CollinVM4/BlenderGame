@@ -86,6 +86,7 @@ end
 local function purchaseDisplay(pad: BasePart, playerGui: PlayerGui): BillboardGui
     local gui = Instance.new("BillboardGui")
     gui.Name = "MuncherPurchase"
+    -- Decorative purchase view: never consume world or Throw taps.
     gui.Active = false
     gui.Adornee = pad
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
