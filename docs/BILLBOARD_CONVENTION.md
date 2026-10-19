@@ -53,6 +53,11 @@ Style.ApplyText(label, { TextScaled = true })
   their pixel sizes remain appropriate. Authored `SurfaceGui` stand signs are
   also distinct from BillboardGui frames.
 
+Decorative billboards must explicitly set `BillboardGui.Active = false` and
+`Active = false` on their decorative GuiObject children so they do not consume
+world clicks/taps or block Throw. `ApplyBillboard` and `ApplyText` leave input
+policy to callers; neither helper sets `Active`.
+
 For padded pickup prompts, use the stud-sized visual frame plus the explicit
 pixel-sized transparent `TouchTarget`. Decorative labels are inactive. Keep the
 active input rectangle minimal; never add a full-canvas transparent button behind

@@ -76,9 +76,7 @@ local function updateHint(view: any, model: Instance, player: Player, now: numbe
     if visible and not view.Gui.Enabled then
         view.ShownAt = now
     end
-    view.Label.Text = if banner
-        then (if result == "Win" then "YOU WIN!" else "YOU LOSE!")
-        else feedback
+    view.Label.Text = if banner then (if result == "Win" then "YOU WIN!" else "YOU LOSE!") else feedback
     view.Label.TextColor3 = if banner
         then (if result == "Win" then Color3.fromRGB(120, 255, 140) else Color3.fromRGB(255, 120, 120))
         else Style.White
@@ -88,6 +86,7 @@ end
 local function purchaseDisplay(pad: BasePart, playerGui: PlayerGui): BillboardGui
     local gui = Instance.new("BillboardGui")
     gui.Name = "MuncherPurchase"
+    gui.Active = false
     gui.Adornee = pad
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
     BillboardStyle.ApplyBillboard(gui, { WidthStuds = 9.1, HeightStuds = 1.7, MaxDistance = 40 })
@@ -95,6 +94,7 @@ local function purchaseDisplay(pad: BasePart, playerGui: PlayerGui): BillboardGu
     for index, text in { "MUNCHER", "$100K" } do
         local label = Instance.new("TextLabel")
         label.Name = if index == 1 then "Title" else "Detail"
+        label.Active = false
         BillboardStyle.ApplyText(label, {})
         Style.Apply(label :: TextLabel, 24)
         label.Size = UDim2.fromScale(1, 0.5)

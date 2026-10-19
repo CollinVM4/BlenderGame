@@ -25,7 +25,7 @@ local Style = {
     MobileMaxLowerStuds = 2.5,
     MobileGroundClearance = 0.15,
     -- Camera-distance cull only; Roblox still owns prompt activation range.
-    MaxDistance = 25,
+    MaxDistance = 60,
     HideMysteryNames = true,
     Font = Enum.Font.GothamBold,
     NameColor = Color3.fromRGB(255, 250, 235),

@@ -51,7 +51,7 @@ function Presentation.RefreshValue(player: Player, stack: { any })
         staleDetails:Destroy()
     end
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 4.8, HeightStuds = 1.2, MaxDistance = 35 })
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 6, HeightStuds = 1.5, MaxDistance = 100 })
     if not previous then
         gui.Name = "CarryValue"
         gui.Adornee = root
