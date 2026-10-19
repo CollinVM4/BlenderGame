@@ -130,6 +130,11 @@ local tweenInfo = {
 local enum = { EasingStyle = { Back = 1, Quad = 2 }, EasingDirection = { Out = 1, In = 2 } }
 local ids = { "Settings", "Upgrades", "Shop", "Index", "Cosmetics" }
 local modules = {}
+modules.NotificationBadge = {
+    Attach = function()
+        return function() end, function() end
+    end,
+}
 local function loadModule(module)
     local name = if type(module) == "string" then module else module.Name
     if not modules[name] then
@@ -137,7 +142,14 @@ local function loadModule(module)
         setfenv(
             chunk,
             setmetatable({
-                script = { Parent = { PanelManager = "PanelManager", UIRegistry = "UIRegistry" } },
+                script = {
+                    Parent = {
+                        PanelManager = "PanelManager",
+                        UIRegistry = "UIRegistry",
+                        MenuNotifications = "MenuNotifications",
+                        NotificationBadge = "NotificationBadge",
+                    },
+                },
                 require = loadModule,
             }, { __index = getfenv() })
         )

@@ -9,6 +9,7 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 parser.add_argument("--player-head-only", action="store_true", help="Run focused head name presentation")
+parser.add_argument("--input-only", action="store_true", help="Pickup input contracts without catalog text/value expectations")
 args = parser.parse_args()
 paths = list((root / "src/client/UI").glob("*Prompt*.luau"))
 paths += [root / path for path in (
@@ -27,6 +28,9 @@ bundle = "local sources = {\n" + "\n".join(
 bundle += (root / "tests/fixtures/roblox.luau").read_text()
 bundle += (root / "tests/interaction_prompt.spec.luau").read_text().split("local function module", 1)[0]
 bundle += (root / "tests/ingredient_prompt.spec.luau").read_text() if not args.player_head_only else (root / "tests/player_head_presentation.spec.luau").read_text()
+if args.input_only:
+    bundle = bundle.split("-- End focused pickup input contracts.", 1)[0]
+    bundle += '\nprint(string.format("PASS: %d pickup input assertions.", count))\n'
 with tempfile.TemporaryDirectory(prefix="ingredient-prompt-tests-") as directory:
     output = Path(directory) / "tests.luau"
     output.write_text(bundle, encoding="utf-8")

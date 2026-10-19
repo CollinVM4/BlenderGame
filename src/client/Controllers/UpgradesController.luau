@@ -3,6 +3,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Display = require(script.Parent.Parent.UI.UpgradeDisplay)
 local Gui = require(script.Parent.Parent.UI.UpgradesGui)
+local Notifications = require(script.Parent.Parent.UI.MenuNotifications)
+local BadgeState = require(script.Parent.Parent.UI.UpgradeBadgeState)
 local MoneyFormat = require(ReplicatedStorage.Shared.MoneyFormat)
 local Controller = {}
 local started = false
@@ -24,6 +26,8 @@ function Controller.Init()
         local feedback: { [string]: string } = {}
         local feedbackVersion: { [string]: number } = {}
         local serverMax: { [string]: boolean } = {}
+        local badge = BadgeState.new()
+        local badgeQueued = false
 
         local function numberAttribute(name: string): number?
             local value = player:GetAttribute(name)
@@ -38,7 +42,36 @@ function Controller.Init()
                     numberAttribute(track.Attribute)
                 )
         end
+        local function refreshBadge()
+            local eligible: { [string]: number } = {}
+            local cash = numberAttribute("playerCash")
+            for _, track in Display.Tracks do
+                local state = rowState(track)
+                if
+                    state
+                    and not state.Max
+                    and not serverMax[track.Id]
+                    and state.Price
+                    and cash
+                    and cash >= state.Price
+                then
+                    eligible[track.Id] = state.Level
+                end
+            end
+            Notifications.Set(
+                "Upgrades",
+                badge.Refresh(eligible, Notifications.IsOpen("Upgrades"), membershipUpdating or pending ~= nil)
+            )
+        end
+        Notifications.OnOpened("Upgrades", refreshBadge)
         local function refresh()
+            if not badgeQueued then
+                badgeQueued = true
+                task.delay(0, function()
+                    badgeQueued = false
+                    refreshBadge()
+                end)
+            end
             local currentView = view
             if not currentView then
                 return
@@ -104,6 +137,7 @@ function Controller.Init()
             membershipGeneration += 1
             local token = membershipGeneration
             membershipUpdating = true
+            badge.Reset()
             table.clear(serverMax)
             table.clear(feedback)
             refresh()

@@ -11,7 +11,6 @@ function Component.Init(services: any)
     WorldUtil.BindTag("PlayerPlot", function(plot)
         local warned: { [string]: boolean } = {}
         local input: BasePart? = nil
-        local prompt: ProximityPrompt? = nil
         local vacuumUpdate: ((number) -> ())? = nil
         local vacuumCleanup: (() -> ())? = nil
         local elapsed = 0
@@ -59,10 +58,6 @@ function Component.Init(services: any)
                     vacuumCleanup()
                 end
                 vacuumUpdate, vacuumCleanup = nil, nil
-                if prompt then
-                    prompt:Destroy()
-                end
-                prompt = nil
                 input = zone
                 if zone then
                     zone.Anchored = true
@@ -75,15 +70,6 @@ function Component.Init(services: any)
                             child:Destroy()
                         end
                     end
-                    local feed = WorldUtil.Prompt(zone, "FeedMuncher", "FEED MUNCHER")
-                    feed.Style = Enum.ProximityPromptStyle.Custom
-                    feed.KeyboardKeyCode = Enum.KeyCode.E
-                    feed.GamepadKeyCode = Enum.KeyCode.ButtonX
-                    feed:SetAttribute("MuncherPrompt", true)
-                    services.GameplayService.RegisterPlotInteraction(feed, function(actor, context)
-                        services.MuncherService.TryFeed(actor, zone, nil, context)
-                    end)
-                    prompt = feed
                     if muncher then
                         vacuumUpdate, vacuumCleanup = Vacuum.Bind(services, zone, muncher)
                     end
@@ -169,11 +155,14 @@ function Component.Init(services: any)
             end
             if muncher then
                 local current = if owner then services.MuncherService.GetSnapshot(owner) else nil
+                -- Publish the committed result before phase/sequence can start a client roll.
+                for _, name in { "OutputRarity", "InputTier", "OutputId", "ResultKind" } do
+                    muncher:SetAttribute(name, if current then current[name] else nil)
+                end
                 local attributes: { [string]: any } = {
                     Purchased = current ~= nil and current.Purchased == true,
                     Active = current ~= nil and current.Active == true,
                     Phase = if current then current.Phase else "Idle",
-                    Sequence = if current then current.Sequence else 0,
                     StartedAt = if current then current.StartedAt else 0,
                     AvailableAt = if current then current.AvailableAt else 0,
                 }
@@ -182,13 +171,10 @@ function Component.Init(services: any)
                         muncher:SetAttribute(name, value)
                     end
                 end
-                muncher:SetAttribute("OutputRarity", if current then current.OutputRarity else nil)
+                muncher:SetAttribute("Sequence", if current then current.Sequence else 0)
                 -- Retire old buff projections on existing Studio models.
                 muncher:SetAttribute("ActiveBuff", nil)
                 muncher:SetAttribute("BuffExpiresAt", nil)
-                if prompt then
-                    prompt.Enabled = current ~= nil and current.Active
-                end
             end
         end
         refresh()
@@ -218,9 +204,6 @@ function Component.Init(services: any)
             padVisibility(false)
             if restore then
                 restore()
-            end
-            if prompt then
-                prompt:Destroy()
             end
         end
     end)

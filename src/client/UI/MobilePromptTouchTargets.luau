@@ -39,7 +39,8 @@ function Targets.Register(
             reason = "wrong input type"
         elseif claimed[input] then
             reason = "finger already claimed"
-        elseif not registered or not gui.Parent or not gui.Enabled or not gui.Active then
+        -- Padded touch billboards are inactive so only the button sinks input.
+        elseif not registered or not gui.Parent or not gui.Enabled then
             reason = "hidden view"
         elseif button.Parent ~= gui or not button.Visible or not button.Active then
             reason = "inactive touch button"

@@ -11,6 +11,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "NotificationBadge": "src/client/UI/NotificationBadge.luau",
+    "MenuNotifications": "src/client/UI/MenuNotifications.luau",
+    "UpgradeBadgeState": "src/client/UI/UpgradeBadgeState.luau",
+
     "IngredientPickupPromptStyle": "src/client/UI/IngredientPickupPromptStyle.luau",
     "IngredientViewport": "src/client/UI/IngredientViewport.luau",
     "IngredientPreviewGeometry": "src/shared/IngredientPreviewGeometry.luau",
@@ -40,7 +44,7 @@ tree = "local exportNodes = " + json.dumps(items).replace("[", "{").replace("]",
 bundle = tree + "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((root / path).read_text(encoding='utf-8'))},"
     for name, path in paths.items()
-) + "\n}\n" + (root / "tests/scrapbook_ui.spec.luau").read_text(encoding="utf-8")
+) + "\n}\n" + (root / "tests/fixtures/scrapbook_ui.luau").read_text(encoding="utf-8") + "\n" + (root / "tests/scrapbook_ui.spec.luau").read_text(encoding="utf-8")
 with tempfile.TemporaryDirectory(prefix="blender-scrapbook-ui-") as directory:
     path = Path(directory) / "tests.luau"
     path.write_text(bundle, encoding="utf-8")

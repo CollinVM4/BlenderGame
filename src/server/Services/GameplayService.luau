@@ -165,7 +165,7 @@ function GameplayService.Init(services: any)
                 IngredientThrow.Trace(player, "rejected: issued IceGun equipped")
                 return
             end
-            services.InventoryService.ThrowHeld(player, nil, true)
+            services.InventoryService.ThrowHeld(player, nil, false)
         elseif action == "ReleaseIngredient" and validId then
             services.InventoryService.ReleaseUnit(player, id)
         elseif action == "Deposit" and validId and validSlot then

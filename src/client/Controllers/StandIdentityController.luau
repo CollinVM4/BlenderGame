@@ -29,6 +29,13 @@ local ui: Editor.View
 local remote: RemoteFunction
 local initialized = false
 local version = 0
+local suspended = false
+
+function Controller.SetSuspended(value: boolean): boolean
+    local previous = suspended
+    suspended = value
+    return previous
+end
 
 local function humanoid(): Humanoid?
     return if player.Character then player.Character:FindFirstChildOfClass("Humanoid") else nil
@@ -107,6 +114,9 @@ end
 -- TODO(Settings): Reuse OpenNameEditor from Settings > Stand so the owner
 -- can rename the stand after the initial claim sequence.
 function Controller.OpenNameEditor(plot: Instance)
+    if suspended then
+        return
+    end
     Controller.Close(true)
     if not initialized then
         return

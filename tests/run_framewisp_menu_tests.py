@@ -16,6 +16,10 @@ actions = next(i for i in tree.iter("Item") if i.attrib["class"] == "LocalScript
 source = actions.findtext("./Properties/ProtectedString[@name='Source']")
 external = 'BEGIN BLENDER MAIN MENUS' not in source
 paths = {
+    "NotificationBadge": "src/client/UI/NotificationBadge.luau",
+    "MenuNotifications": "src/client/UI/MenuNotifications.luau",
+    "UpgradeBadgeState": "src/client/UI/UpgradeBadgeState.luau",
+
     "UIRegistry": "src/client/UI/UIRegistry.luau",
     "FramewispMenus": "src/client/UI/FramewispMenus.luau",
     "PanelManager": "src/client/UI/PanelManager.luau",

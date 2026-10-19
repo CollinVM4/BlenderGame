@@ -4,6 +4,7 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local Types = require(Shared.Types)
 local Presentation = require(script.Parent.Parent.UI.ScrapbookPresentation)
 local Menus = require(script.Parent.Parent.UI.FramewispMenus)
+local Notifications = require(script.Parent.Parent.UI.MenuNotifications)
 local cleanup: (() -> ())? = nil
 local Controller = {}
 local started = false
@@ -38,6 +39,11 @@ function Controller.Start(playerGui: PlayerGui, events: Instance, player: Player
     local view: Presentation.View? = nil
     local stopped = false
     local connections: { RBXScriptConnection } = {}
+    local unseenCount = 0
+    local stopOpened = Notifications.OnOpened("Index", function()
+        unseenCount = 0
+        Notifications.Set("Index", false)
+    end)
     local stopView = Presentation.Observe(playerGui, state, function(nextView, root)
         view = nextView
         if root then
@@ -56,6 +62,11 @@ function Controller.Start(playerGui: PlayerGui, events: Instance, player: Player
         table.insert(
             connections,
             added.OnClientEvent:Connect(function(event: Types.DiscoveryEvent)
+                if stopped then
+                    return
+                end
+                unseenCount += 1
+                Notifications.Set("Index", unseenCount > 0)
                 if not stopped and Controller.MergeDelta(state, event) and view then
                     view.UpdateDiscovery(event)
                 end
@@ -89,6 +100,8 @@ function Controller.Start(playerGui: PlayerGui, events: Instance, player: Player
             return
         end
         stopped = true
+        stopOpened()
+        Notifications.Set("Index", false)
         for _, connection in connections do
             connection:Disconnect()
         end

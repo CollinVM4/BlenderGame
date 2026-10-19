@@ -11,6 +11,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "NotificationBadge": "src/client/UI/NotificationBadge.luau",
+    "MenuNotifications": "src/client/UI/MenuNotifications.luau",
+    "UpgradeBadgeState": "src/client/UI/UpgradeBadgeState.luau",
+
     "UIRegistry": "src/client/UI/UIRegistry.luau",
     "Upgrades": "src/shared/Constants/Upgrades.luau",
     "MoneyFormat": "src/shared/MoneyFormat.luau",
@@ -35,7 +39,7 @@ tree = "local exportNodes = {\n" + "\n".join(
 bundle = tree + "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((root / path).read_text(encoding='utf-8'), ensure_ascii=False)},"
     for name, path in paths.items()
-) + "\n}\n" + (root / "tests/upgrade_ui.spec.luau").read_text(encoding="utf-8")
+) + "\n}\n" + (root / "tests/upgrade_ui.spec.luau").read_text(encoding="utf-8") + "\n" + (root / "tests/upgrade_badge.spec.luau").read_text(encoding="utf-8")
 with tempfile.TemporaryDirectory(prefix="blender-upgrade-ui-") as directory:
     path = Path(directory) / "tests.luau"
     for initial_ui in (False, True):

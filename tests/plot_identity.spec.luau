@@ -122,30 +122,24 @@ t.RemovePlayer(owner)
 tick()
 check(findText("MANAGE PLOT") and not findText("LEAVE TEAM"), "promotion changes management action")
 findText("MANAGE PLOT").Activated:Fire()
-check(findText("Empty Slot") and findText("SELECTED: PUBLIC"), "owner management shows slot and policy")
-local public, friends, private = findText("SELECTED: PUBLIC"), findText("FRIENDS"), findText("PRIVATE")
-local positions = { public.Position, friends.Position, private.Position }
-friends.Activated:Fire()
-check(requests[2][1] == "SetJoinMode" and requests[2][3] == "FriendsOnly", "management submits policy")
-check(public.Text == "SELECTED: PUBLIC", "request does not optimistically change permission presentation")
-occupied:SetAttribute("JoinMode", "FriendsOnly")
+check(findText("Empty Slot"), "owner management shows teammate slot")
+check(
+    not findText("PUBLIC") and not findText("FRIENDS") and not findText("PRIVATE") and not findText("SELECTED: PUBLIC"),
+    "privacy rows moved to Settings"
+)
+local teammate = player()
+t.RemovePlayer(teammate)
+local context = t.GetRequestContext(viewer)
+t.JoinSession(teammate, viewer, context)
 tick()
+check(findText("KICK TEAMMATE"), "owner retains teammate management")
+findText("KICK TEAMMATE").Activated:Fire()
 check(
-    public.Text == "PUBLIC" and friends.Text == "SELECTED: FRIENDS" and private.Text == "PRIVATE",
-    "selection prefix follows replicated mode"
+    requests[#requests][1] == "KickTeammate" and requests[#requests][3] == teammate.UserId,
+    "kick retains teammate and captured context"
 )
-check(
-    public.Position == positions[1] and friends.Position == positions[2] and private.Position == positions[3],
-    "selection keeps all three positions fixed"
-)
-check(
-    public:FindFirstChild("SelectionScale").Scale == 1 and friends:FindFirstChild("SelectionScale").Scale == 1.1,
-    "selected option grows in place and previous option settles"
-)
-friends.Activated:Fire()
-check(requests[#requests][3] == "FriendsOnly", "FRIENDS retains original wire value")
-private.Activated:Fire()
-check(requests[#requests][3] == "Closed", "PRIVATE retains original wire value")
+t.RemovePlayer(teammate)
+tick()
 local otherVisible = false
 local other = loadModule("PanelManager").Register("Index", {
     Open = function()

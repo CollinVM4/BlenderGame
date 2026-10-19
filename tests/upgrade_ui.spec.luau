@@ -220,7 +220,15 @@ local function load(name)
             script = {
                 Parent = {
                     UIRegistry = "UIRegistry",
-                    Parent = { UI = { UpgradeDisplay = "UpgradeDisplay", UpgradesGui = "UpgradesGui" } },
+                    NotificationBadge = "NotificationBadge",
+                    Parent = {
+                        UI = {
+                            UpgradeDisplay = "UpgradeDisplay",
+                            UpgradesGui = "UpgradesGui",
+                            MenuNotifications = "MenuNotifications",
+                            UpgradeBadgeState = "UpgradeBadgeState",
+                        },
+                    },
                 },
             },
             require = load,

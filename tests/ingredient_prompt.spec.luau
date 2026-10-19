@@ -79,12 +79,36 @@ local function label(name)
 end
 show()
 check(#playerGui:GetChildren() == 1, "idempotent startup gives one view")
+-- Focused pickup input contracts, independent of catalog text/value tuning.
+for _, kind in { "Keyboard", "Gamepad", "Touch" } do
+    show(kind)
+    local mobile = kind == "Touch"
+    local target = gui():FindFirstChild("TouchTarget")
+    check(gui().Active == not mobile, "pickup frame is inactive only on padded touch")
+    if mobile then
+        for _, child in gui():GetChildren() do
+            check(child.Active == (child == target), "only pickup TouchTarget can sink mobile taps")
+        end
+        local press = { UserInputType = "Touch" }
+        target.InputBegan:Fire(press)
+        prompt.PromptButtonHoldBegan:Fire()
+        check(begins == 1 and label("Action").Text == "HOLD [TAP]", "pickup target preserves native hold feedback")
+        services.UserInputService.InputEnded:Fire(press)
+        check(ends == 1, "pickup touch release ends native hold")
+    else
+        check(label("Action"):IsA("TextButton") and target == nil, "keyboard/gamepad keep existing button")
+    end
+end
+begins, ends = 0, 0
+show()
+-- End focused pickup input contracts.
 check(
     string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
         and string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil
         and label("IngredientName").Text == "Strawberry",
     "registered Strawberry definition"
 )
+check(gui().Active, "keyboard pickup frame retains input")
 check(label("Action").Text == "[F]", "actual keyboard key, no pickup action or income text")
 check(label("IngredientValue").Text == "$3K", "common pickup shows definition value")
 check(
@@ -171,11 +195,16 @@ check(label("IngredientValue").Text == "$12K", "individual definition value is u
 local rarity, name = style.Resolve({ Id = "Fallback" })
 check(rarity == "Common" and name == "Fallback", "missing display name uses Id")
 show("Gamepad")
+check(gui().Active, "gamepad pickup frame retains input")
 check(label("Action").Text == "[ButtonY]", "actual gamepad binding")
 show("Touch")
 check(label("Action").Text == "[TAP]", "mobile hint")
 local targets = load("MobilePromptTouchTargets")
 local target = gui():FindFirstChild("TouchTarget")
+check(not gui().Active and target.Active, "padded pickup frame is inactive with an active touch target")
+for _, child in gui():GetChildren() do
+    check(child.Active == (child == target), "only explicit mobile pickup target can sink taps")
+end
 check(target.Size.X.Offset == 80 and target.Size.Y.Offset == 80, "actual 80px mobile touch target")
 local center = renderedCenter(gui(), target)
 local finger = { UserInputType = "Touch", Position = vec(center.X + 35, center.Y + 35, 0) }

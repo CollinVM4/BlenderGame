@@ -114,8 +114,8 @@ action("ThrowHeld", "End")
 check(inventory.GetCarryCount(player) == 3, "release edge does not throw")
 action("ThrowHeld", "Begin")
 check(
-    inventory.GetCarryCount(player) == 2 and not selectedTool.Destroyed,
-    "input throws newest even with older ingredient equipped"
+    inventory.GetCarryCount(player) == 2 and selectedTool.Destroyed,
+    "input throws the equipped ingredient before newer ingredients"
 )
 check(requestedIds[1] == false, "client sends no gameplay selection or position")
 action("ThrowHeld", "Begin")

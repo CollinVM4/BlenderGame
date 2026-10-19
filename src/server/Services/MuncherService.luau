@@ -98,6 +98,9 @@ function Service.GetSnapshot(player: Player): any
         Sequence = state.Sequence,
         StartedAt = if transaction then transaction.StartedAt else 0,
         OutputRarity = if transaction then transaction.Rarity else nil,
+        OutputId = if transaction then transaction.Reward else nil,
+        ResultKind = if transaction then transaction.ResultKind else nil,
+        InputTier = if transaction then transaction.Tier else nil,
         Multiplier = 1,
         ExpiresAt = 0,
     }
@@ -176,7 +179,29 @@ function Service.CanVacuum(player: Player, input: BasePart): boolean
         and input:IsDescendantOf(workspace)
 end
 
--- Exactly one preparation, roll, consume and commitment implementation for both sources.
+-- Presentation notification only. Never reserves, consumes, queues or alters a transaction.
+function Service.ReportBusy(player: Player, input: BasePart, object: Instance)
+    local id = deps.TycoonService.GetSessionId(player)
+    local state = if id then states[id] else nil
+    local plot = deps.TycoonService.GetPlot(player)
+    local model = plot and plot:FindFirstChild("Muncher")
+    if not state or not state.Revealed or not model or model:FindFirstChild("InputZone") ~= input then
+        return
+    end
+    if state.Phase ~= "Processing" and state.Phase ~= "Spitting" then
+        return
+    end
+    local actor, _, root = WorldInput.Eligible(deps, input, object)
+    if actor ~= player or not root or (root.Position - input.Position).Magnitude > Config.Vacuum.OverlapTolerance then
+        return
+    end
+    local now = workspace:GetServerTimeNow()
+    if now >= (model:GetAttribute("BusyUntil") or 0) then
+        model:SetAttribute("BusyUntil", now + Config.BusySeconds)
+    end
+end
+
+-- The sole feed entry point is physical vacuum intake.
 function Service.TryStartConversion(
     player: Player,
     input: BasePart,
@@ -185,50 +210,39 @@ function Service.TryStartConversion(
     context: any
 ): (boolean, string?)
     if
-        (source ~= "CarriedPrompt" and source ~= "WorldVacuum")
+        source ~= "WorldVacuum"
         or not Service.CanVacuum(player, input)
         or not MovementService.CanPerformGameplayAction(player)
     then
+        if source == "WorldVacuum" and object then
+            Service.ReportBusy(player, input, object)
+        end
         return false, "MachineBusy"
     end
     local id = deps.TycoonService.GetSessionId(player)
     local state = states[id]
     local model = deps.TycoonService.GetPlot(player):FindFirstChild("Muncher")
-    local ingredientId: string?
-    if source == "CarriedPrompt" then
-        if object or not WorldUtil.Near(player, input, Config.FeedDistance) then
-            return false
-        end
-        local tools: { Instance } = if player.Character then player.Character:GetChildren() else {}
-        for _, tool in tools do
-            if tool:IsA("Tool") and tool:GetAttribute("IngredientId") == nil then
-                return false
-            end
-        end
-        ingredientId = deps.InventoryService.GetHeldIngredientId(player, true)
-    else
-        if not object then
-            return false, "InvalidWorldItem"
-        end
-        local actor, reason, root = WorldInput.Eligible(deps, input, object)
-        if actor ~= player or not root then
-            return false, reason or "UnauthorizedOwner"
-        end
-        local distance = (root.Position - input.Position).Magnitude
-        if distance > Config.Vacuum.CaptureTolerance then
-            local overlaps = false
-            for _, touching in workspace:GetPartsInPart(input) do
-                if deps.IngredientService.Resolve(touching) == object then
-                    overlaps = true
-                    break
-                end
-            end
-            if not overlaps or distance > Config.Vacuum.OverlapTolerance then
-                return false, "OutsideIntake"
-            end
-        end
-        ingredientId = deps.IngredientService.GetRecord(object).Id
+    if not object then
+        return false, "InvalidWorldItem"
     end
+    local actor, reason, root = WorldInput.Eligible(deps, input, object)
+    if actor ~= player or not root then
+        return false, reason or "UnauthorizedOwner"
+    end
+    local distance = (root.Position - input.Position).Magnitude
+    if distance > Config.Vacuum.CaptureTolerance then
+        local overlaps = false
+        for _, touching in workspace:GetPartsInPart(input) do
+            if deps.IngredientService.Resolve(touching) == object then
+                overlaps = true
+                break
+            end
+        end
+        if not overlaps or distance > Config.Vacuum.OverlapTolerance then
+            return false, "OutsideIntake"
+        end
+    end
+    local ingredientId = deps.IngredientService.GetRecord(object).Id
     if not ingredientId then
         return false, "InvalidWorldItem"
     end
@@ -243,10 +257,10 @@ function Service.TryStartConversion(
     local reservation = nil
     if object then
         -- Revalidate under the lifecycle lock, then claim the specific registry identity.
-        local actor, reason = WorldInput.Eligible(deps, input, object)
-        if actor ~= player then
+        local lockedActor, lockedReason = WorldInput.Eligible(deps, input, object)
+        if lockedActor ~= player then
             deps.TycoonService.EndTransaction(token)
-            return false, reason
+            return false, lockedReason
         end
         reservation = deps.IngredientService.Reserve(object)
         if not reservation then
@@ -261,7 +275,7 @@ function Service.TryStartConversion(
     -- Prepare every fallible decision before removing ownership. No yield under lifecycle lock.
     local ok, transaction = pcall(function()
         local tier = Rewards.Tier(value)
-        local reward = Rewards.Roll(tier, random, deps.IngredientService.GetDefinition)
+        local reward = Rewards.Roll(tier, random, deps.IngredientService.GetDefinition, value)
         local definition = deps.IngredientService.GetDefinition(reward)
         return {
             SessionId = id,
@@ -275,6 +289,7 @@ function Service.TryStartConversion(
             Tier = tier,
             Reward = reward,
             OutputValue = definition.Value,
+            ResultKind = Rewards.ResultKind(value, definition.Value),
             Rarity = definition.Rarity or "Common",
             StartedAt = workspace:GetServerTimeNow(),
             NextAt = workspace:GetServerTimeNow() + Config.ChewSeconds,
@@ -290,9 +305,7 @@ function Service.TryStartConversion(
         warn("[Muncher] Invalid reward configuration: " .. tostring(transaction))
         return false
     end
-    local consumed = if object
-        then deps.IngredientService.Consume(object, false, reservation)
-        else deps.InventoryService.ConsumeHeldIngredient(player, ingredientId, true)
+    local consumed = deps.IngredientService.Consume(object, false, reservation)
     if object and reservation then
         deps.IngredientService.ReleaseReservation(object, reservation)
     end
@@ -312,8 +325,5 @@ function Service.TryStartConversion(
     end
     deps.TycoonService.EndTransaction(token)
     return consumed ~= nil, consumed
-end
-function Service.TryFeed(player: Player, input: BasePart, object: Instance?, context: any): (boolean, string?)
-    return Service.TryStartConversion(player, input, object, if object then "WorldVacuum" else "CarriedPrompt", context)
 end
 return Service

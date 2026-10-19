@@ -73,7 +73,7 @@ function input:GetStringForKeyCode(key)
     return key.Name
 end
 services.UserInputService = input
-local prompts = { PromptShown = signal(), PromptHidden = signal() }
+local prompts = { PromptShown = signal(), PromptHidden = signal(), Enabled = true }
 services.ProximityPromptService = prompts
 workspaceFake.DescendantAdded, workspaceFake.DescendantRemoving = signal(), signal()
 local workspaceMethods = instance("Folder")
@@ -174,6 +174,12 @@ end
 show()
 check(#playerGui:GetChildren() == 1, "one view after idempotent controller startup")
 check(gui().Adornee == origin, "sibling attachment is exact adornee")
+check(gui().Active and label():IsA("TextButton"), "desktop retains active clickable prompt")
+local click = { UserInputType = "MouseButton1" }
+label().InputBegan:Fire(click)
+input.InputEnded:Fire(click)
+check(begins == 1 and ends == 1, "desktop click still forwards native hold begin/end")
+begins, ends = 0, 0
 check(label().Font == "FredokaOne" and not label().TextWrapped, "dispenser uses fixed dialogue lettering")
 check(label():FindFirstChild("DialogueOutline").Thickness == 2.5, "dispenser has heavy NPC text outline")
 local originPart = uiInstance("Part", "MarkerPart", object)
@@ -185,6 +191,31 @@ check(label().Text == "[E] DISPENSE", "configured action and actual key")
 check(gui().AlwaysOnTop and label().BackgroundTransparency == 1, "transparent outlined world UI")
 check(label().TextScaled == true and label().TextSize == 24, "proportional font size")
 check(gui().Size.X.Scale == 7 and gui().Size.Y.Scale == 1.4, "stud canvas")
+-- Focused input contract: each view uses the same native prompt hold API.
+for _, kind in { "Keyboard", "Gamepad", "Touch" } do
+    for _, padded in { false, true } do
+        local cleanup, inputGui = view.Create(prompt, origin, playerGui, kind, {
+            TouchWidth = if padded then 80 else nil,
+        })
+        local mobile = kind == "Touch" and padded
+        local action = inputGui:FindFirstChild("Action")
+        local target = inputGui:FindFirstChild("TouchTarget")
+        check(inputGui.Active == not mobile, "only padded touch disables billboard input")
+        check(action:IsA(if mobile then "TextLabel" else "TextButton"), "desktop and unpadded views keep button path")
+        if mobile then
+            check(not action.Active and target.Active, "only explicit touch target is active")
+        end
+        local inputObject = { UserInputType = if kind == "Touch" then "Touch" else "MouseButton1" }
+        local oldBegin, oldEnd = begins, ends
+        local button = target or action
+        button.InputBegan:Fire(inputObject)
+        input.InputEnded:Fire(inputObject)
+        check(begins == oldBegin + 1 and ends == oldEnd + 1, "tap/click forwards hold begin and end")
+        cleanup()
+    end
+end
+begins, ends = 0, 0
+-- End focused input contracts.
 local stashDisplay = uiInstance("Folder", "StashDisplay", originPart)
 local stashValue = uiInstance("BillboardGui", "SlotValue", stashDisplay)
 stashValue.Adornee = originPart
@@ -233,11 +264,16 @@ check(label().Text == "[F] HOLD DISPENSE", "hold lifecycle feedback")
 prompt.PromptButtonHoldEnded:Fire()
 check(label().Text == "[F] DISPENSE", "hold end restores text")
 show("Gamepad")
+check(gui().Active, "gamepad prompt keeps active frame")
 check(label().Text == "[ButtonX] DISPENSE", "gamepad key comes from prompt")
 show("Touch")
 check(label().Text == "[TAP] DISPENSE", "touch hint")
 local finger = { UserInputType = "Touch", Position = vec(200, 300, 0) }
 local touchTarget = gui():FindFirstChild("TouchTarget")
+check(
+    not gui().Active and not label().Active and touchTarget.Active,
+    "padded touch frame and visual do not sink taps; only TouchTarget is active"
+)
 check(touchTarget.Size.X.Offset == 220 and touchTarget.Size.Y.Offset == 80, "dispenser has actual padded target")
 touchTarget.InputBegan:Fire(finger)
 input.InputEnded:Fire(finger)
@@ -281,6 +317,14 @@ prompt:SetAttribute("InteractionKeyText", "USE")
 check(label().Text == "[USE] START DAY", "optional key override")
 prompt:SetAttribute("InteractionOrigin", nil)
 check(gui() == nil, "removing opt-in clears presentation")
+local unpaddedCleanup, unpadded = view.Create(prompt, origin, playerGui, "Touch", {})
+check(
+    unpadded.Active
+        and unpadded:FindFirstChild("Action"):IsA("TextButton")
+        and unpadded:FindFirstChild("TouchTarget") == nil,
+    "unpadded touch preserves existing button path"
+)
+unpaddedCleanup()
 local attach, serverPrompt
 local owner = {}
 local dispenseCalls = 0

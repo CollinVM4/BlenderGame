@@ -79,9 +79,8 @@ not explicitly proposed is `round(pixels / 37.5, 1)`, using the requested
 | Smoothie card | 460×194 | 12.3×5.2 | 25 |
 | Generic world text / landmark | 300×56 default | 8.0×2.0 default | 60 default, finite authored override |
 | Muncher purchase | 340×64 | 9.1×1.7 | 40 |
-| Muncher feed prompt | 260×56 | 6.9×1.4 | 10 (existing FeedDistance) |
-| Muncher status | 270×44 | 4.5×1.2 | 40 |
-| Muncher hearts | 150×90 | 4.0×2.4 | 30 |
+| Muncher FEED ME / BUSY hint (replaces feed prompt/status) | No prior hint | 5.5 x 1.4 | 25 |
+| Muncher three-reel roll (SurfaceGui) | 6.6 x 3.2 stud billboard | Authored DisplayScreen Front face, 100 PixelsPerStud | N/A |
 | Regular customer dialogue | 300×112 | 7.0×2.6 | 45; existing taken-order state allows 56.25 |
 | Special customer dialogue + name | 270×84 | 7.2×2.2 | 45; existing taken-order state allows 56.25 |
 | Customer bubble before dialogue styling | 270×56 | 7.2×1.5 | 45 |
@@ -205,3 +204,9 @@ on the basis of CLI layout doubles alone.
 6. Update this table with final tuned values and screenshot links; record
    Collin's sign-off. No Studio screenshots, real-device result or sign-off has
    been produced by this automated pass.
+
+## Muncher casino follow-up
+
+The Muncher feed prompt/status and fading hearts are replaced by the hint/reels
+listed above. These dimensions await before/after Studio and real-device review.
+See [casino rates, SFX setup, evidence gaps and acceptance](MUNCHER_CASINO_POLISH.md).

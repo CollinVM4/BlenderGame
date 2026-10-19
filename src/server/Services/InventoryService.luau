@@ -361,7 +361,7 @@ function InventoryService.ThrowHeld(player: Player, requestedCarryItemId: any?, 
         IngredientThrow.Trace(player, "rejected: gameplay action disabled")
         return nil
     end
-    -- Input throws newest first; explicit server selection APIs remain compatible.
+    -- Input prefers the equipped item, with the newest available ingredient as fallback.
     local record = resolveActionItem(player, requestedCarryItemId, newestFirst)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")

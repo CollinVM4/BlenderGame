@@ -12,6 +12,7 @@ function Vacuum.Bind(services: any, input: BasePart, model: Instance): ((number)
     local startedAt = 0
     local elapsed = Config.ScanInterval
     local wasAvailable = false
+    local busySeen: { [Instance]: boolean } = {}
     local rejected = setmetatable({} :: { [Instance]: string }, { __mode = "k" })
     local retryAt = setmetatable({} :: { [Instance]: number }, { __mode = "k" })
     local warned = false
@@ -50,8 +51,42 @@ function Vacuum.Bind(services: any, input: BasePart, model: Instance): ((number)
         end
         if not available then
             release()
+            -- Observe rejected items at the mouth without attracting or committing them.
+            -- CanVacuum deliberately disables the ordinary intake scan while busy.
+            elapsed += dt
+            local snapshot = if owner then services.MuncherService.GetSnapshot(owner) else nil
+            if
+                owner
+                and model:IsDescendantOf(workspace)
+                and input:IsDescendantOf(model)
+                and elapsed >= Config.ScanInterval
+                and snapshot
+                and (snapshot.Phase == "Processing" or snapshot.Phase == "Spitting")
+            then
+                elapsed = 0
+                local observed: { [Instance]: boolean } = {}
+                for _, part in workspace:GetPartBoundsInRadius(input.Position, Config.Vacuum.OverlapTolerance, query) do
+                    local object = services.IngredientService.Resolve(part)
+                    if object then
+                        local actor, _, root = WorldInput.Eligible(services, input, object)
+                        if
+                            actor
+                            and root
+                            and (root.Position - input.Position).Magnitude <= Config.Vacuum.OverlapTolerance
+                            and visible(object, root.Position)
+                        then
+                            observed[object] = true
+                            if not busySeen[object] then
+                                services.MuncherService.ReportBusy(actor, input, object)
+                            end
+                        end
+                    end
+                end
+                busySeen = observed
+            end
             return
         end
+        table.clear(busySeen)
         local now = workspace:GetServerTimeNow()
         elapsed += dt
         if not active and elapsed >= Config.ScanInterval then

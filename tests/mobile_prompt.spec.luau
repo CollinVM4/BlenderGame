@@ -45,6 +45,10 @@ local function finger(gui, target, dx, dy)
 end
 local a, ap, p, g, t, calls = item(0, false)
 check(g:FindFirstChild("Action").Text == "[TAP]", "compact existing TAP hint")
+check(not g.Active and t.Active, "mobile pickup billboard cannot sink throw taps outside its target")
+for _, child in g:GetChildren() do
+    check(child.Active == (child == t), "TouchTarget is the sole active mobile pickup element")
+end
 check(t.Size.X.Offset == 80 and t.Size.Y.Offset == 80, "80 by 80 actual target")
 check(g:FindFirstChild("Action"):IsA("TextLabel"), "visual row cannot add a second broad hitbox")
 check(near(g.StudsOffsetWorldSpace.Y, -1.2), "30 percent below regular ingredient center")
@@ -169,6 +173,7 @@ for _, kind in { "Keyboard", "Gamepad" } do
         desktop:FindFirstChild("TouchTarget") == nil and desktop.Size.Y.Scale == 3.8 and desktop.Size.Y.Offset == 0,
         "desktop/console keep original UI and input row"
     )
+    check(desktop.Active, "desktop/console frame retains input")
     check(desktop.SizeOffset.Y == 0.5, "desktop/console remain above ingredient")
     prompts.PromptHidden:Fire(p)
 end

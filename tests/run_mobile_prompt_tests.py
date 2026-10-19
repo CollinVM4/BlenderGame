@@ -8,6 +8,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--luau", default="luau")
+parser.add_argument("--prompt-only", action="store_true", help="Prompt contracts without the legacy carry-input fixture")
 args = parser.parse_args()
 paths = list((root / "src/client/UI").glob("*Prompt*.luau"))
 paths += [root / path for path in (
@@ -31,7 +32,11 @@ bundle += (root / "tests/interaction_prompt.spec.luau").read_text().split("local
 setup = (root / "tests/ingredient_prompt.spec.luau").read_text().split("local controller = load", 1)[0]
 setup = setup.split("for id, definition in definitions do", 1)[0] + "local style = load" + setup.split("local style = load", 1)[1]
 bundle += setup
-bundle += (root / "tests/mobile_prompt.spec.luau").read_text()
+spec = (root / "tests/mobile_prompt.spec.luau").read_text()
+if args.prompt_only:
+    spec = spec.split("-- Only the dedicated CAS button", 1)[0]
+    spec += '\nprint(string.format("PASS: %d mobile prompt assertions.", count))\n'
+bundle += spec
 with tempfile.TemporaryDirectory(prefix="mobile-prompt-tests-") as directory:
     output = Path(directory) / "tests.luau"
     output.write_text(bundle, encoding="utf-8")

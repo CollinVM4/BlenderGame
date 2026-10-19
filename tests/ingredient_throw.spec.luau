@@ -43,11 +43,11 @@ for _, dimensions in { vec(2, 2, 1), vec(12, 0.5, 12), vec(1, 9, 1) } do
         end
         publish(self, object, tag)
     end
-    inventory.ThrowHeld(player)
+    inventory.ThrowHeld(player, nil, false)
     services.CollectionService.AddTag = publish
     check(#released == 1, "one Throw action publishes exactly one world item")
     local thrown = released[1]
-    check(ingredients.GetRecord(thrown).Id == "Tire", "newest pickup throws first")
+    check(ingredients.GetRecord(thrown).Id == "Tire", "equipped newest pickup throws first")
     services.Debris.AddItem = addDebris
     local localFrame = root.CFrame:ToObjectSpace(thrown:GetPivot())
     check(
@@ -97,11 +97,45 @@ for _, dimensions in { vec(2, 2, 1), vec(12, 0.5, 12), vec(1, 9, 1) } do
         ingredients.GetRecord(thrown) ~= nil and not thrown.Anchored and thrown.CanQuery,
         "world item remains active after grace"
     )
-    check(ingredients.GetRecord(inventory.ThrowHeld(player)).Id == "Banana", "second pickup stays usable")
-    check(ingredients.GetRecord(inventory.ThrowHeld(player)).Id == "Strawberry", "first pickup stays usable")
+    local equipped = character:FindFirstChildOfClass("Tool")
+    equipped.Parent = backpack
+    equipped.Unequipped:Fire()
+    check(
+        ingredients.GetRecord(inventory.ThrowHeld(player, nil, false)).Id == "Banana",
+        "unequipped throw falls back to newest remaining pickup"
+    )
+    check(
+        ingredients.GetRecord(inventory.ThrowHeld(player, nil, false)).Id == "Strawberry",
+        "first pickup stays usable"
+    )
 end
 root.CFrame, root.Size, head.CFrame, head.Size = oldRootFrame, oldRootSize, oldHeadFrame, oldHeadSize
 torso:Destroy()
+
+-- Input resolves an older equipped ingredient from its server-owned CarryItemId.
+fill()
+local selectedTool
+for _, tool in backpack:GetChildren() do
+    if tool:GetAttribute("IngredientId") == "Banana" then
+        selectedTool = tool
+    end
+end
+setup(selectedTool ~= nil, "older ingredient Tool available")
+humanoid:EquipTool(selectedTool)
+local selectedThrow = inventory.ThrowHeld(player, nil, false)
+check(ingredients.GetRecord(selectedThrow).Id == "Banana", "equipped ingredient wins over newest pickup")
+check(inventory.GetCarryCount(player) == 2, "equipped throw releases exactly one ingredient")
+local equipped = character:FindFirstChildOfClass("Tool")
+equipped.Parent = backpack
+equipped.Unequipped:Fire()
+check(
+    ingredients.GetRecord(inventory.ThrowHeld(player, nil, false)).Id == "Tire",
+    "equipped selection preserves newest fallback order"
+)
+check(
+    ingredients.GetRecord(inventory.ThrowHeld(player, nil, false)).Id == "Strawberry",
+    "oldest remaining ingredient stays usable"
+)
 
 for _, motor in motors do
     motor.Part1.CFrame = root.CFrame
@@ -173,7 +207,7 @@ for _, gate in { "height", "initial", "path", "destination" } do
 end
 workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
 fill()
-check(inventory.ThrowHeld(player) ~= nil, "throw recovers immediately after obstruction removed")
+check(inventory.ThrowHeld(player, nil, false) ~= nil, "throw recovers immediately after obstruction removed")
 inventory.ClearHeld(player)
 player:SetAttribute("ThrowDebug", false)
 local beforeLogs = #messages
@@ -184,7 +218,7 @@ fill()
 workspaceFake.Blockcast = function(_, _, _, displacement)
     return if displacement.Magnitude > 4 then { Instance = wall } else nil
 end
-local nearby = inventory.ThrowHeld(player)
+local nearby = inventory.ThrowHeld(player, nil, false)
 check(
     nearby ~= nil and (nearby:GetPivot().Position - root.CFrame.Position).Magnitude < 5,
     "near wall uses safe closer spawn"

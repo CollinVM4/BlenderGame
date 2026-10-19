@@ -1,6 +1,15 @@
 --!strict
--- Explicit prototype budget. Only canonical prefab IDs, never gameplay fallback geometry.
+-- Canonical prefab previews shared by scrapbook cards and every Muncher output.
+-- Never gameplay fallback geometry.
 return table.freeze({
+    Rock = true,
+    Mushrooms = true,
+    Protein = true,
+    Pear = true,
+    Honey = true,
+    Crab = true,
+    Coconut = true,
+    Pizza = true,
     Apple = true,
     Banana = true,
     Grapes = true,

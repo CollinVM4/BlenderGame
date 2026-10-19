@@ -1,6 +1,5 @@
--- Real inventory/registry and session authority; presentation never drives settlement.
-local roll = 0
-local rolls = 0
+-- Conversion settlement owns these contracts; physical eligibility lives in muncher-vacuum.
+local roll, rolls = 0, 0
 env.Random = {
     new = function()
         return {
@@ -26,92 +25,94 @@ local authority = dependency.TycoonService
 local plot = authority.GetPlot(p)
 local model = instance("Model")
 model.Name, model.Parent = "Muncher", plot
-local input = part("InputZone", model)
-local pad = part("PurchasePoint1", model)
-local function feed(actor, target, context)
-    return muncher.TryFeed(actor or p, target or input, nil, context)
+local input, pad = part("InputZone", model), part("PurchasePoint1", model)
+input.Position = vec(0, 0, 0)
+local function thrown(id)
+    carry(p, id or "Apple")
+    local object = inventory.ThrowHeld(p)
+    local root = cache.WorldUtil.Part(object)
+    root.Position, root.CFrame = input.Position, frame(input.Position)
+    root.GetConnectedParts = function()
+        return {}
+    end
+    return object
+end
+local function feed(object)
+    return muncher.TryStartConversion(p, input, object, "WorldVacuum", nil)
 end
 local function finish()
-    now += config.ChewSeconds + config.SpitSeconds
+    now += config.ChewSeconds
     muncher.Step()
     now += config.SpitSeconds
 end
 local function unlock()
     authority.SetCash(p, 100100)
-    setup(muncher.TryPurchase(p, pad, authority.GetRequestContext(p)), "purchase")
-    check(authority.GetCash(p) == 100, "preserves exact purchase cost")
+    setup(muncher.TryPurchase(p, pad, nil), "purchase")
+    check(authority.GetCash(p) == 100, "exact purchase cost")
     check(not muncher.TryPurchase(p, pad, nil), "duplicate purchase rejected")
-    check(not muncher.CompleteReveal(p, model), "cannot finish reveal early")
+    check(not muncher.CompleteReveal(p, model), "reveal cannot complete early")
     now += config.RevealSeconds
     setup(muncher.CompleteReveal(p, model), "reveal complete")
 end
 muncher.Reset(p)
-carry(p, "Apple")
-check(not feed() and inventory.GetCarryCount(p) == 1, "locked machine preserves input")
+local apple = thrown()
+check(not feed(apple) and ingredients.GetRecord(apple) ~= nil, "locked machine preserves world input")
 authority.SetCash(p, 99999)
 local ok, reason = muncher.TryPurchase(p, pad, nil)
 check(not ok and reason == "InsufficientCash", "insufficient shared cash preserved")
 unlock()
+carry(p, "Banana")
+check(muncher.TryFeed == nil, "carried feed API retired")
+check(
+    not muncher.TryStartConversion(p, input, nil, "CarriedPrompt", nil) and inventory.GetCarryCount(p) == 1,
+    "no hidden carried feed fallback"
+)
+inventory.ClearHeld(p)
 local spawnCount, spawned = 0, {}
 local originalSpawn = ingredients.Spawn
 ingredients.Spawn = function(...)
     local args = { ... }
     local object = originalSpawn(...)
-    if object and args[5] and args[5].BeforePublish then
+    if object and args[5] and args[5].MuncherImmune then
         spawnCount += 1
         table.insert(spawned, object)
     end
     return object
 end
-check(feed(), "held ingredient accepted")
-check(inventory.GetCarryCount(p) == 0 and spawnCount == 0, "consume exactly one and delay output")
+check(feed(apple), "physical ingredient accepted")
+check(ingredients.GetRecord(apple) == nil and spawnCount == 0, "consume once and delay output")
 check(muncher.GetSnapshot(p).Phase == "Processing", "authoritative busy state")
-carry(p, "Banana")
-check(not feed() and inventory.GetCarryCount(p) == 1 and rolls == 1, "duplicate cannot consume or reroll")
+check(
+    muncher.GetSnapshot(p).OutputId == "Rock" and muncher.GetSnapshot(p).ResultKind == "Lose",
+    "committed snapshot publishes actual output and catalog loss before settlement"
+)
+local extra = thrown("Banana")
+check(not feed(extra) and ingredients.GetRecord(extra) ~= nil and rolls == 1, "busy attempt cannot consume or reroll")
+check(model:GetAttribute("BusyUntil") == now + config.BusySeconds, "busy rejection projects brief feedback")
+local sequence = muncher.GetSnapshot(p).Sequence
 finish()
-check(spawnCount == 1 and ingredients.GetRecord(spawned[1]).Id == "Rock", "predetermined physical collectible")
+check(spawnCount == 1 and ingredients.GetRecord(spawned[1]).Id == "Rock", "predetermined collectible")
 check(not ingredients.GetRecord(spawned[1]).Item.IsRipe, "output is fresh")
 muncher.Step()
-check(spawnCount == 1 and muncher.GetSnapshot(p).Phase == "Idle", "settlement replays cannot duplicate")
-check(muncher.GetCashMultiplier(p) == 1, "retired buff API leaves unrelated payouts unchanged")
-local outsider = player(3)
-carry(outsider, "Apple")
-check(not feed(outsider) and inventory.GetCarryCount(outsider) == 1, "visitor cannot consume across plots")
-local loose = originalSpawn("Apple", frame(), nil, true)
-check(not muncher.TryFeed(p, input, loose, nil) and ingredients.GetRecord(loose), "loose output cannot auto-feed")
-local weapon = instance("Tool")
-weapon.Parent = p.Character
-check(not feed() and inventory.GetCarryCount(p) == 1, "non-ingredient tool blocks hidden ingredient feed")
-weapon:Destroy()
-inventory.ConsumeHeldIngredient(p, "Banana")
-grant(p, "muncher-smoothie")
-check(not feed() and inventory.GetHeldSmoothie(p) ~= nil, "smoothie rejected intact")
-inventory.ConsumeHeldSmoothie(p)
-carry(p, "Apple")
-local olderTool = tool(p)
-carry(p, "Banana")
-p.Character:FindFirstChildOfClass("Humanoid"):EquipTool(olderTool)
 check(
-    feed() and inventory.GetCarryCount(p) == 1 and inventory.GetHeldIngredientId(p) == "Apple",
-    "newest ingredient consumed once"
+    spawnCount == 1 and muncher.GetSnapshot(p).Phase == "Idle" and muncher.GetSnapshot(p).Sequence == sequence,
+    "rejection and replay cannot change settlement"
 )
--- Already committed reward survives death/disconnect and interrupted presentation.
+check(muncher.GetCashMultiplier(p) == 1, "unrelated payouts unchanged")
+check(feed(extra), "rejected world item remains usable")
 p.Character:FindFirstChildOfClass("Humanoid").Health = 0
 muncher.RemovePlayer(p)
 finish()
 check(spawnCount == 2, "death and disconnect cannot strand committed reward")
 p.Character:FindFirstChildOfClass("Humanoid").Health = 100
--- Presentation delay never selects the result a second time.
 roll = 0.99999
-check(feed(), "jackpot selected at commit")
+check(feed(thrown()), "jackpot selected at commit")
 roll = 0
 finish()
 check(ingredients.GetRecord(spawned[3]).Id == "Dragon_Fruit", "delayed reward cannot reroll")
--- Failure before publication, and an error after publication, both recover without duplicates.
 for _, mode in { "nil", "published-error", "placement" } do
-    carry(p, "Apple")
-    local real = ingredients.Spawn
-    local failed = false
+    local object = thrown()
+    local real, failed = ingredients.Spawn, false
     ingredients.Spawn = function(...)
         if not failed then
             failed = true
@@ -130,52 +131,33 @@ for _, mode in { "nil", "published-error", "placement" } do
             error("blocked landing")
         end
     end
-    setup(feed(), "recoverable feed")
+    setup(feed(object), "recoverable feed")
     now += config.ChewSeconds
     muncher.Step()
     check(muncher.GetSnapshot(p).Phase == "Spitting", "failed spawn keeps machine busy")
-    local countBefore = spawnCount
+    local before = spawnCount
+    local rejected = thrown()
+    local beforeRolls = rolls
+    check(
+        not feed(rejected) and ingredients.GetRecord(rejected) ~= nil and rolls == beforeRolls,
+        "spitting rejects without consuming or rerolling"
+    )
     output.Placement = function()
         return at, vec(0, 0, 0)
     end
     now += config.RetrySeconds
     muncher.Step()
-    check(muncher.GetSnapshot(p).Phase == "Idle" and spawnCount == countBefore + 1, "retry settles same reward")
+    check(muncher.GetSnapshot(p).Phase == "Idle" and spawnCount == before + 1, "retry settles same reward")
     ingredients.Spawn = real
     now += config.SpitSeconds
 end
-local teammate = player(3)
-authority.RemovePlayer(teammate)
-setup(authority.JoinSession(teammate, p, authority.GetRequestContext(p)), "join owner")
-carry(teammate, "Apple")
-check(feed(teammate), "authorized teammate feeds same machine")
-carry(p, "Apple")
-local countBefore = inventory.GetCarryCount(p)
-check(not feed() and inventory.GetCarryCount(p) == countBefore, "simultaneous owner attempt preserves input")
-local stale = authority.GetRequestContext(teammate)
-setup(authority.Kick(p, teammate, authority.GetRequestContext(p)), "kick during processing")
-finish()
-check(not feed(teammate, input, stale), "kicked actor cannot feed with stale membership")
--- Death before commitment and throw-first ordering preserve authoritative carry ownership.
-p.Character:FindFirstChildOfClass("Humanoid").Health = 0
-check(not feed() and inventory.GetCarryCount(p) == countBefore, "dead actor cannot feed")
-p.Character:FindFirstChildOfClass("Humanoid").Health = 100
-inventory.ClearHeld(p)
-carry(p, "Banana")
-local thrown = inventory.ThrowHeld(p)
-check(thrown ~= nil and not feed(), "throw-first cannot also consume same ingredient")
-carry(p, "Banana")
-check(feed() and inventory.ThrowHeld(p) == nil, "feed-first cannot throw consumed ingredient")
-finish()
--- Reset detaches machine state while preserving the committed reward debt.
-carry(p, "Apple")
-setup(feed(), "feed before reset")
+setup(feed(thrown()), "feed before reset")
 local before = spawnCount
 muncher.Reset(p)
 finish()
 check(
     spawnCount == before + 1 and not muncher.GetSnapshot(p).Purchased,
-    "reset settles reward without unlocking new machine"
+    "reset preserves committed reward debt without unlocking replacement"
 )
 -- Actual placement resolver: a clear arc spits; an obstruction uses a grounded local position.
 output.Placement = outputPlacement
@@ -201,10 +183,17 @@ casts = 0
 local fallbackAt, fallbackSpeed = output.Placement(model, frame())
 check(fallbackAt.Position.Y == 1.5 and fallbackSpeed.Y == 0, "obstructed arc drops above nearby floor")
 
+workspaceFake.Raycast = function()
+    return nil
+end
+workspaceFake.Spherecast = function()
+    return nil
+end
+output.Placement = function()
+    return at, vec(0, 0, 0)
+end
 unlock()
--- A dynamic PlayerHead follows the ordinary ownership path; output has no source metadata.
-carry(p, "PlayerHead")
-check(feed(), "dynamic PlayerHead is a valid input")
+check(feed(thrown("PlayerHead")), "dynamic head follows physical path")
 finish()
 local reward = spawned[#spawned]
 check(
@@ -212,28 +201,26 @@ check(
         and reward:GetAttribute("SourceUserId") == nil
         and reward:GetAttribute("SourceDisplayName") == nil
         and reward:GetAttribute("SourceUsername") == nil,
-    "reward never inherits dynamic player identity"
+    "reward never inherits player identity"
 )
--- Session teardown must not lose a reward or retain the old machine's purchase state.
-carry(p, "Apple")
-setup(feed(), "feed before session teardown")
+setup(feed(thrown()), "feed before teardown")
 local teardownCount = spawnCount
 muncher.CleanupSession(authority.GetSessionId(p))
 finish()
-check(
-    spawnCount == teardownCount + 1 and muncher.GetSnapshot(p) == nil,
-    "session cleanup preserves committed output only"
-)
+check(spawnCount == teardownCount + 1 and muncher.GetSnapshot(p) == nil, "teardown preserves committed output")
 muncher.Reset(p)
 unlock()
-carry(p, "Apple")
-local pool = config.RewardPools[1]
-local originalId = pool[1].Id
+local retry = thrown()
+local pool, originalId = config.RewardPools[1], config.RewardPools[1][1].Id
 pool[1].Id = "PlayerHead"
-check(not feed() and inventory.GetCarryCount(p) == 1, "invalid reward configuration never consumes input")
+check(not feed(retry) and ingredients.GetRecord(retry) ~= nil, "invalid configuration preserves world input")
 pool[1].Id = originalId
-check(feed(), "configuration recovery releases lifecycle lock")
+check(feed(retry), "configuration recovery releases lifecycle lock")
 finish()
+output.Placement = outputPlacement
+workspaceFake.Raycast = function()
+    return { Position = vec(2, 0, 2) }
+end
 -- Native floor contact preserves the normal spit path; fully blocked fallback retains debt.
 workspaceFake.Spherecast = function()
     return { Normal = vec(0, 1, 0) }
@@ -253,36 +240,24 @@ end
 output.Placement = function()
     return at, vec(0, 0, 0)
 end
--- Exercise the real component-created action through the registered server callback.
+-- Actual component retires authored prompts and never creates a replacement.
 muncher.Reset(p)
-env.Enum.KeyCode = { E = "E", ButtonX = "ButtonX" }
 local cleanup
 workspaceFake.GetPartBoundsInRadius = function()
     return {}
 end
 pad.Touched = signal()
-local createPrompt = cache.WorldUtil.Prompt
-cache.WorldUtil.Prompt = function(parent, name, text)
-    local prompt = createPrompt(parent, name)
-    prompt.ActionText = text
-    return prompt
-end
 cache.WorldUtil.BindTag = function(_, attach)
     cleanup = attach(plot)
 end
+local legacy = instance("ProximityPrompt")
+legacy.Name, legacy.Parent = "FeedMuncher", input
+legacy:SetAttribute("MuncherPrompt", true)
 loadModule("MuncherComponent").Init(dependency)
 unlock()
 heartbeat:Fire(0.1)
-local prompt = input:FindFirstChild("FeedMuncher")
-check(
-    prompt ~= nil and prompt.Enabled and prompt.ActionText == "FEED MUNCHER",
-    "purchased component exposes feed interaction"
-)
-carry(p, "Apple")
-prompt.Triggered:Fire(p, authority.GetRequestContext(p))
-check(
-    inventory.GetCarryCount(p) == 0 and muncher.GetSnapshot(p).Phase == "Processing",
-    "registered prompt commits real inventory feed"
-)
-finish()
+check(input:FindFirstChild("FeedMuncher") == nil, "no E/gamepad/touch feed prompt remains")
+for _, child in model:GetDescendants() do
+    check(child:GetAttribute("MuncherPrompt") == nil, "component never creates marked feed prompt")
+end
 cleanup()

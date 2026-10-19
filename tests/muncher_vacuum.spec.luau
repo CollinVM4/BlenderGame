@@ -32,7 +32,11 @@ input.Position, input.CFrame = vec(0, 4, 0), frame(0, 4, 0)
 local candidates = {}
 local queries = 0
 workspaceFake.GetPartBoundsInRadius = function(_, position, radius, params)
-    check(radius == config.Vacuum.Radius and params.MaxParts == config.Vacuum.MaxParts, "bounded local query")
+    check(
+        (radius == config.Vacuum.Radius or radius == config.Vacuum.OverlapTolerance)
+            and params.MaxParts == config.Vacuum.MaxParts,
+        "bounded local query"
+    )
     queries += 1
     return candidates
 end
@@ -97,11 +101,17 @@ owner.Near = true
 candidates = { extra }
 local extraRoot = cache.WorldUtil.Part(extra)
 local before = extraRoot.AssemblyLinearVelocity
+extraRoot.Position = vec(0.5, 4, 0)
 update(0.1)
 check(
     ingredients.GetRecord(extra) ~= nil and extraRoot.AssemblyLinearVelocity == before and rolls == 1,
     "busy machine leaves extras intact and unqueued"
 )
+check(model:GetAttribute("BusyUntil") == now + config.BusySeconds, "busy physical arrival projects feedback")
+local busyUntil = model:GetAttribute("BusyUntil")
+now += 0.1
+update(0.1)
+check(model:GetAttribute("BusyUntil") == busyUntil, "stationary rejected item does not repeatedly flash")
 finish()
 local reward = outputs[1]
 physical(reward, vec(1, 4, 0))
@@ -221,7 +231,8 @@ finish()
 local stale = loose(teammate, vec(0.5, 4, 0))
 setup(authority.Kick(owner, teammate, authority.GetRequestContext(owner)), "remove member")
 check(
-    eligibility.Eligible(dependency, input, stale) == nil and not muncher.TryFeed(teammate, input, stale, nil),
+    eligibility.Eligible(dependency, input, stale) == nil
+        and not muncher.TryStartConversion(teammate, input, stale, "WorldVacuum", nil),
     "membership changes invalidate pending physical permissions"
 )
 carry(visitor, "Apple")

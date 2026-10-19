@@ -9,6 +9,13 @@ local BEFORE_CAMERA = "TurbineCameraPrepare"
 local AFTER_CAMERA = "TurbineCameraRender"
 local cleanup: (() -> ())? = nil
 local releaseCamera: (() -> ())? = nil
+local suspended = false
+
+function Controller.SetSuspended(value: boolean): boolean
+    local previous = suspended
+    suspended = value
+    return previous
+end
 
 function Controller.ReleaseCamera()
     if releaseCamera then
@@ -70,6 +77,9 @@ function Controller.Init()
     end
 
     local function restore()
+        if suspended then
+            return
+        end
         local current = view
         if not current then
             return
@@ -142,6 +152,9 @@ function Controller.Init()
     table.insert(
         connections,
         workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+            if suspended then
+                return
+            end
             if view then
                 restore()
                 local camera = workspace.CurrentCamera
@@ -159,6 +172,9 @@ function Controller.Init()
     -- Before Roblox's camera update, restore its unblended view during the exit.
     -- Otherwise our rendered interpolation would feed back into its next update.
     RunService:BindToRenderStep(BEFORE_CAMERA, Enum.RenderPriority.Camera.Value - 1, function()
+        if suspended then
+            return
+        end
         local character = player.Character
         local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
         local subject = humanoid()
@@ -252,6 +268,9 @@ function Controller.Init()
     end)
 
     RunService:BindToRenderStep(AFTER_CAMERA, Enum.RenderPriority.Camera.Value + 1, function(dt)
+        if suspended then
+            return
+        end
         local current = view
         if not current then
             return

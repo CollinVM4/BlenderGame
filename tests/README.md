@@ -345,3 +345,15 @@ the current fixture/bundler. Keep `muncher`, `muncher-rewards` and
 `muncher-presentation` for their existing transaction/reward/presentation contracts.
 See [Muncher correction and baseline failures](../docs/MUNCHER.md) for the focused
 regression command, legacy world/blender harness failures and Studio smoke checklist.
+
+
+## FilmCam
+
+`python tests/run_filmcam_tests.py --luau <luau.exe>` is an independent client
+presentation/math suite. It owns camera-track filtering, spline/slerp known
+answers, delta-filtered timestamp continuity, easing, take validation, the JSON
+adapter, gate logic, preset geometry, and record/play/seek/HUD/camera restoration.
+`run_turbine_camera_tests.py` owns the turbine suspension/resume behavior alongside
+its existing camera contracts. Native CFrame/JSON and a real filmed take require
+the separate [Studio checks](../docs/FILMCAM.md); CLI doubles do not establish
+visual smoothness. These suites do not gate authoritative gameplay tests.

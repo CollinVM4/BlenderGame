@@ -5,7 +5,6 @@ local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
 local PanelManager = require(script.Parent.Parent.UI.PanelManager)
 local Controller = {}
@@ -97,46 +96,6 @@ function Controller.Init()
         end,
     })
     gui.Destroying:Connect(menu.Destroy)
-    local modeRows: { [string]: TextButton } = {}
-    local selectionTweens: { Tween } = {}
-    local selectedMode: any = nil
-    local modeTitles = { Open = "PUBLIC", FriendsOnly = "FRIENDS", Closed = "PRIVATE" }
-    local function updateSelection(mode: any, animate: boolean)
-        for _, tween in selectionTweens do
-            tween:Cancel()
-        end
-        table.clear(selectionTweens)
-        selectedMode = mode
-        for value, row in modeRows do
-            local selected = value == mode
-            row.Text = (if selected then "SELECTED: " else "") .. modeTitles[value]
-            row.TextColor3 = if selected then TextStyle.White else Color3.fromRGB(205, 215, 226)
-            local fill = if selected then Color3.fromRGB(45, 159, 123) else Color3.fromRGB(43, 56, 70)
-            local scale = row:FindFirstChild("SelectionScale") :: UIScale
-            local border = row:FindFirstChild("ButtonOutline") :: UIStroke
-            border.Color = if selected then TextStyle.Gold else TextStyle.Dark
-            border.Thickness = if selected then 3.5 else 2
-            local size = if selected then 1.1 else 1
-            if animate then
-                for _, tween in
-                    {
-                        TweenService:Create(
-                            scale,
-                            TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                            { Scale = size }
-                        ),
-                        TweenService:Create(row, TweenInfo.new(0.16), { BackgroundColor3 = fill }),
-                    }
-                do
-                    table.insert(selectionTweens, tween)
-                    tween:Play()
-                end
-            else
-                scale.Scale = size
-                row.BackgroundColor3 = fill
-            end
-        end
-    end
     local function context(plot: Instance): any
         return {
             PlotSessionId = plot:GetAttribute("PlotSessionId"),
@@ -148,12 +107,6 @@ function Controller.Init()
         remote:FireServer(action, plot, value, captured)
     end
     local function openManage(plot: Instance)
-        local previousMode = if managed == plot and panel.Visible then selectedMode else nil
-        for _, tween in selectionTweens do
-            tween:Cancel()
-        end
-        table.clear(selectionTweens)
-        table.clear(modeRows)
         panel:ClearAllChildren()
         Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 16)
         managed = plot
@@ -167,21 +120,6 @@ function Controller.Init()
             head.Size, head.Position = UDim2.fromOffset(36, 36), UDim2.fromOffset(8, 32)
             head.Image, head.BackgroundTransparency, head.Parent = portrait(teammate), 1, panel
             Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
-        end
-        for index, mode in { "Open", "FriendsOnly", "Closed" } do
-            local row = button(panel, modeTitles[mode], 74 + (index - 1) * 36, function()
-                send(plot, "SetJoinMode", mode, captured)
-            end)
-            row.Size = UDim2.new(1, -32, 0, 28) -- Leave space for the selected scale and outline.
-            row.AutoButtonColor = false
-            local scale = Instance.new("UIScale")
-            scale.Name, scale.Scale, scale.Parent = "SelectionScale", 1, row
-            modeRows[mode] = row
-        end
-        local mode = plot:GetAttribute("JoinMode")
-        updateSelection(if previousMode ~= nil then previousMode else mode, false)
-        if previousMode ~= nil and previousMode ~= mode then
-            updateSelection(mode, true)
         end
         if teammate then
             button(panel, "KICK TEAMMATE", 186, function()
@@ -337,8 +275,6 @@ function Controller.Init()
                 menu.Close()
             elseif managed:GetAttribute("PlotMembershipRevision") ~= managedRevision then
                 openManage(managed)
-            elseif managed:GetAttribute("JoinMode") ~= selectedMode then
-                updateSelection(managed:GetAttribute("JoinMode"), true)
             end
         end
     end)

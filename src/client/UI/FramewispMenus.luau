@@ -4,6 +4,7 @@
 local PanelManager = require(script.Parent.PanelManager)
 local Menus = {}
 local Registry = require(script.Parent.UIRegistry)
+local Notifications = require(script.Parent.MenuNotifications)
 local names = Registry.Panels
 local contentOf = Registry.ContentOf
 local panelId = Registry.PanelId
@@ -17,6 +18,7 @@ function Menus.Attach(gui: Instance, player: Player)
     local wired: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
     local connections: { RBXScriptConnection } = {}
     local buttons: { [Instance]: RBXScriptConnection } = {}
+    local badges: { [Instance]: () -> () } = {}
     local stopped = false
     local playerGui = player:FindFirstChild("PlayerGui")
 
@@ -30,10 +32,12 @@ function Menus.Attach(gui: Instance, player: Player)
             panel.Visible = false
             panels[instance] = PanelManager.Register(id, {
                 Open = function()
+                    Notifications.PanelChanged(id, true)
                     panel.Visible = true
                 end,
                 Close = function()
                     panel.Visible = false
+                    Notifications.PanelChanged(id, false)
                 end,
             })
         end
@@ -93,6 +97,9 @@ function Menus.Attach(gui: Instance, player: Player)
             return true
         end
         wired[button] = true
+        if isMenu and id then
+            badges[button] = Notifications.Attach(id, button)
+        end
         buttons[button] = button.Activated:Connect(function()
             if not button:IsDescendantOf(gui) then
                 return
@@ -153,6 +160,11 @@ function Menus.Attach(gui: Instance, player: Player)
                     connection:Disconnect()
                     buttons[button] = nil
                     wired[button] = nil
+                    local detach = badges[button]
+                    if detach then
+                        badges[button] = nil
+                        detach()
+                    end
                 end
             end
         end)
@@ -184,6 +196,10 @@ function Menus.Attach(gui: Instance, player: Player)
             connection:Disconnect()
         end
         table.clear(buttons)
+        for _, detach in badges do
+            detach()
+        end
+        table.clear(badges)
         table.clear(wired)
         for _, connection in connections do
             connection:Disconnect()

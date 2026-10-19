@@ -2,12 +2,10 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Config = require(Shared.Constants.Muncher)
 local Style = require(Shared.Constants.DialogueTextStyle)
 local BillboardStyle = require(script.Parent.Parent.UI.WorldBillboardStyle)
-local PromptPresentation = require(script.Parent.Parent.UI.InteractionPromptPresentation)
 local Effects = require(script.Parent.Parent.UI.MuncherEffects)
 local Controller = {}
 local started = false
@@ -23,24 +21,68 @@ function Controller.Feedback(model: Instance, plot: Instance, player: Player): s
     if model:GetAttribute("Purchased") ~= true then
         return "LOCKED"
     end
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if not player.Character or (humanoid and humanoid.Health <= 0) then
+        return ""
+    end
     if
         model:GetAttribute("Active") ~= true
         or model:GetAttribute("Phase") ~= "Idle"
         or workspace:GetServerTimeNow() < (model:GetAttribute("AvailableAt") or 0)
     then
-        return "MUNCHER BUSY"
+        return if workspace:GetServerTimeNow() < (model:GetAttribute("BusyUntil") or 0)
+            then "BUSY" .. utf8.char(0x2026)
+            else ""
     end
-    local character = player.Character
-    local tools: { Instance } = if character then character:GetChildren() else {}
-    for _, tool in tools do
-        if tool:IsA("Tool") and tool:GetAttribute("IngredientId") == nil then
-            return "NEED INGREDIENT"
+    return "FEED ME"
+end
+
+local function updateHint(view: any, model: Instance, player: Player, now: number)
+    local feedback = Controller.Feedback(model, view.Plot, player)
+    local phase = model:GetAttribute("Phase")
+    local sequence = model:GetAttribute("Sequence")
+    local availableAttribute = model:GetAttribute("AvailableAt")
+    local availableAt = if type(availableAttribute) == "number" then availableAttribute else 0
+    local eligible = view.Plot:IsDescendantOf(workspace)
+        and model:IsDescendantOf(view.Plot)
+        and view.Plot:GetAttribute("PlotSessionId") == player:GetAttribute("PlotSessionId")
+        and view.Plot:GetAttribute("PlotSessionId") ~= nil
+        and model:GetAttribute("Purchased") == true
+        and model:GetAttribute("Active") == true
+        and player.Character ~= nil
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    eligible = eligible and (not humanoid or humanoid.Health > 0)
+    if not eligible or sequence ~= view.Sequence or phase ~= "Idle" then
+        view.BannerUntil, view.BannerResult = nil, nil
+    end
+    if not eligible or sequence ~= view.Sequence then
+        view.PendingResult = nil
+    end
+    if eligible and (phase == "Processing" or phase == "Spitting") then
+        view.PendingResult = model:GetAttribute("ResultKind") or view.PendingResult
+    elseif phase == "Idle" then
+        -- Successful output publication advances AvailableAt; interruption does not.
+        -- ResultKind is already cleared in the idle snapshot, so retain the roll's result.
+        if eligible and view.PendingResult and availableAt > (view.AvailableAt or availableAt) then
+            view.BannerResult = view.PendingResult
+            view.BannerUntil = availableAt - Config.SpitSeconds + 2
         end
+        view.PendingResult = nil
     end
-    if player:GetAttribute("HeldItemType") ~= "Ingredient" or player:GetAttribute("HeldIngredientId") == nil then
-        return "NEED INGREDIENT"
+    view.Sequence, view.AvailableAt = sequence, availableAt
+    local result = if view.BannerUntil and now < view.BannerUntil then view.BannerResult else nil
+    local banner = result == "Win" or result == "Lose"
+    local visible = eligible and (banner or feedback == "FEED ME" or feedback == "BUSY" .. utf8.char(0x2026))
+    if visible and not view.Gui.Enabled then
+        view.ShownAt = now
     end
-    return "FEED MUNCHER"
+    view.Label.Text = if banner
+        then (if result == "Win" then "YOU WIN!" else "YOU LOSE!")
+        else feedback
+    view.Label.TextColor3 = if banner
+        then (if result == "Win" then Color3.fromRGB(120, 255, 140) else Color3.fromRGB(255, 120, 120))
+        else Style.White
+    view.Gui.Enabled = visible
 end
 
 local function purchaseDisplay(pad: BasePart, playerGui: PlayerGui): BillboardGui
@@ -81,37 +123,16 @@ function Controller.Init()
         end
     end)
     local views: { [Instance]: any } = {}
-    local promptViews: { [ProximityPrompt]: () -> () } = {}
-    local function hide(prompt: ProximityPrompt)
-        local cleanup = promptViews[prompt]
-        if cleanup then
-            cleanup()
-            promptViews[prompt] = nil
-        end
-    end
-    ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
-        if prompt:GetAttribute("MuncherPrompt") ~= true or not prompt.Parent then
-            return
-        end
-        hide(prompt)
-        local cleanup, gui = PromptPresentation.Create(prompt, prompt.Parent :: BasePart, playerGui, inputType, {
-            MaxDistance = Config.FeedDistance,
-            WidthStuds = 6.9,
-            Available = function()
-                return prompt.Enabled
-            end,
-        })
-        local label = gui:FindFirstChild("Action")
-        if label and (label:IsA("TextLabel") or label:IsA("TextButton")) then
-            Style.Apply(label :: TextLabel, 24)
-        end
-        promptViews[prompt] = cleanup
-    end)
-    ProximityPromptService.PromptHidden:Connect(hide)
     local elapsed = 0
     RunService.RenderStepped:Connect(function(dt)
-        for _, view in views do
-            view.Animate(workspace:GetServerTimeNow())
+        for model, view in views do
+            local now = workspace:GetServerTimeNow()
+            updateHint(view, model, player, now)
+            view.Animate(now)
+            if view.Gui.Enabled and view.ShownAt then
+                local t = math.clamp((now - view.ShownAt) / 0.25, 0, 1)
+                view.Label.Position = UDim2.fromScale(0, -math.sin(t * math.pi) * 0.12)
+            end
         end
         elapsed += dt
         if elapsed < Config.ScanInterval then
@@ -128,18 +149,24 @@ function Controller.Init()
             local view = views[model]
             if not view then
                 local gui = Instance.new("BillboardGui")
-                gui.Name = "MuncherStatus"
+                gui.Name = "MuncherHint"
+                gui.Active = false
+                gui.Enabled = false
                 BillboardStyle.ApplyBillboard(
                     gui,
-                    { WidthStuds = 4.5, HeightStuds = 1.2, MaxDistance = 40, AlwaysOnTop = false, ResetOnSpawn = true }
+                    { WidthStuds = 5.5, HeightStuds = 1.4, MaxDistance = 25, AlwaysOnTop = false, ResetOnSpawn = true }
                 )
                 local label = Instance.new("TextLabel")
+                -- Decorative hint/result view: never consume world or Throw taps.
+                -- UIStroke/UIPadding are UIComponents and have no Active property.
+                label.Active = false
                 label.BackgroundTransparency, label.Size = 1, UDim2.fromScale(1, 1)
                 Style.Apply(label :: TextLabel, 24)
                 label.TextScaled = true
                 label.Parent, gui.Parent = gui, playerGui
+                gui.StudsOffsetWorldSpace = Vector3.new(0, 2.2, 0)
                 local animate, cleanup = Effects.Bind(model, playerGui)
-                view = { Gui = gui, Label = label, Animate = animate, Cleanup = cleanup }
+                view = { Gui = gui, Label = label, Animate = animate, Cleanup = cleanup, Plot = plot }
                 views[model] = view
             end
             local input = model:FindFirstChild("InputZone")
@@ -154,17 +181,12 @@ function Controller.Init()
             if view.Purchase then
                 view.Purchase.Enabled = pad.CanTouch and pad.Transparency < 1
             end
-            local feedback = Controller.Feedback(model, plot, player)
-            view.Gui.Adornee = if input and input:IsA("BasePart") then input else nil
-            view.Label.Text = feedback
-            view.Gui.Enabled = feedback ~= "FEED MUNCHER" and model:GetAttribute("Purchased") == true
-            local prompt = input and input:FindFirstChild("FeedMuncher")
-            if prompt and prompt:IsA("ProximityPrompt") then
-                prompt.Enabled = feedback == "FEED MUNCHER"
-                if not prompt.Enabled then
-                    hide(prompt)
-                end
-            end
+            local mouth = model:FindFirstChild("MouthOrigin", true)
+            view.Gui.Adornee = if mouth and (mouth:IsA("Attachment") or mouth:IsA("BasePart"))
+                then mouth
+                elseif input and input:IsA("BasePart") then input
+                else nil
+            updateHint(view, model, player, workspace:GetServerTimeNow())
         end
         for model, view in views do
             if not seen[model] then
@@ -174,11 +196,6 @@ function Controller.Init()
                     view.Purchase:Destroy()
                 end
                 views[model] = nil
-            end
-        end
-        for prompt in promptViews do
-            if not prompt:IsDescendantOf(workspace) or not prompt.Enabled then
-                hide(prompt)
             end
         end
     end)

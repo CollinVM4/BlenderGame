@@ -106,7 +106,7 @@ function Controller.Init()
             return Enum.ContextActionResult.Pass
         end
         if state == Enum.UserInputState.Begin then
-            trace("request sent: ThrowHeld newest ingredient")
+            trace("request sent: ThrowHeld equipped item, newest ingredient fallback")
             remote:FireServer("ThrowHeld", nil, nil, if player:GetAttribute("ThrowDebug") == true then attempt else nil)
         end
         return Enum.ContextActionResult.Sink

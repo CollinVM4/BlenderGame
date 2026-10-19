@@ -31,6 +31,7 @@ function Presentation.Create(
     settings: Settings?
 ): (() -> (), BillboardGui)
     local config: Settings = settings or {}
+    local paddedTouch = inputType == Enum.ProximityPromptInputType.Touch and config.TouchWidth ~= nil
     local stashPrompt = prompt:GetAttribute("PlayerStashPrompt") == true
     local gui = Instance.new("BillboardGui")
     gui.Name = "InteractionPromptDisplay"
@@ -44,10 +45,9 @@ function Presentation.Create(
     })
     -- Billboard input gate: only the explicit TouchTarget is active on padded touch views.
     -- Decorative labels stay inactive; do not add a full-canvas button behind them.
-    gui.Active = true
+    gui.Active = not paddedTouch
 
     -- A transparent button preserves touch/click input through the prompt's API.
-    local paddedTouch = inputType == Enum.ProximityPromptInputType.Touch and config.TouchWidth ~= nil
     local inputButton = if paddedTouch then nil else Instance.new("TextButton")
     local text = (inputButton or Instance.new("TextLabel")) :: TextLabel
     text.Name = "Action"

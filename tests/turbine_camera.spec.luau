@@ -159,7 +159,10 @@ check(
     "turbine view clears first-person local transparency after applying its camera frame"
 )
 flush()
-check(character.BodyPart.LocalTransparencyModifier == 0, "active turbine view retries visibility after deferred camera updates")
+check(
+    character.BodyPart.LocalTransparencyModifier == 0,
+    "active turbine view retries visibility after deferred camera updates"
+)
 step(0.15)
 check(near(camera.CFrame, start:Lerp(target.CFrame, 0.5)), "enter has a smooth midpoint")
 step(0.15)
@@ -305,6 +308,24 @@ check(camera.CameraType == "Custom", "streamed out plot releases camera")
 otherPlot.Parent = workspaceFake
 otherPlot.AncestryChanged:Fire()
 step(0.3)
+-- FilmCam borrows the camera without destroying this owner's cached view.
+local priorSuspension = controller.SetSuspended(true)
+local filmingFrame = cameraFrame(vec(900, 100, 20))
+camera.CFrame = filmingFrame
+controller.ReleaseCamera()
+changedCamera:Fire()
+step(0.3)
+check(
+    camera.CFrame == filmingFrame and camera.CameraType == "Scriptable",
+    "suspension blocks render, release and replacement-event camera writes"
+)
+player:SetAttribute("PlotSessionId", nil)
+player:SetAttribute("PlotSessionId", "reset")
+step(0.3)
+check(camera.CFrame == filmingFrame, "membership events cannot steal a suspended camera")
+controller.SetSuspended(priorSuspension)
+step(0.3)
+check(near(camera.CFrame, otherTarget.CFrame), "resume restores valid turbine ownership")
 moduleScript.Destroying:Fire()
 check(camera.CameraType == "Custom", "module teardown restores camera")
 local finalFrame = camera.CFrame
