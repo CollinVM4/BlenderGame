@@ -30,7 +30,7 @@ The existing recent-ragdoll, measured immobility, movement-intent/abnormal-recov
 
 The server validates placement before mutating character state, temporarily takes root network ownership, restores joints/collisions through RagdollService, moves the complete model, clears assembly velocities, reapplies authoritative movement/jump/sprint values, requests GettingUp, and restores previous ownership after 0.2 seconds. The owning client also requests GettingUp, guarded against stale-character responses. Health, inventory ownership, carried instances, and assigned plot identity are preserved. No combat deadlines, immunity, ForceFields, or invulnerability are modified.
 
-`FallDamageService.NotifyRecoveryTeleport` explicitly resets only the current character's old peak/contact/settling history after a successful reposition. This is necessary because its general reposition tolerance is twelve studs, so a ten-stud lift may not be recognized by the existing discontinuity heuristic. A subsequent real descent/landing is tracked and damaged normally. Stale-character notifications cannot cancel another character's fall.
+`FallDamageService.NotifyRecoveryTeleport` explicitly resets only the current character's old airborne episode and peak after a successful reposition. This is necessary because its general reposition tolerance is twelve studs, so a ten-stud lift may not be recognized by the existing discontinuity heuristic. A subsequent real descent/landing is tracked and damaged normally. Stale-character notifications cannot cancel another character's fall.
 
 ## Feedback and setup
 
@@ -73,6 +73,6 @@ All six focused suites pass. Roblox-aware focused typecheck, StyLua, and Rojo bu
 3. With local recovery blocked, test owner and teammate simultaneously, missing/unclaimed plots, missing markers, blocked/hazardous spawns, and plot release/reassignment while the button is visible. There must be no arbitrary fallback, ownership/team change, or partial reposition on refusal.
 4. Carry several ingredients and smoothies during both recovery methods. Confirm instance/ownership preservation, no loss/duplication, and normal subsequent throw/store/serve behavior. Verify health is unchanged and there is no added protection.
 5. Exercise legitimate idle, normal walking/jumping, active stun/freeze, cooldown across another ragdoll, death, respawn, and another player's character. None should permit stale or unauthorized recovery.
-6. Observe fall-damage diagnostics during the ten-stud lift and plot return. Confirm old peaks/contacts are reset at the authorized boundary, no false teleport landing occurs, and later actual large falls still deal normal damage.
+6. Observe fall-damage diagnostics during the ten-stud lift and plot return. Confirm old airborne episodes are reset at the authorized boundary, no false teleport landing occurs, and later actual large falls still deal normal damage.
 7. Reset or die during temporary server ownership, then verify the fresh character has normal ownership/control. Test two-client replication, repeated recoveries, and other players remaining unaffected.
 8. On PC/mobile/console verify unchanged button bindings and placement, success message expiry, failure text, panel suppression, and no interference with Throw/Sprint/Jump.

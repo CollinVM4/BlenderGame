@@ -1,10 +1,6 @@
 --!strict
--- Tuning for FallDamageService. Velocities are studs/sec of downward speed at
--- landing, after subtracting the character's own current jump power (so a
--- normal jump-and-land on the same level never counts as a fall).
--- Thresholds are the original tuning divided by ~1.3 (and non-lethal damage
--- multiplied by ~1.3) for ~30% more sensitivity; jump safety is unaffected
--- because the jump-power subtraction already nets ~0 effective velocity.
+-- Peak downward speed is compensated by the player's jump tier, capped below.
+-- Damage thresholds and the smooth curve remain independent of landing detection.
 return {
     SafeImpactVelocity = 54,
     LightImpactVelocity = 69,
@@ -17,11 +13,13 @@ return {
     HeavyDamage = 72,
     LethalDamage = 200, -- Deliberately exceeds max health to guarantee a kill.
 
+    CompensationCap = 85, -- Set to math.huge to restore uncapped jump compensation.
+
     -- Landing detection only; these do not change the damage curve.
     ImpactProbePadding = 0.3,
     MinimumGroundNormalY = 0.5,
     ImpactSpeedDrop = 8,
     SettleVerticalSpeed = 4,
-    SettleSeconds = 0.25,
+    GroundConfirmSeconds = 0.1,
     RepositionTolerance = 12, -- Extra studs beyond plausible per-step travel.
 }

@@ -76,10 +76,35 @@ local function radius(object: Instance): number
     return result + CLEARANCE
 end
 
+-- Bounds in the object's pivot frame become oriented bounds under the spawn rotation.
+-- Preserve the center offset so asymmetric multipart templates are queried correctly.
+local function bounds(object: Instance): (Vector3, Vector3)
+    local pivot = (object :: any):GetPivot()
+    local low = Vector3.new(math.huge, math.huge, math.huge)
+    local high = Vector3.new(-math.huge, -math.huge, -math.huge)
+    local parts = object:GetDescendants()
+    table.insert(parts, object)
+    for _, part in parts do
+        if part:IsA("BasePart") then
+            local relative = pivot:ToObjectSpace(part.CFrame).Position
+            local half = Vector3.new(
+                extent(part, pivot.RightVector),
+                extent(part, pivot.UpVector),
+                extent(part, pivot.LookVector * -1)
+            )
+            local lower, upper = relative - half, relative + half
+            low = Vector3.new(math.min(low.X, lower.X), math.min(low.Y, lower.Y), math.min(low.Z, lower.Z))
+            high = Vector3.new(math.max(high.X, upper.X), math.max(high.Y, upper.Y), math.max(high.Z, upper.Z))
+        end
+    end
+    return (low + high) * 0.5, high - low + Vector3.new(2, 2, 2) * CLEARANCE
+end
+
 -- No client position, cursor target, head height, or character-wide bounding box.
 -- Carried visuals/Tools must not inflate the avatar's physical clearance.
 function IngredientThrow.FindOrigin(root: BasePart, character: Model, object: Instance): (CFrame?, string)
-    local direction = root.CFrame.LookVector
+    local facing = root.CFrame.LookVector
+    local direction = Vector3.new(facing.X, 0, facing.Z).Unit
     local itemRadius = radius(object)
     local front = 0
     for _, part in character:GetDescendants() do
@@ -96,7 +121,7 @@ function IngredientThrow.FindOrigin(root: BasePart, character: Model, object: In
     if minimum > MAX_DISTANCE then
         return nil, "avatar/item clearance exceeds safe distance"
     end
-    local boxSize = Vector3.new(2, 2, 2) * itemRadius
+    local boxCenter, boxSize = bounds(object)
     local excluded: { Instance } = { character }
     -- Running receptors resolve arrivals through their vacuum, including busy shake-off.
     for _, plot in CollectionService:GetTagged("PlayerPlot") do
@@ -109,53 +134,32 @@ function IngredientThrow.FindOrigin(root: BasePart, character: Model, object: In
     overlap.FilterType = Enum.RaycastFilterType.Exclude
     overlap.FilterDescendantsInstances = excluded
     overlap.RespectCanCollide = true
-    local ray = RaycastParams.new()
-    ray.FilterType = Enum.RaycastFilterType.Exclude
-    ray.FilterDescendantsInstances = excluded
-    ray.RespectCanCollide = true
-    local function attempt(height: number): (CFrame?, string)
-        local start = root.CFrame.Position + Vector3.new(0, height, 0)
-        local vertical = workspace:Raycast(root.CFrame.Position, start - root.CFrame.Position, ray)
-        if vertical then
-            return nil, "launch height obstructed by " .. vertical.Instance:GetFullName()
-        end
-        -- Blockcast does not detect parts already overlapping its initial volume.
-        local initial = workspace:GetPartBoundsInBox(CFrame.new(start), boxSize, overlap)
-        if #initial > 0 then
-            return nil, "launch volume obstructed by " .. initial[1]:GetFullName()
-        end
-        local reason = "no clear spawn"
-        for _, distance in { math.max(5, minimum), minimum } do
-            local position = start + direction * distance
-            local hit = workspace:Blockcast(CFrame.new(start), boxSize, position - start, ray)
-            local occupied = workspace:GetPartBoundsInBox(CFrame.new(position), boxSize, overlap)
-            if not hit and #occupied == 0 then
-                return CFrame.new(position) * root.CFrame.Rotation,
-                    string.format(
-                        "clear origin=%s radius=%.3f avatarFront=%.3f distance=%.3f launchHeight=%.3f",
-                        tostring(position),
-                        itemRadius,
-                        front,
-                        distance,
-                        height
-                    )
+    local start = root.CFrame.Position + Vector3.new(0, math.max(2, itemRadius), 0)
+    local distances = {}
+    local distance = math.max(5, minimum)
+    while distance > minimum do
+        table.insert(distances, distance)
+        distance -= 1
+    end
+    table.insert(distances, minimum)
+    for _, angle in { 0, 20, -20, 40, -40 } do
+        local radians = math.rad(angle)
+        local candidateDirection = Vector3.new(
+            direction.X * math.cos(radians) + direction.Z * math.sin(radians),
+            0,
+            -direction.X * math.sin(radians) + direction.Z * math.cos(radians)
+        )
+        for _, candidateDistance in distances do
+            local position = start + candidateDirection * candidateDistance
+            local origin = CFrame.new(position) * root.CFrame.Rotation
+            local occupied = workspace:GetPartBoundsInBox(origin * CFrame.new(boxCenter), boxSize, overlap)
+            if #occupied == 0 then
+                return origin, string.format("clear distance=%.3f angle=%d", candidateDistance, angle)
             end
-            local blocker = if hit then hit.Instance else occupied[1]
-            reason = "spawn/path obstructed by " .. blocker:GetFullName()
-        end
-        return nil, reason
-    end
-    local nominalReason = "no clear spawn"
-    for index, height in { math.max(2, itemRadius), 1.5, 1.0, 0.5 } do
-        local origin, reason = attempt(height)
-        if origin then
-            return origin, reason
-        end
-        if index == 1 then
-            nominalReason = reason
         end
     end
-    return nil, nominalReason
+    return CFrame.new(start + direction * minimum) * root.CFrame.Rotation,
+        string.format("placement forced distance=%.3f", minimum)
 end
 
 -- Pairwise exclusions preserve collisions with the world, blender and other players.

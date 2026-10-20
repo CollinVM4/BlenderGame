@@ -13,12 +13,12 @@ opaque silhouettes, asset fallback, and client lifecycle.
 See [Pass 1 setup](../docs/LUCKY_BLOCKS.md) and [Pass 2 Studio acceptance](../docs/LUCKY_BLOCK_ROULETTE.md).
 No buff mechanics are included.
 
-Fall damage: `--suite fall-damage` runs authoritative impact/jump/ragdoll/reset
-contracts, brief-contact and avatar replacement regressions, and bounded
-observer checks. The formerly failing bunny-hop, held-Jump and replaced-torso
-correction contracts now run in this normal suite. `--fall-damage-fix-contracts`
-is retained as a compatibility selector for the same passing suite. See
-[reliability changes and Studio multiplayer checks](../docs/FALL_DAMAGE_DIAGNOSTICS.md).
+Fall damage: `--suite fall-damage` owns the unchanged damage curve and scripted
+Heartbeat episode contracts: same-ledge walk/jump comparisons, high-speed grazes,
+immediate shelf drops, safe jumps/bounces, soft confirmation, capped compensation,
+rig/ragdoll support, resets, and bounded episode diagnostics.
+`--fall-damage-fix-contracts` remains a compatibility selector for the same suite.
+See [the two-state tracker and Studio checks](../docs/FALL_DAMAGE_DIAGNOSTICS.md).
 
 Run `python tests/run_state_tests.py --luau <luau.exe>`. The default manifest runs
 every suite below, in a fresh Luau process, continues after failures, reports each

@@ -10,11 +10,9 @@ before labels are parented. WorldStrokeController binds replicated server views
 and clones on each client, where camera-dependent AbsoluteSize is available.
 Screen and SurfaceGui strokes keep their existing pixel styling.
 
-IngredientThrow tries nominal max(2, radius), then 1.5, 1.0, 0.5 studs. Every
-candidate must pass the vertical ray, initial volume, sweep and destination
-checks, including both original distance attempts. All failures report the
-nominal reason. Success traces include launchHeight; exclusions, impulse and
-maximum distance are unchanged.
+IngredientThrow placement is superseded by the [spawn preference ladder](THROW_SAFETY.md).
+It uses one fixed height, straight then angled endpoint candidates, and a forced
+straight minimum fallback. Occupancy no longer rejects throws; impulse is unchanged.
 
 The updated Framewisp export is intentionally not included. After importing it,
 each outer Upgrades/Index button needs a direct GuiObject child named Badge (or
@@ -39,7 +37,7 @@ Studio checks still required:
 - Walk toward/away from ingredient prompts, customers and carried stacks on
   desktop/mobile; assess outline weight at the one-pixel clamp and tune studs.
 - Throw under Central Market Yellow Shop's awning, in fully enclosed cover, and
-  on open ground. Inspect lower-height traces and physical clearance.
+  on open ground. Inspect clear/forced placement traces and physical arrival.
 - Import the updated UI; earn/spend across an upgrade price, unlock ingredients
   and customers with Index closed, open/close Index, then unlock again.
 - Reimport with Badge removed: buttons/panels still work without generated badges.

@@ -27,21 +27,21 @@ check(
     ingredients.GetRecord(first).Owner == nil and ingredients.GetRecord(second).Owner == nil,
     "both throws release ownership into loose world"
 )
-local oldBlockcast = workspaceFake.Blockcast
-local blocker = peerRoot
-function blocker:GetFullName()
-    return "Workspace.Teammate.HumanoidRootPart"
+local oldOverlap = workspaceFake.GetPartBoundsInBox
+workspaceFake.GetPartBoundsInBox = function(_, _, _, params)
+    check(params.FilterDescendantsInstances[1] == owner.Character, "thrower excluded from world query")
+    check(
+        not table.find(params.FilterDescendantsInstances, peer.Character),
+        "teammate remains in world clearance queries"
+    )
+    return { peerRoot }
 end
-workspaceFake.Blockcast = function(_, _, _, _, params)
-    check(params.FilterDescendantsInstances[1] == owner.Character, "only thrower excluded from world query")
-    check(not table.find(params.FilterDescendantsInstances, peer.Character), "teammate still obstructs throw path")
-    return { Instance = blocker }
-end
+local obstructedThrow = inventory.ThrowHeld(owner, nil, true)
 check(
-    inventory.ThrowHeld(owner, nil, true) == nil and inventory.GetCarryCount(owner) == 2,
-    "teammate obstruction does not destroy owned item"
+    obstructedThrow ~= nil and inventory.GetCarryCount(owner) == 1 and inventory.GetCarryCount(peer) == 2,
+    "occupied placement releases only the throwing actor's item"
 )
-workspaceFake.Blockcast = oldBlockcast
+workspaceFake.GetPartBoundsInBox = oldOverlap
 -- Mirror bootstrap cleanup before binding a fresh character; old carry cannot leak.
 local oldCharacter = peer.Character
 peerHumanoid.Health = 0
@@ -69,7 +69,7 @@ check(
 )
 check(respawnThrow:GetPivot().Position.X == 40, "respawn uses current root rather than previous character")
 check(
-    inventory.GetCarryCount(owner) == 2 and oldCharacter ~= peer.Character,
+    inventory.GetCarryCount(owner) == 1 and oldCharacter ~= peer.Character,
     "peer respawn preserves teammate inventory"
 )
 inventory.ClearHeld(owner)

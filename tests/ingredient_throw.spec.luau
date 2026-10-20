@@ -154,225 +154,226 @@ check(
 inventory.ClearHeld(player)
 accessory:Destroy()
 
--- Boundary doubles model engine query outcomes, not Roblox physical simulation.
+-- Placement queries model endpoint clearance, never the fictional launch path.
+local throw = loadModule("IngredientThrow")
 local oldRay, oldBlock, oldOverlap = workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox
+workspaceFake.Raycast = function()
+    error("throw placement must not raycast")
+end
+workspaceFake.Blockcast = function()
+    error("throw placement must not sweep")
+end
+check(
+    not string.find(sources.IngredientThrow, "Blockcast", 1, true)
+        and not string.find(sources.IngredientThrow, ":Raycast", 1, true),
+    "placement source contains no sweep or vertical raycast"
+)
 local wall = instance("Part")
 wall.Name = "Wall"
-function wall:GetFullName()
-    return "Workspace.Wall"
+local item = part("PlacementItem", nil, vec(0.5, 0.5, 0.5), translate())
+local itemRadius = item.Size.Magnitude * 0.5 + 0.25
+local minimum = root.Size.Z * 0.5 + itemRadius + 0.25
+local start = root.CFrame.Position + vec(0, math.max(2, itemRadius), 0)
+local function candidate(angle, distance)
+    local facing = root.CFrame.LookVector
+    local radians = math.rad(angle)
+    return start
+        + vec(
+                facing.X * math.cos(radians) + facing.Z * math.sin(radians),
+                0,
+                -facing.X * math.sin(radians) + facing.Z * math.cos(radians)
+            )
+            * distance
 end
+-- Every preference can win; all earlier candidates are occupied. Include fractional minimum.
+local distances = { 5, 4, 3, 2, minimum }
+for _, winningAngle in { 0, 20, -20, 40, -40 } do
+    for winningIndex, winningDistance in distances do
+        local expectedQueries = (table.find({ 0, 20, -20, 40, -40 }, winningAngle) - 1) * #distances + winningIndex
+        local queries = 0
+        workspaceFake.GetPartBoundsInBox = function(_, at, size, params)
+            queries += 1
+            if queries == 1 and winningAngle == 0 and winningIndex == 1 then
+                check(
+                    params.FilterType == env.Enum.RaycastFilterType.Exclude
+                        and params.FilterDescendantsInstances[1] == character
+                        and params.RespectCanCollide == true,
+                    "placement queries exclude the character and respect collisions"
+                )
+                check((size - vec(1, 1, 1)).Magnitude < 0.0001, "small item uses real extents plus clearance")
+            end
+            return if (at.Position - candidate(winningAngle, winningDistance)).Magnitude < 0.0001 then {} else { wall }
+        end
+        local origin, reason = throw.FindOrigin(root, character, item)
+        check(
+            origin ~= nil and (origin.Position - candidate(winningAngle, winningDistance)).Magnitude < 0.0001,
+            "first clear ladder candidate wins"
+        )
+        check(queries == expectedQueries, "straight then signed angles exhaust descending distances in order")
+        check(
+            reason == string.format("clear distance=%.3f angle=%d", winningDistance, winningAngle),
+            "clear diagnostics identify winning distance and angle"
+        )
+    end
+end
+-- Enclosed throws still release inventory and keep their original facing impulse.
 local messages = {}
 env.print = function(message)
     table.insert(messages, message)
 end
 player:SetAttribute("ThrowDebug", true)
-for _, gate in { "height", "initial", "path", "destination" } do
+for _, forced in { false, true } do
     table.clear(messages)
     fill()
-    workspaceFake.Raycast = function(_, _, _, params)
-        check(
-            params.FilterDescendantsInstances[1] == character and params.RespectCanCollide,
-            "height excludes thrower's full character"
-        )
-        return if gate == "height" then { Instance = wall } else nil
-    end
-    workspaceFake.Blockcast = function(_, _, _, _, params)
-        check(
-            params.FilterDescendantsInstances[1] == character and params.RespectCanCollide,
-            "sweep excludes self but retains world collisions"
-        )
-        return if gate == "path" then { Instance = wall } else nil
-    end
-    local queries = 0
-    workspaceFake.GetPartBoundsInBox = function(_, queryFrame, _, params)
-        queries += 1
-        check(
-            params.FilterDescendantsInstances[1] == character and params.RespectCanCollide,
-            "volume excludes own accessories and carry geometry"
-        )
-        return if (gate == "initial")
-                or (
-                    gate == "destination"
-                    and (queryFrame.Position - root.CFrame.Position):Dot(root.CFrame.LookVector) > 0.01
-                )
-            then { wall }
-            else {}
+    workspaceFake.GetPartBoundsInBox = function(_, at)
+        local side = (at.Position - root.CFrame.Position):Dot(root.CFrame.RightVector)
+        return if not forced and side < -0.1 then {} else { wall }
     end
     local before = #services.CollectionService:GetTagged("IngredientWorldItem")
-    check(inventory.ThrowHeld(player, nil, true) == nil, gate .. " obstruction rejects throw")
-    check(inventory.GetCarryCount(player) == 3, gate .. " rejection preserves all owned ingredients")
+    local thrown = inventory.ThrowHeld(player, nil, true)
     check(
-        #services.CollectionService:GetTagged("IngredientWorldItem") == before,
-        gate .. " rejection publishes no item"
+        thrown ~= nil and inventory.GetCarryCount(player) == 2,
+        "blocked straight placement releases exactly one item"
     )
     check(
-        string.find(table.concat(messages, "\n"), "Workspace.Wall", 1, true) ~= nil,
-        "opt-in diagnostics name obstruction"
+        #services.CollectionService:GetTagged("IngredientWorldItem") == before + 1,
+        "blocked straight placement publishes item"
     )
+    check(
+        (thrown.AssemblyLinearVelocity - (root.CFrame.LookVector * 25 + vec(0, 18, 0))).Magnitude < 0.0001,
+        "angled and forced placements preserve facing impulse"
+    )
+    local relative = root.CFrame:ToObjectSpace(thrown:GetPivot()).Position
+    if forced then
+        local radius = thrown.Size.Magnitude * 0.5 + 0.25
+        local expectedMinimum = root.Size.Z * 0.5 + radius + 0.25
+        check(
+            math.abs(relative.X) < 0.0001 and math.abs(relative.Z + expectedMinimum) < 0.0001,
+            "every candidate occupied forces straight minimum spawn"
+        )
+        check(
+            string.find(table.concat(messages, "\n"), "placement forced distance=", 1, true) ~= nil,
+            "forced diagnostic emitted"
+        )
+    else
+        check(relative.X < -0.1, "blocked straight line chooses angled spawn")
+        check(string.find(table.concat(messages, "\n"), "angle=20", 1, true) ~= nil, "angled diagnostic emitted")
+    end
     inventory.ClearHeld(player)
 end
-workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
-fill()
-check(inventory.ThrowHeld(player, nil, false) ~= nil, "throw recovers immediately after obstruction removed")
-inventory.ClearHeld(player)
 player:SetAttribute("ThrowDebug", false)
 local beforeLogs = #messages
-loadModule("IngredientThrow").Trace(player, "disabled")
+throw.Trace(player, "disabled")
 check(#messages == beforeLogs, "diagnostics are opt-in")
--- Nominal five-stud placement can fall back closer without crossing a wall.
-fill()
-workspaceFake.Blockcast = function(_, _, _, displacement)
-    return if displacement.Magnitude > 4 then { Instance = wall } else nil
+-- Purchased active munchers, including busy ones and other plots, resolve vacuum arrivals.
+local plot = instance("Model")
+services.CollectionService:AddTag(plot, "PlayerPlot")
+local muncher = instance("Model")
+muncher.Name, muncher.Parent = "Muncher", plot
+local mouth = part("Mouth", muncher, vec(4, 4, 4), translate(candidate(0, 5)))
+for _, state in { "active", "busy", "unpurchased", "inactive", "unset" } do
+    muncher:SetAttribute("Purchased", if state == "unset" then nil else state ~= "unpurchased")
+    muncher:SetAttribute("Active", if state == "unset" then nil else state ~= "inactive")
+    muncher:SetAttribute("Phase", if state == "busy" then "Processing" else "Idle")
+    workspaceFake.GetPartBoundsInBox = function(_, _, _, params)
+        for _, excluded in params.FilterDescendantsInstances do
+            if mouth:IsDescendantOf(excluded) then
+                return {}
+            end
+        end
+        return { mouth }
+    end
+    local origin, reason = throw.FindOrigin(root, character, item)
+    local excluded = state == "active" or state == "busy"
+    check(
+        origin ~= nil and (origin.Position - candidate(0, if excluded then 5 else minimum)).Magnitude < 0.0001,
+        state .. " muncher uses straight clear spawn or forced minimum"
+    )
+    check(
+        reason
+            == (
+                if excluded
+                    then "clear distance=5.000 angle=0"
+                    else string.format("placement forced distance=%.3f", minimum)
+            ),
+        state .. " muncher diagnostic"
+    )
 end
-local nearby = inventory.ThrowHeld(player, nil, false)
+services.CollectionService:RemoveTag(plot, "PlayerPlot")
+plot:Destroy()
+-- An oriented thin multipart item with an offset pivot must query its actual box.
+local model = instance("Model")
+model.CFrame = translate(8, 3, 2) * env.CFrame.Angles(0, math.pi / 3, 0)
+part("Long", model, vec(6, 1, 0.5), model.CFrame * translate(2, 0, 0) * env.CFrame.Angles(0, math.pi / 2, 0))
+part("Tip", model, vec(1, 1, 1), model.CFrame * translate(2, 0, 3))
+local savedFrame = root.CFrame
+root.CFrame = root.CFrame * env.CFrame.Angles(0.2, 0.7, 0)
+workspaceFake.GetPartBoundsInBox = function(_, at, size)
+    check((size - vec(1.5, 1.5, 7)).Magnitude < 0.0001, "rotated multipart bounds are tight rather than radius cube")
+    check((at.RightVector - root.CFrame.RightVector).Magnitude < 0.0001, "clearance box follows spawn rotation")
+    -- The query center is offset from the returned pivot in its rotated frame.
+    return {}
+end
+local origin = throw.FindOrigin(root, character, model)
+-- Radius is max(center distance + part half diagonal), independent of tight query bounds.
+local modelRadius = math.max(2 + vec(6, 1, 0.5).Magnitude * 0.5, vec(2, 0, 3).Magnitude + math.sqrt(3) * 0.5) + 0.25
 check(
-    nearby ~= nil and (nearby:GetPivot().Position - root.CFrame.Position).Magnitude < 5,
-    "near wall uses safe closer spawn"
+    math.abs(origin.Position.Y - root.CFrame.Position.Y - math.max(2, modelRadius)) < 0.0001,
+    "spawn uses single radius-based height"
 )
-workspaceFake.Blockcast = oldBlock
+local queriedFrame
+workspaceFake.GetPartBoundsInBox = function(_, at)
+    queriedFrame = at
+    return {}
+end
+origin = throw.FindOrigin(root, character, model)
+check(
+    (origin:ToObjectSpace(queriedFrame).Position - vec(2, 0, 0.25)).Magnitude < 0.0001,
+    "off-center bounds follow returned pivot without shifting spawn"
+)
+local displacement = origin.Position - root.CFrame.Position
+check(
+    math.abs(
+        vec(displacement.X, 0, displacement.Z).Unit:Dot(vec(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit)
+            - 1
+    ) < 0.0001,
+    "placement direction is flattened root facing"
+)
+root.CFrame = savedFrame
+model:Destroy()
+-- Large but valid rigs prefer minimum directly; never add a second shorter distance.
+local normalSize = root.Size
+root.Size = vec(2, 2, 12)
+local wideMinimum = 6 + itemRadius + 0.25
+local attempts = 0
+workspaceFake.GetPartBoundsInBox = function(_, at)
+    attempts += 1
+    local offset = at.Position - root.CFrame.Position
+    check(math.abs(vec(offset.X, 0, offset.Z).Magnitude - wideMinimum) < 0.0001, "large rig candidates stay at minimum")
+    return { wall }
+end
+local wideOrigin, wideReason = throw.FindOrigin(root, character, item)
+check(attempts == 5 and wideOrigin ~= nil, "large rig tries one minimum candidate per angle then forces spawn")
+check(
+    wideReason == string.format("placement forced distance=%.3f", wideMinimum),
+    "large rig forced distance is minimum"
+)
+root.Size = normalSize
+-- The only placement rejection is an excessive avatar/item minimum; reservation survives.
+local savedSize = root.Size
+root.Size = vec(2, 2, 80)
+workspaceFake.GetPartBoundsInBox = function()
+    error("oversized clearance must reject before querying candidates")
+end
+local rejected, reason = throw.FindOrigin(root, character, item)
+check(rejected == nil and reason == "avatar/item clearance exceeds safe distance", "minimum above MAX_DISTANCE rejects")
+fill()
+check(
+    inventory.ThrowHeld(player, nil, false) == nil and inventory.GetCarryCount(player) == 3,
+    "degenerate rig retains inventory"
+)
 inventory.ClearHeld(player)
--- Only purchased, active receptors can resolve a point-blank spawn inside their geometry.
-do
-    local throw = loadModule("IngredientThrow")
-    local plot = instance("Model")
-    plot.Name, plot.Parent = "ReceptorPlot", workspaceFake
-    services.CollectionService:AddTag(plot, "PlayerPlot")
-    local muncher = instance("Model")
-    muncher.Name, muncher.Parent = "Muncher", plot
-    local mouth = instance("Part")
-    mouth.Name, mouth.Parent = "mouth", muncher
-    local otherPlot = instance("Model")
-    otherPlot.Name, otherPlot.Parent = "OtherPlot", workspaceFake
-    services.CollectionService:AddTag(otherPlot, "PlayerPlot")
-    local otherMuncher = instance("Model")
-    otherMuncher.Name, otherMuncher.Parent = "Muncher", otherPlot
-    otherMuncher:SetAttribute("Purchased", true)
-    otherMuncher:SetAttribute("Active", true)
-    local otherMouth = instance("Part")
-    otherMouth.Name, otherMouth.Parent = "mouth", otherMuncher
-    local otherPlayer = instance("Model")
-    otherPlayer.Name = "OtherPlayer"
-    local body = instance("Part")
-    body.Name, body.Parent = "Torso", otherPlayer
-    local item = instance("Part")
-    item.Size = vec(1, 1, 1)
-    for _, state in { "active", "busy", "unpurchased", "inactive", "unset", "other-receptor", "wall", "player" } do
-        muncher:SetAttribute("Purchased", if state == "unset" then nil else state ~= "unpurchased")
-        muncher:SetAttribute("Active", if state == "unset" then nil else state ~= "inactive")
-        muncher:SetAttribute("Phase", if state == "busy" then "Processing" else "Idle")
-        local blocker = if state == "wall"
-            then wall
-            elseif state == "player" then body
-            elseif state == "other-receptor" then otherMouth
-            else mouth
-        local accepted = state == "active" or state == "busy" or state == "other-receptor"
-        for _, gate in { "height", "initial", "path", "destination" } do
-            local function obstruction(params)
-                check(
-                    params.FilterType == env.Enum.RaycastFilterType.Exclude
-                        and params.FilterDescendantsInstances[1] == character
-                        and params.RespectCanCollide == true,
-                    "receptor clearance preserves character exclusion and collidable world queries"
-                )
-                for _, excluded in params.FilterDescendantsInstances do
-                    if blocker == excluded or blocker:IsDescendantOf(excluded) then
-                        return nil
-                    end
-                end
-                return blocker
-            end
-            workspaceFake.Raycast = function(_, _, _, params)
-                local hit = obstruction(params)
-                return if gate == "height" and hit then { Instance = hit } else nil
-            end
-            workspaceFake.Blockcast = function(_, _, _, _, params)
-                local hit = obstruction(params)
-                return if gate == "path" and hit then { Instance = hit } else nil
-            end
-            local queries = 0
-            workspaceFake.GetPartBoundsInBox = function(_, queryFrame, _, params)
-                queries += 1
-                local hit = obstruction(params)
-                return if hit
-                        and (
-                            (gate == "initial")
-                            or (
-                                gate == "destination"
-                                and (queryFrame.Position - root.CFrame.Position):Dot(root.CFrame.LookVector) > 0.01
-                            )
-                        )
-                    then { hit }
-                    else {}
-            end
-            local origin, reason = throw.FindOrigin(root, character, item)
-            check((origin ~= nil) == accepted, state .. " receptor clearance at " .. gate)
-            check(
-                string.find(
-                    reason,
-                    if accepted then "clear origin=" else "obstructed by " .. blocker:GetFullName(),
-                    1,
-                    true
-                ) ~= nil,
-                state .. " clearance diagnostics identify the result at " .. gate
-            )
-        end
-    end
-    workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
-    services.CollectionService:RemoveTag(plot, "PlayerPlot")
-    services.CollectionService:RemoveTag(otherPlot, "PlayerPlot")
-    plot:Destroy()
-    otherPlot:Destroy()
-    otherPlayer:Destroy()
-    item:Destroy()
-end
-
+root.Size = savedSize
+item:Destroy()
+workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
 data.GetUpgrade = getUpgrade
-
--- Low cover retries the complete clearance contract at successively lower heights.
-do
-    local throw = loadModule("IngredientThrow")
-    local item = instance("Part")
-    item.Size = vec(0.5, 0.5, 0.5)
-    local nominal = math.max(2, item.Size.Magnitude / 2 + 0.25)
-    for _, clearHeight in { nominal, 1.5, 1.0, 0.5 } do
-        workspaceFake.Raycast = function(_, _, displacement)
-            return if displacement.Y > clearHeight then { Instance = wall } else nil
-        end
-        workspaceFake.GetPartBoundsInBox = function(_, at)
-            return if at.Position.Y - root.CFrame.Position.Y > clearHeight then { wall } else {}
-        end
-        workspaceFake.Blockcast = oldBlock
-        local origin, reason = throw.FindOrigin(root, character, item)
-        check(
-            origin ~= nil and math.abs(origin.Position.Y - root.CFrame.Position.Y - clearHeight) < 0.001,
-            "first fully clear launch height succeeds"
-        )
-        check(
-            string.find(reason, string.format("launchHeight=%.3f", clearHeight), 1, true) ~= nil,
-            "clear-origin trace identifies successful launch height"
-        )
-    end
-    -- A clear vertical ray is insufficient when the awning overlaps the volume.
-    workspaceFake.Raycast = oldRay
-    workspaceFake.GetPartBoundsInBox = function(_, at)
-        return if at.Position.Y - root.CFrame.Position.Y > 1.0 then { wall } else {}
-    end
-    local underAwning = throw.FindOrigin(root, character, item)
-    check(
-        underAwning ~= nil and underAwning.Position.Y == root.CFrame.Position.Y + 1,
-        "initial-volume awning obstruction retries lower launch"
-    )
-    workspaceFake.Raycast = function(_, _, displacement)
-        return if displacement.Y >= nominal then { Instance = wall } else nil
-    end
-    workspaceFake.GetPartBoundsInBox = function()
-        return { wall }
-    end
-    local enclosed, reason = throw.FindOrigin(root, character, item)
-    check(
-        enclosed == nil and reason == "launch height obstructed by Workspace.Wall",
-        "sealed position rejects with nominal reason despite different lower failures"
-    )
-    workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
-    item:Destroy()
-end

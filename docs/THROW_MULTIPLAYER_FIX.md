@@ -1,5 +1,8 @@
 # Multiplayer PC ingredient throw investigation
 
+> Placement sections below record the original investigation. Current endpoint
+> clearance, forced fallback, and diagnostics are documented in [Throw safety](THROW_SAFETY.md).
+
 ## Verified defects and limits
 
 The desktop CAS callback returned Pass whenever UserInputService.TouchEnabled was true. That property describes device capability: a touchscreen PC using a physical mouse was disabled before sending any ThrowHeld request. A baseline probe reproduces a pickup followed by a physical mouse click leaving inventory unchanged. This is independent of avatar proportions.
