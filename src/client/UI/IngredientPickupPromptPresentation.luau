@@ -7,6 +7,7 @@ local MoneyFormat = require(Shared.MoneyFormat)
 local IngredientName = require(Shared.IngredientName)
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Presentation = {}
 
 -- Rotated-part extents keep the label above the actual visible geometry,
@@ -72,8 +73,8 @@ function Presentation.Create(
     -- Reuse the existing keyboard/gamepad/touch and hold lifecycle implementation.
     local cleanup, gui = InputPresentation.Create(prompt, anchor, parent, inputType, {
         InputOnly = true,
-        WidthStuds = 8.5,
-        HeightStuds = if mobile then 4.9 else 3.8,
+        WidthStuds = 10.2,
+        HeightStuds = if mobile then 5.9 else 4.6,
         Available = function()
             local owner = object:GetAttribute("OwnerUserId")
             return object:IsDescendantOf(workspace)
@@ -81,12 +82,15 @@ function Presentation.Create(
                 and object:GetAttribute("IngredientId") == definition.Id
                 and (typeof(owner) ~= "number" or owner == 0 or owner == Players.LocalPlayer.UserId)
         end,
+        CanvasWidth = Style.BillboardSize.X,
+        CanvasHeight = canvasHeight,
         TouchWidth = if mobile then Style.MobileTouchSize else nil,
         TouchHeight = if mobile then Style.MobileTouchSize else nil,
         TouchCenterY = if mobile then inputCenter / canvasHeight else nil,
         TextSize = Style.InputTextSize,
         MaxDistance = Style.MaxDistance,
     })
+    local strokeCleanups: { () -> () } = {}
     gui.Name = "IngredientPickupPromptDisplay"
     gui.SizeOffset = Vector2.new(0, if mobile then (inputCenter - canvasHeight / 2) / canvasHeight else 0.5)
     local function formatText(
@@ -111,11 +115,14 @@ function Presentation.Create(
         limit.MinTextSize = 1
         limit.MaxTextSize = 1000
         limit.Parent = label
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = strokeColor
-        stroke.Thickness = Style.StrokeThickness
-        stroke.Transparency = Style.TextStrokeTransparency
-        stroke.Parent = label
+        table.insert(
+            strokeCleanups,
+            BillboardStyle.ApplyWorldStroke(label, gui, {
+                Color = strokeColor,
+                ThicknessStuds = Style.StrokeThicknessStuds,
+                Transparency = Style.TextStrokeTransparency,
+            })
+        )
     end
     local title = Instance.new("TextLabel")
     title.Name = "Rarity"
@@ -189,7 +196,13 @@ function Presentation.Create(
         end
     end
     update()
-    return cleanup, update
+    return function()
+        for _, stop in strokeCleanups do
+            stop()
+        end
+        cleanup()
+    end,
+        update
 end
 
 return Presentation

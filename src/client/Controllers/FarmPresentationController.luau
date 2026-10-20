@@ -18,7 +18,7 @@ local function label(gui: BillboardGui, y: number, text: string): TextLabel
     local result = Instance.new("TextLabel")
     result.Name = if y == 0 then "Title" else "Detail"
     Style.ApplyText(result, {})
-    TextStyle.Apply(result, 24)
+    TextStyle.Apply(result, 24, gui)
     local canvasHeight = if gui.Name == "FarmPlantDisplay" then 100 else 64
     result.Size = UDim2.fromScale(1, 32 / canvasHeight)
     result.TextScaled = true
@@ -33,7 +33,10 @@ local function billboard(origin: Instance, parent: Instance, height: number): Bi
     gui.Name = "FarmDisplay"
     gui.Adornee = origin
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-    Style.ApplyBillboard(gui, { WidthStuds = 9.1, HeightStuds = math.round(height / 37.5 * 10) / 10, MaxDistance = 35 })
+    Style.ApplyBillboard(
+        gui,
+        { WidthStuds = 10.92, HeightStuds = (math.round(height / 37.5 * 10) / 10) * 1.2, MaxDistance = 35 }
+    )
     gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
     gui.Parent = parent
     return gui
@@ -162,15 +165,15 @@ function Controller.Init()
         hide(prompt)
         local cleanup, gui = Input.Create(prompt, row.Origin, playerGui, inputType, {
             InputOnly = true,
-            WidthStuds = 9.1,
-            HeightStuds = 2.7,
+            WidthStuds = 10.92,
+            HeightStuds = 3.24,
             MaxDistance = 35,
             TextSize = 24,
         })
         gui.Name = "FarmPlantDisplay"
         gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
         local action = gui:FindFirstChild("Action") :: TextButton
-        TextStyle.Apply(action, 24)
+        TextStyle.Apply(action, 24, gui)
         action.TextScaled = true
         -- Full-canvas hit target; fixed padding places its key below the two labels.
         local padding = Instance.new("UIPadding")

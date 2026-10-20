@@ -17,11 +17,12 @@ paths += [root / path for path in (
     "src/client/Controllers/SmoothiePickupPromptController.luau",
     "src/shared/Constants/Ingredients.luau",
     "src/shared/MoneyFormat.luau",
+    "src/shared/IngredientName.luau",
     "src/shared/Constants/DialogueTextStyle.luau",
     "src/server/Components/IngredientPickup.luau",
 )]
 bundle = "local sources = {\n" + "\n".join(
-    f"[{json.dumps(path.stem)}] = {json.dumps(path.read_text())}," for path in paths
+    f"[{json.dumps(path.stem)}] = {json.dumps(path.read_text(encoding='utf-8'), ensure_ascii=False)}," for path in paths
 ) + "\n}\n"
 bundle += (root / "tests/fixtures/roblox.luau").read_text()
 bundle += (root / "tests/interaction_prompt.spec.luau").read_text().split("local function module", 1)[0]

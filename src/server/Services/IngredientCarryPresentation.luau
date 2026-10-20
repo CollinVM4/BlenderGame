@@ -51,7 +51,7 @@ function Presentation.RefreshValue(player: Player, stack: { any })
         staleDetails:Destroy()
     end
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 6, HeightStuds = 1.5, MaxDistance = 100 })
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 7.2, HeightStuds = 1.8, MaxDistance = 100 })
     if not previous then
         gui.Name = "CarryValue"
         gui.Adornee = root
@@ -65,10 +65,7 @@ function Presentation.RefreshValue(player: Player, stack: { any })
         label.TextSize = 28
         label.TextScaled = true
         label.TextColor3 = Color3.fromRGB(100, 235, 120)
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.new(0, 0, 0)
-        stroke.Thickness = 3
-        stroke.Parent = label
+        BillboardStyle.ApplyWorldStroke(label, gui, { Color = Color3.new(0, 0, 0) })
         label.Parent = gui
         gui.Parent = root
     end

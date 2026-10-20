@@ -17,7 +17,7 @@ end
 function Style.ConfigureIndicator(gui: BillboardGui, slot: BasePart)
     gui.Adornee = Style.ResolveOrigin(slot)
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 3.2, HeightStuds = 0.6, MaxDistance = Style.StashMaxDistance })
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 3.84, HeightStuds = 0.72, MaxDistance = Style.StashMaxDistance })
 end
 
 return Style

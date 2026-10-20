@@ -36,8 +36,8 @@ local function item(x, model)
         calls.End += 1
     end
     prompts.PromptShown:Fire(prompt, "Touch")
-    local gui = playerGui:GetChildren()[#playerGui:GetChildren()]
-    return object, part, prompt, gui, gui:FindFirstChild("TouchTarget"), calls
+    local gui = lastVisual()
+    return object, part, prompt, gui, touchTarget(gui), calls
 end
 local function finger(gui, target, dx, dy)
     local center = assert(renderedCenter(gui, target))
@@ -49,11 +49,30 @@ check(not g.Active and t.Active, "mobile pickup billboard cannot sink throw taps
 for _, child in g:GetChildren() do
     check(child.Active == (child == t), "TouchTarget is the sole active mobile pickup element")
 end
-check(t.Size.X.Offset == 80 and t.Size.Y.Offset == 80, "80 by 80 actual target")
+check(t.Size.X.Scale == 1 and t.Size.Y.Scale == 1 and t.Parent.Active, "full-quad button in active input billboard")
 check(g:FindFirstChild("Action"):IsA("TextLabel"), "visual row cannot add a second broad hitbox")
+check(
+    t.Parent ~= g and t.Parent.Parent == g.Parent and t.Parent.Adornee == g.Adornee,
+    "input billboard is a sibling on the same source"
+)
+check(
+    near(t.Parent.Size.X.Scale, 10.2 * 112 / 320) and near(t.Parent.Size.Y.Scale, 5.9 * 112 / 184),
+    "ingredient input studs derive from caller canvas"
+)
+local rowCenter, inputCenter = renderedCenter(g, g:FindFirstChild("Action")), renderedCenter(g, t)
+-- Action uses top-left anchoring, so add half of its row height.
+check(
+    near(inputCenter.Y, rowCenter.Y + g.AbsoluteSize.Y * style.InputHeight / style.MobileCanvasHeight / 2),
+    "input quad centers on TAP row after mobile lift"
+)
+g.Enabled = false
+check(not t.Parent.Enabled, "input follows visual disabled state")
+g.Enabled = true
+check(t.Parent.Enabled, "input follows visual enabled state")
+
 check(near(g.StudsOffsetWorldSpace.Y, -1.2), "30 percent below regular ingredient center")
 check(p.MaxActivationDistance == 10 and ap.Position.Y == 2, "prompt range and physical geometry unchanged")
--- Roblox already delivered InputBegan to the rendered 80px button. Its input
+-- Roblox already delivered InputBegan to the rendered stud-sized button. Its input
 -- coordinates account for the GUI inset; viewport projection does not.
 local projected = assert(renderedCenter(g, t))
 local insetPress = { UserInputType = "Touch", Position = vec(projected.X, projected.Y - 56, 0) }
@@ -101,11 +120,11 @@ b:SetAttribute("OwnerUserId", 999)
 u.InputBegan:Fire(finger(h, u))
 check(other.Pickup == 1, "foreign ownership rejects touch before rendered cleanup")
 services.RunService.RenderStepped:Fire()
-check(h.Destroyed, "foreign ownership removes active presentation")
+check(h.Destroyed and u.Parent == nil, "foreign ownership removes both presentation billboards")
 b:SetAttribute("OwnerUserId", 0)
 prompts.PromptShown:Fire(q, "Touch")
-h = playerGui:GetChildren()[#playerGui:GetChildren()]
-u = h:FindFirstChild("TouchTarget")
+h = lastVisual()
+u = touchTarget(h)
 local removal = finger(h, u)
 u.InputBegan:Fire(removal)
 prompts.PromptHidden:Fire(q)
@@ -123,7 +142,7 @@ check(g.Destroyed and calls.Pickup == 5, "disabled/despawned view cannot activat
 p.Enabled = true
 prompts.PromptShown:Fire(p, "Touch")
 g = playerGui:FindFirstChild("IngredientPickupPromptDisplay")
-t = g:FindFirstChild("TouchTarget")
+t = touchTarget(g)
 a.Parent = nil
 p.AncestryChanged:Fire()
 check(g.Destroyed, "ingredient removal cleans view without engine Hidden")
@@ -138,12 +157,12 @@ prompts.PromptShown:Fire(p, "Touch")
 g = playerGui:FindFirstChild("IngredientPickupPromptDisplay")
 ap.Position, ap.CFrame = vec(5, 4, 0), frame(5, 4, 0)
 services.RunService.RenderStepped:Fire()
-check(near(renderedCenter(g, g:FindFirstChild("TouchTarget")).X, 300), "moving ingredient updates target with visual")
+check(near(renderedCenter(g, touchTarget(g)).X, 300), "moving ingredient updates target with visual")
 for _, size in { vec2(320, 640), vec2(932, 430), vec2(768, 1024), vec2(1024, 768) } do
     workspaceFake.CurrentCamera.ViewportSize = size
     services.RunService.RenderStepped:Fire()
     check(
-        near(renderedCenter(g, g:FindFirstChild("TouchTarget")).X, size.X / 2 + 100),
+        near(renderedCenter(g, touchTarget(g)).X, size.X / 2 + 100),
         "target projection follows phone/tablet orientation without an inset or stale layout"
     )
 end
@@ -159,7 +178,7 @@ check(near(view.MobilePosition(vec(0, 0, 0), vec(1, 40, 1)).Y, 17.5), "oversized
 -- Steep camera projection keeps visible text above its projected bottom plane.
 ap.Size = vec(0.1, 0.1, 0.1)
 services.RunService.RenderStepped:Fire()
-local center = renderedCenter(g, g:FindFirstChild("TouchTarget"))
+local center = renderedCenter(g, touchTarget(g))
 local ground = workspaceFake.CurrentCamera:WorldToViewportPoint(vec(5, 3.95, 0))
 check(
     center.Y + g.AbsoluteSize.Y * style.InputHeight / style.MobileCanvasHeight / 2 <= ground.Y - 1.999,
@@ -170,7 +189,7 @@ for _, kind in { "Keyboard", "Gamepad" } do
     prompts.PromptShown:Fire(p, kind)
     local desktop = playerGui:FindFirstChild("IngredientPickupPromptDisplay")
     check(
-        desktop:FindFirstChild("TouchTarget") == nil and desktop.Size.Y.Scale == 3.8 and desktop.Size.Y.Offset == 0,
+        desktop:FindFirstChild("TouchTarget") == nil and desktop.Size.Y.Scale == 4.6 and desktop.Size.Y.Offset == 0,
         "desktop/console keep original UI and input row"
     )
     check(desktop.Active, "desktop/console frame retains input")
@@ -248,10 +267,10 @@ end
 function dispense:InputHoldEnd() end
 prompts.PromptShown:Fire(dispense, "Touch")
 local dg = playerGui:FindFirstChild("InteractionPromptDisplay")
-local dt = dg:FindFirstChild("TouchTarget")
+local dt = touchTarget(dg)
 check(
-    dg.Adornee == origin and dt.Size.X.Offset == 220 and dt.Size.Y.Offset == 80,
-    "dispenser uses 220 by 80 target at authored marker"
+    dg.Adornee == origin and dt.Size.X.Scale == 1 and dt.Size.Y.Scale == 1 and dt.Parent.Active,
+    "dispenser uses dedicated active target at authored marker"
 )
 check(
     dg:FindFirstChild("Action").Text == "[TAP] DISPENSE" and dg:FindFirstChild("Action").TextSize == 24,
@@ -339,6 +358,8 @@ customerCleanup()
 -- Only the dedicated CAS button can throw on touch hardware. No world listeners.
 local actions, bindings, throws = {}, {}, 0
 services.UserInputService.TouchEnabled = true
+services.UserInputService.MouseEnabled = false
+services.UserInputService.InputBegan = signal()
 services.UserInputService.GetFocusedTextBox = function()
     return nil
 end
@@ -367,37 +388,34 @@ modules.MobileControlLayout = { Register = function() end }
 env.Enum.ContextActionResult = { Pass = "Pass", Sink = "Sink" }
 env.Enum.UserInputState = { Begin = "Begin", End = "End", Cancel = "Cancel" }
 env.Enum.KeyCode = { ButtonR2 = "ButtonR2" }
+services.GuiService = { MenuIsOpen = false }
 load("CarryInputController").Init()
 check(
-    bindings.ThrowHeld.Touch
-        and bindings.ThrowHeld.Inputs[1] == "ButtonR2"
-        and not bindings.ThrowHeldMouse.Touch
-        and bindings.ThrowHeldMouse.Inputs[1] == "MouseButton1",
+    bindings.ThrowHeld.Touch and bindings.ThrowHeld.Inputs[1] == "ButtonR2" and bindings.ThrowHeldMouse == nil,
     "mobile Throw and desktop primary input have separate bindings"
 )
 prompts.PromptShown:Fire(p, "Touch")
 g = playerGui:FindFirstChild("IngredientPickupPromptDisplay")
-t = g:FindFirstChild("TouchTarget")
+t = touchTarget(g)
 local pickupAndMouse = finger(g, t)
 local beforePickup = calls.Pickup
 t.InputBegan:Fire(pickupAndMouse)
-actions.ThrowHeldMouse("ThrowHeldMouse", "Begin", pickupAndMouse)
+services.UserInputService.InputBegan:Fire(pickupAndMouse, false)
 services.UserInputService.InputEnded:Fire(pickupAndMouse)
-actions.ThrowHeldMouse("ThrowHeldMouse", "End", pickupAndMouse)
+services.UserInputService.InputEnded:Fire(pickupAndMouse)
 check(calls.Pickup == beforePickup + 1 and throws == 0, "same mobile touch can pick up but cannot throw")
 origin.Parent = dispenser
 prompts.PromptShown:Fire(dispense, "Touch")
 dg = playerGui:FindFirstChild("InteractionPromptDisplay")
-dt = dg:FindFirstChild("TouchTarget")
+dt = touchTarget(dg)
 local dispenseAndMouse = finger(dg, dt)
 local beforeDispense = dispenseRequests
 dt.InputBegan:Fire(dispenseAndMouse)
-actions.ThrowHeldMouse("ThrowHeldMouse", "Begin", dispenseAndMouse)
+services.UserInputService.InputBegan:Fire(dispenseAndMouse, false)
 services.UserInputService.InputEnded:Fire(dispenseAndMouse)
 check(dispenseRequests == beforeDispense + 1 and throws == 0, "same mobile dispense press cannot throw")
 prompts.PromptHidden:Fire(dispense)
 dispenseDetach()
-services.UserInputService.InputBegan = signal()
 services.UserInputService.TouchTapInWorld = signal()
 for _, source in { "DISPENSE", "STORE", "TAKE", "UI", "CameraDrag", "Joystick", "SecondFinger" } do
     local inputObject = { UserInputType = "Touch", Position = vec(0, 0, 0), Source = source }
@@ -405,8 +423,8 @@ for _, source in { "DISPENSE", "STORE", "TAKE", "UI", "CameraDrag", "Joystick", 
     services.UserInputService.InputEnded:Fire(inputObject)
     services.UserInputService.TouchTapInWorld:Fire(vec2(0, 0), true)
 end
-actions.ThrowHeldMouse("ThrowHeldMouse", "Begin")
-actions.ThrowHeldMouse("ThrowHeldMouse", "End")
+services.UserInputService.InputBegan:Fire({ UserInputType = "MouseButton1" }, false)
+services.UserInputService.InputEnded:Fire({ UserInputType = "MouseButton1" })
 check(throws == 0, "UI, camera, joystick, release and synthesized primary input have no touch throw binding")
 prompts.PromptHidden:Fire(p)
 actions.ThrowHeld("ThrowHeld", "Begin")
@@ -414,8 +432,9 @@ actions.ThrowHeld("ThrowHeld", "End")
 actions.ThrowHeld("ThrowHeld", "Cancel")
 check(throws == 1, "intentional Throw press sends once; release/cancel never throw")
 services.UserInputService.TouchEnabled = false
-actions.ThrowHeldMouse("ThrowHeldMouse", "Begin")
-actions.ThrowHeldMouse("ThrowHeldMouse", "End")
+services.UserInputService.MouseEnabled = true
+services.UserInputService.InputBegan:Fire({ UserInputType = "MouseButton1" }, false)
+services.UserInputService.InputEnded:Fire({ UserInputType = "MouseButton1" })
 actions.ThrowHeld("ThrowHeld", "Begin")
 check(throws == 3, "desktop mouse and console trigger still throw on press")
 -- One native prompt activation still reaches exactly one existing pickup adapter.
@@ -472,7 +491,7 @@ end
 function generated:InputHoldEnd() end
 prompts.PromptShown:Fire(generated, "Touch")
 g = playerGui:FindFirstChild("IngredientPickupPromptDisplay")
-t = g:FindFirstChild("TouchTarget")
+t = touchTarget(g)
 local dispatched = finger(g, t, 35, 35)
 t.InputBegan:Fire(dispatched)
 t.InputBegan:Fire(dispatched)

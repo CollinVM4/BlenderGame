@@ -1,5 +1,6 @@
 -- Local ownership changes and streamed customer lifecycle, independent of serving.
 services.Players.LocalPlayer.UserId = 123
+services.Players.LocalPlayer:SetAttribute("PlotSessionId", 123)
 local customer = uiInstance("Model", "CustomerNPC", workspaceFake)
 local root = uiInstance("Part", "HumanoidRootPart", customer)
 local serveOrigin = uiInstance("Attachment", "ServePromptOrigin", root)
@@ -28,19 +29,19 @@ local bubble = uiInstance("BillboardGui", "OrderBubble", root)
 local orders = module("CustomerOrderController", {})
 orders.Init()
 check(bubble.Enabled == false, "missing owner fails closed")
-customer:SetAttribute("OwnerUserId", 123)
+customer:SetAttribute("PlotSessionId", 123)
 check(bubble.Enabled == false, "unrevealed order remains hidden from owner")
 customer:SetAttribute("OrderRevealed", true)
 check(bubble.Enabled == true, "local owner sees revealed order")
-customer:SetAttribute("OwnerUserId", 456)
+customer:SetAttribute("PlotSessionId", 456)
 check(bubble.Enabled == false, "nearby non-owner cannot see order")
-customer:SetAttribute("OwnerUserId", nil)
+customer:SetAttribute("PlotSessionId", nil)
 check(bubble.Enabled == false, "cleared owner hides order")
-customer:SetAttribute("OwnerUserId", 123)
+customer:SetAttribute("PlotSessionId", 123)
 workspaceFake.DescendantRemoving:Fire(bubble)
 bubble.Parent = nil
-customer:SetAttribute("OwnerUserId", 456)
-customer:SetAttribute("OwnerUserId", 123)
+customer:SetAttribute("PlotSessionId", 456)
+customer:SetAttribute("PlotSessionId", 123)
 check(bubble.Enabled == false, "removed customer display stays hidden")
 bubble.Parent = root
 workspaceFake.DescendantAdded:Fire(bubble)
@@ -52,7 +53,7 @@ print("PASS: customer order ownership and streaming visibility")
 
 -- Both customer actions reuse actual input labels and owner-only presentation.
 serve:SetAttribute("InteractionCustomerAction", "Serve")
-serve:SetAttribute("InteractionOwnerUserId", 123)
+serve:SetAttribute("PlotSessionId", 123)
 serve.KeyboardKeyCode = { Name = "F" }
 serve.GamepadKeyCode = { Name = "ButtonY" }
 local takeColor
@@ -70,24 +71,22 @@ for _, action in { "TakeOrder", "Serve" } do
         )
         check(
             display.StudsOffset.Magnitude == 0
-                and display.Size.X.Scale == 0
-                and display.Size.Y.Scale == 0
-                and not text.TextScaled,
-            "prompt uses only pixel sizing and spacing with no camera-relative offset"
+                and display.Size.X.Scale == 7.1
+                and display.Size.Y.Scale == 1.45
+                and text.TextScaled,
+            "prompt uses larger stud sizing and proportional text"
         )
         check(
-            display.Size.X.Offset == 220 and text.BackgroundTransparency == 1,
+            display.Size.X.Offset == 0 and text.BackgroundTransparency == 1,
             "compact customer prompt without dark box"
         )
         check(
-            text.Font == "FredokaOne" and text:FindFirstChildOfClass("UIStroke").Thickness >= 2,
+            text.Font == "FredokaOne"
+                and text:FindFirstChildOfClass("UIStroke"):GetAttribute("WorldThicknessStuds") == 0.05,
             "bold outlined action"
         )
         if action == "TakeOrder" then
-            check(
-                -display.SizeOffset.Y * display.Size.Y.Offset - display.Size.Y.Offset / 2 == 12,
-                "take order retains its original pixel spacing"
-            )
+            check(math.abs(display.SizeOffset.Y + 34 / 44) < 0.001, "take order retains its normalized anchor spacing")
             takeColor = text.TextColor3
         else
             check(
@@ -112,14 +111,14 @@ for _, scale in { 0.75, 1, 1.5 } do
     )
     prompts.PromptHidden:Fire(serve)
 end
-serve:SetAttribute("InteractionOwnerUserId", nil)
+serve:SetAttribute("PlotSessionId", nil)
 prompts.PromptShown:Fire(serve, "Keyboard")
 check(gui() == nil, "customer prompt with missing ownership fails closed")
-serve:SetAttribute("InteractionOwnerUserId", 456)
+serve:SetAttribute("PlotSessionId", 456)
 check(gui() == nil, "non-owner cannot see customer action")
-serve:SetAttribute("InteractionOwnerUserId", 123)
+serve:SetAttribute("PlotSessionId", 123)
 check(gui() ~= nil, "owner replication enables eligible custom action")
-serve:SetAttribute("InteractionOwnerUserId", 456)
+serve:SetAttribute("PlotSessionId", 456)
 check(gui() == nil, "ownership change removes active custom action")
 prompts.PromptHidden:Fire(serve)
 print("PASS: compact customer prompts, input modes, ownership, and spacing")

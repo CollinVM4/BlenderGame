@@ -19,6 +19,8 @@ export type Settings = {
     TouchWidth: number?,
     TouchHeight: number?,
     TouchCenterY: number?, -- Fraction of the stud-sized visual canvas height.
+    CanvasWidth: number?, -- Reference pixel canvas used to convert touch padding to studs.
+    CanvasHeight: number?,
     Available: (() -> boolean)?,
 }
 
@@ -39,12 +41,12 @@ function Presentation.Create(
     local customer = config.CustomerAction ~= nil and not stashPrompt
     -- Preserve the existing overlay so an available interaction stays readable.
     Style.ApplyBillboard(gui, {
-        WidthStuds = if customer then 5.9 else config.WidthStuds or 7,
-        HeightStuds = if customer then 1.2 else config.HeightStuds or 1.4,
+        WidthStuds = if customer then 7.1 else config.WidthStuds or 8.4,
+        HeightStuds = if customer then 1.45 else config.HeightStuds or 1.7,
         MaxDistance = config.MaxDistance or (if stashPrompt then 30 else 25),
     })
-    -- Billboard input gate: only the explicit TouchTarget is active on padded touch views.
-    -- Decorative labels stay inactive; do not add a full-canvas button behind them.
+    -- Inactive GuiBase3d disables its whole subtree. Touch input gets its own
+    -- small active billboard; the decorative quad must never sink throw taps.
     gui.Active = not paddedTouch
 
     -- A transparent button preserves touch/click input through the prompt's API.
@@ -56,7 +58,7 @@ function Presentation.Create(
     end
     Style.ApplyText(text, { TextSize = config.TextSize, TextScaled = true })
     if origin.Name == "DispenserTextOrigin" or stashPrompt or prompt:GetAttribute("JackedNoobPrompt") == true then
-        TextStyle.Apply(text, config.TextSize or 24)
+        TextStyle.Apply(text, config.TextSize or 24, gui)
     end
     if config.CustomerAction and not stashPrompt then
         -- Shared input behavior, with a compact customer-only visual treatment.
@@ -74,7 +76,7 @@ function Presentation.Create(
         text.Font = TextStyle.Font
         text.TextSize = 21
         text.TextColor3 = if config.CustomerAction == "TakeOrder" then TextStyle.Gold else Color3.fromRGB(120, 235, 255)
-        TextStyle.Outline(text)
+        TextStyle.Outline(text, gui)
     end
     if inputButton then
         inputButton.AutoButtonColor = false
@@ -172,7 +174,51 @@ function Presentation.Create(
         prompt:InputHoldBegin()
     end
     local unregister: (() -> ())? = nil
+    local inputGui: BillboardGui? = nil
     if paddedTouch then
+        local touchGui = Instance.new("BillboardGui")
+        inputGui = touchGui
+        touchGui.Name = "InteractionPromptTouchInput"
+        touchGui.Active = true
+        local widthRatio = assert(config.TouchWidth) / (config.CanvasWidth or 300)
+        local heightRatio = (config.TouchHeight or 96) / (config.CanvasHeight or 56)
+        local function alignInput()
+            Style.ApplyBillboard(touchGui, {
+                WidthStuds = gui.Size.X.Scale * widthRatio,
+                HeightStuds = gui.Size.Y.Scale * heightRatio,
+                MaxDistance = gui.MaxDistance,
+                AlwaysOnTop = gui.AlwaysOnTop,
+                ResetOnSpawn = gui.ResetOnSpawn,
+            })
+            touchGui.Adornee = gui.Adornee
+            touchGui.StudsOffset = gui.StudsOffset
+            touchGui.StudsOffsetWorldSpace = gui.StudsOffsetWorldSpace
+            -- SizeOffset is measured in each billboard's own dimensions. Positive
+            -- Y moves upward; the row's fraction is measured downward from top.
+            touchGui.SizeOffset = Vector2.new(
+                gui.SizeOffset.X / widthRatio,
+                (gui.SizeOffset.Y + 0.5 - (config.TouchCenterY or 0.5)) / heightRatio
+            )
+            touchGui.Enabled = gui.Enabled
+            touchGui.Parent = gui.Parent
+        end
+        for _, property in
+            {
+                "Size",
+                "Adornee",
+                "StudsOffset",
+                "StudsOffsetWorldSpace",
+                "SizeOffset",
+                "MaxDistance",
+                "AlwaysOnTop",
+                "ResetOnSpawn",
+                "Enabled",
+                "Parent",
+            }
+        do
+            table.insert(connections, gui:GetPropertyChangedSignal(property):Connect(alignInput))
+        end
+        alignInput()
         local target = Instance.new("TextButton")
         target.Name = "TouchTarget"
         target.Text = ""
@@ -182,10 +228,10 @@ function Presentation.Create(
         target.Selectable = false
         target.ZIndex = text.ZIndex + 1
         target.AnchorPoint = Vector2.new(0.5, 0.5)
-        target.Position = UDim2.fromScale(0.5, config.TouchCenterY or 0.5)
-        target.Size = UDim2.fromOffset(assert(config.TouchWidth), config.TouchHeight or 80)
-        target.Parent = gui
-        unregister = TouchTargets.Register(prompt, gui, target, begin, config.Available)
+        target.Position = UDim2.fromScale(0.5, 0.5)
+        target.Size = UDim2.fromScale(1, 1)
+        target.Parent = touchGui
+        unregister = TouchTargets.Register(prompt, touchGui, target, begin, config.Available)
     else
         table.insert(
             connections,
@@ -233,6 +279,9 @@ function Presentation.Create(
             connection:Disconnect()
         end
         release()
+        if inputGui then
+            inputGui:Destroy()
+        end
         gui:Destroy()
     end,
         gui

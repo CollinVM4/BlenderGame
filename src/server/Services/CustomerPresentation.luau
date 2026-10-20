@@ -28,19 +28,19 @@ function CustomerPresentation.CreateAnchor(root: BasePart, head: BasePart?): Att
     return anchor
 end
 
-local function outline(text: TextLabel)
-    TextStyle.Outline(text)
+local function outline(text: TextLabel, billboard: BillboardGui)
+    TextStyle.Outline(text, billboard)
 end
 
 -- Both customer types share lettering; specials retain their separate name row.
-local function styleDialogueText(text: TextLabel, size: number)
+local function styleDialogueText(text: TextLabel, size: number, billboard: BillboardGui)
     text.Font = TextStyle.Font
     text.TextSize = size
     text.TextScaled = true
     text.TextWrapped = true
     text.TextColor3 = Color3.new(1, 1, 1)
     text.LineHeight = 1
-    outline(text)
+    outline(text, billboard)
 end
 
 function CustomerPresentation.StyleDialogue(bubble: BillboardGui, text: TextLabel, special: boolean)
@@ -48,16 +48,16 @@ function CustomerPresentation.StyleDialogue(bubble: BillboardGui, text: TextLabe
         -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
         BillboardStyle.ApplyBillboard(
             bubble,
-            { WidthStuds = 7, HeightStuds = 2.6, MaxDistance = 45, ResetOnSpawn = true }
+            { WidthStuds = 8.4, HeightStuds = 3.12, MaxDistance = 45, ResetOnSpawn = true }
         )
         text.Size = UDim2.fromScale(1, 1)
     end
-    styleDialogueText(text, 21)
+    styleDialogueText(text, 21, bubble)
     local name = bubble:FindFirstChild("CustomerName")
     if name and name:IsA("TextLabel") then
         name.Visible = special
         if special then
-            styleDialogueText(name, 18)
+            styleDialogueText(name, 18, bubble)
         end
     end
 end
@@ -81,10 +81,12 @@ function CustomerPresentation.ShowResult(
     gui.Adornee = (if root then root:FindFirstChild("CustomerRewardOrigin") else nil) or anchor
     gui.StudsOffset = Vector3.zero
     local height = if grade == "D" then 54 else 32
-    BillboardStyle.ApplyBillboard(
-        gui,
-        { WidthStuds = 8, HeightStuds = math.round(height / 37.5 * 10) / 10, MaxDistance = 30, ResetOnSpawn = true }
-    )
+    BillboardStyle.ApplyBillboard(gui, {
+        WidthStuds = 9.6,
+        HeightStuds = (math.round(height / 37.5 * 10) / 10) * 1.2,
+        MaxDistance = 30,
+        ResetOnSpawn = true,
+    })
     -- Cash stays centered on the body-relative anchor; retry extends below it.
     gui.SizeOffset = Vector2.new(0, (16 - height / 2) / height)
     gui.AlwaysOnTop = true
@@ -103,7 +105,7 @@ function CustomerPresentation.ShowResult(
         text.TextColor3 = Color3.new(1, 1, 1)
         text.RichText = true
         text.Text = content
-        outline(text)
+        outline(text, gui)
         text.Parent = gui
         return text
     end

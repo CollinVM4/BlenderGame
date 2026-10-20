@@ -1,3 +1,4 @@
+require(script.Controllers.WorldStrokeController).Init()
 require(script.Controllers.LockBaseVisibilityController).Init()
 require(script.Controllers.LuckyBlockPresentationController).Init()
 require(script.Controllers.LuckyBlockRouletteController).Init()

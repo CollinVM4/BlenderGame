@@ -83,7 +83,7 @@ check(#playerGui:GetChildren() == 1, "idempotent startup gives one view")
 for _, kind in { "Keyboard", "Gamepad", "Touch" } do
     show(kind)
     local mobile = kind == "Touch"
-    local target = gui():FindFirstChild("TouchTarget")
+    local target = touchTarget(gui())
     check(gui().Active == not mobile, "pickup frame is inactive only on padded touch")
     if mobile then
         for _, child in gui():GetChildren() do
@@ -104,13 +104,16 @@ show()
 -- End focused pickup input contracts.
 check(
     string.find(label("Rarity").Text, "COMMON", 1, true) ~= nil
-        and string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil
+        and string.find(label("Rarity").Text, "Unripe", 1, true) ~= nil
         and label("IngredientName").Text == "Strawberry",
     "registered Strawberry definition"
 )
 check(gui().Active, "keyboard pickup frame retains input")
 check(label("Action").Text == "[F]", "actual keyboard key, no pickup action or income text")
-check(label("IngredientValue").Text == "$3K", "common pickup shows definition value")
+check(
+    label("IngredientValue").Text == load("MoneyFormat").Compact(definitions.Strawberry.Value),
+    "common pickup shows definition value"
+)
 check(
     label("Rarity").RichText and string.find(label("Rarity").Text, "•", 1, true) ~= nil,
     "rarity and freshness share one line"
@@ -123,11 +126,14 @@ check(
         and string.find(label("Rarity").Text, "Ripe", 1, true) ~= nil,
     "ripe world item keeps rarity and warm state"
 )
-check(label("IngredientValue").Text == "$4K", "ripe Strawberry uses replicated effective value and shared formatter")
+check(
+    label("IngredientValue").Text == load("MoneyFormat").Compact(3750),
+    "ripe Strawberry uses replicated effective value and shared formatter"
+)
 item:SetAttribute("IsRipe", false)
 item:SetAttribute("EffectiveIngredientValue", nil)
 services.RunService.RenderStepped:Fire()
-check(string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil, "fresh state restores on metadata change")
+check(string.find(label("Rarity").Text, "Unripe", 1, true) ~= nil, "fresh state restores on metadata change")
 check(
     label("IngredientValue").TextColor3 == style.ValueColor
         and label("IngredientValue").Font == label("IngredientName").Font
@@ -142,23 +148,25 @@ item:SetAttribute("IngredientId", "Steak")
 show()
 check(
     string.find(label("Rarity").Text, "RARE", 1, true) ~= nil
-        and string.find(label("Rarity").Text, "Fresh", 1, true) ~= nil
+        and string.find(label("Rarity").Text, "Unripe", 1, true) ~= nil
         and label("IngredientName").Text == "Steak",
     "Steak retains its rarity and name card"
 )
 check(
     label("IngredientName").Font == "GothamBold"
-        and label("IngredientName"):FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize == 29,
+        and label("IngredientName"):FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize == 1000,
     "Steak retains large bold lettering"
 )
 check(
-    label("IngredientName"):FindFirstChildOfClass("UIStroke").Thickness == 2 and gui().Size.X.Offset == 320,
-    "Steak outline and card width are unchanged"
+    label("IngredientName"):FindFirstChildOfClass("UIStroke"):GetAttribute("WorldThicknessStuds") == 0.05
+        and gui().Size.X.Scale == 10.2
+        and gui().Size.X.Offset == 0,
+    "Steak outline and card width uses larger stud frame"
 )
 check(
-    label("IngredientName").Position.Y.Offset == 30
-        and label("IngredientValue").Position.Y.Offset == 70
-        and label("Action").Position.Y.Offset == 104,
+    label("IngredientName").Position.Y.Scale == 30 / style.BillboardSize.Y
+        and label("IngredientValue").Position.Y.Scale == 70 / style.BillboardSize.Y
+        and label("Action").Position.Y.Scale == 104 / style.BillboardSize.Y,
     "value sits below the name and above the input without overlap"
 )
 check(label("IngredientValue").Text == "$25K", "rare pickup shows definition value")
@@ -200,12 +208,15 @@ check(label("Action").Text == "[ButtonY]", "actual gamepad binding")
 show("Touch")
 check(label("Action").Text == "[TAP]", "mobile hint")
 local targets = load("MobilePromptTouchTargets")
-local target = gui():FindFirstChild("TouchTarget")
+local target = touchTarget(gui())
 check(not gui().Active and target.Active, "padded pickup frame is inactive with an active touch target")
 for _, child in gui():GetChildren() do
     check(child.Active == (child == target), "only explicit mobile pickup target can sink taps")
 end
-check(target.Size.X.Offset == 80 and target.Size.Y.Offset == 80, "actual 80px mobile touch target")
+check(
+    target.Size.X.Scale == 1 and target.Size.Y.Scale == 1 and target.Parent.Active,
+    "full-quad button in active input billboard"
+)
 local center = renderedCenter(gui(), target)
 local finger = { UserInputType = "Touch", Position = vec(center.X + 35, center.Y + 35, 0) }
 target.InputBegan:Fire(finger)
@@ -247,7 +258,10 @@ check(gui() == nil, "missing identity cannot use instance name")
 model:SetAttribute("IngredientId", "Strawberry")
 services.RunService.RenderStepped:Fire()
 check(gui() ~= nil, "late replicated identity recovers shown prompt")
-check(label("IngredientValue").Text == "$3K", "recreated multipart pickup recovers its value label")
+check(
+    label("IngredientValue").Text == load("MoneyFormat").Compact(definitions.Strawberry.Value),
+    "recreated multipart pickup recovers its value label"
+)
 services.CollectionService:RemoveTag(model, "IngredientWorldItem")
 services.RunService.RenderStepped:Fire()
 check(gui() == nil, "removed registration cleans view")

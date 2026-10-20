@@ -19,7 +19,7 @@ local Style = {
     InputSpacing = 6,
     BillboardSize = Vector2.new(320, 142),
     PromptStudsOffset = Vector3.new(0, 0.35, 0),
-    MobileTouchSize = 80,
+    MobileTouchSize = 112,
     MobileCanvasHeight = 184,
     MobileLowerFraction = 0.30,
     MobileMaxLowerStuds = 2.5,
@@ -32,7 +32,7 @@ local Style = {
     ValueColor = Color3.fromRGB(100, 235, 120),
     StrokeColor = Color3.fromRGB(16, 16, 20),
     TextStrokeTransparency = 0.05,
-    StrokeThickness = 2,
+    StrokeThicknessStuds = 0.05,
 }
 
 function Style.Resolve(definition: { Id: string, DisplayName: string?, Rarity: string? }): (string, string)

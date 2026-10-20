@@ -49,3 +49,64 @@ check(text.TextScaled, "stud containers can opt into proportional text")
 style.ApplyText(text, { TextScaled = false })
 check(not text.TextScaled, "explicit fixed text opt-out works")
 print("PASS: world billboard style contracts")
+
+local canvas = instance("BillboardGui")
+style.ApplyBillboard(canvas, { WidthStuds = 8, HeightStuds = 2, MaxDistance = 30 })
+canvas.AbsoluteSize = vec(800, 200, 0)
+local lettering = instance("TextLabel")
+local stop = style.ApplyWorldStroke(lettering, canvas, { Color = env.Color3.new(1, 0, 0), Transparency = 0.3 })
+local stroke = lettering:FindFirstChild("WorldOutline")
+check(stroke.Thickness == 5 and stroke.Transparency == 0.3, "world stroke attaches using stud dimensions and style")
+canvas.AbsoluteSize = vec(1600, 400, 0)
+canvas:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check(stroke.Thickness == 10, "doubling rendered lettering doubles outline weight")
+canvas.AbsoluteSize = vec(10, 2, 0)
+canvas:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check(stroke.Thickness == 1, "distant outline clamps to one pixel")
+stop()
+canvas.AbsoluteSize = vec(1600, 400, 0)
+canvas:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check(stroke.Thickness == 1, "cleanup stops size updates")
+local stopAgain = style.ApplyWorldStroke(lettering, canvas, { ThicknessStuds = 0.1 })
+check(
+    lettering:FindFirstChild("WorldOutline") == stroke and stroke.Thickness == 20,
+    "rebind reuses existing stroke with per-style studs"
+)
+stopAgain()
+print("PASS: world stroke attach, scale, clamp, reuse and cleanup")
+
+-- Replicated and cloned server views bind in the client's camera context.
+local world = instance("Folder")
+world.DescendantAdded, world.DescendantRemoving = signal(), signal()
+local oldWorld = env.workspace
+env.workspace = world
+local replicated = instance("BillboardGui")
+replicated.Parent = world
+style.ApplyBillboard(replicated, { WidthStuds = 8, HeightStuds = 2, MaxDistance = 30 })
+replicated.AbsoluteSize = vec(800, 200, 0)
+local caption = instance("TextLabel")
+caption.Parent = replicated
+local replicatedStroke = instance("UIStroke")
+replicatedStroke.Name, replicatedStroke.Parent = "DialogueOutline", caption
+replicatedStroke.Color, replicatedStroke.Transparency = env.Color3.new(0, 1, 0), 0.4
+replicatedStroke:SetAttribute("WorldThicknessStuds", 0.05)
+loadModule("WorldStrokeController").Init()
+check(
+    replicatedStroke.Thickness == 5 and replicatedStroke.Transparency == 0.4,
+    "client binds preexisting replicated stroke without changing opacity"
+)
+replicated.AbsoluteSize = vec(1600, 400, 0)
+replicated:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check(replicatedStroke.Thickness == 10, "replicated view follows client screen size")
+local lateStroke = instance("UIStroke")
+lateStroke.Name, lateStroke.Parent = "LateOutline", caption
+world.DescendantAdded:Fire(lateStroke)
+lateStroke:SetAttribute("WorldThicknessStuds", 0.1)
+lateStroke:GetAttributeChangedSignal("WorldThicknessStuds"):Fire()
+check(lateStroke.Thickness == 20, "late replicated metadata binds arriving view")
+world.DescendantRemoving:Fire(lateStroke)
+replicated.AbsoluteSize = vec(800, 200, 0)
+replicated:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check(lateStroke.Thickness == 20, "removed replicated view stops receiving updates")
+env.workspace = oldWorld
+print("PASS: client world stroke replication, late arrival and teardown")

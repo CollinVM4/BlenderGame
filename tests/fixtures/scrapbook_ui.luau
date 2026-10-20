@@ -305,7 +305,11 @@ local function load(name)
                         return serverStorage
                     end
                     if name == "RunService" then
-                        error("Static previews must not use RunService")
+                        return {
+                            IsStudio = function()
+                                return false
+                            end,
+                        }
                     end
                     return if name == "Players" then { LocalPlayer = player } else { Shared = shared }
                 end,

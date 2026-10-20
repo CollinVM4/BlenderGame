@@ -44,15 +44,54 @@ local function uiInstance(class, name, parentObject)
         self:GetAttributeChangedSignal(attribute):Fire()
     end
     if class == "BillboardGui" then
+        object.AbsoluteSize = nil
+        local values = {}
+        for _, key in
+            {
+                "Size",
+                "Adornee",
+                "StudsOffset",
+                "StudsOffsetWorldSpace",
+                "SizeOffset",
+                "MaxDistance",
+                "AlwaysOnTop",
+                "ResetOnSpawn",
+                "Enabled",
+                "Parent",
+            }
+        do
+            values[key] = object[key]
+            object[key] = nil
+        end
         setmetatable(object, {
             __index = function(self, key)
                 if key == "AbsoluteSize" then
-                    return vec2(
-                        self.Size.X.Scale * 20 + self.Size.X.Offset,
-                        self.Size.Y.Scale * 20 + self.Size.Y.Offset
-                    )
+                    return vec2(self.Size.X.Scale * 20, self.Size.Y.Scale * 20)
                 end
-                return nil
+                return values[key]
+            end,
+            __newindex = function(self, key, value)
+                local tracked = ({
+                    Size = true,
+                    Adornee = true,
+                    StudsOffset = true,
+                    StudsOffsetWorldSpace = true,
+                    SizeOffset = true,
+                    MaxDistance = true,
+                    AlwaysOnTop = true,
+                    ResetOnSpawn = true,
+                    Enabled = true,
+                    Parent = true,
+                })[key]
+                if tracked then
+                    local previous = values[key]
+                    values[key] = value
+                    if previous ~= value then
+                        self:GetPropertyChangedSignal(key):Fire()
+                    end
+                else
+                    rawset(self, key, value)
+                end
             end,
         })
     end
@@ -88,17 +127,34 @@ local logs = {}
 env.print = function(message)
     table.insert(logs, message)
 end
-services.Players.LocalPlayer = {
-    GetAttributeChangedSignal = function()
-        return signal()
-    end,
-    WaitForChild = function()
-        return playerGui
-    end,
-}
+services.Players.LocalPlayer = uiInstance("Player")
+services.Players.LocalPlayer.WaitForChild = function()
+    return playerGui
+end
+local function touchTarget(visual)
+    local found
+    for _, child in playerGui:GetChildren() do
+        if child.Name == "InteractionPromptTouchInput" and child.Adornee == visual.Adornee then
+            found = child:FindFirstChild("TouchTarget")
+        end
+    end
+    return found
+end
+local function lastVisual()
+    local found
+    for _, child in playerGui:GetChildren() do
+        if child.Name ~= "InteractionPromptTouchInput" then
+            found = child
+        end
+    end
+    return found
+end
 -- Test-only visual projection for the existing layout assertions. Never chooses
 -- whether an InputBegan event is valid; Roblox's GUI hit-test is a Studio boundary.
 local function renderedCenter(gui, button)
+    if button.Parent and button.Parent.Name == "InteractionPromptTouchInput" then
+        gui = button.Parent
+    end
     local origin = gui.Adornee
     local world = if origin:IsA("Attachment") then origin.WorldPosition else origin.Position
     world += gui.StudsOffsetWorldSpace
@@ -181,7 +237,10 @@ input.InputEnded:Fire(click)
 check(begins == 1 and ends == 1, "desktop click still forwards native hold begin/end")
 begins, ends = 0, 0
 check(label().Font == "FredokaOne" and not label().TextWrapped, "dispenser uses fixed dialogue lettering")
-check(label():FindFirstChild("DialogueOutline").Thickness == 2.5, "dispenser has heavy NPC text outline")
+check(
+    label():FindFirstChild("DialogueOutline"):GetAttribute("WorldThicknessStuds") == 0.05,
+    "dispenser has heavy NPC text outline"
+)
 local originPart = uiInstance("Part", "MarkerPart", object)
 origin.Parent = originPart
 show()
@@ -190,7 +249,7 @@ origin.Parent = object
 check(label().Text == "[E] DISPENSE", "configured action and actual key")
 check(gui().AlwaysOnTop and label().BackgroundTransparency == 1, "transparent outlined world UI")
 check(label().TextScaled == true and label().TextSize == 24, "proportional font size")
-check(gui().Size.X.Scale == 7 and gui().Size.Y.Scale == 1.4, "stud canvas")
+check(gui().Size.X.Scale == 8.4 and gui().Size.Y.Scale == 1.7, "stud canvas")
 -- Focused input contract: each view uses the same native prompt hold API.
 for _, kind in { "Keyboard", "Gamepad", "Touch" } do
     for _, padded in { false, true } do
@@ -199,7 +258,7 @@ for _, kind in { "Keyboard", "Gamepad", "Touch" } do
         })
         local mobile = kind == "Touch" and padded
         local action = inputGui:FindFirstChild("Action")
-        local target = inputGui:FindFirstChild("TouchTarget")
+        local target = touchTarget(inputGui)
         check(inputGui.Active == not mobile, "only padded touch disables billboard input")
         check(action:IsA(if mobile then "TextLabel" else "TextButton"), "desktop and unpadded views keep button path")
         if mobile then
@@ -216,42 +275,12 @@ for _, kind in { "Keyboard", "Gamepad", "Touch" } do
 end
 begins, ends = 0, 0
 -- End focused input contracts.
-local stashDisplay = uiInstance("Folder", "StashDisplay", originPart)
-local stashValue = uiInstance("BillboardGui", "SlotValue", stashDisplay)
-stashValue.Adornee = originPart
-stashValue.StudsOffsetWorldSpace = { X = 0, Y = 5, Z = 0 }
-local stashOrigin = uiInstance("Attachment", "StashPromptOrigin", originPart)
+-- Stash interactions have their own controller and authoritative test home.
+prompts.PromptHidden:Fire(prompt)
 prompt:SetAttribute("PlayerStashPrompt", true)
-prompt:SetAttribute("InteractionOrigin", "StashPromptOrigin")
-prompt.ActionText = "STORE"
 show()
-check(
-    gui():IsA("BillboardGui")
-        and gui().Adornee == stashOrigin
-        and gui().StudsOffsetWorldSpace.Y == 0
-        and gui().StudsOffset.Y == 0
-        and gui().SizeOffset.Y == 0
-        and gui().Size.X.Offset == 0
-        and gui().Size.Y.Offset == 0
-        and gui().Size.X.Scale == 7
-        and gui().Size.Y.Scale == 1.4
-        and label().TextScaled,
-    "stash prompt uses authored attachment with stud size and no positioning offsets"
-)
-check(label().Text == "[E] STORE", "stash store retains key and action")
-stashDisplay:Destroy()
-prompt.ActionText = "TAKE"
-prompt:GetPropertyChangedSignal("ActionText"):Fire()
-check(gui().Adornee == stashOrigin and label().Text == "[E] TAKE", "stash take needs no value display")
-stashOrigin.Parent = nil
-show()
-check(gui() == nil and prompt.Enabled, "missing stash origin hides only the custom view")
-stashOrigin.Parent = originPart
-workspaceFake.DescendantAdded:Fire(stashOrigin)
-check(gui().Adornee == stashOrigin, "late stash origin restores the anchored view")
+check(gui() == nil, "generic controller leaves stash presentation to its dedicated controller")
 prompt:SetAttribute("PlayerStashPrompt", nil)
-prompt:SetAttribute("InteractionOrigin", "DispenserTextOrigin")
-prompt.ActionText = "Dispense smoothie"
 show()
 local old = gui()
 show()
@@ -269,17 +298,20 @@ check(label().Text == "[ButtonX] DISPENSE", "gamepad key comes from prompt")
 show("Touch")
 check(label().Text == "[TAP] DISPENSE", "touch hint")
 local finger = { UserInputType = "Touch", Position = vec(200, 300, 0) }
-local touchTarget = gui():FindFirstChild("TouchTarget")
+local dispenserTarget = touchTarget(gui())
 check(
-    not gui().Active and not label().Active and touchTarget.Active,
+    not gui().Active and not label().Active and dispenserTarget.Active,
     "padded touch frame and visual do not sink taps; only TouchTarget is active"
 )
-check(touchTarget.Size.X.Offset == 220 and touchTarget.Size.Y.Offset == 80, "dispenser has actual padded target")
-touchTarget.InputBegan:Fire(finger)
+check(
+    dispenserTarget.Size.X.Scale == 1 and dispenserTarget.Size.Y.Scale == 1 and dispenserTarget.Parent.Active,
+    "dispenser has actual padded target"
+)
+dispenserTarget.InputBegan:Fire(finger)
 input.InputEnded:Fire(finger)
 check(begins == 1 and ends == 1, "touch forwards begin/end through prompt")
 finger = { UserInputType = "Touch", Position = vec(200, 300, 0) }
-touchTarget.InputBegan:Fire(finger)
+dispenserTarget.InputBegan:Fire(finger)
 prompts.PromptHidden:Fire(prompt)
 check(ends == 2 and #playerGui:GetChildren() == 0, "hide releases input and destroys view")
 prompt.PromptButtonHoldBegan:Fire()
@@ -295,7 +327,7 @@ origin.Parent = nil
 check(gui() == nil, "streamed-out origin cleans view")
 origin.Parent = object
 workspaceFake.DescendantAdded:Fire(origin)
-check(#playerGui:GetChildren() == 1, "streamed-in origin recreates exactly once")
+check(#playerGui:GetChildren() == 1, "streamed-in keyboard origin recreates exactly once")
 prompt.Enabled = false
 prompt.Changed:Fire("Enabled")
 check(gui() == nil, "disabled prompt cleans view")
@@ -351,9 +383,14 @@ local server = module("DispenseButton", {
     },
 })
 server.Init({
+    GameplayService = {
+        RegisterPlotInteraction = function(p, callback)
+            p.Triggered:Connect(callback)
+        end,
+    },
     TycoonService = {
-        GetOwner = function()
-            return owner
+        IsMember = function(actor)
+            return actor == owner
         end,
     },
     BlendService = {

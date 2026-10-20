@@ -58,10 +58,7 @@ function Controller.Init()
                     eligible[track.Id] = state.Level
                 end
             end
-            Notifications.Set(
-                "Upgrades",
-                badge.Refresh(eligible, Notifications.IsOpen("Upgrades"), membershipUpdating or pending ~= nil)
-            )
+            Notifications.Set("Upgrades", badge.Refresh(eligible, Notifications.IsOpen("Upgrades"), membershipUpdating))
         end
         Notifications.OnOpened("Upgrades", refreshBadge)
         local function refresh()

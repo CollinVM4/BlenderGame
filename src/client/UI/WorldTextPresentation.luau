@@ -34,8 +34,8 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
     gui.Adornee = origin
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
     Style.ApplyBillboard(gui, {
-        WidthStuds = config.WidthStuds or 8,
-        HeightStuds = config.HeightStuds or 2,
+        WidthStuds = config.WidthStuds or 9.6,
+        HeightStuds = config.HeightStuds or 2.4,
         MaxDistance = config.MaxDistance or 60,
     })
     gui.StudsOffset = config.StudsOffset or Vector3.zero
@@ -53,7 +53,7 @@ function Presentation.Create(settings: Settings?): (Handle?, string?)
         Style.ApplyText(text, config)
         text.RichText = tier ~= nil
         if tier then
-            TextStyle.Apply(text, config.TextSize or 24)
+            TextStyle.Apply(text, config.TextSize or 24, gui)
             if tier == "3" then
                 -- Per-letter pastels keep the rainbow confined to JUMP 3; ZONE stays white.
                 text.Text = '<font color="rgb(255,188,202)">J</font><font color="rgb(255,213,177)">U</font>'

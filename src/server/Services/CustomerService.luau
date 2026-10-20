@@ -1429,7 +1429,7 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
     BillboardStyle.ApplyBillboard(
         bubble,
-        { WidthStuds = 7.2, HeightStuds = 1.5, MaxDistance = 45, ResetOnSpawn = true }
+        { WidthStuds = 8.64, HeightStuds = 1.8, MaxDistance = 45, ResetOnSpawn = true }
     )
     bubble.AlwaysOnTop = true
     bubble.MaxDistance = CUSTOMER_ORDER_MAX_DISTANCE
@@ -1460,7 +1460,7 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
         -- Fixed separate rows keep the smaller name below the floating dialogue.
         BillboardStyle.ApplyBillboard(
             bubble,
-            { WidthStuds = 7.2, HeightStuds = 2.2, MaxDistance = 45, ResetOnSpawn = true }
+            { WidthStuds = 8.64, HeightStuds = 2.64, MaxDistance = 45, ResetOnSpawn = true }
         )
         text.Size = UDim2.fromScale(1, CUSTOMER_ORDER_TEXT_HEIGHT / (CUSTOMER_ORDER_TEXT_HEIGHT + CustomerNameHeight))
         text.Position = UDim2.fromOffset(0, 0)

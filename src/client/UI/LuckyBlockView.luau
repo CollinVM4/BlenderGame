@@ -24,7 +24,7 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
     BillboardStyle.ApplyBillboard(
         labelGui,
-        { WidthStuds = 4, HeightStuds = 0.8, MaxDistance = 45, AlwaysOnTop = false, ResetOnSpawn = true }
+        { WidthStuds = 4.8, HeightStuds = 0.96, MaxDistance = 45, AlwaysOnTop = false, ResetOnSpawn = true }
     )
     labelGui.StudsOffsetWorldSpace = Vector3.new(0, -Config.ModelSize / 2 - 0.35, 0)
     labelGui.AlwaysOnTop = false

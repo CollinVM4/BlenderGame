@@ -22,14 +22,14 @@ function Controller.Init()
         local gui = Instance.new("BillboardGui")
         gui.Name, gui.Adornee = "SecondStorageDisplay", object
         -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-        Style.ApplyBillboard(gui, { WidthStuds = 6, HeightStuds = 1.4, MaxDistance = 30 })
+        Style.ApplyBillboard(gui, { WidthStuds = 7.2, HeightStuds = 1.68, MaxDistance = 30 })
         gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
         local price =
             tostring(Upgrades.SecondStorage[2].Cost):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
         for index, text in { "SECOND STORAGE", "$" .. price } do
             local label = Instance.new("TextLabel")
             Style.ApplyText(label, {})
-            TextStyle.Apply(label, 24)
+            TextStyle.Apply(label, 24, gui)
             label.Size, label.Position = UDim2.fromScale(1, 0.5), UDim2.fromScale(0, (index - 1) / 2)
             label.TextScaled = true
             label.Text, label.TextColor3 = text, if index == 1 then TextStyle.White else TextStyle.Gold

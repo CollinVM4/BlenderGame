@@ -51,7 +51,7 @@ check(
 labelOrigin:SetAttribute("WorldTextTextSize", 32)
 configuredGui = display(labelOrigin)
 check(configuredGui:FindFirstChild("Text").TextSize == 32, "optional text size applied")
-check(configuredGui.Size.X.Scale == 8 and configuredGui.Size.Y.Scale == 2, "optional settings keep stud canvas")
+check(configuredGui.Size.X.Scale == 9.6 and configuredGui.Size.Y.Scale == 2.4, "optional settings keep stud canvas")
 labelOrigin:SetAttribute("WorldTextMaxDistance", -1)
 labelOrigin:SetAttribute("WorldTextTextSize", "bad")
 configuredGui = display(labelOrigin)

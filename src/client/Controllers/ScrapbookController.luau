@@ -65,7 +65,9 @@ function Controller.Start(playerGui: PlayerGui, events: Instance, player: Player
                 if stopped then
                     return
                 end
-                unseenCount += 1
+                if not Notifications.IsOpen("Index") then
+                    unseenCount += 1
+                end
                 Notifications.Set("Index", unseenCount > 0)
                 if not stopped and Controller.MergeDelta(state, event) and view then
                     view.UpdateDiscovery(event)

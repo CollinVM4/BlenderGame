@@ -142,6 +142,15 @@ local function instance(class)
     object.Triggered = signal()
     object.Destroying = signal()
     object.AncestryChanged = signal()
+    object.AbsoluteSize = vec(0, 0, 0)
+    local propertySignals = {}
+    function object:GetPropertyChangedSignal(name)
+        propertySignals[name] = propertySignals[name] or signal()
+        return propertySignals[name]
+    end
+    function object:GetAttributeChangedSignal(name)
+        return self:GetPropertyChangedSignal(name)
+    end
     object.CFrame = frame()
     object.Size = vec(4, 1.2, 2) -- Roblox Part default, also used by character-root doubles.
     object.Position = vec(0, 0, 0)

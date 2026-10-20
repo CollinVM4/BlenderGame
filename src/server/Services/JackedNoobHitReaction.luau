@@ -29,14 +29,14 @@ function Reaction.Play(head: BasePart)
     gui.Name = "JackedNoobHitReaction"
     gui.Adornee = head
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 5, HeightStuds = 1.5, MaxDistance = 30, ResetOnSpawn = true })
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 6, HeightStuds = 1.8, MaxDistance = 30, ResetOnSpawn = true })
     gui.StudsOffsetWorldSpace = Vector3.new(0, head.Size.Y / 2 + 2.5, 0)
     gui.AlwaysOnTop = true
     local label = Instance.new("TextLabel")
     label.Size = UDim2.fromScale(1, 1)
     label.BackgroundTransparency = 1
     label.Text = "HEY STOP THAT"
-    TextStyle.Apply(label, 27)
+    TextStyle.Apply(label, 27, gui)
     label.TextScaled = true
     label.Parent = gui
     local scale = Instance.new("UIScale")

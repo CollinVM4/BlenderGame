@@ -23,7 +23,7 @@ function Controller.Init()
         gui.Name = "JackedNoobResponse"
         gui.Adornee = head
         -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-        BillboardStyle.ApplyBillboard(gui, { WidthStuds = 5, HeightStuds = 1.5, MaxDistance = 30, ResetOnSpawn = true })
+        BillboardStyle.ApplyBillboard(gui, { WidthStuds = 6, HeightStuds = 1.8, MaxDistance = 30, ResetOnSpawn = true })
         gui.StudsOffsetWorldSpace = Vector3.new(0, head.Size.Y / 2 + 1.7, 0)
         gui.AlwaysOnTop = true
         local label = Instance.new("TextLabel")
@@ -31,7 +31,7 @@ function Controller.Init()
         label.Size = UDim2.fromScale(1, 1)
         label.BackgroundTransparency = 1
         label.Text = line
-        TextStyle.Apply(label, 23)
+        TextStyle.Apply(label, 23, gui)
         label.TextScaled = true
         label.TextWrapped = true
         label.TextTransparency = 1

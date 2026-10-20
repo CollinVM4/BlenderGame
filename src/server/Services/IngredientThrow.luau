@@ -96,7 +96,6 @@ function IngredientThrow.FindOrigin(root: BasePart, character: Model, object: In
     if minimum > MAX_DISTANCE then
         return nil, "avatar/item clearance exceeds safe distance"
     end
-    local start = root.CFrame.Position + Vector3.new(0, math.max(2, itemRadius), 0)
     local boxSize = Vector3.new(2, 2, 2) * itemRadius
     local excluded: { Instance } = { character }
     -- Running receptors resolve arrivals through their vacuum, including busy shake-off.
@@ -114,34 +113,49 @@ function IngredientThrow.FindOrigin(root: BasePart, character: Model, object: In
     ray.FilterType = Enum.RaycastFilterType.Exclude
     ray.FilterDescendantsInstances = excluded
     ray.RespectCanCollide = true
-    local vertical = workspace:Raycast(root.CFrame.Position, start - root.CFrame.Position, ray)
-    if vertical then
-        return nil, "launch height obstructed by " .. vertical.Instance:GetFullName()
-    end
-    -- Blockcast does not detect parts already overlapping its initial volume.
-    local initial = workspace:GetPartBoundsInBox(CFrame.new(start), boxSize, overlap)
-    if #initial > 0 then
-        return nil, "launch volume obstructed by " .. initial[1]:GetFullName()
-    end
-    local reason = "no clear spawn"
-    for _, distance in { math.max(5, minimum), minimum } do
-        local position = start + direction * distance
-        local hit = workspace:Blockcast(CFrame.new(start), boxSize, position - start, ray)
-        local occupied = workspace:GetPartBoundsInBox(CFrame.new(position), boxSize, overlap)
-        if not hit and #occupied == 0 then
-            return CFrame.new(position) * root.CFrame.Rotation,
-                string.format(
-                    "clear origin=%s radius=%.3f avatarFront=%.3f distance=%.3f",
-                    tostring(position),
-                    itemRadius,
-                    front,
-                    distance
-                )
+    local function attempt(height: number): (CFrame?, string)
+        local start = root.CFrame.Position + Vector3.new(0, height, 0)
+        local vertical = workspace:Raycast(root.CFrame.Position, start - root.CFrame.Position, ray)
+        if vertical then
+            return nil, "launch height obstructed by " .. vertical.Instance:GetFullName()
         end
-        local blocker = if hit then hit.Instance else occupied[1]
-        reason = "spawn/path obstructed by " .. blocker:GetFullName()
+        -- Blockcast does not detect parts already overlapping its initial volume.
+        local initial = workspace:GetPartBoundsInBox(CFrame.new(start), boxSize, overlap)
+        if #initial > 0 then
+            return nil, "launch volume obstructed by " .. initial[1]:GetFullName()
+        end
+        local reason = "no clear spawn"
+        for _, distance in { math.max(5, minimum), minimum } do
+            local position = start + direction * distance
+            local hit = workspace:Blockcast(CFrame.new(start), boxSize, position - start, ray)
+            local occupied = workspace:GetPartBoundsInBox(CFrame.new(position), boxSize, overlap)
+            if not hit and #occupied == 0 then
+                return CFrame.new(position) * root.CFrame.Rotation,
+                    string.format(
+                        "clear origin=%s radius=%.3f avatarFront=%.3f distance=%.3f launchHeight=%.3f",
+                        tostring(position),
+                        itemRadius,
+                        front,
+                        distance,
+                        height
+                    )
+            end
+            local blocker = if hit then hit.Instance else occupied[1]
+            reason = "spawn/path obstructed by " .. blocker:GetFullName()
+        end
+        return nil, reason
     end
-    return nil, reason
+    local nominalReason = "no clear spawn"
+    for index, height in { math.max(2, itemRadius), 1.5, 1.0, 0.5 } do
+        local origin, reason = attempt(height)
+        if origin then
+            return origin, reason
+        end
+        if index == 1 then
+            nominalReason = reason
+        end
+    end
+    return nil, nominalReason
 end
 
 -- Pairwise exclusions preserve collisions with the world, blender and other players.

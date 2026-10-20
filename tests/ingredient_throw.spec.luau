@@ -184,13 +184,19 @@ for _, gate in { "height", "initial", "path", "destination" } do
         return if gate == "path" then { Instance = wall } else nil
     end
     local queries = 0
-    workspaceFake.GetPartBoundsInBox = function(_, _, _, params)
+    workspaceFake.GetPartBoundsInBox = function(_, queryFrame, _, params)
         queries += 1
         check(
             params.FilterDescendantsInstances[1] == character and params.RespectCanCollide,
             "volume excludes own accessories and carry geometry"
         )
-        return if (gate == "initial" and queries == 1) or (gate == "destination" and queries > 1) then { wall } else {}
+        return if (gate == "initial")
+                or (
+                    gate == "destination"
+                    and (queryFrame.Position - root.CFrame.Position):Dot(root.CFrame.LookVector) > 0.01
+                )
+            then { wall }
+            else {}
     end
     local before = #services.CollectionService:GetTagged("IngredientWorldItem")
     check(inventory.ThrowHeld(player, nil, true) == nil, gate .. " obstruction rejects throw")
@@ -284,10 +290,17 @@ do
                 return if gate == "path" and hit then { Instance = hit } else nil
             end
             local queries = 0
-            workspaceFake.GetPartBoundsInBox = function(_, _, _, params)
+            workspaceFake.GetPartBoundsInBox = function(_, queryFrame, _, params)
                 queries += 1
                 local hit = obstruction(params)
-                return if hit and ((gate == "initial" and queries == 1) or (gate == "destination" and queries > 1))
+                return if hit
+                        and (
+                            (gate == "initial")
+                            or (
+                                gate == "destination"
+                                and (queryFrame.Position - root.CFrame.Position):Dot(root.CFrame.LookVector) > 0.01
+                            )
+                        )
                     then { hit }
                     else {}
             end
@@ -314,3 +327,52 @@ do
 end
 
 data.GetUpgrade = getUpgrade
+
+-- Low cover retries the complete clearance contract at successively lower heights.
+do
+    local throw = loadModule("IngredientThrow")
+    local item = instance("Part")
+    item.Size = vec(0.5, 0.5, 0.5)
+    local nominal = math.max(2, item.Size.Magnitude / 2 + 0.25)
+    for _, clearHeight in { nominal, 1.5, 1.0, 0.5 } do
+        workspaceFake.Raycast = function(_, _, displacement)
+            return if displacement.Y > clearHeight then { Instance = wall } else nil
+        end
+        workspaceFake.GetPartBoundsInBox = function(_, at)
+            return if at.Position.Y - root.CFrame.Position.Y > clearHeight then { wall } else {}
+        end
+        workspaceFake.Blockcast = oldBlock
+        local origin, reason = throw.FindOrigin(root, character, item)
+        check(
+            origin ~= nil and math.abs(origin.Position.Y - root.CFrame.Position.Y - clearHeight) < 0.001,
+            "first fully clear launch height succeeds"
+        )
+        check(
+            string.find(reason, string.format("launchHeight=%.3f", clearHeight), 1, true) ~= nil,
+            "clear-origin trace identifies successful launch height"
+        )
+    end
+    -- A clear vertical ray is insufficient when the awning overlaps the volume.
+    workspaceFake.Raycast = oldRay
+    workspaceFake.GetPartBoundsInBox = function(_, at)
+        return if at.Position.Y - root.CFrame.Position.Y > 1.0 then { wall } else {}
+    end
+    local underAwning = throw.FindOrigin(root, character, item)
+    check(
+        underAwning ~= nil and underAwning.Position.Y == root.CFrame.Position.Y + 1,
+        "initial-volume awning obstruction retries lower launch"
+    )
+    workspaceFake.Raycast = function(_, _, displacement)
+        return if displacement.Y >= nominal then { Instance = wall } else nil
+    end
+    workspaceFake.GetPartBoundsInBox = function()
+        return { wall }
+    end
+    local enclosed, reason = throw.FindOrigin(root, character, item)
+    check(
+        enclosed == nil and reason == "launch height obstructed by Workspace.Wall",
+        "sealed position rejects with nominal reason despite different lower failures"
+    )
+    workspaceFake.Raycast, workspaceFake.Blockcast, workspaceFake.GetPartBoundsInBox = oldRay, oldBlock, oldOverlap
+    item:Destroy()
+end

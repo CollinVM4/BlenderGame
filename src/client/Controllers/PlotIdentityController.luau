@@ -32,7 +32,7 @@ local function label(parent: Instance, text: string, y: number): TextLabel
     result.BackgroundTransparency = 1
     result.Size = UDim2.new(1, 0, 0, 28)
     result.Position = UDim2.fromOffset(0, y)
-    TextStyle.Apply(result, 17)
+    TextStyle.Apply(result, 17, if parent:IsA("BillboardGui") then parent else nil)
     if parent:IsA("BillboardGui") then
         local canvasHeight = if parent.Name == "PlotIdentity" then 200 else 32
         result.Size = UDim2.fromScale(1, 28 / canvasHeight)
@@ -54,7 +54,7 @@ local function button(parent: Instance, text: string, y: number, callback: () ->
     end
     result.BackgroundColor3 = Color3.fromRGB(35, 92, 108)
     result.BorderSizePixel = 0
-    TextStyle.Apply(result, 17)
+    TextStyle.Apply(result, 17, if parent:IsA("BillboardGui") then parent else nil)
     result.TextScaled = parent:IsA("BillboardGui")
     result.Text = text
     result.Parent = parent
@@ -62,8 +62,13 @@ local function button(parent: Instance, text: string, y: number, callback: () ->
     local border = Instance.new("UIStroke")
     border.Name = "ButtonOutline"
     border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    border.Color, border.Thickness = TextStyle.Dark, 3
     border.Parent = result
+    border.Color = TextStyle.Dark
+    if parent:IsA("BillboardGui") then
+        BillboardStyle.ApplyWorldStroke(result, parent, { Name = "ButtonOutline", Color = TextStyle.Dark })
+    else
+        border.Thickness = 3
+    end
     result.Activated:Connect(callback)
     return result
 end
@@ -163,7 +168,7 @@ function Controller.Init()
                             -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
                             BillboardStyle.ApplyBillboard(
                                 created,
-                                { WidthStuds = 4.8, HeightStuds = 0.9, MaxDistance = 60, ResetOnSpawn = true }
+                                { WidthStuds = 5.76, HeightStuds = 1.08, MaxDistance = 60, ResetOnSpawn = true }
                             )
                             created.Active = false
                             created.Adornee, created.Parent = labelOrigin, gui
@@ -190,7 +195,7 @@ function Controller.Init()
                 display.Name = "PlotIdentity"
                 BillboardStyle.ApplyBillboard(
                     display,
-                    { WidthStuds = 7.5, HeightStuds = 5.3, MaxDistance = 60, ResetOnSpawn = true }
+                    { WidthStuds = 9, HeightStuds = 6.36, MaxDistance = 60, ResetOnSpawn = true }
                 )
                 display.ClipsDescendants = false -- Allow proportional member columns around the existing action footprint.
                 display.Active = true

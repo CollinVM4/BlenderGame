@@ -21,7 +21,7 @@ if errors:
     raise SystemExit("\n".join(errors))
 print("PASS: billboard convention lint and lint regressions", flush=True)
 source = (ROOT / "src/shared/WorldBillboardStyle.luau").read_text()
-bundle = "local sources = { WorldBillboardStyle = " + json.dumps(source) + " }\n"
+bundle = "local sources = { WorldBillboardStyle = " + json.dumps(source) + ", WorldStrokeController = " + json.dumps((ROOT / "src/client/Controllers/WorldStrokeController.luau").read_text()) + " }\n"
 bundle += (ROOT / "tests/fixtures/roblox.luau").read_text()
 bundle += (ROOT / "tests/world_billboard_style.spec.luau").read_text()
 with tempfile.TemporaryDirectory(prefix="billboard-tests-") as directory:

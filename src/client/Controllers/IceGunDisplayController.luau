@@ -174,7 +174,7 @@ function Controller.Init()
             end,
         })
         local text = gui:FindFirstChild("Action") :: TextLabel
-        TextStyle.Apply(text, 24)
+        TextStyle.Apply(text, 24, gui)
         text.TextColor3 = Color3.fromRGB(140, 235, 255)
         local key = if inputType == Enum.ProximityPromptInputType.Touch
             then "TAP"

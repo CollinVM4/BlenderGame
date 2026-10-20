@@ -181,9 +181,11 @@ function Controller.Init()
             local dispenser = origin.Name == "DispenserTextOrigin" and not customerAction
             local touch = dispenser and entry.InputType == Enum.ProximityPromptInputType.Touch
             local cleanup, gui = Presentation.Create(prompt, origin, playerGui, entry.InputType, {
-                HeightStuds = if touch then 2.1 else nil,
-                TouchWidth = if touch then 220 else nil,
-                TouchHeight = if touch then 80 else nil,
+                HeightStuds = if touch then 2.52 else nil,
+                CanvasWidth = 300,
+                CanvasHeight = if touch then 80 else 56,
+                TouchWidth = if touch then 260 else nil,
+                TouchHeight = if touch then 96 else nil,
                 TouchCenterY = if touch then 0.5 else nil,
                 CustomerAction = if typeof(customerAction) == "string" then customerAction else nil,
                 ActionText = if typeof(action) == "string" then action else nil,

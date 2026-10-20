@@ -9,8 +9,8 @@ local BlenderStatusPresentation = {}
 -- Cosmetic tuning only. Capacity comes from the same config as BlendService.
 local TEXT_SIZE = 24
 local MAX_DISTANCE = 40
-local COUNT_SIZE = Vector2.new(6.4, 1.9)
-local PROMPT_SIZE = Vector2.new(10.1, 2.1)
+local COUNT_SIZE = Vector2.new(7.68, 2.28)
+local PROMPT_SIZE = Vector2.new(12.12, 2.52)
 local COUNT_OFFSET = Vector3.new(0, 0, 0)
 local PROMPT_OFFSET = Vector3.new(0, 0, 0)
 local WHITE = TextStyle.White
@@ -57,7 +57,7 @@ local function billboard(marker: Instance, name: string, size: Vector2, offset: 
     text.Size = UDim2.fromScale(1, 1)
     text.BackgroundTransparency = 1
     text.BorderSizePixel = 0
-    TextStyle.Apply(text, TEXT_SIZE)
+    TextStyle.Apply(text, TEXT_SIZE, gui)
     text.TextScaled = true
     text.Text = ""
     text.Parent = gui
@@ -112,8 +112,8 @@ function BlenderStatusPresentation.Init(services: any)
                 promptText.TextSize = if guidance then TEXT_SIZE * 0.85 else TEXT_SIZE
                 if promptGui then
                     BillboardStyle.ApplyBillboard(promptGui, {
-                        WidthStuds = if guidance then 8 else PROMPT_SIZE.X,
-                        HeightStuds = if guidance then 1.7 else PROMPT_SIZE.Y,
+                        WidthStuds = if guidance then 9.6 else PROMPT_SIZE.X,
+                        HeightStuds = if guidance then 2.04 else PROMPT_SIZE.Y,
                         MaxDistance = MAX_DISTANCE,
                         ResetOnSpawn = true,
                     })

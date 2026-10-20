@@ -17,7 +17,7 @@ function Targets.Register(
     Debug.Log(
         prompt,
         "REGISTERED",
-        "native button " .. tostring(button.Size.X.Offset) .. "x" .. tostring(button.Size.Y.Offset)
+        "native input quad (studs) " .. tostring(gui.Size.X.Scale) .. "x" .. tostring(gui.Size.Y.Scale)
     )
     local registered = true
     local connection = button.InputBegan:Connect(function(input)
@@ -39,7 +39,7 @@ function Targets.Register(
             reason = "wrong input type"
         elseif claimed[input] then
             reason = "finger already claimed"
-        -- Padded touch billboards are inactive so only the button sinks input.
+        -- The dedicated input billboard owns visibility and the native button gate.
         elseif not registered or not gui.Parent or not gui.Enabled then
             reason = "hidden view"
         elseif button.Parent ~= gui or not button.Visible or not button.Active then

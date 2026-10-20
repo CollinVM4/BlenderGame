@@ -72,7 +72,7 @@ local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value:
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
     BillboardStyle.ApplyBillboard(
         gui,
-        { WidthStuds = 4.8, HeightStuds = 1.2, MaxDistance = RipenessStyle.StashMaxDistance }
+        { WidthStuds = 5.76, HeightStuds = 1.44, MaxDistance = RipenessStyle.StashMaxDistance }
     )
     gui.StudsOffsetWorldSpace = surface.Position - slot.Position + Vector3.new(0, 5, 0)
     gui.AlwaysOnTop = true
@@ -88,10 +88,7 @@ local function showValue(slot: BasePart, folder: Folder, surface: CFrame, value:
     label.TextScaled = true
     label.TextColor3 = Color3.fromRGB(100, 235, 120)
     label.Text = MoneyFormat.Compact(value)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.new(0, 0, 0)
-    stroke.Thickness = 3
-    stroke.Parent = label
+    BillboardStyle.ApplyWorldStroke(label, gui, { Color = Color3.new(0, 0, 0) })
     label.Parent = gui
     gui.Parent = folder
 end

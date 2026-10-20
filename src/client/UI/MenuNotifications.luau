@@ -17,7 +17,7 @@ local function channel(id: string): Channel
 end
 local function render(state: Channel)
     for _, setVisible in state.Views do
-        setVisible(state.Visible and not state.Open)
+        setVisible(state.Visible)
     end
 end
 function Notifications.Set(id: string, visible: boolean)

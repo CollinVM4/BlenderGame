@@ -9,7 +9,12 @@ end
 -- These modules must function without any prompt, input, camera, or frame service.
 env.game.GetService = function(_, name)
     assert(name == "ReplicatedStorage", "Unexpected service dependency: " .. name)
-    return { Shared = { Constants = { DialogueTextStyle = "DialogueTextStyle" } } }
+    return {
+        Shared = {
+            WorldBillboardStyle = "WorldBillboardStyle",
+            Constants = { DialogueTextStyle = "DialogueTextStyle" },
+        },
+    }
 end
 env.Instance.new = function(class)
     assert(class == "BillboardGui" or class == "TextLabel" or class == "UIStroke", "visual-only code created " .. class)
@@ -34,8 +39,8 @@ local function module(name)
     )
     return chunk()
 end
-modules.DialogueTextStyle = module("DialogueTextStyle")
 modules.WorldBillboardStyle = module("WorldBillboardStyle")
+modules.DialogueTextStyle = module("DialogueTextStyle")
 local worldText = module("WorldTextPresentation")
 local root = instance("Model")
 root.Parent = workspaceFake
@@ -49,7 +54,7 @@ check(#origin:GetChildren() == 1 and gui:IsA("BillboardGui"), "one BillboardGui 
 check(gui.Adornee == origin, "authored Attachment is exact Adornee")
 check(text:IsA("TextLabel") and text.Text == "READY", "plain authored text without key affordance")
 check(not gui.Active and not text.Active and not text.Selectable, "label cannot capture interaction")
-check(gui.Size.X.Scale == 8 and gui.Size.Y.Scale == 2, "canvas uses world studs")
+check(gui.Size.X.Scale == 9.6 and gui.Size.Y.Scale == 2.4, "canvas uses world studs")
 check(gui.Size.X.Offset == 0 and gui.Size.Y.Offset == 0, "canvas has no pixel offsets")
 check(gui.AlwaysOnTop and not gui.ResetOnSpawn, "shared billboard treatment")
 check(text.TextSize == 24 and text.TextScaled, "font scales with the frame")

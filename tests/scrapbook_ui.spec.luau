@@ -1,6 +1,24 @@
 local presentation, controller, catalog, artwork =
     load("ScrapbookPresentation"), load("ScrapbookController"), load("DiscoveryCatalog"), load("ScrapbookArtwork")
 local entries = catalog.GetIngredients()
+local allowed = load("ScrapbookPreviews")
+local missing, extra, catalogIds = {}, {}, {}
+for _, entry in entries do
+    catalogIds[entry.Id] = true
+    if allowed[entry.Id] ~= true then
+        table.insert(missing, entry.Id)
+    end
+end
+for id in allowed do
+    if not catalogIds[id] then
+        table.insert(extra, id)
+    end
+end
+table.sort(missing)
+table.sort(extra)
+check(#missing == 0, "Preview allowlist missing catalog IDs: " .. table.concat(missing, ", "))
+check(#extra == 0, "Preview allowlist IDs outside catalog: " .. table.concat(extra, ", "))
+
 for i, entry in entries do
     if i > 1 then
         local previous = entries[i - 1]
@@ -74,7 +92,7 @@ for _, child in shared.children or {} do
 end
 check(published ~= nil, "visual assets published")
 check(published:FindFirstChild("Apple") and published:FindFirstChild("Grapes"), "single and multipart assets published")
-check(#published:GetChildren() == 2 and #publishWarnings == 14, "allowlisted missing assets reported")
+check(#published:GetChildren() == 2 and #publishWarnings == #entries - 2, "allowlisted missing assets reported")
 check(multipart:FindFirstChild("Unsafe") ~= nil, "publishing preserves server prefab")
 local host = instance("Frame", "Card")
 local image = instance("ImageLabel", "FruitImage", host)

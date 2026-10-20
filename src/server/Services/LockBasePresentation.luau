@@ -71,7 +71,7 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         gui.Name = "LockBaseDisplay"
         gui.Adornee = attachment
         -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-        BillboardStyle.ApplyBillboard(gui, { WidthStuds = 6.4, HeightStuds = 2.4, MaxDistance = 35 })
+        BillboardStyle.ApplyBillboard(gui, { WidthStuds = 7.68, HeightStuds = 2.88, MaxDistance = 35 })
         gui.AlwaysOnTop = true
         gui.StudsOffset = Vector3.zero
         gui.StudsOffsetWorldSpace = Vector3.zero
@@ -86,7 +86,7 @@ function Presentation.Bind(button: BasePart?, attachment: Attachment?, visual: M
         text.ZIndex = 2
         text.TextXAlignment = Enum.TextXAlignment.Center
         text.TextYAlignment = Enum.TextYAlignment.Center
-        TextStyle.Apply(text, 24)
+        TextStyle.Apply(text, 24, gui)
         text.TextScaled = true
         text.TextColor3 = Color3.fromRGB(255, 95, 95)
         text.Parent = gui

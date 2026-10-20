@@ -30,7 +30,9 @@ check(not result:FindFirstChild("Ingredients"), "no ingredient subtotal or secon
 check(result.Adornee == rewardAnchor and result.StudsOffset.Magnitude == 0, "cash uses its stable body attachment")
 local text = result:FindFirstChild("Result")
 check(
-    text.Font == "FredokaOne" and text.TextScaled and text:FindFirstChildOfClass("UIStroke").Thickness == 2.5,
+    text.Font == "FredokaOne"
+        and text.TextScaled
+        and text:FindFirstChildOfClass("UIStroke"):GetAttribute("WorldThicknessStuds") == 0.05,
     "existing readable lettering retained"
 )
 check(expirations[result] == 4, "existing four-second hold retained")

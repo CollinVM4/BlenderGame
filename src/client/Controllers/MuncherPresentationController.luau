@@ -90,14 +90,14 @@ local function purchaseDisplay(pad: BasePart, playerGui: PlayerGui): BillboardGu
     gui.Active = false
     gui.Adornee = pad
     -- Preserve this existing overlay/occlusion policy; nearby gameplay feedback must stay readable.
-    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 9.1, HeightStuds = 1.7, MaxDistance = 40 })
+    BillboardStyle.ApplyBillboard(gui, { WidthStuds = 10.9, HeightStuds = 2.0, MaxDistance = 40 })
     gui.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
     for index, text in { "MUNCHER", "$100K" } do
         local label = Instance.new("TextLabel")
         label.Name = if index == 1 then "Title" else "Detail"
         label.Active = false
         BillboardStyle.ApplyText(label, {})
-        Style.Apply(label :: TextLabel, 24)
+        Style.Apply(label :: TextLabel, 24, gui)
         label.Size = UDim2.fromScale(1, 0.5)
         label.Position = UDim2.fromScale(0, (index - 1) / 2)
         label.TextScaled = true
@@ -155,14 +155,14 @@ function Controller.Init()
                 gui.Enabled = false
                 BillboardStyle.ApplyBillboard(
                     gui,
-                    { WidthStuds = 5.5, HeightStuds = 1.4, MaxDistance = 25, AlwaysOnTop = false, ResetOnSpawn = true }
+                    { WidthStuds = 6.6, HeightStuds = 1.7, MaxDistance = 25, AlwaysOnTop = false, ResetOnSpawn = true }
                 )
                 local label = Instance.new("TextLabel")
                 -- Decorative hint/result view: never consume world or Throw taps.
                 -- UIStroke/UIPadding are UIComponents and have no Active property.
                 label.Active = false
                 label.BackgroundTransparency, label.Size = 1, UDim2.fromScale(1, 1)
-                Style.Apply(label :: TextLabel, 24)
+                Style.Apply(label :: TextLabel, 24, gui)
                 label.TextScaled = true
                 label.Parent, gui.Parent = gui, playerGui
                 gui.StudsOffsetWorldSpace = Vector3.new(0, 2.2, 0)
