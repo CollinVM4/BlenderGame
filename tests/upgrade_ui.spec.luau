@@ -142,6 +142,7 @@ local attributes = {
 }
 local signals = {}
 local player = {
+    CharacterAdded = signal(),
     WaitForChild = function()
         return playerGui
     end,
@@ -204,7 +205,21 @@ local function advance(seconds)
         table.remove(timers, index)[2]()
     end
 end
+local tickerBinding, tickerBalance, tickerTarget, tickerSnap
 local function load(name)
+    if name == "CashTicker" then
+        return {
+            Bind = function(label, value)
+                tickerBinding, tickerBalance = label, value
+            end,
+            SetTarget = function(value)
+                tickerTarget = value
+            end,
+            Snap = function(value)
+                tickerSnap = value
+            end,
+        }
+    end
     if modules[name] then
         return modules[name]
     end
@@ -223,6 +238,7 @@ local function load(name)
                     NotificationBadge = "NotificationBadge",
                     Parent = {
                         UI = {
+                            CashTicker = "CashTicker",
                             UpgradeDisplay = "UpgradeDisplay",
                             UpgradesGui = "UpgradesGui",
                             MenuNotifications = "MenuNotifications",
@@ -302,8 +318,15 @@ end
 view = assert(gui.Resolve(playerGui), "actual exported hierarchy resolves")
 
 check(view.Cash.Text == "$425", "initial authoritative cash")
+check(
+    tickerBinding == view.Cash and tickerBalance == 425 and tickerTarget == nil,
+    "initial ticker binding snaps to current cash"
+)
 set("playerCash", 800)
 check(view.Cash.Text == "$800", "cash replication")
+check(tickerTarget == 800, "replicated cash retargets presentation alongside formatted fallback")
+player.CharacterAdded:Fire()
+check(tickerSnap == 800, "respawn snaps ticker to current replicated balance")
 check(view.Rows.Jump.Price.TextTransparency == 0.4, "unaffordable price dims")
 set("playerCash", 10000)
 check(

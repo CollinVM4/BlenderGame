@@ -6,6 +6,7 @@ local Gui = require(script.Parent.Parent.UI.UpgradesGui)
 local Notifications = require(script.Parent.Parent.UI.MenuNotifications)
 local BadgeState = require(script.Parent.Parent.UI.UpgradeBadgeState)
 local MoneyFormat = require(ReplicatedStorage.Shared.MoneyFormat)
+local CashTicker = require(script.Parent.Parent.UI.CashTicker)
 local Controller = {}
 local started = false
 
@@ -28,6 +29,7 @@ function Controller.Init()
         local serverMax: { [string]: boolean } = {}
         local badge = BadgeState.new()
         local badgeQueued = false
+        local tickerTarget: number? = nil
 
         local function numberAttribute(name: string): number?
             local value = player:GetAttribute(name)
@@ -76,6 +78,10 @@ function Controller.Init()
             local cash = numberAttribute("playerCash")
             if currentView.Cash then
                 currentView.Cash.Text = if cash then MoneyFormat.Full(cash) else "$\u{2014}"
+            end
+            if cash and cash ~= tickerTarget then
+                tickerTarget = cash
+                CashTicker.SetTarget(cash)
             end
             for _, track in Display.Tracks do
                 local row = currentView.Rows[track.Id]
@@ -128,6 +134,9 @@ function Controller.Init()
             end)
         end
         player:GetAttributeChangedSignal("playerCash"):Connect(refresh)
+        player.CharacterAdded:Connect(function()
+            CashTicker.Snap(numberAttribute("playerCash") or 0)
+        end)
         local function membershipChanged()
             generation += 1
             pending = nil
@@ -163,6 +172,8 @@ function Controller.Init()
         end
         Gui.Observe(playerGui, function(nextView)
             view = nextView
+            tickerTarget = numberAttribute("playerCash")
+            CashTicker.Bind(if nextView then nextView.Cash else nil, tickerTarget or 0)
             refresh()
         end, function(id)
             local track

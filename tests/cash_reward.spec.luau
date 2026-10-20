@@ -161,6 +161,15 @@ cache.GameplayAudioController = {
         table.insert(cues, kind)
     end,
 }
+services.Players.LocalPlayer = player
+player:SetAttribute("playerCash", 1500)
+local arrivalTicker = loadModule("CashTicker")
+local originalSetTarget = arrivalTicker.SetTarget
+local arrivalTargets = {}
+arrivalTicker.SetTarget = function(value)
+    table.insert(arrivalTargets, value)
+    originalSetTarget(value)
+end
 local animation = loadModule("CashRewardAnimation")
 local config = loadModule("CashFeedback")
 config.Image = ""
@@ -208,6 +217,7 @@ check(first.ImageTransparency > 0 and first.Size.X.Offset < 34, "flight shrinks 
 now += 0.6
 render:Fire()
 check(activeIcons() == 0, "each completed icon removed")
+check(arrivalTargets[1] == 1500, "arrival retargets ticker from current authoritative cash")
 now += 0.1
 render:Fire()
 local scale = cash:FindFirstChildOfClass("UIScale")

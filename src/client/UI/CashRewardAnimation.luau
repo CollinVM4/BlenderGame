@@ -3,6 +3,7 @@ local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.CashFeedback)
 local Audio = require(script.Parent.Parent.Controllers.GameplayAudioController)
 local Hud = require(script.Parent.CashHud)
+local CashTicker = require(script.Parent.CashTicker)
 local Debug = require(script.Parent.CashRewardDebug)
 local Animation = {}
 local random = Random.new()
@@ -39,6 +40,11 @@ local function stopPunch()
 end
 
 local function collect(target: GuiObject)
+    local player = game:GetService("Players").LocalPlayer
+    local cash = if player then player:GetAttribute("playerCash") else nil
+    if type(cash) == "number" then
+        CashTicker.SetTarget(cash)
+    end
     -- Consecutive arrivals extend one pulse rather than accumulating scales.
     if punch and punch.Target == target then
         punch.Start = os.clock()

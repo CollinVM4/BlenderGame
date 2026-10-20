@@ -10,6 +10,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "CashTicker": "src/client/UI/CashTicker.luau",
+    "CashTickerModel": "src/client/UI/CashTickerModel.luau",
     "CashFeedback": "src/shared/Constants/CashFeedback.luau",
     "CashRewardState": "src/client/UI/CashRewardState.luau",
     "CashRewardDebug": "src/client/UI/CashRewardDebug.luau",
@@ -24,6 +26,7 @@ bundle = "local sources = {\n" + "\n".join(
 ) + "\n}\n"
 bundle += (root / "tests/fixtures/roblox.luau").read_text()
 bundle += (root / "tests/cash_reward.spec.luau").read_text()
+bundle += (root / "tests/cash_ticker.spec.luau").read_text()
 with tempfile.TemporaryDirectory(prefix="cash-reward-tests-") as directory:
     path = Path(directory) / "tests.luau"
     path.write_text(bundle, encoding="utf-8")

@@ -6,7 +6,11 @@ local function resolveWithin(root: Instance?, playerGui: Instance): GuiObject?
     local cash = Registry.Child(root, "CashDisplay", { "CashDisplay" }, "GuiObject")
     local label = Registry.Child(cash, "Cash", { "{Coins}", "Cash" }, "TextLabel")
     local target = if cash and label then cash else Registry.Child(root, "Cash", { "{Coins}", "Cash" }, "TextLabel")
-    if target and target:IsA("GuiObject") and Registry.ActiveRoot(label or target, playerGui) then
+    local activeLabel = label or target
+    if label and label:GetAttribute("CashTickerActive") == true then
+        activeLabel = label.Parent
+    end
+    if target and target:IsA("GuiObject") and activeLabel and Registry.ActiveRoot(activeLabel, playerGui) then
         if target.AbsoluteSize.X > 0 and target.AbsoluteSize.Y > 0 then
             return target
         end
