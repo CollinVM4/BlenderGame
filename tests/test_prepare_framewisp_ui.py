@@ -133,7 +133,9 @@ class PreparationTests(unittest.TestCase):
         for item in after.iter("Item"):
             if prep.item_name(item) in ("Unknown settings", prep.item_name(duplicate)):
                 self.assertEqual(item.findtext("./Properties/bool[@name='Visible']"), "true")
-        self.assertEqual(next(i for i in after.iter("Item") if prep.item_name(i) == prep.item_name(self.panels["Shop"])).findtext("./Properties/bool[@name='Visible']"), "false")
+        shop = next(i for i in after.iter("Item")
+                    if i.attrib.get("referent") == self.panels["Shop"].attrib["referent"])
+        self.assertEqual(shop.findtext("./Properties/bool[@name='Visible']"), "false")
 
     def test_ambiguous_content_leaves_panels_unchanged(self):
         for index in range(2):

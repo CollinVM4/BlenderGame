@@ -739,8 +739,7 @@ function TycoonService.SetJoinMode(player: Player, mode: any, context: any): boo
     TycoonService.EndTransaction(session.PlotSessionId)
     return true
 end
--- TODO(Settings): Expose teammate access in Settings > Stand.
--- Planned policies: Anyone / FriendsOnly. Access checks stay server-authoritative
+-- Access checks stay server-authoritative
 -- in RequestJoin; this adapter retains the existing Open wire value.
 function TycoonService.SetTeammateAccess(player: Player, mode: string, context: any): boolean
     return TycoonService.SetJoinMode(player, if mode == "Anyone" then "Open" else mode, context)

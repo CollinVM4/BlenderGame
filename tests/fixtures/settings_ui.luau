@@ -25,7 +25,14 @@ local function signal()
     }
 end
 local function instance(class, name, parent)
-    local properties = { Enabled = true, Visible = true, TextTransparency = 0 }
+    local properties = {
+        Enabled = true,
+        Visible = true,
+        TextTransparency = 0,
+        Active = false,
+        AbsolutePosition = { X = 0, Y = 0 },
+        AbsoluteSize = { X = 0, Y = 0 },
+    }
     local propertySignals = {}
     local object = {
         ClassName = class,

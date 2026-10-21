@@ -30,15 +30,6 @@ function GameplayService.HandlePlotRequest(
     if typeof(plot) ~= "Instance" or not plot:IsDescendantOf(workspace) then
         return false
     end
-    local origin = plot:FindFirstChild("PlotIdentityOrigin", true)
-    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    local position = if origin and origin:IsA("Attachment")
-        then origin.WorldPosition
-        elseif origin and origin:IsA("BasePart") then origin.Position
-        else nil
-    if not position or not root or not root:IsA("BasePart") or (root.Position - position).Magnitude > 32 then
-        return false
-    end
     local authority = services.TycoonService
     if authority.GetPlot(player) ~= plot or not authority.ValidateActor(player, context) then
         return false

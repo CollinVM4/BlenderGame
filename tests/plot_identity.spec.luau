@@ -118,49 +118,22 @@ check(
     requests[1][1] == "LeaveTeam" and requests[1][4].PlotSessionId == t.GetSessionId(viewer),
     "leave submits expected session"
 )
+viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(1000, 0, 0)
+tick()
+check(not findText("LEAVE TEAM"), "teammate leave presentation remains nearby-only")
+viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, 0)
 t.RemovePlayer(owner)
 tick()
-check(findText("MANAGE PLOT") and not findText("LEAVE TEAM"), "promotion changes management action")
-findText("MANAGE PLOT").Activated:Fire()
-check(findText("Empty Slot"), "owner management shows teammate slot")
-check(
-    not findText("PUBLIC") and not findText("FRIENDS") and not findText("PRIVATE") and not findText("SELECTED: PUBLIC"),
-    "privacy rows moved to Settings"
-)
+check(not findText("MANAGE PLOT") and not findText("LEAVE TEAM"), "owner has no billboard management action")
+check(playerGui:FindFirstChild("PlotStatus"), "status-only host retained")
+remote.OnClientEvent:Fire("PlotRequestResult", { success = false })
+tick()
+check(findText("Plot action unavailable. Try again."), "neutral failure feedback retained")
 local teammate = player()
 t.RemovePlayer(teammate)
-local context = t.GetRequestContext(viewer)
-t.JoinSession(teammate, viewer, context)
+t.JoinSession(teammate, viewer, t.GetRequestContext(viewer))
 tick()
-check(findText("KICK TEAMMATE"), "owner retains teammate management")
-findText("KICK TEAMMATE").Activated:Fire()
-check(
-    requests[#requests][1] == "KickTeammate" and requests[#requests][3] == teammate.UserId,
-    "kick retains teammate and captured context"
-)
-t.RemovePlayer(teammate)
-tick()
-local otherVisible = false
-local other = loadModule("PanelManager").Register("Index", {
-    Open = function()
-        otherVisible = true
-    end,
-    Close = function()
-        otherVisible = false
-    end,
-})
-other.Open()
-check(otherVisible and not findText("Empty Slot"), "major menu opening closes plot management")
-tick()
-check(not findText("Empty Slot"), "management refresh does not resurrect the closed panel")
-check(findText("MANAGE PLOT"), "world management prompt remains available")
-findText("MANAGE PLOT").Activated:Fire({ UserInputType = "Touch" })
-check(not otherVisible and findText("Empty Slot"), "touch opens management exclusively")
-findText("CLOSE").Activated:Fire({ UserInputType = "Touch" })
-check(not findText("Empty Slot"), "management close still dismisses")
-findText("MANAGE PLOT").Activated:Fire()
-check(findText("Empty Slot"), "management can reopen after close")
-other.Destroy()
+check(not findText("KICK TEAMMATE"), "kick lives exclusively in Settings")
 local fetched = thumbnails
 tick()
 tick()

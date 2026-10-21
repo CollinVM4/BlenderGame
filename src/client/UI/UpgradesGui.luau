@@ -13,7 +13,14 @@ export type Row = {
     PriceTransparency: number,
     BuyTransparency: number,
 }
-export type View = { Root: ScreenGui, Cash: TextLabel?, Rows: { [string]: Row } }
+export type View = {
+    Root: ScreenGui,
+    Cash: TextLabel?,
+    Rows: { [string]: Row },
+    Panel: GuiObject?,
+    MenuArrow: GuiObject?,
+    PanelArrows: { [string]: GuiObject },
+}
 local transparency: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
 local function originalTransparency(label: TextLabel): number
     if transparency[label] == nil then
@@ -73,7 +80,22 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
             BuyTransparency = originalTransparency(label :: TextLabel),
         }
     end
-    return { Root = root :: ScreenGui, Cash = cash :: TextLabel?, Rows = rows }
+    local leftMenu = child(content, "LeftMenu", "GuiObject")
+    local panelArrows: { [string]: GuiObject } = {}
+    for _, name in { "Jump1Alert_pulse", "BatAlert_pulse" } do
+        local arrow = child(panel, name, "GuiObject")
+        if arrow then
+            panelArrows[name] = arrow :: GuiObject
+        end
+    end
+    return {
+        Root = root :: ScreenGui,
+        Cash = cash :: TextLabel?,
+        Rows = rows,
+        Panel = panel :: GuiObject?,
+        MenuArrow = child(leftMenu, "Alert_pulse", "GuiObject") :: GuiObject?,
+        PanelArrows = panelArrows,
+    }
 end
 
 function Gui.Resolve(playerGui: PlayerGui): View?
@@ -111,8 +133,18 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
         if not view or not nextView then
             return view == nextView
         end
-        if view.Root ~= nextView.Root or view.Cash ~= nextView.Cash then
+        if
+            view.Root ~= nextView.Root
+            or view.Cash ~= nextView.Cash
+            or view.Panel ~= nextView.Panel
+            or view.MenuArrow ~= nextView.MenuArrow
+        then
             return false
+        end
+        for _, name in { "Jump1Alert_pulse", "BatAlert_pulse" } do
+            if view.PanelArrows[name] ~= nextView.PanelArrows[name] then
+                return false
+            end
         end
         for id, row in view.Rows do
             local nextRow = nextView.Rows[id]
@@ -225,6 +257,16 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
         local affected = instance == current.Root
             or instance == current.Cash
             or (current.Cash ~= nil and current.Cash:IsDescendantOf(instance))
+            or instance == current.Panel
+            or (current.Panel ~= nil and current.Panel:IsDescendantOf(instance))
+            or instance == current.MenuArrow
+            or (current.MenuArrow ~= nil and current.MenuArrow:IsDescendantOf(instance))
+        for _, arrow in current.PanelArrows do
+            if instance == arrow or arrow:IsDescendantOf(instance) then
+                affected = true
+                break
+            end
+        end
         for _, row in current.Rows do
             local bindings: { Instance } = { row.Current, row.Next, row.Price, row.Purchase, row.BuyLabel, row.Title }
             for _, bound in bindings do

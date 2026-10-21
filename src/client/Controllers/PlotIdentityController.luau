@@ -6,7 +6,6 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
-local PanelManager = require(script.Parent.Parent.UI.PanelManager)
 local Controller = {}
 local player = Players.LocalPlayer
 local portraits: { [number]: string } = {}
@@ -79,28 +78,9 @@ function Controller.Init()
     initialized = true
     local remote = ReplicatedStorage.Shared.Events:WaitForChild("GameplayRequest") :: RemoteEvent
     local gui = Instance.new("ScreenGui")
-    gui.Name, gui.ResetOnSpawn = "PlotManagement", false
+    gui.Name, gui.ResetOnSpawn = "PlotStatus", false
     gui.Parent = player:WaitForChild("PlayerGui")
     local status = label(gui, "", 70)
-    local panel = Instance.new("Frame")
-    panel.Size = UDim2.fromOffset(280, 300)
-    panel.Position = UDim2.new(0.5, -140, 0.5, -150)
-    panel.BackgroundColor3 = Color3.fromRGB(23, 30, 40)
-    panel.Visible = false
-    panel.Parent = gui
-    Instance.new("UICorner", panel)
-    local managed: Instance? = nil
-    local managedRevision: any = nil
-    local menu = PanelManager.Register("PlotManagement", {
-        Open = function()
-            panel.Visible = true
-        end,
-        Close = function()
-            panel.Visible = false
-            managed = nil
-        end,
-    })
-    gui.Destroying:Connect(menu.Destroy)
     local function context(plot: Instance): any
         return {
             PlotSessionId = plot:GetAttribute("PlotSessionId"),
@@ -110,31 +90,6 @@ function Controller.Init()
     end
     local function send(plot: Instance, action: string, value: any, captured: any)
         remote:FireServer(action, plot, value, captured)
-    end
-    local function openManage(plot: Instance)
-        panel:ClearAllChildren()
-        Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 16)
-        managed = plot
-        local captured = context(plot)
-        managedRevision = captured.MembershipRevision
-        label(panel, "MANAGE PLOT", 8)
-        label(panel, tostring(plot:GetAttribute("PlotTeammateName") or "Empty Slot"), 38)
-        local teammate = plot:GetAttribute("TeammateUserId")
-        if type(teammate) == "number" then
-            local head = Instance.new("ImageLabel")
-            head.Size, head.Position = UDim2.fromOffset(36, 36), UDim2.fromOffset(8, 32)
-            head.Image, head.BackgroundTransparency, head.Parent = portrait(teammate), 1, panel
-            Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
-        end
-        if teammate then
-            button(panel, "KICK TEAMMATE", 186, function()
-                send(plot, "KickTeammate", teammate, captured)
-            end)
-        end
-        button(panel, "CLOSE", 252, function()
-            menu.Close()
-        end)
-        menu.Open()
     end
     local failureUntil = 0
     remote.OnClientEvent:Connect(function(action, result)
@@ -149,7 +104,7 @@ function Controller.Init()
             return
         end
         elapsed = 0
-        status.Text = if os.clock() < failureUntil then "Plot action unavailable. Move closer or try again." else ""
+        status.Text = if os.clock() < failureUntil then "Plot action unavailable. Try again." else ""
         status.TextSize = 17
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         local live: { [Instance]: boolean } = {}
@@ -209,11 +164,7 @@ function Controller.Init()
             display.MaxDistance = 60
             local position = if origin:IsA("Attachment") then origin.WorldPosition else (origin :: BasePart).Position
             local nearby = root and root:IsA("BasePart") and (root.Position - position).Magnitude <= 32
-            local action = if not nearby
-                then nil
-                elseif owner == player.UserId then "MANAGE PLOT"
-                elseif teammate == player.UserId then "LEAVE TEAM"
-                else nil
+            local action = if not nearby then nil elseif teammate == player.UserId then "LEAVE TEAM" else nil
             local signature = tostring(owner)
                 .. tostring(teammate)
                 .. tostring(plot:GetAttribute("PlotMembershipRevision"))
@@ -254,11 +205,7 @@ function Controller.Init()
                 if action then
                     local captured = context(plot)
                     button(display, action, 132, function()
-                        if action == "MANAGE PLOT" then
-                            openManage(plot)
-                        else
-                            send(plot, "LeaveTeam", nil, captured)
-                        end
+                        send(plot, "LeaveTeam", nil, captured)
                     end)
                 end
             end
@@ -273,13 +220,6 @@ function Controller.Init()
             if not liveLabels[origin] then
                 display:Destroy()
                 padLabels[origin] = nil
-            end
-        end
-        if managed then
-            if not live[managed] or managed:GetAttribute("OwnerUserId") ~= player.UserId then
-                menu.Close()
-            elseif managed:GetAttribute("PlotMembershipRevision") ~= managedRevision then
-                openManage(managed)
             end
         end
     end)

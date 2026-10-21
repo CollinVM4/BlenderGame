@@ -78,6 +78,14 @@ local function instance(class, name, parent)
     function object:GetChildren()
         return table.clone(self.children)
     end
+    function object:FindFirstChildOfClass(want)
+        for _, child in self.children do
+            if child:IsA(want) then
+                return child
+            end
+        end
+        return nil
+    end
     function object:GetDescendants()
         local descendants = {}
         for _, c in self.children do
@@ -206,6 +214,20 @@ local function advance(seconds)
     end
 end
 local tickerBinding, tickerBalance, tickerTarget, tickerSnap
+local alertTweens = {}
+local tweenService = {
+    Create = function(_, target, info, goal)
+        local tween = { Target = target, Info = info, Goal = goal, Playing = false }
+        function tween:Play()
+            self.Playing = true
+        end
+        function tween:Cancel()
+            self.Playing = false
+        end
+        table.insert(alertTweens, tween)
+        return tween
+    end,
+}
 local function load(name)
     if name == "CashTicker" then
         return {
@@ -242,11 +264,15 @@ local function load(name)
         setmetatable({
             game = {
                 GetService = function(_, service)
+                    if service == "TweenService" then
+                        return tweenService
+                    end
                     return if service == "Players" then { LocalPlayer = player } else storage
                 end,
             },
             script = {
                 Parent = {
+                    TutorialAlertState = "TutorialAlertState",
                     UIRegistry = "UIRegistry",
                     NotificationBadge = "NotificationBadge",
                     Parent = {
@@ -261,6 +287,17 @@ local function load(name)
                 },
             },
             require = load,
+            Instance = {
+                new = function(class)
+                    return instance(class, class)
+                end,
+            },
+            TweenInfo = {
+                new = function(...)
+                    return { ... }
+                end,
+            },
+            Enum = { EasingStyle = { Sine = "Sine" }, EasingDirection = { InOut = "InOut" } },
             Color3 = {
                 fromRGB = function(...)
                     return { ... }

@@ -5,6 +5,8 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Gui = require(script.Parent.Parent.UI.SettingsGui)
 local Music = require(script.Parent.MusicController)
+local PanelManager = require(script.Parent.Parent.UI.PanelManager)
+local StandIdentity = require(script.Parent.StandIdentityController)
 local Controller = {}
 local started = false
 
@@ -22,7 +24,7 @@ function Controller.Init()
         local failure = false
         local feedbackVersion = 0
         local statusTitles: { [TextLabel]: string } = setmetatable({}, { __mode = "k" }) :: any
-        local function ownPlot(): Instance?
+        local function sessionPlot(): Instance?
             local candidates = CollectionService:GetTagged("PlayerPlot")
             local folder = Workspace:FindFirstChild("Plots")
             if folder then
@@ -33,10 +35,28 @@ function Controller.Init()
                 end
             end
             local found: Instance? = nil
+            local sessionId = player:GetAttribute("PlotSessionId")
             for _, plot in candidates do
-                if plot:IsDescendantOf(Workspace) and plot:GetAttribute("OwnerUserId") == player.UserId then
+                if plot:IsDescendantOf(Workspace) and sessionId and plot:GetAttribute("PlotSessionId") == sessionId then
                     if found then
-                        return nil -- Ambiguous replicated ownership fails closed.
+                        return nil -- Ambiguous replicated session fails closed.
+                    end
+                    found = plot
+                end
+            end
+            if found then
+                return found
+            end
+            for _, plot in candidates do
+                if
+                    plot:IsDescendantOf(Workspace)
+                    and (
+                        plot:GetAttribute("OwnerUserId") == player.UserId
+                        or plot:GetAttribute("TeammateUserId") == player.UserId
+                    )
+                then
+                    if found then
+                        return nil -- Ambiguous replicated membership fails closed.
                     end
                     found = plot
                 end
@@ -48,9 +68,19 @@ function Controller.Init()
             if not current or not current.Panel.Visible then
                 return
             end
-            local plot = ownPlot()
+            local plot = sessionPlot()
+            local owner = plot ~= nil and plot:GetAttribute("OwnerUserId") == player.UserId
+            local teammate = if plot then plot:GetAttribute("TeammateUserId") else nil
+            if current.Rename then
+                current.Rename.Visible, current.Rename.Active = owner, owner
+            end
+            local hasTeammate = owner and type(teammate) == "number"
+            if current.Kick then
+                current.Kick.Visible, current.Kick.Active = hasTeammate, hasTeammate
+            end
             local mode = if plot then plot:GetAttribute("JoinMode") else nil
             for value, button in current.Modes do
+                button.Active = owner
                 Gui.Select(button, value == mode)
             end
             if current.MusicOn then
@@ -59,16 +89,13 @@ function Controller.Init()
             if current.MusicOff then
                 Gui.Select(current.MusicOff, not Music.IsEnabled())
             end
-            if current.Thumb then
-                local position = current.Thumb.Position
-                current.Thumb.Position = UDim2.new(Music.GetVolume(), 0, position.Y.Scale, position.Y.Offset)
-            end
+            Gui.RefreshVolume(current, Music.GetVolume())
             if current.Status then
                 if statusTitles[current.Status] == nil then
                     statusTitles[current.Status] = current.Status.Text
                 end
                 current.Status.Text = if failure
-                    then "Plot action unavailable. Move closer or try again."
+                    then "Plot action unavailable. Try again."
                     else statusTitles[current.Status]
             end
         end
@@ -79,7 +106,7 @@ function Controller.Init()
             if mode ~= "Open" and mode ~= "FriendsOnly" and mode ~= "Closed" then
                 return
             end
-            local plot = ownPlot()
+            local plot = sessionPlot()
             if not plot or not remote or plot:GetAttribute("OwnerUserId") ~= player.UserId then
                 return
             end
@@ -95,7 +122,31 @@ function Controller.Init()
         end, function(volume)
             Music.SetVolume(volume)
             refresh()
+            return Music.GetVolume()
+        end, function()
+            local plot = sessionPlot()
+            if not plot or plot:GetAttribute("OwnerUserId") ~= player.UserId then
+                return
+            end
+            PanelManager.CloseAll()
+            StandIdentity.OpenNameEditor(plot)
+        end, function()
+            local plot = sessionPlot()
+            if not plot or not remote or plot:GetAttribute("OwnerUserId") ~= player.UserId then
+                return
+            end
+            local teammate = plot:GetAttribute("TeammateUserId")
+            if type(teammate) ~= "number" then
+                return
+            end
+            local captured = {
+                PlotSessionId = plot:GetAttribute("PlotSessionId"),
+                MembershipRevision = plot:GetAttribute("PlotMembershipRevision"),
+                ClaimRevision = plot:GetAttribute("PlotClaimRevision") or 0,
+            }
+            remote:FireServer("KickTeammate", plot, teammate, captured)
         end)
+        player:GetAttributeChangedSignal("PlotSessionId"):Connect(refresh)
         player:GetAttributeChangedSignal("MusicEnabled"):Connect(refresh)
         player:GetAttributeChangedSignal("MusicVolume"):Connect(refresh)
         local plotConnections: { RBXScriptConnection } = {}
@@ -118,8 +169,18 @@ function Controller.Init()
                 end
             end
             for _, plot in candidates do
-                table.insert(plotConnections, plot:GetAttributeChangedSignal("OwnerUserId"):Connect(refresh))
-                table.insert(plotConnections, plot:GetAttributeChangedSignal("JoinMode"):Connect(refresh))
+                for _, attribute in
+                    {
+                        "OwnerUserId",
+                        "TeammateUserId",
+                        "PlotSessionId",
+                        "JoinMode",
+                        "PlotMembershipRevision",
+                        "PlotClaimRevision",
+                    }
+                do
+                    table.insert(plotConnections, plot:GetAttributeChangedSignal(attribute):Connect(refresh))
+                end
             end
             refresh()
         end

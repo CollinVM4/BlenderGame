@@ -7,11 +7,12 @@ type Channel = {
     Open: boolean,
     Views: { [GuiButton]: (boolean) -> () },
     Listeners: { [() -> ()]: boolean },
+    ChangeListeners: { [() -> ()]: boolean },
 }
 local channels: { [string]: Channel } = {}
 local function channel(id: string): Channel
     if not channels[id] then
-        channels[id] = { Visible = false, Open = false, Views = {}, Listeners = {} }
+        channels[id] = { Visible = false, Open = false, Views = {}, Listeners = {}, ChangeListeners = {} }
     end
     return channels[id]
 end
@@ -37,6 +38,16 @@ function Notifications.PanelChanged(id: string, open: boolean)
         for listener in state.Listeners do
             listener()
         end
+    end
+    for listener in state.ChangeListeners do
+        listener()
+    end
+end
+function Notifications.OnChanged(id: string, callback: () -> ()): () -> ()
+    local state = channel(id)
+    state.ChangeListeners[callback] = true
+    return function()
+        state.ChangeListeners[callback] = nil
     end
 end
 function Notifications.OnOpened(id: string, callback: () -> ()): () -> ()

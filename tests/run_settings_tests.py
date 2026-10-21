@@ -22,15 +22,27 @@ nodes = []
 
 def visit(item, parent):
     index = len(nodes) + 1
-    nodes.append([index, parent, item.attrib["class"], item.findtext("./Properties/string[@name='Name']")])
+    def geometry(kind, name, fields):
+        prop = item.find(f"./Properties/{kind}[@name='{name}']")
+        return [float(prop.findtext(field, "0")) for field in fields] if prop is not None else []
+    nodes.append([index, parent, item.attrib["class"], item.findtext("./Properties/string[@name='Name']"),
+                  geometry("UDim2", "Position", ("XS", "XO", "YS", "YO")),
+                  geometry("UDim2", "Size", ("XS", "XO", "YS", "YO")),
+                  geometry("Vector2", "AnchorPoint", ("X", "Y"))])
     for child in item.findall("Item"):
         visit(child, index)
 
 
 for item in ET.parse(root / "Framewisp_CCWMF.rbxmx").getroot().findall("Item"):
     visit(item, 0)
+def lua(value):
+    if isinstance(value, list):
+        return "{" + ",".join(lua(v) for v in value) + "}"
+    return json.dumps(value)
+
+
 bundle = "local exportNodes = {\n" + "\n".join(
-    "{" + ",".join(json.dumps(value) for value in node) + "}," for node in nodes
+    lua(node) + "," for node in nodes
 ) + "\n}\nlocal sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((root / path).read_text(encoding='utf-8'))},"
     for name, path in paths.items()

@@ -1,101 +1,103 @@
 # Settings panel wiring
 
-The Settings adapter creates no UI and never opens/closes a panel. UIRegistry
-resolves the existing Desktop/Content/Panel:Settings contract (including
-Settings_panel); FramewispMenus, PanelManager and FramewispActions retain their
-existing responsibilities. Rename is intentionally unwired.
+Settings binds authored Framewisp instances only. FramewispMenus and PanelManager
+own menu visibility; owner Rename closes Settings via PanelManager before calling
+StandIdentityController.OpenNameEditor for a fresh camera/editor sequence.
 
-## Inspected export contract and outstanding artwork
+## Verified export contract (2026-10-21)
 
-Inspected XML: repository Framewisp_CCWMF.rbxmx and
-C:/Users/Collin Van Meter/Downloads/Framewisp_JTRKKV.rbxmx. Both exports contain
-these paths beneath Be a Blender! Desktop/Be a Blender! DesktopContent/Settings:
+Source: `new_export102126.rbxmx`. Prepared with
+`python tools/prepare_framewisp_ui.py --input new_export102126.rbxmx` into the
+existing Rojo-mapped `Framewisp_CCWMF.rbxmx`. Preparation preserves artwork and
+applies the existing main-menu wiring/visibility policy. No runtime controls or
+renamed authored instances are added.
 
-| Path | Class | Behavior |
+The raw export root is Framewisp_D7E7KL. Beneath Be a Blender! Desktop /
+Be a Blender! DesktopContent, the Figma Settings_panel layer exports as Settings
+(Frame). Its direct PLOT and MUSIC children are Frames.
+
+| Export path under Settings | Class | Binding |
 | --- | --- | --- |
-| PLOT/Friends | TextButton | SetJoinMode FriendsOnly |
-| PLOT/All | TextButton | SetJoinMode Open |
-| PLOT/Rename | TextButton | No behavior added |
-| PLOT/Title | TextLabel | Existing title reused for four-second failure feedback |
-| MUSIC/MusicOn | TextButton | Enable music |
-| MUSIC/MusicOff | TextButton | Disable music |
-| button/BuyBackground/UIStroke | Frame/UIStroke | Selected green background and gold outline |
+| PLOT/Friends | TextButton | FriendsOnly |
+| PLOT/Open | TextButton | Open |
+| PLOT/Closed | TextButton | Closed |
+| PLOT/Rename | TextButton | Existing owner stand-name editor |
+| PLOT/Kick | TextButton | KickTeammate with current teammate and captured context |
+| PLOT/Title | TextLabel | Four-second neutral failure feedback |
+| MUSIC/MusicOn, MUSIC/MusicOff | TextButton | Per-player music preferences |
+| MUSIC/Slider | Frame | Input bounds and track |
+| MUSIC/Slider/Knob | Frame | Thumb |
+| MUSIC/Slider/ProgressBar | Frame | Volume fill |
+| MUSIC/Slider/OuterSlider, InnerSlider | Frame | Authored decoration; OuterSlider provides fallback bounds |
 
-Unexpected differences from the request: **neither available export has Closed,
-a volume track/thumb, or button SelectionScale objects**. Music is two separate
-buttons, rather than a single switch. JTRKKV also uses Frame backgrounds with
-UIGradient where the mapped older export uses some ImageLabels; binding does not
-rely on those decorative instances. The repository export remains unchanged.
-No live Studio hierarchy inspection or desktop/mobile smoke test was possible
-with the available tools; XML inspection is not claimed as Studio verification.
+The export removes `_button_smooth` from the five Figma plot button names.
+Fallbacks accept both sanitized and original names; Open also retains the old
+All/All_button_smooth aliases. All three join modes are reachable in this export.
+StandName and TeammateName are intentionally absent per Collin's direction:
+they are neither required bindings nor Issues nor authoring TODOs.
 
-Closed is supported by both controller and adapter (PLOT/Closed, or
-Closed_button_smooth), but that fallback name is specified by the request and
-has **not** been verified against an actual Closed control. Closed remains a
-valid server mode; the currently mapped export cannot offer its button. An
-updated export is required before all three modes are reachable in Settings.
-The old manage menu privacy rows have been removed as requested.
+Semantic resolution accepts any GuiObject for slider parts, uses direct children
+and fails closed on missing, ambiguous or wrong-class bindings. Slider, Knob and
+ProgressBar are all required for slider input; missing names appear in Issues,
+while the two music toggle controls remain independent. The former
+Music:VolumeTrack/Music:VolumeThumb attribute path has been removed.
 
-The event-based slider implementation is ready for an authored track and thumb,
-but deliberately guesses no exported slider names. Until its actual hierarchy
-is available, it accepts only explicit BlenderUI attributes: Music:VolumeTrack
-on a direct MUSIC child and Music:VolumeThumb on that track's child. Both must be
-GuiObjects. Its horizontal position maps to 0?1; the thumb retains its authored
-vertical position. Mouse and touch drag end on release or panel close. Adapter
-cleanup restores the track's original Active value. Update these bindings after
-inspecting the completed export. Do not mistake the synthetic slider test
-fixture for shipped artwork.
+## Behavior and authority
 
-Selection uses existing BuyBackground color and UIStroke, plus a direct
-SelectionScale UIScale if supplied by the import. The adapter does not create
-that missing scale or overwrite Framewisp's FW_Scale. Supply SelectionScale in
-the authored buttons to enable the 1.1 selected scale. Missing required controls
-emit deduplicated diagnostics; ambiguous/wrong-class controls fail closed.
+Settings resolves a unique session plot by the player's PlotSessionId, falling
+back to OwnerUserId/TeammateUserId membership. Owners can edit join mode, rename,
+and kick; Kick is visible only with a teammate. Teammates see the current mode
+selection with every plot control inert. No plot means unselected, inert controls.
+Selection follows replicated JoinMode, never an optimistic request.
 
-## State and authority
+Management works at any distance. Movement eligibility, Workspace membership,
+GetPlot, ValidateActor and handlers' owner checks remain server-authoritative.
+Requests capture PlotSessionId, MembershipRevision from PlotMembershipRevision,
+and ClaimRevision from PlotClaimRevision (default zero) on activation. Claim/join
+remain exclusive to trusted physical server plot zones; remote claim/join remain
+retired. PlotIdentityController retains portraits, pad labels, nearby LEAVE TEAM
+and PlotStatus feedback, with no owner action or management panel. Both failure
+paths use "Plot action unavailable. Try again."
 
-Settings discovers PlayerPlot-tagged Workspace descendants and direct children
-of Workspace.Plots, matching TycoonService's candidate sources. It sends only
-for a unique locally owned plot, captures PlotSessionId, MembershipRevision from
-PlotMembershipRevision, and ClaimRevision from PlotClaimRevision (default zero)
-on activation. SetJoinMode uses the unchanged server action and guards.
-Selection follows replicated JoinMode, never an optimistic request. Ownership,
-plot discovery and reimport changes use signals, with no new polling loops.
-Kick, teammate management and close stay in PlotIdentityController.
+MusicController is the only source for volume. Mouse/touch down on the track or
+its authored surfaces seeks and starts dragging; movement clamps normalized X
+to 0..1, applies music immediately, and updates knob/fill. Release or panel close
+ends dragging. Refresh does not overwrite an active drag. Panel open, external
+MusicController.SetVolume, and layout changes refresh the display. Cleanup
+restores the track's authored Active value.
 
-MusicPresentation.TrackIds defaults to an empty list. Add authorized
-rbxassetid://... strings to configure playback. DefaultEnabled=true and
-DefaultVolume=0.7; local player MusicEnabled/MusicVolume attributes preserve
-preferences for this session. There is no DataStore. Empty playback allocates
-no Sound and logs once in Studio; preference controls remain safe. A configured
-playlist uses one looped Sound in SoundService. Toggle pauses/resumes that
-Sound; volume changes apply live. Ended advances sequentially; DidLoop also
-advances multi-track playlists because Roblox looped Sounds do not emit Ended
-at the loop boundary. Audio asset playback awaits supplied IDs and Studio QA.
+ProgressBar exports with AnchorPoint (0.5, 0.5). Its X position follows its new
+width so its left edge stays at the track left and its right edge meets the knob.
+AnchorPoint, Y position and height remain authored. Knob preserves AnchorPoint
+and Y while X follows volume. OuterSlider and InnerSlider are never moved or
+resized. Slider absolute bounds take priority; OuterSlider bounds are used if
+the group has no width yet, then layout signals reconcile to group coordinates.
 
-## Validation
+MusicPresentation.TrackIds defaults to an empty list. Configure authorized
+rbxassetid:// strings for playback. Enabled/volume preferences are per-player
+session attributes, with no new persistence. Empty playback creates no Sound and
+logs once in Studio. Configured playback uses the existing single looped Sound,
+pause/resume, live volume and sequential playlist transitions.
 
-Run python tests/run_settings_tests.py --luau <luau.exe> for real module tests at
-fake Roblox boundaries, including actual checked-in export resolution and
-synthetic missing-artwork contracts. It passes 33 behavioral checks. The updated
-plot-identity suite passes, including no privacy rows and retained kick/close.
-Existing upgrade_ui (both startup orders) and framewisp_menus suites pass.
+## Validation and Studio acceptance
 
-The requested state group passes 15/22 suites. All seven failures reproduce
-with this Settings change removed: ripeness, smoothie-world, smoothie,
-customer-payout, customer-validation, customer-compatibility and sprint. Existing
-failures involve value/capacity expectations and missing fixture player names;
-no unrelated production code was changed to address them.
+The Settings runner imports actual exported names, classes and authored geometry;
+synthetic missing-part fixtures are explicitly separate from shipped artwork.
+Contracts cover complete binding resolution, fallback button names, all modes,
+owner/teammate/no-plot permissions, repeated rename delegation, kick context,
+mouse/touch seek/drag, clamping, fill/knob alignment, preserved decoration,
+refresh during drag, close/reopen, fallback bounds and missing-part music toggles.
+Framewisp menu tests cover the newly prepared export's menu policy.
 
-Roblox-aware typechecking passes for new/changed feature modules. Full-source
-analysis retains exactly the same 216 baseline TypeError diagnostics, with zero
-new diagnostics. StyLua passes on changed/new Luau files. Rojo build passes.
-Unrelated pre-existing workspace changes were retained.
+The known plot-session-requests upgrade assertion reproduces on unchanged HEAD
+and remains out of scope. No broad state-group regression is required here.
 
-Before acceptance: supply/inspect the completed export with Closed, slider and
-SelectionScale; prepare it through the existing Framewisp toolchain, verify all
-three join modes and rejected requests on desktop/mobile, measure minimum 44px
-button targets in Device Emulator, drag by mouse/touch, verify panel exclusivity
-with Upgrades/Shop/Index, and reimport while open to confirm rebinding. Then
-configure music IDs and verify native pause/resume, live volume and playlist
-transitions. No AnnouncementBanner or server gameplay code was changed.
+Studio checks remain pending: with two clients, change mode and kick across the
+map; repeat rename/save/cancel and check camera restoration; confirm teammate
+plot controls are inert while their music slider works independently; drag by
+mouse and touch at both ends, close/reopen, and resize; confirm nearby LEAVE TEAM
+and physical claim/join behavior. Configure music assets to verify audible volume.
+
+All six focused suites (Settings, Framewisp menus, plot-player-flow, plot-identity,
+stand-identity and stand-editor) pass. Changed-runtime Roblox-aware typecheck,
+StyLua, Rojo build and whitespace checks pass. Studio/device tests were not run.

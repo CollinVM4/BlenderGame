@@ -21,6 +21,8 @@ paths = {
     "UpgradesGui": "src/client/UI/UpgradesGui.luau",
     "UpgradeDisplay": "src/client/UI/UpgradeDisplay.luau",
     "Controller": "src/client/Controllers/UpgradesController.luau",
+    "TutorialAlertState": "src/client/Controllers/TutorialAlertState.luau",
+    "TutorialAlertController": "src/client/Controllers/TutorialAlertController.luau",
 }
 # Build the UI boundary from the actual export, so path/class drift fails tests.
 items = []
@@ -39,7 +41,7 @@ tree = "local exportNodes = {\n" + "\n".join(
 bundle = tree + "local sources = {\n" + "\n".join(
     f"[{json.dumps(name)}] = {json.dumps((root / path).read_text(encoding='utf-8'), ensure_ascii=False)},"
     for name, path in paths.items()
-) + "\n}\n" + (root / "tests/upgrade_ui.spec.luau").read_text(encoding="utf-8") + "\n" + (root / "tests/upgrade_badge.spec.luau").read_text(encoding="utf-8")
+) + "\n}\n" + (root / "tests/upgrade_ui.spec.luau").read_text(encoding="utf-8") + "\n" + (root / "tests/upgrade_badge.spec.luau").read_text(encoding="utf-8") + "\n" + (root / "tests/tutorial_alert_ui.spec.luau").read_text(encoding="utf-8")
 with tempfile.TemporaryDirectory(prefix="blender-upgrade-ui-") as directory:
     path = Path(directory) / "tests.luau"
     for initial_ui in (False, True):

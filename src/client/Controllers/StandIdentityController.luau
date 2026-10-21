@@ -111,8 +111,6 @@ local function valid(sequence: Sequence): boolean
         and sequence.Plot:GetAttribute("PlotMembershipRevision") == sequence.Context.MembershipRevision
 end
 
--- TODO(Settings): Reuse OpenNameEditor from Settings > Stand so the owner
--- can rename the stand after the initial claim sequence.
 function Controller.OpenNameEditor(plot: Instance)
     if suspended then
         return

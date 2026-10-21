@@ -17,6 +17,7 @@ task.spawn(function()
 end)
 require(script.Controllers.TutorialGleamController).Init()
 require(script.Controllers.TutorialHintController).Init()
+require(script.Controllers.TutorialAlertController).Init()
 -- Subscribe to committed claims before other controller initialization can yield.
 require(script.Controllers.StandIdentityController).Init()
 require(script.Controllers.GameplayAudioController).Init()
