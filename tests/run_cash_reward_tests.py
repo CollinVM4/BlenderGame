@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
 paths = {
+    "MoneyFormat": "src/shared/MoneyFormat.luau",
     "CashTicker": "src/client/UI/CashTicker.luau",
     "CashTickerModel": "src/client/UI/CashTickerModel.luau",
     "CashFeedback": "src/shared/Constants/CashFeedback.luau",

@@ -211,12 +211,25 @@ local function load(name)
         return {
             Bind = function(label, value)
                 tickerBinding, tickerBalance = label, value
+                if label then
+                    label.Visible = true
+                    label.Text = load("MoneyFormat").Full(value)
+                end
             end,
             SetTarget = function(value)
                 tickerTarget = value
+                if tickerBinding then
+                    tickerBinding.Text = load("MoneyFormat").Full(value)
+                end
             end,
             Snap = function(value)
                 tickerSnap = value
+                if tickerBinding then
+                    tickerBinding.Text = load("MoneyFormat").Full(value)
+                end
+            end,
+            Clear = function()
+                tickerBinding = nil
             end,
         }
     end
@@ -324,9 +337,13 @@ check(
 )
 set("playerCash", 800)
 check(view.Cash.Text == "$800", "cash replication")
-check(tickerTarget == 800, "replicated cash retargets presentation alongside formatted fallback")
+check(tickerTarget == 800, "replicated cash routes through the ticker")
 player.CharacterAdded:Fire()
 check(tickerSnap == 800, "respawn snaps ticker to current replicated balance")
+set("playerCash", nil)
+check(view.Cash.Text == "$\u{2014}" and tickerBinding == nil, "unknown cash clears ticker and displays fallback")
+set("playerCash", 800)
+check(view.Cash.Text == "$800" and tickerBinding == view.Cash, "known cash rebinds after fallback")
 check(view.Rows.Jump.Price.TextTransparency == 0.4, "unaffordable price dims")
 set("playerCash", 10000)
 check(

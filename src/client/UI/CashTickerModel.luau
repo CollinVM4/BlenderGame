@@ -1,21 +1,11 @@
 --!strict
--- Presentation only: one continuous value drives every wheel.
+-- Presentation only: tween the value displayed by the authored cash label.
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.CashFeedback).Ticker
 local Model = {}
 export type State = { Value: number, From: number, Target: number, Start: number, Duration: number }
 
 function Model.Digits(value: number): number
     return #string.format("%.0f", math.floor(math.max(0, value)))
-end
-
-function Model.Digit(value: number, place: number): number
-    return (value / 10 ^ place) % 10
-end
-
-function Model.Phase(value: number, place: number, rolling: boolean): number
-    local digit = Model.Digit(value, place)
-    -- The repeated cycle makes carries seamless; whole digits share a baseline at rest.
-    return (if rolling then digit else math.floor(digit)) + 10
 end
 
 function Model.New(value: number): State
@@ -38,7 +28,7 @@ function Model.Retarget(state: State, target: number, now: number)
     -- Value is the last rendered sample; never restart from the old target.
     local changed = 0
     for place = 0, math.max(Model.Digits(state.Value), Model.Digits(target)) - 1 do
-        if math.floor(Model.Digit(state.Value, place)) ~= math.floor(Model.Digit(target, place)) then
+        if math.floor(state.Value / 10 ^ place) % 10 ~= math.floor(target / 10 ^ place) % 10 then
             changed += 1
         end
     end
@@ -50,12 +40,6 @@ function Model.Retarget(state: State, target: number, now: number)
             Config.MinDuration,
             Config.MaxDuration
         )
-end
-
-function Model.Wheels(state: State, rolling: boolean): number
-    return if rolling
-        then math.max(Model.Digits(state.From), Model.Digits(state.Target))
-        else Model.Digits(state.Target)
 end
 
 return Model

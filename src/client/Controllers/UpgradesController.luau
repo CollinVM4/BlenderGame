@@ -76,10 +76,17 @@ function Controller.Init()
                 return
             end
             local cash = numberAttribute("playerCash")
-            if currentView.Cash then
-                currentView.Cash.Text = if cash then MoneyFormat.Full(cash) else "$\u{2014}"
+            if cash == nil then
+                CashTicker.Clear()
+                tickerTarget = nil
+                if currentView.Cash then
+                    currentView.Cash.Text = "$\u{2014}"
+                end
             end
             if cash and cash ~= tickerTarget then
+                if tickerTarget == nil then
+                    CashTicker.Bind(currentView.Cash, cash)
+                end
                 tickerTarget = cash
                 CashTicker.SetTarget(cash)
             end
