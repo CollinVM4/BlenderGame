@@ -16,9 +16,9 @@ return {
     WinSoundId = "rbxassetid://76556910414303",
     LoseSoundId = "rbxassetid://137571524170744",
     Vacuum = {
-        Radius = 10,
-        CaptureTolerance = 1.4,
-        OverlapTolerance = 2.4,
+        Radius = 15,
+        CaptureTolerance = 2.5,
+        OverlapTolerance = 3.5,
         PullStrength = 30,
         CenteringStrength = 12,
         MaxSpeed = 40,
