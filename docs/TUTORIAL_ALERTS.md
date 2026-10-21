@@ -14,17 +14,19 @@ affordability badge remains independent. There are no polling loops.
 
 ## Required authored UI
 
-The checked-in `Framewisp_CCWMF.rbxmx` and local `new_export102126.rbxmx` currently
-contain none of these named elements. Author/import the three red arrows in
-Figma/Framewisp before visual acceptance:
+The checked-in `new_export102126v2.rbxmx` contains all three arrows. Framewisp
+strips the Figma `_pulse` suffix on export; the exported names are the binding
+contract. Import the v2 export as-is for visual acceptance:
 
-- Active Desktop content → `LeftMenu` → `Alert_pulse`, beside the Upgrades button.
-- `Panel:Upgrades` / `Upgrades_panel` → `Jump1Alert_pulse`, directly under the panel,
+- Active Desktop content → `LeftMenu` → `Alert`, beside the Upgrades button.
+- `Panel:Upgrades` / `Upgrades` → `Jump1Alert`, directly under the panel,
   positioned at the Jump card BUY.
-- Same panel → `BatAlert_pulse`, directly under the panel, positioned at Stun-Bat BUY.
+- Same panel → `BatAlert`, directly under the panel, positioned at Stun-Bat BUY.
 
-Each arrow must be a `GuiObject`. Save them with `Visible = false` to avoid an
-initial import flash. The adapter also hides each arrow on bind. Missing arrows
+All three are `ImageLabel` instances exported with `Visible = true`. The controller
+force-hides them on bind regardless of authored visibility; no Figma changes are
+needed. The adapter accepts both tagged and exported names, while panel keys and
+state outputs use `Jump1Alert` and `BatAlert`. Missing arrows
 are a no-op; code never fabricates artwork. A preauthored `UIScale` is reused;
 otherwise the controller creates only a `TutorialAlertScale` effect. While shown,
 scale repeats 1 → 1.15 → 1 with Sine/InOut easing and 0.6 seconds per half-cycle.
@@ -35,6 +37,8 @@ Hiding or rebinding cancels the tween and restores scale 1. The normal
 
 - `python tests/run_tutorial_alert_tests.py --luau <luau.exe>`: pure presentation
   state, independent of UI fixtures and authoritative gameplay suites.
+- `python tests/run_tutorial_alert_export_tests.py --luau <luau.exe>`: real v2
+  exported paths/classes/visibility, state-to-panel keys and tagged-name fallback.
 - `python tests/run_upgrade_ui_tests.py --luau <luau.exe>`: existing upgrade/badge
   contracts plus arrow visibility, pulse lifecycle and authored-arrow reimport,
   with both early and delayed UI initialization.

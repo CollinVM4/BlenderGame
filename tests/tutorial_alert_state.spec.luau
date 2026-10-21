@@ -28,19 +28,19 @@ expect(state, inputs, false, nil, "below threshold")
 inputs.Cash = jumpCost
 expect(state, inputs, true, nil, "exact catalog threshold shows menu")
 inputs.PanelOpen = true
-expect(state, inputs, false, "Jump1Alert_pulse", "open panel routes Jump arrow")
+expect(state, inputs, false, "Jump1Alert", "open panel routes Jump arrow")
 inputs.Cash = 0
-expect(state, inputs, false, "Jump1Alert_pulse", "spending cannot unlatch")
+expect(state, inputs, false, "Jump1Alert", "spending cannot unlatch")
 inputs.PanelOpen = false
 expect(state, inputs, true, nil, "closing restores latched menu arrow")
 inputs.Cash = batCost
 inputs.PanelOpen = true
-expect(state, inputs, false, "Jump1Alert_pulse", "Jump wins when both thresholds reached")
+expect(state, inputs, false, "Jump1Alert", "Jump wins when both thresholds reached")
 inputs.Levels.Jump = 1
-expect(state, inputs, false, "BatAlert_pulse", "purchase hands off on same evaluation")
+expect(state, inputs, false, "BatAlert", "purchase hands off on same evaluation")
 inputs.Cash = 0
 inputs.Levels.Jump = 0
-expect(state, inputs, false, "BatAlert_pulse", "cleared Jump never returns; Bat remains latched")
+expect(state, inputs, false, "BatAlert", "cleared Jump never returns; Bat remains latched")
 inputs.Levels.Bat = 1
 expect(state, inputs, false, nil, "Bat purchase clears final beat")
 inputs.Levels.Bat = 0
@@ -65,23 +65,11 @@ for _, panelOpen in { false, true } do
     }
     expect(state, inputs, false, nil, "inactive tutorial suppresses alerts")
     inputs.TutorialActive = true
-    expect(
-        state,
-        inputs,
-        not panelOpen,
-        if panelOpen then "Jump1Alert_pulse" else nil,
-        "activation reads latest attributes"
-    )
+    expect(state, inputs, not panelOpen, if panelOpen then "Jump1Alert" else nil, "activation reads latest attributes")
     inputs.Stage = "Complete"
     expect(state, inputs, false, nil, "completion hides active beat")
     inputs.Stage = "Order"
     expect(state, inputs, false, nil, "completed tutorial cannot return this session")
 end
-expect(
-    State.new(),
-    inputs,
-    not inputs.PanelOpen,
-    "Jump1Alert_pulse",
-    "new session has independent latches and completion"
-)
+expect(State.new(), inputs, not inputs.PanelOpen, "Jump1Alert", "new session has independent latches and completion")
 print(string.format("PASS: tutorial alert state (%d contracts)", count))

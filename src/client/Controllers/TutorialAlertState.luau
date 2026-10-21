@@ -4,8 +4,8 @@ local Upgrades: { [string]: { { Cost: number, Value: number } } } =
     require(game:GetService("ReplicatedStorage").Shared.Constants.Upgrades)
 local State = {}
 State.Beats = {
-    { Id = "Jump1", TrackId = "Jump", ArrowName = "Jump1Alert_pulse" },
-    { Id = "Bat1", TrackId = "Bat", ArrowName = "BatAlert_pulse" },
+    { Id = "Jump1", TrackId = "Jump", ArrowName = "Jump1Alert" },
+    { Id = "Bat1", TrackId = "Bat", ArrowName = "BatAlert" },
 }
 export type Inputs = {
     TutorialActive: boolean,

@@ -5,9 +5,13 @@ local desktop = load("UIRegistry").Desktops(playerGui)[1]
 local alertContent = load("UIRegistry").Content(desktop)
 local leftMenu = alertContent:FindFirstChild("LeftMenu")
 local alertPanel = assert(gui.Resolve(playerGui)).Panel
-local menuArrow = instance("ImageLabel", "Alert_pulse", leftMenu)
-local jumpArrow = instance("ImageLabel", "Jump1Alert_pulse", alertPanel)
-local batArrow = instance("ImageLabel", "BatAlert_pulse", alertPanel)
+local menuArrow = instance("ImageLabel", "Alert", leftMenu)
+local jumpArrow = instance("ImageLabel", "Jump1Alert", alertPanel)
+local batArrow = instance("ImageLabel", "BatAlert", alertPanel)
+-- Both runner modes exercise authored visibility independently of runtime state.
+for _, arrow in { menuArrow, jumpArrow, batArrow } do
+    arrow.Visible = initialUi
+end
 local authoredScale = instance("UIScale", "AuthoredScale", jumpArrow)
 authoredScale.Scale = 0.8
 set("playerCash", 0)
@@ -43,7 +47,7 @@ check(
 playerGui.DescendantRemoving:Fire(menuArrow)
 table.remove(leftMenu.children, table.find(leftMenu.children, menuArrow))
 menuArrow.Parent = nil
-local replacementArrow = instance("ImageLabel", "Alert_pulse", leftMenu)
+local replacementArrow = instance("ImageLabel", "Alert", leftMenu)
 playerGui.DescendantAdded:Fire(replacementArrow)
 flushDeferred()
 check(not menuArrow.Visible and replacementArrow.Visible, "reimport retires old arrow and restores current beat")
@@ -59,7 +63,7 @@ table.remove(alertPanel.children, table.find(alertPanel.children, batArrow))
 batArrow.Parent = nil
 flushDeferred()
 check(not batArrow.Visible and not jumpArrow.Visible, "missing authored arrow safely clears presentation")
-local replacementBat = instance("ImageLabel", "BatAlert_pulse", alertPanel)
+local replacementBat = instance("ImageLabel", "BatAlert", alertPanel)
 playerGui.DescendantAdded:Fire(replacementBat)
 flushDeferred()
 check(replacementBat.Visible, "late authored arrow receives current state")

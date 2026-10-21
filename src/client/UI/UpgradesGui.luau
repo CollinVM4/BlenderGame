@@ -82,8 +82,8 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
     end
     local leftMenu = child(content, "LeftMenu", "GuiObject")
     local panelArrows: { [string]: GuiObject } = {}
-    for _, name in { "Jump1Alert_pulse", "BatAlert_pulse" } do
-        local arrow = child(panel, name, "GuiObject")
+    for _, name in { "Jump1Alert", "BatAlert" } do
+        local arrow = importedChild(panel, name .. "_pulse", name, "GuiObject")
         if arrow then
             panelArrows[name] = arrow :: GuiObject
         end
@@ -93,7 +93,7 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
         Cash = cash :: TextLabel?,
         Rows = rows,
         Panel = panel :: GuiObject?,
-        MenuArrow = child(leftMenu, "Alert_pulse", "GuiObject") :: GuiObject?,
+        MenuArrow = importedChild(leftMenu, "Alert_pulse", "Alert", "GuiObject") :: GuiObject?,
         PanelArrows = panelArrows,
     }
 end
@@ -141,7 +141,7 @@ function Gui.Observe(playerGui: PlayerGui, changed: (View?) -> (), purchase: (st
         then
             return false
         end
-        for _, name in { "Jump1Alert_pulse", "BatAlert_pulse" } do
+        for _, name in { "Jump1Alert", "BatAlert" } do
             if view.PanelArrows[name] ~= nextView.PanelArrows[name] then
                 return false
             end
