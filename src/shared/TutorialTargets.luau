@@ -18,17 +18,32 @@ local paths: { [string]: { { string } } } = {
 -- Raw authored roots are also available to the opt-in presentation diagnostics.
 function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): { Instance }
     local roots: { Instance } = {}
-    if stage == "Market" then
+    if stage == "Market" or stage == "MarketJump" then
         local market = workspace:FindFirstChild("Central Market")
-        local base = if market then market:FindFirstChild("CentralMarketBase") else nil
+        local base = if market
+            then market:FindFirstChild(if stage == "MarketJump" then "JUMP1HIGHLIGHT" else "CentralMarketBase")
+            else nil
         return if base and base:IsA("BasePart") then { base } else roots
     end
     if not plot or not plot:IsDescendantOf(workspace) then
         return roots
     end
-    if stage == "Plant" then
+    if stage == "Plant" or stage == "Harvest" then
         local farm = plot:FindFirstChild("Farm")
         local row = if farm then farm:FindFirstChild("Row1") else nil
+        if stage == "Harvest" and row then
+            for _, reference in row:GetChildren() do
+                if reference.Name == "TutorialHarvestTarget" and reference:IsA("ObjectValue") then
+                    local product = reference.Value
+                    if product and product:IsDescendantOf(workspace) and not table.find(roots, product) then
+                        table.insert(roots, product)
+                    end
+                end
+            end
+            if #roots > 0 then
+                return roots
+            end
+        end
         local visual = if row then row:FindFirstChild("Visual") else nil
         if visual then
             for _, name in { "Pebble", "plank2", "Pebble & plank2" } do
@@ -96,10 +111,10 @@ function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): {
 end
 function Targets.Resolve(plot: Instance?, stage: string, stashSlot: number?, customer: Instance?): { Instance }
     local result: { Instance } = {}
-    if stage ~= "Market" and (not plot or not plot:IsDescendantOf(workspace)) then
+    if stage ~= "Market" and stage ~= "MarketJump" and (not plot or not plot:IsDescendantOf(workspace)) then
         return result
     end
-    if stage == "Serve" or stage == "Order" then
+    if stage == "Serve" or stage == "Order" or stage == "NextCustomer" then
         if
             customer
             and customer:IsDescendantOf(workspace)
@@ -199,7 +214,7 @@ function Targets.ResolveBeam(
     stashSlot: any,
     objective: Instance?
 ): (BasePart | Attachment)?
-    if stage == "Market" then
+    if stage == "Market" or stage == "MarketJump" then
         local base = Targets.GetRoots(nil, stage)[1]
         return if base == objective and base and base:IsA("BasePart") then base else nil
     end
@@ -214,8 +229,12 @@ function Targets.ResolveBeam(
     if not objective or not objective:IsDescendantOf(workspace) then
         return nil
     end
-    if stage == "Order" or stage == "Serve" then
+    if stage == "Order" or stage == "Serve" or stage == "NextCustomer" then
         if objective:GetAttribute("PlotSessionId") ~= plot:GetAttribute("PlotSessionId") then
+            return nil
+        end
+    elseif stage == "Harvest" then
+        if not table.find(Targets.GetRoots(plot, stage), objective) then
             return nil
         end
     elseif not objective:IsDescendantOf(plot) then

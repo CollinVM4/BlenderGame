@@ -162,11 +162,16 @@ local function grow(farm: any, row: any, session: string, generation: number, id
                     object:SetAttribute("FarmSpawnTime", workspace:GetServerTimeNow())
                     local connections: { RBXScriptConnection } = {}
                     row.Products[object] = connections
+                    local target = Instance.new("ObjectValue")
+                    target.Name = "TutorialHarvestTarget"
+                    target.Value = object
+                    target.Parent = row.Object
                     local function removed()
                         if row.Products[object] ~= connections then
                             return
                         end
                         row.Products[object] = nil
+                        target:Destroy()
                         for _, connection in connections do
                             connection:Disconnect()
                         end
@@ -249,6 +254,11 @@ local function resetRow(row: any)
             connection:Disconnect()
         end
         product:Destroy()
+    end
+    for _, reference in row.Object:GetChildren() do
+        if reference.Name == "TutorialHarvestTarget" and reference:IsA("ObjectValue") then
+            reference:Destroy()
+        end
     end
     stopReveal(row)
     row.IngredientId, row.Busy, row.Spawning = nil, false, false
@@ -399,10 +409,20 @@ local function bind(plot: Instance): (() -> ())?
 end
 
 -- Read-only tutorial boundary: authoritative state for the active plot session.
-function FarmService.GetRowSnapshot(plot: Instance, index: number): { State: string, IngredientId: string? }?
+function FarmService.GetRowSnapshot(
+    plot: Instance,
+    index: number
+): { State: string, IngredientId: string?, Products: { Instance } }?
     local farm = farms[plot]
     local row = if farm and live(farm, farm.Session) then farm.Rows[index] else nil
-    return if row then { State = row.State, IngredientId = row.IngredientId } else nil
+    if not row then
+        return nil
+    end
+    local products: { Instance } = {}
+    for object in row.Products do
+        table.insert(products, object)
+    end
+    return { State = row.State, IngredientId = row.IngredientId, Products = products }
 end
 
 function FarmService.StartSession(player: Player)

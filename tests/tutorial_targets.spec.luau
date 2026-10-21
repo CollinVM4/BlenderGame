@@ -468,3 +468,28 @@ combined:Destroy()
 check(targets.Resolve(plot, "Plant")[1] == visual, "missing planting spots fall back to Visual")
 marketBase:Destroy()
 check(#targets.Resolve(plot, "Market") == 0, "missing market is safe")
+
+local jump = object("Part", "JUMP1HIGHLIGHT", market)
+check(targets.Resolve(nil, "MarketJump")[1] == jump, "jump resolves exact shared highlight")
+check(targets.ResolveBeam(nil, "MarketJump", nil, jump) == jump, "jump beam resolves global target")
+local products = {}
+for index = 1, 3 do
+    local product = object("Model", "Harvest" .. index, workspaceFake)
+    products[index] = product
+    local reference = object("ObjectValue", "TutorialHarvestTarget", row)
+    reference.Value = product
+end
+local harvest = targets.Resolve(plot, "Harvest")
+check(#harvest == 3 and table.find(harvest, products[1]) ~= nil, "harvest resolves exactly live farm production")
+check(targets.ResolveBeam(plot, "Harvest", nil, other) == nil, "harvest rejects unrelated world ingredients")
+for _, product in products do
+    product:Destroy()
+end
+check(targets.Resolve(plot, "Harvest")[1] == visual, "missing products fall back to row visual")
+
+currentCustomer:SetAttribute("PlotSessionId", plot:GetAttribute("PlotSessionId"))
+check(
+    targets.Resolve(plot, "NextCustomer", nil, currentCustomer)[1] == currentCustomer,
+    "next customer uses the same validated published model as opening orders"
+)
+check(#targets.Resolve(plot, "NextCustomer", nil, nil) == 0, "unavailable customer model leaves text-only guidance")

@@ -1982,10 +1982,14 @@ function CustomerService.GetQueueSnapshot(player: Player): { any }
     local queue = queues[key(player)]
     if queue then
         for index, record in queue.Customers do
-            table.insert(
-                result,
-                { Model = record.Model, RequestId = record.RequestId, Ready = record.Ready, Position = index }
-            )
+            table.insert(result, {
+                Model = record.Model,
+                RequestId = record.RequestId,
+                Ready = record.Ready,
+                Position = index,
+                OrderTaken = record.OrderTaken == true,
+                TutorialIndex = record.TutorialIndex,
+            })
         end
     end
     return result

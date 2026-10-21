@@ -35,7 +35,8 @@ local tutorial = loadModule("TutorialService")
 local authority = sessionTestAuthority
 local orders, batch, ingredient, flight, cups = {}, nil, nil, false, {}
 local carried = {}
-local farmRow = { State = "LOCKED", IngredientId = nil }
+local queue = {}
+local farmRow = { State = "LOCKED", IngredientId = nil, Products = {} }
 local function resetOrders()
     orders = {
         { RequestId = "Red", Served = false, OrderTaken = false },
@@ -52,6 +53,9 @@ tutorial.Init({
         end,
     },
     CustomerService = {
+        GetQueueSnapshot = function()
+            return queue
+        end,
         GetTutorialSnapshot = function()
             return orders
         end,
@@ -267,15 +271,43 @@ authority.SetCash(p, 20000)
 orders[3].Served = true
 heartbeat:Fire(0.1)
 check(p:GetAttribute("FarmTutorialStage") == "", "20K cannot start farm before opening completion")
+check(p:GetAttribute("TutorialStage") == "NextCustomer", "third serve waits for a regular customer")
+advance(1)
+check(
+    p:GetAttribute("TutorialStage") == "NextCustomer" and p:FindFirstChild("TutorialCustomerTarget").Value == nil,
+    "no waiting customer keeps text-only guidance"
+)
+local nextModel = instance("Model")
+nextModel.Parent = workspaceFake
+queue =
+    { { Model = instance("Model"), TutorialIndex = 3, OrderTaken = false }, { Model = nextModel, OrderTaken = false } }
+heartbeat:Fire(0.1)
+check(p:FindFirstChild("TutorialCustomerTarget").Value == nextModel, "regular customer is published")
+nextModel:Destroy()
+local replacement = instance("Model")
+replacement.Parent = workspaceFake
+queue = { { Model = replacement, OrderTaken = false } }
+heartbeat:Fire(0.1)
+check(p:FindFirstChild("TutorialCustomerTarget").Value == replacement, "departed untaken customer retargets")
+queue[1].OrderTaken = true
+heartbeat:Fire(0.1)
 authority.SetCash(p, 19999)
 check(
     p:GetAttribute("TutorialStage") == "Market" and p:GetAttribute("TutorialActive"),
-    "third serve sends player to the market"
+    "taking next order sends player to the market"
 )
-root.Position = vec(175, 0, 0)
+root.Position = vec(70, 0, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Market", "market milestone waits beyond 24 studs")
-root.Position = vec(176, 0, 0)
+check(p:GetAttribute("TutorialStage") == "Market", "130 studs remains outside market radius")
+local jump = instance("Part")
+jump.Name, jump.Parent, jump.Position = "JUMP1HIGHLIGHT", market, vec(200, 100, 0)
+root.Position = vec(100, 0, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "100 studs reaches market and starts jump guidance")
+root.Position = vec(200, 87, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "jump requires proximity within 12 studs")
+root.Position = vec(200, 88, 0)
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete"
@@ -298,7 +330,14 @@ advance(0.011)
 check(p:GetAttribute("FarmTutorialStage") == "Plant", "row rise completion advances planting guidance")
 farmRow.State, farmRow.IngredientId = "GROWING", "Banana"
 heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "Done", "planted row finishes farm phase")
+check(p:GetAttribute("FarmTutorialStage") == "", "growth has no premature harvest guidance")
+farmRow.State, farmRow.Products = "READY", { instance("Part"), instance("Part"), instance("Part") }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "Harvest", "ready production starts harvest guidance")
+table.remove(farmRow.Products)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "Harvest", "partial harvest stays active")
+farmRow.Products = {}
 farmRow.State, farmRow.IngredientId = "EMPTY", nil
 authority.SetCash(p, 50000)
 advance(1)
@@ -323,10 +362,14 @@ heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Blender", "partial carry after LoadedBlender still targets blender")
 -- Missing scenery fallback, cash already held at completion, and owner-only gating.
 marketBase:Destroy()
+jump:Destroy()
 for _, order in orders do
     order.Served = true
 end
 authority.SetCash(p, 20000)
+queue[1].OrderTaken = false
+heartbeat:Fire(0.1)
+queue[1].OrderTaken = true
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete" and tutorial.GetMilestones(p).ReachedMarket,

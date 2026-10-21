@@ -221,8 +221,8 @@ for orderIndex, order in config do
     end
 end
 check(
-    p:GetAttribute("TutorialStage") == "Complete" and not p:GetAttribute("TutorialActive"),
-    "all three fulfilled serves finish onboarding"
+    p:GetAttribute("TutorialStage") == "NextCustomer" and p:GetAttribute("TutorialActive"),
+    "all three fulfilled serves wait for next regular order"
 )
 inventory.InitializeTutorialStash(p)
 check(
@@ -235,6 +235,16 @@ check(
         and customer.GetQueueSnapshot(p)[1].Model:GetAttribute("TutorialOrderIndex") == nil,
     "normal always-on arrivals resume after tutorial insertion"
 )
+local nextCustomer = customer.GetQueueSnapshot(p)[1]
+heartbeat:Fire(0.1)
+check(
+    p:FindFirstChild("TutorialCustomerTarget").Value == nextCustomer.Model,
+    "real queue publishes next regular customer"
+)
+p.Character:FindFirstChild("HumanoidRootPart").Position = nextCustomer.Model:GetPivot().Position
+setup(customer.TakeOrder(p, nextCustomer.Model), "take next regular order")
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Complete", "real order acceptance completes send-off with missing scenery")
 -- Loss/rejection is recoverable and never masquerades as a successful serve.
 local q = player()
 q.Parent = workspaceFake

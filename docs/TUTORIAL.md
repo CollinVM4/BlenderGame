@@ -62,17 +62,18 @@ StyLua, Rojo build and whitespace checks pass. Focused Roblox-aware typecheck re
 
 ## Market send-off and progressive farm guidance
 
-After all three tutorial orders are served, `TutorialStage` becomes `Market` and
+After all three tutorial orders are served and the next regular order is taken,
+`TutorialStage` becomes `Market` and
 `TutorialActive` remains true. The shared hint reads "Collect more from the Central
 Market!" and the existing gleam/beam points to
-`Workspace/Central Market/CentralMarketBase` (BasePart). Entering its 24-stud radius
-sets the session's `ReachedMarket` milestone and completes opening onboarding.
+`Workspace/Central Market/CentralMarketBase` (BasePart). Entering its 125-stud radius
+sets the session's `ReachedMarket` milestone and begins MarketJump (see addendum).
 Missing market scenery sets that milestone immediately so progress stays unblocked.
 Market presentation explicitly bypasses the first-order instruction retirement.
 
 Once opening onboarding is complete, the first server refresh observing the session
 owner with at least $20,000 starts `FarmTutorialStage`: empty -> `BuyRow` -> `Plant`
--> `Done`. It stays `Done` until the session changes; teammates never start it.
+-> quiet growth -> `Harvest` -> `Done`. It stays `Done` until the session changes; teammates never start it.
 An owner already holding $20,000 at opening completion starts immediately. The
 ordered step table reads FarmService's copied row snapshot, holds BuyRow for the
 0.8-second reveal after observing Row 1's purchase, and completes Plant when that
@@ -97,3 +98,40 @@ with no added diagnostics. tutorial-claim still fails loading the missing
 UnstuckService dependency in its harness, reproduced on that baseline. Live Studio
 acceptance (market navigation, row rise, planting, owner/teammate view) remains to
 be run.
+
+
+## Market/farm addendum
+
+After the third tutorial serve, `NextCustomer` waits for the first regular customer
+with an untaken order. `TutorialCustomerTarget` publishes its model; departures
+retarget the next waiting customer. The hint is "See what the next customer wants!".
+Taking that order starts Market. Client presentation holds its hint and beam for
+`ORDER_READ_SECONDS = 2.5`, shared with the first order's Stash delay, once per
+session. NextCustomer, Market, and MarketJump bypass opening instruction retirement.
+
+`MARKET_REACH_RADIUS = 125` studs from CentralMarketBase completes Market.
+MarketJump then flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart) with
+"Jump higher for valuable ingredients!". `MARKET_JUMP_REACH_RADIUS = 12` completes
+that step. Both tuning constants live in TutorialService. Missing market/jump
+scenery advances without blocking. Add/retain that exact highlight part in Studio.
+
+Farm guidance now follows BuyRow -> Plant -> quiet growth -> Harvest -> Done.
+FarmService's READY state and copied Products identify completed growth. It
+publishes `TutorialHarvestTarget` ObjectValues under the row for each actual live
+product and retires them on collection/removal/reset. Harvest flashes Row 1's
+remaining production (up to three), falling back to its planting Visual when
+references are unavailable, with "Harvest your ingredients!". The existing
+FarmService EMPTY transition after the last product removal completes Harvest.
+NextCustomer and Harvest wording remain placeholders for Collin to confirm.
+
+Studio acceptance: serve the third tutorial customer, wait for a regular arrival,
+take its order, and verify the unobstructed 2.5-second reading interval. Approach
+at 130 then 100 studs, reach the jump highlight, buy Row 1 at $20K, plant, wait for
+growth, and collect all three highlighted products. Automated doubles do not
+replace this live replication/navigation check.
+
+Addendum validation: all six focused suites (tutorial, tutorial-gameplay, farm,
+tutorial-targets, tutorial-hints, tutorial-beam-stability), StyLua, Rojo build and
+whitespace checks pass. Focused Roblox-aware typechecking reproduces the same
+25 diagnostics on HEAD and this change, with no added diagnostics. Live Studio
+acceptance remains to be run.

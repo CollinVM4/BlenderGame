@@ -1,5 +1,6 @@
 --!strict
 -- Local presentation only: no delayed tasks, remotes or gameplay milestones.
+local ORDER_READ_SECONDS = 2.5
 local State = {}
 local session: any = nil
 local character: Model? = nil
@@ -8,18 +9,21 @@ local beamFinished = false -- Permanent for this onboarding, including respawns 
 local textFinished = false
 local initialStashFinished = false
 local stashDeadline: number? = nil
+local marketDeadline: number? = nil
+local marketReadFinished = false
+local marketReadPending = false
 local previousStage: any = nil
 local counterDeadline: number? = nil
 local counterReady = false
 function State.CharacterRemoving(model: Model)
     removedCharacter = model
-    stashDeadline, counterDeadline = nil, nil
+    stashDeadline, counterDeadline, marketDeadline = nil, nil, nil
 end
 function State.CharacterAdded()
     removedCharacter = nil
 end
 function State.IsActive(player: Player, stage: string?): boolean
-    if stage == "BuyRow" or stage == "Plant" then
+    if stage == "BuyRow" or stage == "Plant" or stage == "Harvest" then
         return player:GetAttribute("TutorialActive") ~= true and player:GetAttribute("FarmTutorialStage") == stage
     end
     return player:GetAttribute("TutorialActive") == true
@@ -31,11 +35,12 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
         session = nextSession
         textFinished, initialStashFinished = false, false
         stashDeadline, previousStage = nil, nil
+        marketDeadline, marketReadFinished, marketReadPending = nil, false, false
         counterDeadline, counterReady = nil, false
     end
     if character ~= player.Character then
         character = player.Character
-        stashDeadline, counterDeadline = nil, nil
+        stashDeadline, counterDeadline, marketDeadline = nil, nil, nil
     end
     local stage = player:GetAttribute("TutorialStage")
     local order = player:GetAttribute("TutorialOrderIndex")
@@ -52,6 +57,12 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
     end
     if stage ~= "Counter" then
         counterDeadline, counterReady = nil, false
+    end
+    if previousStage == "NextCustomer" and stage == "Market" and not marketReadFinished then
+        marketReadPending = true
+    end
+    if stage ~= "Market" and marketReadPending then
+        marketReadFinished, marketReadPending, marketDeadline = true, false, nil
     end
     previousStage = stage
     if
@@ -78,7 +89,7 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
             ready = false
         else
             if not stashDeadline then
-                stashDeadline = os.clock() + 2.5
+                stashDeadline = os.clock() + ORDER_READ_SECONDS
             end
             ready = os.clock() >= (stashDeadline :: number)
             if ready then
@@ -104,14 +115,37 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
             ready = counterReady
         end
     end
-    -- Market is the opening send-off, after first-order instruction retirement.
-    if stage == "Market" and player:GetAttribute("TutorialActive") == true then
-        return true, true, "Market", true
+    if stage == "Market" and marketReadPending and not marketReadFinished then
+        local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+        if
+            not character
+            or character == removedCharacter
+            or not humanoid
+            or humanoid.Health <= 0
+            or not character:IsDescendantOf(workspace)
+            or player:GetAttribute("TutorialActive") ~= true
+        then
+            marketDeadline = nil
+            ready = false
+        else
+            marketDeadline = marketDeadline or (os.clock() + ORDER_READ_SECONDS)
+            ready = os.clock() >= (marketDeadline :: number)
+            if ready then
+                marketReadFinished, marketReadPending, marketDeadline = true, false, nil
+            end
+        end
+    end
+    -- Follow-up guidance bypasses first-order instruction retirement.
+    if
+        (stage == "NextCustomer" or stage == "Market" or stage == "MarketJump")
+        and player:GetAttribute("TutorialActive") == true
+    then
+        return true, ready, stage, ready
     end
     -- Farm guidance deliberately bypasses opening-only completion latches.
     if player:GetAttribute("TutorialActive") ~= true then
         local farmStage = player:GetAttribute("FarmTutorialStage")
-        if farmStage == "BuyRow" or farmStage == "Plant" then
+        if farmStage == "BuyRow" or farmStage == "Plant" or farmStage == "Harvest" then
             return true, true, farmStage, true
         end
     end

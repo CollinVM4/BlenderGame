@@ -625,12 +625,29 @@ check(observedGlobal and noHint(), "normal global broadcasts still work after tu
 local market = instance("Model")
 market.Name, market.Parent = "Central Market", workspaceFake
 local marketBase = part("CentralMarketBase", market)
-p:SetAttribute("TutorialStage", "Market")
+p:SetAttribute("TutorialStage", "NextCustomer")
 advance()
+check(hintContains("See what the next customer wants!"), "next customer bypasses opening retirement")
+p:SetAttribute("TutorialStage", "Market")
+advance(0)
+check(noHint() and #beams() == 0, "market transition suppresses text and beam")
+advance(2.49)
+check(noHint() and #beams() == 0, "market read hold lasts 2.5 seconds")
+advance(0.02)
 check(
     hintContains("Collect more from the Central Market!") and beams()[1].Attachment1.Parent == marketBase,
     "market text and beam bypass first-serve retirement"
 )
+local jump = part("JUMP1HIGHLIGHT", market)
+p:SetAttribute("TutorialStage", "MarketJump")
+advance()
+check(
+    hintContains("Jump higher for valuable ingredients!") and highlights()[1].Adornee == jump,
+    "jump hint and gleam bypass retirement"
+)
+p:SetAttribute("TutorialStage", "Market")
+advance()
+check(hintContains("Collect more from the Central Market!"), "market read delay only fires once per session")
 p:SetAttribute("TutorialStage", "Complete")
 p:SetAttribute("TutorialActive", false)
 check(label() == nil, "completion removes tutorial GUI")
@@ -655,6 +672,30 @@ advance()
 check(
     hintContains("Plant an ingredient!") and #highlights() == 2 and beams()[1].Attachment1.Parent == pebble,
     "farm planting shares hint UI and authored spots"
+)
+p:SetAttribute("FarmTutorialStage", "Harvest")
+advance()
+check(
+    hintContains("Harvest your ingredients!") and #highlights() == 2,
+    "harvest bypasses opening retirement with visual fallback"
+)
+local harvestProducts = {}
+for index = 1, 3 do
+    local product = part("Harvest" .. index, workspaceFake)
+    harvestProducts[index] = product
+    local reference = instance("ObjectValue")
+    reference.Name, reference.Parent, reference.Value = "TutorialHarvestTarget", row, product
+end
+advance()
+check(
+    #highlights() == 3 and highlights()[1].Adornee == harvestProducts[1],
+    "harvest flashes the three actual world products"
+)
+harvestProducts[1]:Destroy()
+advance()
+check(
+    #highlights() == 2 and highlights()[1].Adornee == harvestProducts[2],
+    "harvest updates as production is collected"
 )
 p:SetAttribute("FarmTutorialStage", "Done")
 check(noHint() and #beams() == 0 and #highlights() == 0, "Done clears all farm presentation")
@@ -753,3 +794,35 @@ for _, object in allInstances do
     end
 end
 check(not routingArtifact, "single-beam guidance creates no routing artifacts")
+
+local _, readLiteralCount = sources.TutorialPresentationState:gsub("2%.5", "")
+local _, readUseCount = sources.TutorialPresentationState:gsub("os%.clock%(%) %+ ORDER_READ_SECONDS", "")
+check(readLiteralCount == 1 and readUseCount == 2, "stash and market use one shared read-delay constant")
+
+-- The market read hold shares the opening's cancellation guards and resets by session.
+p:SetAttribute("PlotSessionId", "market-guard-session")
+p:SetAttribute("TutorialActive", true)
+p:SetAttribute("TutorialStage", "NextCustomer")
+presentation.Read(p)
+p:SetAttribute("TutorialStage", "Market")
+local _, ready = presentation.Read(p)
+check(not ready, "fresh session gets a fresh market read hold")
+now += 1
+presentation.CharacterRemoving(p.Character)
+now += 5
+local _, removedReady = presentation.Read(p)
+check(not removedReady, "removed character cannot consume market read hold")
+presentation.CharacterAdded()
+presentation.Read(p)
+now += 2.49
+local _, earlyReady = presentation.Read(p)
+check(not earlyReady, "respawn starts a fresh market reading interval")
+p:SetAttribute("TutorialActive", false)
+presentation.Read(p)
+now += 5
+p:SetAttribute("TutorialActive", true)
+local _, resumedReady = presentation.Read(p)
+check(not resumedReady, "inactive tutorial cancels its market deadline")
+now += 2.5
+local _, finalReady = presentation.Read(p)
+check(finalReady, "valid resumed tutorial presents after the shared reading interval")

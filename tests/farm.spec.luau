@@ -174,6 +174,23 @@ end
 timers[1].Run()
 check(#spawned == 3 and state(1) == "READY", "growth creates exactly three normal world ingredients")
 check(rows[1].Object:GetAttribute("FarmGrowEnd") == nil, "ready clears countdown deadline")
+local production = farm.GetRowSnapshot(plot, 1).Products
+check(#production == 3 and table.find(production, spawned[1]) ~= nil, "snapshot exposes exact live production")
+table.clear(production)
+check(#farm.GetRowSnapshot(plot, 1).Products == 3, "snapshot production cannot mutate farm authority")
+local function harvestReferences()
+    local result = {}
+    for _, child in rows[1].Object:GetChildren() do
+        if child.Name == "TutorialHarvestTarget" and child:IsA("ObjectValue") then
+            table.insert(result, child.Value)
+        end
+    end
+    return result
+end
+check(
+    #harvestReferences() == 3 and table.find(harvestReferences(), spawned[1]) ~= nil,
+    "replicated harvest targets identify actual production"
+)
 check(#sounds == 1, "growth and rejected growing-row plant emit nothing")
 for n, object in spawned do
     check(
@@ -190,12 +207,14 @@ check(inventory.GetCarryCount(owner) == 1, "ready row blocks planting")
 setup(inventory.CarryWorldItem(peer, spawned[1]), "teammate harvest pickup")
 setup(inventory.CarryWorldItem(outsider, spawned[2]), "harvest uses normal public pickup rules")
 check(state(1) == "READY", "remaining harvest blocks replanting")
+check(#harvestReferences() == 1 and harvestReferences()[1] == spawned[3], "harvest targets retire collected products")
 spawned[3]:Destroy()
 check(
     #sounds == 3 and sounds[2].Id == "IngredientPickup" and sounds[3].Id == "IngredientPickup",
     "only successful pickups pluck; expiry is silent"
 )
 check(state(1) == "EMPTY", "last legitimate removal empties row")
+check(#harvestReferences() == 0, "empty row has no stale harvest targets")
 ingredients.Spawn = realSpawn
 inventory.ClearHeld(owner)
 -- Farm lifetime contracts use the real shared sweep, with no farm polling.
@@ -301,6 +320,7 @@ check(
 )
 farm.CleanupSession(tycoon.GetSessionId(owner))
 check(#crops() == 0, "plot reset retires every protected crop record")
+check(#harvestReferences() == 0, "session reset retires replicated harvest targets")
 farm.StartSession(owner)
 for _, row in rows do
     check(row.Object:GetAttribute("FarmState") == "EMPTY", "reset farm reactivates unlocked rows")

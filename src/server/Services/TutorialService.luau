@@ -7,6 +7,8 @@ local Evaluation = require(script.Parent.CustomerOrderEvaluation)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local Targets = require(Shared.TutorialTargets)
 local FarmConfig = require(Shared.Constants.FarmConfig)
+local MARKET_REACH_RADIUS = 125
+local MARKET_JUMP_REACH_RADIUS = 12
 local Tutorial = {}
 local deps: any
 type State = {
@@ -19,6 +21,7 @@ type State = {
     OrderIndex: number?,
     BatchOrders: { [number]: number },
     FarmStep: number,
+    NextCustomer: Instance?,
     RowPurchasedAt: number?,
 }
 local states: { [Player]: State } = {}
@@ -167,16 +170,49 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         end
         return "Stash", index, slot
     end
+    if not state.Milestones.NextOrderTaken then
+        local queue = deps.CustomerService.GetQueueSnapshot(player)
+        for _, customer in queue do
+            if customer.Model == state.NextCustomer and customer.OrderTaken then
+                state.Milestones.NextOrderTaken = true
+                break
+            end
+        end
+        if not state.Milestones.NextOrderTaken then
+            state.NextCustomer = nil
+            for _, customer in queue do
+                if not customer.TutorialIndex and not customer.OrderTaken then
+                    state.NextCustomer = customer.Model
+                    break
+                end
+            end
+            return "NextCustomer", nil, nil
+        end
+        state.NextCustomer = nil
+    end
     if not state.Milestones.ReachedMarket then
         local market = Targets.Resolve(plot, "Market")[1]
         local root = if player.Character then player.Character:FindFirstChild("HumanoidRootPart") else nil
         if not market then
             state.Milestones.ReachedMarket = true -- Missing scenery must never block progress.
         elseif market:IsA("BasePart") and root and root:IsA("BasePart") then
-            state.Milestones.ReachedMarket = (root.Position - market.Position).Magnitude <= 24
+            state.Milestones.ReachedMarket = (root.Position - market.Position).Magnitude <= MARKET_REACH_RADIUS
         end
         if not state.Milestones.ReachedMarket then
             return "Market", nil, nil
+        end
+    end
+    if not state.Milestones.ReachedJumpHighlight then
+        local highlight = Targets.Resolve(plot, "MarketJump")[1]
+        local root = if player.Character then player.Character:FindFirstChild("HumanoidRootPart") else nil
+        if not highlight then
+            state.Milestones.ReachedJumpHighlight = true
+        elseif highlight:IsA("BasePart") and root and root:IsA("BasePart") then
+            state.Milestones.ReachedJumpHighlight = (root.Position - highlight.Position).Magnitude
+                <= MARKET_JUMP_REACH_RADIUS
+        end
+        if not state.Milestones.ReachedJumpHighlight then
+            return "MarketJump", nil, nil
         end
     end
     return "Complete", nil, nil
@@ -199,6 +235,13 @@ local farmSteps = {
             return row ~= nil and row.IngredientId ~= nil
         end,
     },
+    {
+        Stage = "Harvest",
+        Complete = function(_state: State, row: any): boolean
+            -- FarmService empties READY rows only after every product is gone.
+            return row ~= nil and row.State == "EMPTY" and row.IngredientId == nil
+        end,
+    },
 }
 local function refreshFarm(player: Player, state: State, plot: Instance?, stage: string)
     if not plot or not state.SessionId or deps.TycoonService.GetSessionOwner(state.SessionId) ~= player then
@@ -208,9 +251,9 @@ local function refreshFarm(player: Player, state: State, plot: Instance?, stage:
     if state.FarmStep == 0 and stage == "Complete" and deps.TycoonService.GetCash(player) >= 20000 then
         state.FarmStep = 1
     end
+    local row = deps.FarmService.GetRowSnapshot(plot, 1)
     local step = farmSteps[state.FarmStep]
     if step then
-        local row = deps.FarmService.GetRowSnapshot(plot, 1)
         if step.Complete(state, row) then
             state.FarmStep += 1
         end
@@ -218,7 +261,13 @@ local function refreshFarm(player: Player, state: State, plot: Instance?, stage:
     local current = farmSteps[state.FarmStep]
     player:SetAttribute(
         "FarmTutorialStage",
-        if current then current.Stage elseif state.FarmStep > 0 then "Done" else ""
+        if current
+                and current.Stage == "Harvest"
+                and (not row or row.State ~= "READY" or #row.Products == 0)
+            then ""
+            elseif current then current.Stage
+            elseif state.FarmStep > 0 then "Done"
+            else ""
     )
 end
 local function refresh(player: Player, state: State)
@@ -230,6 +279,7 @@ local function refresh(player: Player, state: State)
     if state.SessionId ~= sessionId then
         state.Milestones = {}
         state.BatchOrders = {}
+        state.NextCustomer = nil
         state.FarmStep, state.RowPurchasedAt = 0, nil
         state.SessionId = sessionId
         player:SetAttribute("TutorialTookStashItem", false)
@@ -255,7 +305,10 @@ local function refresh(player: Player, state: State)
     end
     if target and target:IsA("ObjectValue") then
         local orders = if plot then deps.CustomerService.GetTutorialSnapshot(player) else nil
-        target.Value = if orders and order then orders[order].Model else nil
+        target.Value = if stage == "NextCustomer"
+            then state.NextCustomer
+            elseif orders and order then orders[order].Model
+            else nil
     end
     if state.Stage == stage and state.Plot == plot and state.OrderIndex == order then
         return
