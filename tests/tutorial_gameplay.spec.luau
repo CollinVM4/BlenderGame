@@ -31,6 +31,11 @@ local function advance(seconds)
 end
 local tutorial = loadModule("TutorialService")
 dependency.TutorialService = tutorial
+dependency.FarmService = {
+    GetRowSnapshot = function()
+        return nil
+    end,
+}
 tutorial.Init(dependency)
 dependency.TycoonService.Init({
     SessionStarted = function(p)
@@ -116,18 +121,32 @@ check(
 local input, wheel = references[p].BlenderInput, references[p].TurbineWheel
 for orderIndex, order in config do
     local beforeCash = dependency.TycoonService.GetCash(p)
-    loadModule("Upgrades").CarryCapacity[1].Value = 1 -- Exercise requested one-item flow without changing the economy.
+    loadModule("Upgrades").CarryCapacity[1].Value = if orderIndex == 1 then 3 else 1
     capacities[p] = if orderIndex == 2 then 2 else 1
-    if orderIndex == 2 then
-        for _ = 1, 3 do
+    if orderIndex <= 2 then
+        for count = 1, 3 do
             setup(inventory.Withdraw(p, order.Slot), "multi-carry starter TAKE")
+            if orderIndex == 1 then
+                heartbeat:Fire(0.1)
+                check(
+                    p:GetAttribute("TutorialStage") == (if count == 3 then "Ladder" else "Stash"),
+                    "real red TAKE waits for all three fruits"
+                )
+            end
         end
     end
     for count, expectedId in order.Ingredients do
-        if orderIndex ~= 2 then
+        if orderIndex > 2 then
             setup(inventory.Withdraw(p, order.Slot), "normal starter TAKE")
         end
-        check(inventory.GetHeldIngredientId(p) == expectedId, "mixed slot withdraws each real ingredient normally")
+        check(
+            (
+                if orderIndex == 1
+                    then table.find(order.Ingredients, inventory.GetHeldIngredientId(p)) ~= nil
+                    else inventory.GetHeldIngredientId(p) == expectedId
+            ),
+            "mixed slot withdraws each real ingredient normally"
+        )
         heartbeat:Fire(0.1)
         if orderIndex == 1 and count == 1 then
             check(p:GetAttribute("TutorialStage") == "Ladder", "real stash TAKE gleams ladder next")
@@ -152,7 +171,7 @@ for orderIndex, order in config do
         )
         check(
             p:GetAttribute("TutorialStage")
-                == (if count == 3 then "Turbine" elseif orderIndex == 2 then "Blender" else "Stash"),
+                == (if count == 3 then "Turbine" elseif orderIndex <= 2 then "Blender" else "Stash"),
             "only three accepted ingredients enable turbine"
         )
     end
@@ -185,10 +204,14 @@ for orderIndex, order in config do
     flush()
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Serve", "dispensed cup guides to current customer")
+    check(#inventory.GetCarriedIngredientIds(p) == 0, "carried smoothie does not count as an ingredient")
     local model = ({ red, cold, yellow })[orderIndex]
     setup(customer.Serve(p, model), "normal committed tutorial serve")
     heartbeat:Fire(0.1)
-    check(dependency.TycoonService.GetCash(p) == beforeCash + payout, "payout comes only from real serving")
+    check(
+        dependency.TycoonService.GetCash(p) == beforeCash + math.max(payout, order.PayoutFloor or 0),
+        "payout comes only from real serving with tutorial floor"
+    )
     check(not customer.Serve(p, model), "duplicate serve cannot pay twice")
     if orderIndex < 3 then
         check(

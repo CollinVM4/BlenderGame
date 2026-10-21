@@ -1,3 +1,12 @@
+-- Workspace lookup boundary supports authored global scenery in this suite.
+workspaceFake.FindFirstChild = function(_, name)
+    for _, object in allInstances do
+        if object.Parent == workspaceFake and object.Name == name then
+            return object
+        end
+    end
+    return nil
+end
 -- Presentation contracts use the real banner, wording and tutorial controller.
 env.Enum.PreferredInput = { KeyboardAndMouse = "Mouse", Touch = "Touch", Gamepad = "Gamepad" }
 env.Enum.KeyCode = { ButtonR2 = { EnumType = "KeyCode", Name = "ButtonR2" } }
@@ -613,9 +622,45 @@ observedGlobal = false
 remote.OnClientEvent:Fire({ Type = "MysteryAcquired", DisplayName = "Learner" })
 flush()
 check(observedGlobal and noHint(), "normal global broadcasts still work after tutorial text is disabled")
+local market = instance("Model")
+market.Name, market.Parent = "Central Market", workspaceFake
+local marketBase = part("CentralMarketBase", market)
+p:SetAttribute("TutorialStage", "Market")
+advance()
+check(
+    hintContains("Collect more from the Central Market!") and beams()[1].Attachment1.Parent == marketBase,
+    "market text and beam bypass first-serve retirement"
+)
 p:SetAttribute("TutorialStage", "Complete")
 p:SetAttribute("TutorialActive", false)
 check(label() == nil, "completion removes tutorial GUI")
+local farm = instance("Model")
+farm.Name, farm.Parent = "Farm", plot
+local row = instance("Model")
+row.Name, row.Parent = "Row1", farm
+local pad = part("PurchasePoint1", row)
+local visual = instance("Model")
+visual.Name, visual.Parent = "Visual", row
+local pebble = part("Pebble", visual)
+part("plank2", visual)
+p:SetAttribute("TutorialHintReady", false)
+p:SetAttribute("FarmTutorialStage", "BuyRow")
+advance()
+check(
+    hintContains("Buy a farm row!") and beams()[1].Attachment1.Parent == pad,
+    "farm purchase hint and beam present after opening completion"
+)
+p:SetAttribute("FarmTutorialStage", "Plant")
+advance()
+check(
+    hintContains("Plant an ingredient!") and #highlights() == 2 and beams()[1].Attachment1.Parent == pebble,
+    "farm planting shares hint UI and authored spots"
+)
+p:SetAttribute("FarmTutorialStage", "Done")
+check(noHint() and #beams() == 0 and #highlights() == 0, "Done clears all farm presentation")
+p:SetAttribute("FarmTutorialStage", "")
+check(noHint(), "empty farm stage also presents nothing")
+p:SetAttribute("TutorialHintReady", true)
 p:SetAttribute("TutorialStage", "Order")
 p:SetAttribute("TutorialOrderIndex", 1)
 p:SetAttribute("PlotSessionId", "fresh-session")

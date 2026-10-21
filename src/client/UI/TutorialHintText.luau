@@ -1,6 +1,9 @@
 --!strict
 local Text = {}
 local hints: { [string]: string } = {
+    Market = "Collect more from the Central Market!",
+    BuyRow = "Buy a farm row!",
+    Plant = "Plant an ingredient!",
     ClaimPlot = "Claim your smoothie stand!",
     Counter = "Head to your customer counter!",
     Order = "Take the customer's order!",

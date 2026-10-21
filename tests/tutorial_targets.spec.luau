@@ -1,3 +1,12 @@
+-- Workspace lookup boundary supports authored global scenery in this suite.
+workspaceFake.FindFirstChild = function(_, name)
+    for _, object in allInstances do
+        if object.Parent == workspaceFake and object.Name == name then
+            return object
+        end
+    end
+    return nil
+end
 shared.TutorialTargets = "TutorialTargets"
 local targets = loadModule("TutorialTargets")
 services.CollectionService.GetTags = function(_, target)
@@ -435,3 +444,27 @@ local modelBase = object("Part", "base", slotModel)
 modelBase:SetAttribute("SlotIndex", 3)
 local modelTargets = targets.Resolve(plot, "Stash", 3)
 check(#modelTargets == 1 and modelTargets[1] == slotModel, "authored Slot3 model includes base with one gleam")
+
+-- Follow-up tutorial targets use exact authored roots.
+local market = object("Model", "Central Market", workspaceFake)
+local marketBase = object("Part", "CentralMarketBase", market)
+check(targets.Resolve(nil, "Market")[1] == marketBase, "market target resolves from Workspace without a plot")
+check(targets.ResolveBeam(plot, "Market", nil, marketBase) == marketBase, "market beam accepts the exact global base")
+check(targets.ResolveBeam(plot, "Market", nil, other) == nil, "market beam rejects unrelated scenery")
+local farm = object("Model", "Farm", plot)
+local row = object("Model", "Row1", farm)
+local pad = object("Part", "PurchasePoint1", row)
+local visual = object("Model", "Visual", row)
+local pebble = object("Part", "Pebble", visual)
+local plank = object("Part", "plank2", visual)
+check(targets.Resolve(plot, "BuyRow")[1] == pad, "row purchase targets FarmService purchase pad")
+local spots = targets.Resolve(plot, "Plant")
+check(#spots == 2 and spots[1] == pebble and spots[2] == plank, "plant targets both authored planting spots")
+pebble:Destroy()
+plank:Destroy()
+local combined = object("Part", "Pebble & plank2", visual)
+check(targets.Resolve(plot, "Plant")[1] == combined, "combined export planting spot resolves")
+combined:Destroy()
+check(targets.Resolve(plot, "Plant")[1] == visual, "missing planting spots fall back to Visual")
+marketBase:Destroy()
+check(#targets.Resolve(plot, "Market") == 0, "missing market is safe")

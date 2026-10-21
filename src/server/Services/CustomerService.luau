@@ -1794,6 +1794,12 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         deps.TycoonService.DebitTransaction(transaction, -payout)
     else
         payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, evaluation)
+        if record.TutorialIndex and success and evaluation.IsValid then
+            local floor = TutorialOrders[record.TutorialIndex].PayoutFloor
+            if floor then
+                payout = math.max(payout, floor)
+            end
+        end
         deps.TycoonService.CreditTransaction(transaction, payout)
     end
     if deps.AnnouncementService then

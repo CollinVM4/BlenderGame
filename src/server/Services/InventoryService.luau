@@ -808,6 +808,21 @@ function InventoryService.HasCarriedIngredient(player: Player): boolean
     end
     return false
 end
+function InventoryService.GetCarriedIngredientIds(player: Player): { string }
+    local ids: { string } = {}
+    local stack: { HeldItem } = held[player] or {}
+    for _, record in stack do
+        if
+            record.ItemType == "Ingredient"
+            and not record.Releasing
+            and not record.Destroying
+            and record.Tool.Parent
+        then
+            table.insert(ids, record.Id :: string)
+        end
+    end
+    return ids
+end
 -- Copies of owned cups, including stored cups, for server guidance reconciliation.
 function InventoryService.GetSmoothieInventory(player: Player): { any }
     local result = {}

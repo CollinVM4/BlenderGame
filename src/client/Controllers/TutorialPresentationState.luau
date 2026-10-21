@@ -18,6 +18,13 @@ end
 function State.CharacterAdded()
     removedCharacter = nil
 end
+function State.IsActive(player: Player, stage: string?): boolean
+    if stage == "BuyRow" or stage == "Plant" then
+        return player:GetAttribute("TutorialActive") ~= true and player:GetAttribute("FarmTutorialStage") == stage
+    end
+    return player:GetAttribute("TutorialActive") == true
+        and (player:GetAttribute("TutorialHintReady") == true or stage == "ClaimPlot")
+end
 function State.Read(player: Player): (boolean, boolean, string?, boolean)
     local nextSession = player:GetAttribute("PlotSessionId")
     if session ~= nextSession then
@@ -95,6 +102,17 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
             counterDeadline = counterDeadline or (os.clock() + 3)
             counterReady = os.clock() >= (counterDeadline :: number)
             ready = counterReady
+        end
+    end
+    -- Market is the opening send-off, after first-order instruction retirement.
+    if stage == "Market" and player:GetAttribute("TutorialActive") == true then
+        return true, true, "Market", true
+    end
+    -- Farm guidance deliberately bypasses opening-only completion latches.
+    if player:GetAttribute("TutorialActive") ~= true then
+        local farmStage = player:GetAttribute("FarmTutorialStage")
+        if farmStage == "BuyRow" or farmStage == "Plant" then
+            return true, true, farmStage, true
         end
     end
     return not textFinished or stage == "ClaimPlot",

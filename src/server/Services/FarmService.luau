@@ -398,6 +398,13 @@ local function bind(plot: Instance): (() -> ())?
     end
 end
 
+-- Read-only tutorial boundary: authoritative state for the active plot session.
+function FarmService.GetRowSnapshot(plot: Instance, index: number): { State: string, IngredientId: string? }?
+    local farm = farms[plot]
+    local row = if farm and live(farm, farm.Session) then farm.Rows[index] else nil
+    return if row then { State = row.State, IngredientId = row.IngredientId } else nil
+end
+
 function FarmService.StartSession(player: Player)
     local plot = deps.TycoonService.GetPlot(player)
     local farm = plot and farms[plot]

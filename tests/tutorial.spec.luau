@@ -1,3 +1,12 @@
+-- Workspace lookup boundary supports authored global scenery in this suite.
+workspaceFake.FindFirstChild = function(_, name)
+    for _, object in allInstances do
+        if object.Parent == workspaceFake and object.Name == name then
+            return object
+        end
+    end
+    return nil
+end
 local timers = {}
 shared.TutorialTargets = "TutorialTargets"
 env.Enum.HumanoidStateType = { Climbing = "Climbing" }
@@ -25,6 +34,8 @@ end
 local tutorial = loadModule("TutorialService")
 local authority = sessionTestAuthority
 local orders, batch, ingredient, flight, cups = {}, nil, nil, false, {}
+local carried = {}
+local farmRow = { State = "LOCKED", IngredientId = nil }
 local function resetOrders()
     orders = {
         { RequestId = "Red", Served = false, OrderTaken = false },
@@ -35,6 +46,11 @@ end
 resetOrders()
 tutorial.Init({
     TycoonService = authority,
+    FarmService = {
+        GetRowSnapshot = function()
+            return farmRow
+        end,
+    },
     CustomerService = {
         GetTutorialSnapshot = function()
             return orders
@@ -48,6 +64,9 @@ tutorial.Init({
     InventoryService = {
         HasCarriedIngredient = function()
             return ingredient ~= nil
+        end,
+        GetCarriedIngredientIds = function()
+            return carried
         end,
         HasIngredientInFlight = function()
             return flight
@@ -128,7 +147,16 @@ humanoid.GetState = function()
 end
 tutorial.Mark(p, "TookStashItem")
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Ladder", "stash pickup targets owned ladder before Glass")
+for _, ids in
+    { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Strawberry" }, { "Cherries", "Strawberry", "Banana" } }
+do
+    carried = ids
+    heartbeat:Fire(0.1)
+    check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
+end
+carried = { "Strawberry", "Cherries", "Cherries" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "full carried multiset targets owned ladder")
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Ladder", "respawn retains unfinished ladder guidance")
@@ -139,6 +167,9 @@ root.Position = vec(0, 0, 0)
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Blender", "actual nearby ladder climb advances to Glass")
 movement = "Running"
+carried = { "Cherries" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "partial carry after UsedLadder still targets blender")
 ingredient, flight = nil, true
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Blender", "in-flight throw keeps glass guidance")
@@ -228,15 +259,52 @@ check(
 batch = { BatchId = 3, AcceptedIngredientCount = 0, State = "EMPTY", ReadyToDispense = false, ProgressPercent = 0 }
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Stash", "cleared previous batch resumes the current recipe")
+local market = instance("Model")
+market.Name, market.Parent = "Central Market", workspaceFake
+local marketBase = instance("Part")
+marketBase.Name, marketBase.Parent, marketBase.Position = "CentralMarketBase", market, vec(200, 0, 0)
+authority.SetCash(p, 20000)
 orders[3].Served = true
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "", "20K cannot start farm before opening completion")
+authority.SetCash(p, 19999)
+check(
+    p:GetAttribute("TutorialStage") == "Market" and p:GetAttribute("TutorialActive"),
+    "third serve sends player to the market"
+)
+root.Position = vec(175, 0, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Market", "market milestone waits beyond 24 studs")
+root.Position = vec(176, 0, 0)
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete"
         and not p:GetAttribute("TutorialActive")
         and not p:GetAttribute("TutorialHintReady"),
-    "three actual serves disable guidance"
+    "reaching market completes opening guidance"
 )
+authority.SetCash(p, 19999)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "", "farm phase stays idle below 20K")
+authority.SetCash(p, 20000)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "BuyRow", "owner reaching 20K starts row guidance")
+authority.SetCash(p, 0)
+farmRow.State = "EMPTY"
+heartbeat:Fire(0.1)
+advance(0.79)
+check(p:GetAttribute("FarmTutorialStage") == "BuyRow", "purchase holds through row rise")
+advance(0.011)
+check(p:GetAttribute("FarmTutorialStage") == "Plant", "row rise completion advances planting guidance")
+farmRow.State, farmRow.IngredientId = "GROWING", "Banana"
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "Done", "planted row finishes farm phase")
+farmRow.State, farmRow.IngredientId = "EMPTY", nil
+authority.SetCash(p, 50000)
+advance(1)
+check(p:GetAttribute("FarmTutorialStage") == "Done", "farm guidance never repeats within session")
 authority.RemovePlayer(p)
+check(p:GetAttribute("FarmTutorialStage") == "", "session loss clears farm phase")
 check(
     p:GetAttribute("TutorialStage") == "ClaimPlot" and p:FindFirstChild("TutorialCustomerTarget").Value == nil,
     "abandonment clears session target"
@@ -247,6 +315,37 @@ check(
     p:GetAttribute("TutorialOrderIndex") == 1 and p:GetAttribute("TutorialStage") == "Counter",
     "new session starts current orders without retaining old tutorial steps"
 )
+orders[1].OrderTaken = true
+ingredient, carried = "Cherries", { "Cherries" }
+tutorial.Mark(p, "TookStashItem")
+tutorial.Mark(p, "LoadedBlender")
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "partial carry after LoadedBlender still targets blender")
+-- Missing scenery fallback, cash already held at completion, and owner-only gating.
+marketBase:Destroy()
+for _, order in orders do
+    order.Served = true
+end
+authority.SetCash(p, 20000)
+heartbeat:Fire(0.1)
+check(
+    p:GetAttribute("TutorialStage") == "Complete" and tutorial.GetMilestones(p).ReachedMarket,
+    "missing market scenery advances without blocking"
+)
+check(
+    p:GetAttribute("FarmTutorialStage") == "BuyRow",
+    "new session resets farm and starts immediately with cash held at completion"
+)
+local teammate = instance("Player")
+teammate.Name, teammate.UserId, teammate.Parent = "Teammate", 802, workspaceFake
+teammate.Character = p.Character
+tutorial.AddPlayer(teammate)
+setup(authority.JoinSession(teammate, p, authority.GetRequestContext(p)), "join tutorial session")
+tutorial.ApplyCharacter(teammate, teammate.Character)
+flush()
+heartbeat:Fire(0.1)
+check(teammate:GetAttribute("FarmTutorialStage") == "", "teammate with shared 20K never starts farm tutorial")
+tutorial.RemovePlayer(teammate)
 tutorial.RemovePlayer(p)
 p.Parent = nil
 advance(5)

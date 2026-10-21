@@ -325,8 +325,7 @@ local function refresh()
         and character:IsDescendantOf(workspace)
         and humanoid
         and humanoid.Health > 0
-        and player:GetAttribute("TutorialActive") == true
-        and (player:GetAttribute("TutorialHintReady") == true or stage == "ClaimPlot")
+        and Presentation.IsActive(player, stage)
         and type(stage) == "string"
         and presentationReady
     if worldReady and type(stage) == "string" then
@@ -490,6 +489,7 @@ function Controller.Init()
     end
     for _, attribute in
         {
+            "FarmTutorialStage",
             "TutorialStage",
             "TutorialActive",
             "TutorialHintReady",

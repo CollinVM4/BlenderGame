@@ -34,9 +34,7 @@ local function refresh()
     local gui = player:FindFirstChildOfClass("PlayerGui")
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
-    local active = player:GetAttribute("TutorialActive") == true
-        and (player:GetAttribute("TutorialHintReady") == true or stage == "ClaimPlot")
-        and type(stage) == "string"
+    local active = Presentation.IsActive(player, stage) and type(stage) == "string"
     if not active or not textAllowed then
         stopPresentation()
         clearSurface()
@@ -125,7 +123,14 @@ function Controller.Init()
         end)
     )
     for _, attribute in
-        { "TutorialStage", "TutorialOrderIndex", "TutorialActive", "TutorialHintReady", "PlotSessionId" }
+        {
+            "FarmTutorialStage",
+            "TutorialStage",
+            "TutorialOrderIndex",
+            "TutorialActive",
+            "TutorialHintReady",
+            "PlotSessionId",
+        }
     do
         table.insert(connections, player:GetAttributeChangedSignal(attribute):Connect(refresh))
     end

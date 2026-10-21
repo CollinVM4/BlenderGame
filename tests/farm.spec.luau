@@ -125,6 +125,13 @@ for _, motion in motions do
     motion:Finish()
 end
 check(rows[1].Dirt.CFrame.Position.Y == 7, "reveal ends at authored transform")
+local rowSnapshot = farm.GetRowSnapshot(plot, 1)
+check(
+    rowSnapshot and rowSnapshot.State == "EMPTY" and rowSnapshot.IngredientId == nil,
+    "farm snapshot reports purchased empty row"
+)
+rowSnapshot.State = "LOCKED"
+check(farm.GetRowSnapshot(plot, 1).State == "EMPTY", "snapshot cannot mutate farm authority")
 touch(3, peer)
 touch(2, owner)
 touch(3, peer)
@@ -147,6 +154,7 @@ check(
     "plant consumes exactly the selected authoritative instance"
 )
 check(timers[#timers].Seconds == 60, "common duration")
+check(farm.GetRowSnapshot(plot, 1).IngredientId == "Apple", "farm snapshot reports authoritative planted ingredient")
 check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 60, "client receives synchronized growth deadline")
 check(
     #sounds == 1 and sounds[1].Id == "IngredientPlant" and sounds[1].Position == rows[1].Plant.WorldPosition,
@@ -450,6 +458,7 @@ check(
     "crop leaving workspace retires its farm and registry references without emptying remaining harvest"
 )
 detach()
+check(farm.GetRowSnapshot(plot, 1) == nil, "detached farm exposes no stale row snapshot")
 for _, object in detachedProducts do
     check(object.Destroyed and ingredients.GetRecord(object) == nil, "plot detachment retires protected crop records")
 end

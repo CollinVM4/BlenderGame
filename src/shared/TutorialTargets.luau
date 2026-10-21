@@ -1,5 +1,5 @@
 --!strict
--- All paths are relative to one plot. Folder assemblies expand into visible parts.
+-- Paths are plot-relative except the shared Central Market. Folder assemblies expand into visible parts.
 local CollectionService = game:GetService("CollectionService")
 local Targets = {}
 local paths: { [string]: { { string } } } = {
@@ -12,12 +12,35 @@ local paths: { [string]: { { string } } } = {
         { "Turbine Wheel", "turbine", "stem" },
     },
     Dispenser = { { "Dispenser" } },
+    BuyRow = { { "Farm", "Row1", "PurchasePoint1" } },
     Counter = { { "Customer Area", "Counter", "Base Structure", "Base" } },
 }
 -- Raw authored roots are also available to the opt-in presentation diagnostics.
 function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): { Instance }
     local roots: { Instance } = {}
+    if stage == "Market" then
+        local market = workspace:FindFirstChild("Central Market")
+        local base = if market then market:FindFirstChild("CentralMarketBase") else nil
+        return if base and base:IsA("BasePart") then { base } else roots
+    end
     if not plot or not plot:IsDescendantOf(workspace) then
+        return roots
+    end
+    if stage == "Plant" then
+        local farm = plot:FindFirstChild("Farm")
+        local row = if farm then farm:FindFirstChild("Row1") else nil
+        local visual = if row then row:FindFirstChild("Visual") else nil
+        if visual then
+            for _, name in { "Pebble", "plank2", "Pebble & plank2" } do
+                local spot = visual:FindFirstChild(name)
+                if spot then
+                    table.insert(roots, spot)
+                end
+            end
+            if #roots == 0 then
+                table.insert(roots, visual)
+            end
+        end
         return roots
     end
     if stage == "Stash" then
@@ -73,7 +96,7 @@ function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): {
 end
 function Targets.Resolve(plot: Instance?, stage: string, stashSlot: number?, customer: Instance?): { Instance }
     local result: { Instance } = {}
-    if not plot or not plot:IsDescendantOf(workspace) then
+    if stage ~= "Market" and (not plot or not plot:IsDescendantOf(workspace)) then
         return result
     end
     if stage == "Serve" or stage == "Order" then
@@ -169,13 +192,17 @@ local function dispenserTarget(plot: Instance): (BasePart | Attachment)?
     end
     return nil
 end
--- Resolve only inside the already validated objective/owned plot. Never scan Workspace.
+-- Resolve inside the validated plot, or the exact shared Market root.
 function Targets.ResolveBeam(
     plot: Instance?,
     stage: string,
     stashSlot: any,
     objective: Instance?
 ): (BasePart | Attachment)?
+    if stage == "Market" then
+        local base = Targets.GetRoots(nil, stage)[1]
+        return if base == objective and base and base:IsA("BasePart") then base else nil
+    end
     if not plot or not plot:IsDescendantOf(workspace) then
         return nil
     end

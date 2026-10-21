@@ -19,6 +19,18 @@ local function fill()
         setup(pickup("Banana"), "fill carry capacity")
     end
 end
+setup(pickup("Cherries"), "first carried cherry")
+setup(pickup("Cherries"), "second carried cherry")
+setup(pickup("Strawberry"), "carried strawberry")
+local ids = inventory.GetCarriedIngredientIds(player)
+table.sort(ids)
+check(table.concat(ids, ",") == "Cherries,Cherries,Strawberry", "carried IDs preserve duplicate ingredient records")
+table.clear(ids)
+check(#inventory.GetCarriedIngredientIds(player) == 3, "carried IDs are a copy")
+tools()[1].Parent = nil
+check(#inventory.GetCarriedIngredientIds(player) == 2, "detached carried Tool is excluded")
+inventory.ClearHeld(player)
+check(#inventory.GetCarriedIngredientIds(player) == 0, "released ingredients no longer count as carried")
 for tier, definition in upgrades.CarryCapacity do
     if tier > 1 then
         data.SetCash(player, definition.Cost - 1)

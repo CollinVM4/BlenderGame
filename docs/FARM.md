@@ -53,7 +53,7 @@ Farm
 
 Place dirt Visuals at their final authored positions; use anchored parts without
 welds to objects outside Visual. The server anchors their parts and rises them
-3.5 studs over 0.5 seconds with Back/Out easing, ending at the exact saved CFrames.
+3.5 studs over 0.8 seconds with Back/Out easing, ending at the exact saved CFrames.
 Author their normal visible transparency/collision properties. Locked rows hide
 parts, decals/textures and attached world GUIs and disable collision/touch/query.
 Purchase pads must be touchable BaseParts, positioned where players can walk over
