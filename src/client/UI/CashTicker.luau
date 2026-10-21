@@ -44,23 +44,11 @@ end
 
 local function draw(current: View, rolling: boolean)
     local label, row = current.Label, current.Row
-    local height = label.AbsoluteSize.Y
-    if height <= 0 then
+    if label.AbsoluteSize.Y <= 0 then
         return
-    end
-    -- AbsoluteSize includes ancestor UIScales (including the arrival punch).
-    -- Convert back to local pixels so the overlay inherits that scale once.
-    local ancestor: Instance? = label.Parent
-    while ancestor do
-        local scale = ancestor:FindFirstChildOfClass("UIScale")
-        if scale and scale.Scale > 0 then
-            height /= scale.Scale
-        end
-        ancestor = ancestor.Parent
     end
     row.Size, row.Position, row.AnchorPoint = label.Size, label.Position, label.AnchorPoint
     row.LayoutOrder, row.Rotation, row.ZIndex = label.LayoutOrder, label.Rotation, label.ZIndex
-    local width = math.max(1, TextService:GetTextSize("0", height, label.Font, Vector2.new(10000, height)).X)
     local count = Model.Wheels(current.State, rolling)
     if rolling then
         count = math.max(count, #current.Wheels)
@@ -78,13 +66,14 @@ local function draw(current: View, rolling: boolean)
             clip.Name, clip.BackgroundTransparency, clip.Active = "Wheel", 1, false
             clip.BorderSizePixel = 0
             clip.ClipsDescendants = true
+            clip.Size = UDim2.fromOffset(1, label.AbsoluteSize.Y)
             clip.Parent = row
             local strip = Instance.new("Frame")
             strip.Name, strip.BackgroundTransparency, strip.Active = "Strip", 1, false
             strip.BorderSizePixel = 0
-            strip.Size = UDim2.fromScale(1, 11)
+            strip.Size = UDim2.fromScale(1, 21)
             strip.Parent = clip
-            for digit = 0, 10 do
+            for digit = 0, 20 do
                 local cell = Instance.new("TextLabel")
                 cell.Name, cell.Text = "Digit", tostring(digit % 10)
                 cell.BackgroundTransparency, cell.Active = 1, false
@@ -93,9 +82,8 @@ local function draw(current: View, rolling: boolean)
                 cell.TextColor3, cell.TextTransparency = label.TextColor3, label.TextTransparency
                 cell.TextStrokeColor3, cell.TextStrokeTransparency =
                     label.TextStrokeColor3, label.TextStrokeTransparency
-                cell.TextSize = height
-                cell.Size = UDim2.fromScale(1, 1 / 11)
-                cell.Position = UDim2.fromScale(0, digit / 11)
+                cell.Size = UDim2.fromScale(1, 1 / 21)
+                cell.Position = UDim2.fromScale(0, digit / 21)
                 cell.ZIndex = label.ZIndex
                 local stroke = label:FindFirstChildOfClass("UIStroke")
                 if stroke then
@@ -107,14 +95,18 @@ local function draw(current: View, rolling: boolean)
             current.Wheels[place + 1] = wheel
         end
         wheel.Clip.ZIndex, wheel.Strip.ZIndex = label.ZIndex, label.ZIndex
-        wheel.Clip.Size = UDim2.fromOffset(width, height)
+        wheel.Clip.Size = UDim2.fromOffset(wheel.Clip.Size.X.Offset, label.AbsoluteSize.Y)
         wheel.Clip.LayoutOrder = -place
-        local digit = Model.Digit(current.State.Value, place)
-        -- At rest, seat each wheel on a whole digit so the balance is readable.
-        wheel.Strip.Position = UDim2.fromOffset(0, -(if rolling then digit else math.floor(digit)) * height)
+        local pitch = wheel.Strip.AbsoluteSize.Y / 21
+        if pitch <= 0 then
+            continue
+        end
+        local width = math.max(1, TextService:GetTextSize("0", pitch, label.Font, Vector2.new(10000, pitch)).X)
+        wheel.Clip.Size = UDim2.fromOffset(width, label.AbsoluteSize.Y)
+        wheel.Strip.Position = UDim2.fromOffset(0, -Model.Phase(current.State.Value, place, rolling) * pitch)
         for _, cell in wheel.Strip:GetChildren() do
             if cell:IsA("TextLabel") then
-                cell.FontFace, cell.TextSize = label.FontFace, height
+                cell.FontFace, cell.TextSize = label.FontFace, pitch
                 cell.TextColor3, cell.TextTransparency = label.TextColor3, label.TextTransparency
                 cell.TextStrokeColor3, cell.TextStrokeTransparency =
                     label.TextStrokeColor3, label.TextStrokeTransparency
@@ -157,7 +149,7 @@ function Ticker.Bind(label: TextLabel?, value: number)
         row.BorderSizePixel = 0
         local layout = Instance.new("UIListLayout")
         layout.FillDirection = Enum.FillDirection.Horizontal
-        layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         layout.SortOrder = Enum.SortOrder.LayoutOrder
         layout.Parent = row
         row.Parent = label.Parent
@@ -208,6 +200,9 @@ function Ticker.SetTarget(value: number)
     end
     local current = view
     if not current or value ~= value or value < 0 or value == math.huge then
+        return
+    end
+    if render and math.floor(value) == current.State.Target then
         return
     end
     stop()

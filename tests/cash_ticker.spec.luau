@@ -8,11 +8,26 @@ check(model.Digit(95, 0) == 5 and model.Digit(95, 1) == 9.5, "wheels share the c
 check(model.Digit(100, 0) == 0 and model.Digit(100, 2) == 1, "hundred carry wraps lower wheels")
 check(near(model.Digit(999.5, 3), 0.9995), "new thousands wheel approaches one before carry")
 check(near(model.Digit(999.5, 1), 9.95), "tens creeps toward its carry")
+for _, carry in { { 200, 2 }, { 200, 0 }, { 200, 1 }, { 1000, 2 } } do
+    local value, place = carry[1], carry[2]
+    local before = model.Phase(value - 0.01, place, true)
+    local after = model.Phase(value + 0.01, place, true)
+    local advance = (after - before) % 10
+    check(advance > 0 and advance < 1, "carry advances less than one cell modulo the repeating cycle")
+    check(before >= 10 and before < 20 and after >= 10 and after < 20, "rolling uses the middle cycle")
+    check(model.Phase(value, place, false) % 1 == 0, "settled phases seat on whole cells")
+end
 local state = model.New(999)
 model.Retarget(state, 1000, 10)
 check(model.Wheels(state, true) == 4 and state.Value == 999, "growth adds a leading wheel without resetting value")
 model.Sample(state, 10.15)
 local displayed = state.Value
+local start, from, duration = state.Start, state.From, state.Duration
+model.Retarget(state, 1000, 10.15)
+check(
+    state.Start == start and state.From == from and state.Duration == duration,
+    "same active target preserves the easing clock and origin"
+)
 model.Retarget(state, 1200, 10.15)
 check(state.From == displayed and state.Value == displayed, "retarget keeps the rendered value")
 model.Sample(state, 10.25)
@@ -28,6 +43,18 @@ check(model.Wheels(state, false) == 2 and state.Value == 95, "shrink removes lea
 for _, value in { 0, 9, 10, 99, 100, 999, 1000 } do
     check(model.Digits(value) == #tostring(value), "power-of-ten digit counts")
 end
+for _, balances in { { 1950, 2200 }, { 2200, 1950 } } do
+    local roll = model.New(balances[1])
+    model.Retarget(roll, balances[2], 0)
+    local direction = if balances[2] > balances[1] then 1 else -1
+    for step = 1, 100 do
+        local previous = roll.Value
+        model.Sample(roll, roll.Duration * step / 100)
+        check((roll.Value - previous) * direction >= 0, "cash moves monotonically in either direction")
+        check((roll.Target - roll.Value) * direction >= 0, "cash never passes the target")
+    end
+    check(roll.Value == roll.Target, "cash settles exactly at the end of easing")
+end
 
 services.TextService = {
     GetTextSize = function(_, _, height)
@@ -37,8 +64,17 @@ services.TextService = {
 -- CashTicker was loaded by the arrival module before this service was installed.
 cache.CashTicker = nil
 env.Enum.FillDirection = { Horizontal = "Horizontal" }
-env.Enum.HorizontalAlignment = { Right = "Right" }
+env.Enum.HorizontalAlignment = { Center = "Center" }
 env.Enum.SortOrder = { LayoutOrder = "LayoutOrder" }
+-- Supply the strip's measured geometry; the CLI fixture does not run Roblox layout.
+local createUI = env.Instance.new
+env.Instance.new = function(class)
+    local object = createUI(class)
+    if class == "Frame" then
+        object.AbsoluteSize = vec(360, 21 * 640, 0)
+    end
+    return object
+end
 local ticker = loadModule("CashTicker")
 local replacementLabel = replacementCash:FindFirstChild("{Coins}")
 replacementLabel.Text = "$1,500"
@@ -55,7 +91,21 @@ check(
 )
 local row = replacementCash:FindFirstChild("CashTicker")
 check(row and not row.Active, "ticker never consumes top bar input")
+check(row:FindFirstChildOfClass("UIListLayout").HorizontalAlignment == "Center", "cash digits are centered")
 ticker.SetTarget(2000)
+local expected = model.New(1500)
+model.Retarget(expected, 2000, now)
+now += 0.15
+render:Fire()
+ticker.SetTarget(2000.9)
+now += 0.1
+render:Fire()
+model.Sample(expected, now)
+local rollingStrip = row:FindFirstChild("Wheel"):FindFirstChild("Strip")
+check(
+    near(-rollingStrip.Position.Y.Offset / (rollingStrip.AbsoluteSize.Y / 21), model.Phase(expected.Value, 0, true)),
+    "same-target SetTarget poke preserves the original roll timing after flooring"
+)
 now += 2
 render:Fire()
 local function visibleDigits()
@@ -63,8 +113,8 @@ local function visibleDigits()
     for _, wheel in row:GetChildren() do
         if wheel.Name == "Wheel" then
             local strip = wheel:FindFirstChild("Strip")
-            digits[-wheel.LayoutOrder + 1] =
-                math.floor(-strip.Position.Y.Offset / replacementLabel.AbsoluteSize.Y + 0.5)
+            digits[-wheel.LayoutOrder + 1] = math.floor(-strip.Position.Y.Offset / (strip.AbsoluteSize.Y / 21) + 0.5)
+                % 10
             check(not wheel.Active and wheel.ClipsDescendants and not strip.Active, "wheel clips and permits taps")
         end
     end
@@ -105,7 +155,22 @@ newLabel.AbsoluteSize = vec(180, 320, 0)
 ticker.Snap(425)
 local scaledRow = replacementCash:FindFirstChild("CashTicker")
 local scaledWheel = scaledRow:FindFirstChild("Wheel")
-check(scaledWheel.Size.Y.Offset == 640, "mobile ancestor scale applies to local cells once")
+check(scaledWheel.Size.Y.Offset == 320, "clip window follows the label's measured height")
+for _, wheel in scaledRow:GetChildren() do
+    if wheel.Name == "Wheel" then
+        wheel:FindFirstChild("Strip").AbsoluteSize = vec(180, 21 * 321.25, 0)
+    end
+end
+ticker.Snap(425)
+for _, wheel in scaledRow:GetChildren() do
+    if wheel.Name == "Wheel" then
+        local strip = wheel:FindFirstChild("Strip")
+        local phase = -strip.Position.Y.Offset / 321.25
+        check(near(phase % 1, 0) and phase >= 10, "every wheel seats inline from measured strip pitch")
+        check(strip:FindFirstChild("Digit").TextSize == 321.25, "glyph size follows measured pitch")
+        check(#strip:GetChildren() == 21, "cyclic strip includes both cycles and trailing zero")
+    end
+end
 ticker.Clear()
 check(newLabel.Visible and not replacementCash:FindFirstChild("CashTicker"), "replacement cleanup retains plain text")
 scale:Destroy()

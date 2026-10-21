@@ -12,6 +12,12 @@ function Model.Digit(value: number, place: number): number
     return (value / 10 ^ place) % 10
 end
 
+function Model.Phase(value: number, place: number, rolling: boolean): number
+    local digit = Model.Digit(value, place)
+    -- The repeated cycle makes carries seamless; whole digits share a baseline at rest.
+    return (if rolling then digit else math.floor(digit)) + 10
+end
+
 function Model.New(value: number): State
     return { Value = value, From = value, Target = value, Start = 0, Duration = 0 }
 end
@@ -26,6 +32,9 @@ function Model.Sample(state: State, now: number): boolean
 end
 
 function Model.Retarget(state: State, target: number, now: number)
+    if state.Duration > 0 and state.Value ~= state.Target and target == state.Target then
+        return
+    end
     -- Value is the last rendered sample; never restart from the old target.
     local changed = 0
     for place = 0, math.max(Model.Digits(state.Value), Model.Digits(target)) - 1 do
