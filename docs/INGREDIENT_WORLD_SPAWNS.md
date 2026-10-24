@@ -1,5 +1,7 @@
 # Authored ingredient world spawns
 
+Timing and supply rules were superseded by the [2026-10-23 economy redesign](ECONOMY_REDESIGN.md). Ordinary pedestal timers now come from Economy.RefillSeconds / SpecialRefillSeconds; farm rows use tier refill times multiplied by yield. Announced spawn timing remains authored.
+
 ## Architecture and migration
 
 `IngredientService.Spawn(id, spawnCFrame, owner?, claimable?)` remains the one
@@ -199,8 +201,8 @@ Studio setup (the marker itself must be a BasePart):
 
 ```text
 Workspace
-└── AppleTree
-    └── AppleSpawner [tag: IngredientSpawn]
+â””â”€â”€ AppleTree
+    â””â”€â”€ AppleSpawner [tag: IngredientSpawn]
         Attributes:
             IngredientId = "Apple"       (String)
             FreezeSpawnedItem = true      (Boolean)
@@ -282,8 +284,8 @@ and [Instance.Archivable contract](https://create.roblox.com/docs/reference/engi
 
 ```text
 Workspace
-└── AppleTree
-    └── AppleSpawner [IngredientSpawn]
+â””â”€â”€ AppleTree
+    â””â”€â”€ AppleSpawner [IngredientSpawn]
         Attributes:
             IngredientId = "Apple"        (String)
             FreezeSpawnedItem = true      (Boolean)

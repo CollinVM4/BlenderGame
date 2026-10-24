@@ -119,6 +119,7 @@ check(
     "red acceptance starts relevant stash"
 )
 local input, wheel = references[p].BlenderInput, references[p].TurbineWheel
+local starterEarnings = 0
 for orderIndex, order in config do
     local beforeCash = dependency.TycoonService.GetCash(p)
     loadModule("Upgrades").CarryCapacity[1].Value = if orderIndex == 1 then 3 else 1
@@ -212,6 +213,16 @@ for orderIndex, order in config do
         dependency.TycoonService.GetCash(p) == beforeCash + math.max(payout, order.PayoutFloor or 0),
         "payout comes only from real serving with tutorial floor"
     )
+    local earned = dependency.TycoonService.GetCash(p) - beforeCash
+    starterEarnings += earned
+    print(string.format("STARTER %s: $%d (cumulative $%d)", order.RequestId, earned, starterEarnings))
+    if orderIndex == 1 then
+        local catalog = loadModule("Upgrades")
+        check(
+            starterEarnings >= catalog.MovementSpeed[2].Cost + catalog.SprintStamina[2].Cost,
+            "first real tutorial serve funds both first stat purchases"
+        )
+    end
     check(not customer.Serve(p, model), "duplicate serve cannot pay twice")
     if orderIndex < 3 then
         check(
@@ -245,6 +256,24 @@ p.Character:FindFirstChild("HumanoidRootPart").Position = nextCustomer.Model:Get
 setup(customer.TakeOrder(p, nextCustomer.Model), "take next regular order")
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Complete", "real order acceptance completes send-off with missing scenery")
+-- First regular serves use the live payout formula with no tutorial floors.
+loadModule("Upgrades").CarryCapacity[1].Value = 3
+capacities[p] = 1
+for serveIndex = 1, 2 do
+    local regular = customer.GetQueueSnapshot(p)[1]
+    setup(regular and not regular.Model:GetAttribute("TutorialOrderIndex"), "regular customer after starters")
+    local ids = { "Banana", "Banana", "Banana" }
+    local beforeCash = dependency.TycoonService.GetCash(p)
+    setup(
+        inventory.GrantSmoothie(p, { BlendId = "first-regular-" .. serveIndex, Ingredients = ids }),
+        "regular smoothie"
+    )
+    setup(customer.Serve(p, regular.Model), "first regular serve")
+    local earned = dependency.TycoonService.GetCash(p) - beforeCash
+    check(earned > 0, "first regular order pays through live serving")
+    print(string.format("REGULAR %d (%s): $%d", serveIndex, regular.RequestId, earned))
+    flush()
+end
 -- Loss/rejection is recoverable and never masquerades as a successful serve.
 local q = player()
 q.Parent = workspaceFake

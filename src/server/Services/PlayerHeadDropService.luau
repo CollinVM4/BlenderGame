@@ -63,7 +63,7 @@ function Service.ApplyCharacter(player: Player, character: Model)
                         break
                     end
                 end
-                local unit = Item.New("PlayerHead", HttpService:GenerateGUID(false))
+                local unit = Item.New("PlayerHead", HttpService:GenerateGUID(false), "Unknown")
                 unit.SourceUserId = player.UserId
                 unit.SourceDisplayName = player.DisplayName
                 unit.SourceUsername = player.Name

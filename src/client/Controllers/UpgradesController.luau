@@ -116,7 +116,13 @@ function Controller.Init()
                 row.Title.Text = track.Name
                 row.Current.Text = if state then state.Current else "LOADING..."
                 row.Next.Text = if isMax then "MAX" elseif state then state.Next else "-"
-                row.Price.Text = if state and state.Price and not isMax then MoneyFormat.Compact(state.Price) else ""
+                row.Price.Text = if state
+                        and state.Price
+                        and not isMax
+                    then (if Display.IsStatTrack(track.Id)
+                        then MoneyFormat.Full(state.Price)
+                        else MoneyFormat.Compact(state.Price))
+                    else ""
                 row.BuyLabel.Text = if remote == nil
                         or state == nil
                         or pending == track.Id

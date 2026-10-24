@@ -1,10 +1,10 @@
 for index, case in
     {
-        { { "Blueberry", "Blueberry", "Blueberry" }, 9688, "A", "Thanks!", "+$9,688", "$7.5K" },
-        { { "Blueberry", "Blueberry", "Banana" }, 7975, "B", "Thanks!", "+$7,975", "$7K" },
-        { { "Fish", "Banana", "Banana" }, 30825, "C", "Not blue!", "+$30,825", "$34K" },
-        { { "Noob", "Banana", "Banana" }, 9638, "D", "Not blue!", "+$9,638", "$64K" },
-        { { "Dragon_Fruit", "Dragon_Fruit", "Dragon_Fruit" }, 495250, nil, "Thanks!", "+$495,250", "$495K", true },
+        { { "Blueberry", "Blueberry", "Blueberry" }, 7813, "A", "Thanks!", "+$7,813", "$6K" },
+        { { "Blueberry", "Blueberry", "Banana" }, 5225, "B", "Thanks!", "+$5,225", "$4.5K" },
+        { { "Rainbow_Trout", "Banana", "Banana" }, 38, "D", "Not blue!", "+$38", "$0" },
+        { { "Melon", "Banana", "Banana" }, 38, "D", "Not blue!", "+$38", "$0" },
+        { { "Dragon_Fruit", "Dragon_Fruit", "Dragon_Fruit" }, 250, nil, "Thanks!", "+$250", "$0", true },
     }
 do
     customer.ActivateForPlayer(owner)
@@ -41,7 +41,15 @@ do
     check(not graphic:FindFirstChild("Ingredients"), "serve shows only the final credited payout")
     flush()
     check(
-        model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text == case[4],
+        model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text == case[4]
+            or (
+                case[7]
+                and table.find(
+                        config.WildcardRequest.GoodResponses,
+                        model:FindFirstChild("OrderBubble", true):FindFirstChildOfClass("TextLabel").Text
+                    )
+                    ~= nil
+            ),
         "assigned dialogue remains separate"
     )
     check(not customer.Serve(owner, model) and data.GetCash(owner) == before + case[2], "replayed serve cannot pay")
@@ -59,7 +67,7 @@ do
     end
     if case[7] then
         check(
-            graphic:FindFirstChild("Result").Text == '<font color="rgb(255,222,115)">+$495,250</font>',
+            graphic:FindFirstChild("Result").Text == '<font color="rgb(255,222,115)">+$250</font>',
             "wildcard result shows cash without a letter grade"
         )
     end

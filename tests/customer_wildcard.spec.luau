@@ -1,6 +1,6 @@
 local wildcard = requestConfig.WildcardRequest
-check(authoredWildcardChances[1] == 0.60 and authoredWildcardChances[2] == 0.30, "authored wildcard probabilities")
-requestConfig.RegularWildcardChance, requestConfig.SpecialWildcardChance = unpack(authoredWildcardChances)
+check(authoredWildcardChances[1] == 0.05 and authoredWildcardChances[2] == 0, "authored wildcard probabilities")
+requestConfig.RegularWildcardChance, requestConfig.SpecialWildcardChance = 0.60, 0.30
 check(wildcard.Wildcard and #wildcard.DisplayTexts >= 5, "explicit wildcard has varied dialogue")
 check(#customer.ValidateRequestDefinition(wildcard) == 0, "wildcard definition is valid")
 for _, ids in { { "Apple", "Apple", "Apple" }, { "Tire", "Fish", "Ice" } } do
@@ -101,7 +101,7 @@ for _ = 1, 5 do
 end
 roll = 0.9
 model, snapshot = spawn()
-check(snapshot.RequestId == "MilkNoFruit", "wildcards preserve ID, group and similarity history")
+check(snapshot.RequestId == "Red", "regular prompt repeats remain available after wildcards")
 depart(model)
 
 local function child(class, name, parent)
@@ -116,6 +116,13 @@ local folder = child("Folder", "CustomerNPCs", storage)
 local special = child("Folder", "Special", folder)
 local template = child("Model", "SpecialSource", special)
 template:SetAttribute("CustomerId", "steak")
+local clone = template.Clone
+function template:Clone()
+    local copy = clone(self)
+    copy:FindFirstChildOfClass("Humanoid").Died = signal()
+    return copy
+end
+
 template:SetAttribute("SourceProbe", "special")
 child("Humanoid", "Humanoid", template)
 child("Part", "HumanoidRootPart", template)
@@ -141,11 +148,11 @@ for _, sample in { { 0, true }, { 0.2999, true }, { 0.30, false }, { 0.9999, fal
         check(not customer.Serve(owner, model), "wildcard cannot serve without a completed server cup")
         cup = { Ingredients = { "Apple", "Apple", "Apple" }, BlendId = "wildcard" }
         local ingredients = loadModule("Ingredients")
-        local expected = math.round(3 * ingredients.Apple.Value + wildcard.BasePayout)
+        local expected = wildcard.BasePayout
         local before = data.GetCash(owner)
         check(customer.Serve(owner, model), "special wildcard consumes a valid cup")
         check(model:GetAttribute("Grade") == nil and servedGrade == nil, "wildcard publishes no letter grade")
-        check(data.GetCash(owner) == before + expected, "wildcard pays 1.0x ingredient value plus base")
+        check(data.GetCash(owner) == before + expected, "wildcard pays only flat base")
         check(model:GetAttribute("Reaction") == "Disgust", "special forced reaction remains independent")
         flush()
         check(

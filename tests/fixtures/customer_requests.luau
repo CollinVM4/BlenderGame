@@ -43,7 +43,7 @@ local function setTestJump(owner, tier)
     customer.DeactivateForPlayer(owner)
     sessionTestAuthority.RemovePlayer(owner)
     assignTestSession(owner)
-    sessionTestAuthority.SetCash(owner, 200000)
+    sessionTestAuthority.SetCash(owner, 2000000)
     for _ = 1, tier do
         setup(buyTestUpgrade(data, owner, "Jump"), "set purchased test tier")
     end

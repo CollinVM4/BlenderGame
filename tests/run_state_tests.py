@@ -96,6 +96,8 @@ SUITES = {
     "smoothie-world": ("state", ("fixtures/smoothie.luau", "smoothie_world.spec.luau")),
     "smoothie": ("state", ("fixtures/smoothie.luau", "smoothie_items.spec.luau")),
     "smoothie-dispense": ("state", ("fixtures/smoothie.luau", "smoothie_dispense.spec.luau")),
+    "economy-origin": ("integration", ("fixtures/smoothie.luau", "economy_origin_lifecycle.spec.luau")),
+    "economy-supply": ("integration", ("fixtures/smoothie.luau", "economy_supply.spec.luau")),
     "customer-payout": ("state", ("customer_payout.spec.luau",)),
     "tutorial-payout-serve": ("integration", ("fixtures/customer_payout.luau", "tutorial_payout_serve.spec.luau")),
     "customer-payout-serve": ("integration", ("fixtures/customer_payout.luau", "customer_payout_serve.spec.luau")),

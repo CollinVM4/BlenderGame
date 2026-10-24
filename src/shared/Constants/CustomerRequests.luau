@@ -929,7 +929,7 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.25,
+    RegularWildcardChance = 0.05,
     SpecialWildcardChance = 0,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {

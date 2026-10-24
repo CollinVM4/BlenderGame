@@ -325,8 +325,6 @@ end
 local display = load("UpgradeDisplay")
 local expected = {
     Jump = { "JUMP 0", "JUMP 1", "JUMP 2", "JUMP 3" },
-    MovementSpeed = { "SPEED 0", "SPEED 1", "SPEED 2", "SPEED 3" },
-    SprintStamina = { "STAM 0", "STAM 1", "STAM 2", "STAM 3" },
     CarryCapacity = { "3 ITEMS", "5 ITEMS", "7 ITEMS" },
     Bat = { "NONE", "BAT", "BIG BAT", "GIANT" },
 }
@@ -337,12 +335,21 @@ for _, track in display.Tracks do
         check(row.Level == level, "displayed level")
         check(row.Max == (level == #tiers - 1), "max level detection")
         check(row.Price == (if level < #tiers - 1 then tiers[level + 2].Cost else nil), "next config price")
-        check(row.Current == expected[track.Id][level + 1], "current presentation")
-        check(row.Next == (expected[track.Id][level + 2] or "MAX"), "next presentation")
+        if display.IsStatTrack(track.Id) then
+            local prefix = if track.Id == "MovementSpeed" then "SPEED " else "STAMINA "
+            check(row.Current == prefix .. tiers[level + 1].Value, "purchased stat presentation")
+            check(
+                row.Next == (if row.Max then "MAX" else "+" .. (tiers[level + 2].Value - tiers[level + 1].Value)),
+                "next increment"
+            )
+        else
+            check(row.Current == expected[track.Id][level + 1], "current presentation")
+            check(row.Next == (expected[track.Id][level + 2] or "MAX"), "next presentation")
+        end
     end
 end
 check(display.Row("MovementSpeed", nil, nil) == nil, "wait for replication")
-check(display.Row("MovementSpeed", 4, 22) == nil, "invalid level")
+check(display.Row("MovementSpeed", #load("Upgrades").MovementSpeed, 22) == nil, "invalid level")
 for _, reason in { "InvalidUpgrade", "InvalidMembership", "Busy", "Unknown" } do
     check(display.Feedback(false, reason) == "TRY AGAIN", "other failures use retry feedback")
 end
@@ -388,6 +395,45 @@ check(
     "cash at price restores authored text opacity"
 )
 set("playerCash", 800)
+-- Shop ownership is stable while effective movement attributes change.
+for _, case in
+    {
+        { Id = "MovementSpeed", Step = 4, Headline = "SPEED 30", Increment = "+1", Price = "$7,000" },
+        { Id = "MovementSpeed", Step = 5, Headline = "SPEED 31", Increment = "+1", Price = "$9,000" },
+        { Id = "SprintStamina", Step = 5, Headline = "STAMINA 85", Increment = "+5", Price = "$7,500" },
+        { Id = "SprintStamina", Step = 6, Headline = "STAMINA 90", Increment = "+5", Price = "$10,000" },
+    }
+do
+    set(case.Id .. "PurchasedLevel", case.Step)
+    local row = view.Rows[case.Id]
+    local function stableOffer()
+        check(
+            row.Current.Text == case.Headline and row.Next.Text == case.Increment and row.Price.Text == case.Price,
+            "purchased headline and next catalog increment/price"
+        )
+    end
+    stableOffer()
+    set("IsSprinting", true)
+    set("SprintWalkSpeed", 31 * 1.4)
+    set("BaseWalkSpeed", 999)
+    set("StaminaMax", 999)
+    set(case.Id .. "Level", 0)
+    stableOffer()
+    set("IsSprinting", false)
+    set("BaseWalkSpeed", 26)
+    set("StaminaMax", 60)
+    stableOffer()
+    set(case.Id .. "PurchasedLevel", #load("Upgrades")[case.Id] - 1)
+    check(
+        row.Next.Text == "MAX" and row.Price.Text == "" and row.BuyLabel.Text == "MAX" and not row.Purchase.Interactable,
+        "maxed stat stops offering purchases"
+    )
+    set(case.Id .. "PurchasedLevel", 0)
+end
+check(
+    view.Rows.Jump.Current.Text == "JUMP 0" and view.Rows.Jump.Next.Text == "JUMP 1",
+    "capability keeps level binding"
+)
 local function click(id)
     view.Rows[id].Purchase.Activated:Fire()
 end
@@ -434,10 +480,13 @@ end
 click("MovementSpeed")
 result("MovementSpeed", true, "Success")
 check(view.Rows.MovementSpeed.BuyLabel.Text == "PURCHASED!", "success feedback")
-check(view.Rows.MovementSpeed.Current.Text == "SPEED 0" and view.Cash.Text == "$800", "result does not own state")
+check(view.Rows.MovementSpeed.Current.Text == "SPEED 26" and view.Cash.Text == "$800", "result does not own state")
 set("MovementSpeedPurchasedLevel", 1)
 set("BaseWalkSpeed", 32)
-check(view.Rows.MovementSpeed.Next.Text == "SPEED 2", "replication after response")
+check(
+    view.Rows.MovementSpeed.Next.Text == "+1" and view.Rows.MovementSpeed.Price.Text == "$3,000",
+    "replication after response"
+)
 check(
     view.Rows.MovementSpeed.BuyLabel.Text == "PURCHASED!" and not view.Rows.MovementSpeed.Purchase.Interactable,
     "replication preserves success hold"
@@ -695,7 +744,7 @@ for _, asScreenGui in { false, true, false } do
     advance(0.8)
 end
 set("MovementSpeedPurchasedLevel", 2)
-check(view.Rows.MovementSpeed.Current.Text == "SPEED 2", "post-reimport upgrade replication reaches new card")
+check(view.Rows.MovementSpeed.Current.Text == "SPEED 28", "post-reimport upgrade replication reaches new card")
 
 -- A disabled obsolete copy is ignored; two active copies cannot be guessed apart.
 local duplicate = import()
@@ -717,9 +766,9 @@ check(view.Root == root and view.Cash.Text == "$9,849,251", "disabling duplicate
 click("MovementSpeed")
 check(#sent == before + 1, "duplicate recovery binds a single purchase handler")
 result("MovementSpeed", true, "Success")
-set("MovementSpeedPurchasedLevel", 3)
+set("MovementSpeedPurchasedLevel", #load("Upgrades").MovementSpeed - 1)
 check(
-    view.Rows.MovementSpeed.Current.Text == "SPEED 3" and view.Rows.MovementSpeed.Next.Text == "MAX",
+    view.Rows.MovementSpeed.Current.Text == "SPEED 41" and view.Rows.MovementSpeed.Next.Text == "MAX",
     "purchase replication after duplicate recovery updates new card"
 )
 local desktop = root:FindFirstChild("Be a Blender! Desktop")
@@ -753,7 +802,7 @@ set("MovementSpeedPurchasedLevel", 0)
 set("PlotMembershipRevision", 4)
 advance(0)
 check(
-    view.Rows.MovementSpeed.Current.Text == "SPEED 0" and view.Rows.MovementSpeed.BuyLabel.Text == "BUY",
+    view.Rows.MovementSpeed.Current.Text == "SPEED 26" and view.Rows.MovementSpeed.BuyLabel.Text == "BUY",
     "membership renders current replicated projection"
 )
 click("MovementSpeed")

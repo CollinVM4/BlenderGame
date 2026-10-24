@@ -2,14 +2,26 @@
 return {
     SecondStorage = {
         { Cost = 0, Value = 5 },
-        { Cost = 400000, Value = 10 }
+        { Cost = 400000, Value = 10 },
     },
-    -- Index 1 is displayed level 0 for movement tracks.
+    -- Array index 1 is purchased step 0 (the free base row).
     MovementSpeed = {
         { Cost = 0, Value = 26 },
-        { Cost = 20000, Value = 32 },
-        { Cost = 125000, Value = 37 },
-        { Cost = 400000, Value = 41 },
+        { Cost = 2000, Value = 27 },
+        { Cost = 3000, Value = 28 },
+        { Cost = 4000, Value = 29 },
+        { Cost = 5000, Value = 30 },
+        { Cost = 7000, Value = 31 },
+        { Cost = 9000, Value = 32 },
+        { Cost = 12000, Value = 33 },
+        { Cost = 15000, Value = 34 },
+        { Cost = 20000, Value = 35 },
+        { Cost = 26000, Value = 36 },
+        { Cost = 34000, Value = 37 },
+        { Cost = 44000, Value = 38 },
+        { Cost = 57000, Value = 39 },
+        { Cost = 74000, Value = 40 },
+        { Cost = 96000, Value = 41 },
     },
     Jump = {
         { Cost = 0, Value = 60 },
@@ -19,9 +31,20 @@ return {
     },
     SprintStamina = {
         { Cost = 0, Value = 60 },
-        { Cost = 15000, Value = 80 },
-        { Cost = 100000, Value = 100 },
-        { Cost = 300000, Value = 130 },
+        { Cost = 1500, Value = 65 },
+        { Cost = 2000, Value = 70 },
+        { Cost = 3000, Value = 75 },
+        { Cost = 4000, Value = 80 },
+        { Cost = 5500, Value = 85 },
+        { Cost = 7500, Value = 90 },
+        { Cost = 10000, Value = 95 },
+        { Cost = 13000, Value = 100 },
+        { Cost = 17000, Value = 105 },
+        { Cost = 22000, Value = 110 },
+        { Cost = 29000, Value = 115 },
+        { Cost = 37000, Value = 120 },
+        { Cost = 48000, Value = 125 },
+        { Cost = 62000, Value = 130 },
     },
     Bat = {
         { Cost = 0, Value = 0 },
@@ -31,18 +54,18 @@ return {
     },
     CarryCapacity = {
         { Cost = 0, Value = 3 },
-        { Cost = 200000, Value = 5 },
-        { Cost = 350000, Value = 7 }
+        { Cost = 30000, Value = 5 },
+        { Cost = 150000, Value = 7 },
     },
     StackSize = { { Cost = 0, Value = 5 }, { Cost = 250000, Value = 10 } },
     BlendSpeed = {
         { Cost = 0, Value = 1 },
         { Cost = 50000, Value = 1.25 },
-        { Cost = 250000, Value = 1.5 }
+        { Cost = 250000, Value = 1.5 },
     },
     Payout = {
         { Cost = 0, Value = 1 },
         { Cost = 150000, Value = 1.3 },
-        { Cost = 600000, Value = 1.7 }
-    }
+        { Cost = 600000, Value = 1.7 },
+    },
 }

@@ -81,9 +81,9 @@ unaffordable-card styling and never changes generated scripts.
 |---|---|---|---|
 | JumpCard | Jump | JumpPurchasedLevel | JUMP 0 through JUMP 3 |
 | BatCard | Bat | BatPurchasedLevel | NO BAT, NORMAL, BIG BAT, GIANT |
-| MovementSpeedCard | MovementSpeed | MovementSpeedPurchasedLevel | SPEED 0 through SPEED 3 |
+| MovementSpeedCard | MovementSpeed | MovementSpeedPurchasedLevel | SPEED followed by purchased catalog Value |
 | CarryCapacityCard | CarryCapacity | CarryCapacityLevel | Config Value followed by ITEMS |
-| SprintStaminaCard | SprintStamina | SprintStaminaPurchasedLevel | STAMINA 0 through STAMINA 3 |
+| SprintStaminaCard | SprintStamina | SprintStaminaPurchasedLevel | STAMINA followed by purchased catalog Value |
 
 Titles are JUMP LEVEL, STUN-BAT, MOVEMENT SPEED, CARRY CAPACITY, and SPRINT STAMINA.
 Carry's configured quantities are currently 3, 5, and 7; they are read from
@@ -93,7 +93,17 @@ existing subscriptions but never determine purchased progression or displayed
 quantities. A purchased tier renders even if an effective projection arrives later.
 No other upgrade categories are exposed.
 
-Next price comes from the next shared definition's Cost via MoneyFormat.Compact.
+MovementSpeed and SprintStamina use the purchased catalog Value as their headline.
+Their authored NextValue label shows the next row's Value minus the owned Value
+(`+1` / `+5`); PurchasePrice shows that next row's Cost via MoneyFormat.Full.
+For example, SPEED 31 offers +1 with $9,000, and STAMINA 85 offers +5 with $7,500.
+These remain separate existing authored labels. Sprinting, effective attributes,
+and Studio overrides cannot change this offer. The inspected export has no
+three-level pips or segments on either stat card, so no visibility workaround or
+replacement UI is needed. Other tracks retain their existing level/value binding
+and MoneyFormat.Compact price formatting. See [stat upgrade validation](STAT_UPGRADES.md).
+
+Next price always comes from the next shared definition's Cost.
 MAX keeps the current value, shows MAX as the next value and BuyLabel, clears price
 text, and disables purchases. Cash is bound solely to playerCash using the new
 shared MoneyFormat.Full, producing $0, $1,000, $125,000, $10,000,000, and

@@ -1,5 +1,6 @@
 --!strict
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
+local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local IngredientSpawn = {}
 local bound: { [Instance]: boolean } = {}
 
@@ -24,30 +25,37 @@ function IngredientSpawn.Bind(services: any, tag: string, onSpawn: ((Instance, s
             warn("[IngredientSpawn] Set a valid IngredientId: " .. station:GetFullName())
             return nil
         end
-        local configuredSeconds = station:GetAttribute("RespawnSeconds")
-        local seconds: number = 5
-        if
-            typeof(configuredSeconds) == "number"
-            and configuredSeconds == configuredSeconds
-            and configuredSeconds > 0
-            and configuredSeconds < math.huge
-        then
-            seconds = configuredSeconds
-        end
-        local minSeconds = seconds
-        local maxSeconds = seconds
-        if onSpawn then
-            local low = station:GetAttribute("MinRespawnSeconds")
-            local high = station:GetAttribute("MaxRespawnSeconds")
+        local minSeconds: number
+        local maxSeconds: number
+        if tag == "IngredientSpawn" then
+            local definition = services.IngredientService.GetDefinition(id)
+            local seconds = Economy.SpecialRefillSeconds[id] or Economy.RefillSeconds[definition.JumpLocation]
+            minSeconds, maxSeconds = seconds, seconds
+        else
+            -- Announced spawns retain their separate authored lifecycle.
+            local configuredSeconds = station:GetAttribute("RespawnSeconds")
+            local seconds = 5
             if
-                typeof(low) == "number"
-                and typeof(high) == "number"
-                and low > 0
-                and high >= low
-                and high < math.huge
+                typeof(configuredSeconds) == "number"
+                and configuredSeconds == configuredSeconds
+                and configuredSeconds > 0
+                and configuredSeconds < math.huge
             then
-                minSeconds = low
-                maxSeconds = high
+                seconds = configuredSeconds
+            end
+            minSeconds, maxSeconds = seconds, seconds
+            if onSpawn then
+                local low = station:GetAttribute("MinRespawnSeconds")
+                local high = station:GetAttribute("MaxRespawnSeconds")
+                if
+                    typeof(low) == "number"
+                    and typeof(high) == "number"
+                    and low > 0
+                    and high >= low
+                    and high < math.huge
+                then
+                    minSeconds, maxSeconds = low, high
+                end
             end
         end
 
@@ -67,13 +75,13 @@ function IngredientSpawn.Bind(services: any, tag: string, onSpawn: ((Instance, s
             if stopped or active or not station:IsDescendantOf(workspace) then
                 return
             end
-            local item = services.IngredientService.Spawn(
-                id,
-                IngredientSpawn.GetSpawnCFrame(station),
-                nil,
-                true,
-                { FreezeUntilPickup = station:GetAttribute("FreezeSpawnedItem") == true }
-            )
+            local item = services.IngredientService.Spawn(id, IngredientSpawn.GetSpawnCFrame(station), nil, true, {
+                Origin = if tag == "IngredientSpawn"
+                    then "Market"
+                    elseif tag == "AnnouncedIngredientSpawn" then "Event"
+                    else "Unknown",
+                FreezeUntilPickup = station:GetAttribute("FreezeSpawnedItem") == true,
+            })
             if not item then
                 return
             end

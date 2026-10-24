@@ -589,7 +589,7 @@ function InventoryService.GrantIngredient(player: Player, id: string): boolean
     if not visual then
         return false
     end
-    local item = Item.New(id, game:GetService("HttpService"):GenerateGUID(false))
+    local item = Item.New(id, game:GetService("HttpService"):GenerateGUID(false), "Unknown")
     return equipVisual(player, id, visual, nil, nil, nil, item)
 end
 
@@ -891,7 +891,7 @@ function InventoryService.InitializeTutorialStash(player: Player): (boolean, str
                 if not deps.IngredientService.GetDefinition(ingredientId) then
                     error("InvalidIngredient id=" .. ingredientId)
                 end
-                local unit = Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false))
+                local unit = Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false), "Unknown")
                 Item.EnterStash(unit, now)
                 table.insert(units, unit)
             end
@@ -1025,7 +1025,7 @@ local function reserveUnit(player: Player, id: string, item: Types.IngredientIte
     if count >= InventoryService.GetStackCap(player) then
         return false
     end
-    table.insert(units, item or Item.New(id, game:GetService("HttpService"):GenerateGUID(false)))
+    table.insert(units, item or Item.New(id, game:GetService("HttpService"):GenerateGUID(false), "Unknown"))
     carried[player][id] = units
     return true
 end

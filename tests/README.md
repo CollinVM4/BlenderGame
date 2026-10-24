@@ -70,7 +70,7 @@ requiring Luau.
 | Repeated smoothie connection counts and shared Tool identity assertions removed | `smoothie-survivors`: selected removal preserves usable survivors; stale old Tool activation/unequip cannot affect a new stack. Mixed lifecycle matrix stays in smoothie state. |
 | Single-ingredient death/reset/destroy repetitions removed from carry setup | Full-stack lifecycle matrix in carry state, plus missing-character/repeated-event/disconnect cases in legacy-state. |
 | Motor/handle checks removed from every gameplay setup | Representative attach/throw/drop/clear checks in carry-presentation, including initially disabled motor state. |
-| Duplicate all-smoothie mixed-capacity row removed | Smoothie capacity loop already exercises capacities 1–3; mixed ingredient/smoothie rows remain. |
+| Duplicate all-smoothie mixed-capacity row removed | Smoothie capacity loop already exercises capacities 1â€“3; mixed ingredient/smoothie rows remain. |
 | Generic stash foreign/protected/dead checks and ingredient slot capacity repeated in smoothie removed | Stash interaction and legacy-state retain access, capacity and failure preservation. Smoothie-specific nonstacking, metadata isolation and visual/equip rollback remain. |
 | Second frozen-origin stash flow removed | One frozen-origin round-trip remains; earlier multipart reconstruction and generic stash tests retain the other contracts. |
 | Frozen-item destruction-order callback removed | Successful pickup must transfer registry ownership; carried visuals and subsequent throw/drop must be unfrozen. No assertion requires unanchoring a retiring object before `Destroy`. |
@@ -79,7 +79,7 @@ requiring Luau.
 | Legacy payout/grade/random-reaction block moved | `customer_compatibility` retains all original checks. Current `Serve` payout/replay remains in state and integration tests. |
 
 No entire spec was deleted and no unique gameplay contract was intentionally
-removed. Most line changes are fixture/test moves. Approximately 8–10 duplicate
+removed. Most line changes are fixture/test moves. Approximately 8â€“10 duplicate
 assertion/scenario clusters were consolidated; this is not a reduction in intended
 behavioral coverage. Comparing the original five focused suites with their moved
 coverage (excluding the new round-trip and newly selected stash geometry), roughly
@@ -103,7 +103,7 @@ separate from that estimate and is not treated as a coverage reduction.
 - Rotated stash geometry checks usable surface sizing and clearance instead of
   the stale exact 4.4-stud tuning value. Client presentation startup ignores
   unrelated controller internals rather than requiring fixture edits per controller.
-- `smoothie-roundtrip` exercises real blend → dispense → stash → take → serve,
+- `smoothie-roundtrip` exercises real blend â†’ dispense â†’ stash â†’ take â†’ serve,
   preserving BlendId and ordered duplicate ingredients, removing the stored copy,
   and consuming/paying/completing once. `smoothie-survivors` retains the mixed-stack
   removal/activation flow independently of its visual reflow assertions.
@@ -118,7 +118,7 @@ separate from that estimate and is not treated as a coverage reduction.
 | customer-compatibility | 5 | 0 | PASS |
 | sprint | 32 | 0 | PASS |
 | legacy-state | 707 | 0 | PASS |
-| legacy-movement | — | — | FAIL; pre-existing stale baseline |
+| legacy-movement | â€” | â€” | FAIL; pre-existing stale baseline |
 | requests | 247 | 31 | PASS |
 | world | 167 | 3 | PASS |
 | smoothie-roundtrip | 5 | 8 | PASS |
@@ -357,3 +357,13 @@ adapter, gate logic, preset geometry, and record/play/seek/HUD/camera restoratio
 its existing camera contracts. Native CFrame/JSON and a real filmed take require
 the separate [Studio checks](../docs/FILMCAM.md); CLI doubles do not establish
 visual smoothness. These suites do not gate authoritative gameplay tests.
+
+
+## Economy redesign (2026-10-23)
+
+The focused economy command, provenance producer audit, tier-3 ground-floor demand
+report, baseline failures and outstanding Studio session log are in
+[ECONOMY_REDESIGN.md](../docs/ECONOMY_REDESIGN.md). `request-selection` now owns
+joint physical accessibility and uniform whole-pool prompt selection; its earlier
+recency/group/similarity prompt-selection contracts above are retired. Template
+recency and special/fixed request behavior remain separate.

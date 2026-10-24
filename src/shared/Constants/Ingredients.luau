@@ -256,6 +256,7 @@ local Ingredients: { [string]: IngredientDefinition } = {
 
     Gummy_Bear = {
         Id = "Gummy_Bear",
+        Farmable = false,
         DisplayName = "Gummy Bear",
         Tags = { "Candy", "Sweet", "Red" },
         BlendColor = Color3.fromRGB(255, 100, 100),

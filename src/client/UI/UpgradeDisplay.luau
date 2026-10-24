@@ -19,7 +19,11 @@ local tiers: { [string]: { { Cost: number, Value: number } } } = {
 }
 
 local batNames = { "NONE", "BAT", "BIG BAT", "GIANT" }
-local prefixes: { [string]: string } = { Jump = "JUMP", MovementSpeed = "SPEED", SprintStamina = "STAM" }
+local prefixes: { [string]: string } = { Jump = "JUMP", MovementSpeed = "SPEED", SprintStamina = "STAMINA" }
+
+function Display.IsStatTrack(id: string): boolean
+    return id == "MovementSpeed" or id == "SprintStamina"
+end
 
 local function valueText(id: string, level: number, value: number): string
     if id == "Bat" then
@@ -27,7 +31,7 @@ local function valueText(id: string, level: number, value: number): string
     elseif id == "CarryCapacity" then
         return tostring(value) .. " ITEMS"
     end
-    return prefixes[id] .. " " .. tostring(level)
+    return prefixes[id] .. " " .. tostring(if Display.IsStatTrack(id) then value else level)
 end
 
 -- Progression and prices come from purchased tiers, never temporary effective stats.
@@ -42,8 +46,12 @@ function Display.Row(
         return nil
     end
     local nextTier = track[level + 2]
-    local currentText = valueText(id, level, track[level + 1].Value)
-    local nextText = if nextTier then valueText(id, level + 1, nextTier.Value) else "MAX"
+    local currentValue = track[level + 1].Value
+    local currentText = valueText(id, level, currentValue)
+    local nextText = if not nextTier
+        then "MAX"
+        elseif Display.IsStatTrack(id) then "+" .. tostring(nextTier.Value - currentValue)
+        else valueText(id, level + 1, nextTier.Value)
     return {
         Level = level,
         Stat = currentText .. " \u{2192} " .. nextText,
