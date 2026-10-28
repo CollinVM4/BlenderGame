@@ -5,15 +5,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
+local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Constants.IceShotgunPresentationConfig)
 local Controller = {}
 type Hit = { Position: Vector3, UserId: number, Frozen: boolean }
 type Result = {
     Origin: Vector3,
-    Direction: Vector3,
-    Range: number,
-    Angle: number,
+    -- The server hit radius. The pulse is sized to exactly this value, so
+    -- the visible blast and the actual hit area are the same sphere.
+    Radius: number,
     ShooterUserId: number,
     ServerTime: number,
     Hits: { Hit },
@@ -22,7 +23,7 @@ type Blast = { Model: Model, Expires: number }
 local active: { Blast } = {}
 local connections: { RBXScriptConnection } = {}
 local started, generation = false, 0
-local shotSound, impactSound, frostTexture = Config.FallbackSoundId, Config.FallbackSoundId, Config.FallbackTexture
+local shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 local feedback: ScreenGui? = nil
 local feedbackUntil = 0
 
@@ -39,14 +40,9 @@ local function valid(result: any): boolean
     if
         typeof(result) ~= "table"
         or not vector(result.Origin)
-        or not vector(result.Direction)
-        or math.abs(result.Direction.Magnitude - 1) > 0.01
-        or not finite(result.Range)
-        or result.Range <= 0
-        or result.Range > 128
-        or not finite(result.Angle)
-        or result.Angle <= 0
-        or result.Angle >= 120
+        or not finite(result.Radius)
+        or result.Radius <= 0
+        or result.Radius > 128
         or not finite(result.ShooterUserId)
         or not finite(result.ServerTime)
         or typeof(result.Hits) ~= "table"
@@ -82,32 +78,19 @@ local function tween(object: Instance, seconds: number, properties: { [string]: 
     TweenService:Create(object, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties)
         :Play()
 end
-local function triangle(model: Model, origin: Vector3, a: Vector3, b: Vector3, c: Vector3)
-    local ab, ac, bc = b - a, c - a, c - b
-    if ab.Magnitude > ac.Magnitude and ab.Magnitude > bc.Magnitude then
-        a, c = c, a
-    elseif ac.Magnitude > bc.Magnitude then
-        a, b = b, a
-    end
-    ab, ac, bc = b - a, c - a, c - b
-    local right, back = ac:Cross(ab).Unit, bc.Unit
-    local up = back:Cross(right).Unit
-    local height = math.abs(ab:Dot(up))
-    -- Two native thin wedges per cone face; no downloaded mesh or simulated physics.
-    for _, side in
-        {
-            { Position = (a + b) / 2, Right = right, Back = back, Width = math.abs(ab:Dot(back)) },
-            { Position = (a + c) / 2, Right = right * -1, Back = back * -1, Width = math.abs(ac:Dot(back)) },
-        }
-    do
-        local final = CFrame.fromMatrix(side.Position, side.Right, up, side.Back)
-        local start = CFrame.fromMatrix(origin + (side.Position - origin) * 0.025, side.Right, up, side.Back)
-        local size = Vector3.new(0.025, height, side.Width)
-        local wedge = part("WedgePart", model, start, size * 0.025)
-        wedge.Name = "IceConePanel"
-        tween(wedge, Config.ConeGrowSeconds, { CFrame = final, Size = size })
-        tween(wedge, Config.ConeGrowSeconds + Config.ConeFadeSeconds, { Transparency = 1 })
-    end
+-- Transparent bluish pulse expanding outward from the caster, in the style
+-- of an outward burst: it starts small at the caster and grows to exactly
+-- the server hit radius, then fades. It is one native sphere, anchored and
+-- fully inert (no collision, touch, query or shadow), so it cannot block
+-- input, movement or raycasts, and it adds no movement mechanic.
+local function pulse(model: Model, origin: Vector3, radius: number): BasePart
+    local sphere = part("Part", model, CFrame.new(origin), Vector3.new(2, 2, 2)) :: Part
+    sphere.Name, sphere.Shape = "IceRadialPulse", Enum.PartType.Ball
+    sphere.Transparency = Config.PulseStartTransparency
+    local finalSize = Vector3.new(radius * 2, radius * 2, radius * 2)
+    tween(sphere, Config.PulseGrowSeconds, { Size = finalSize })
+    tween(sphere, Config.PulseGrowSeconds + Config.PulseFadeSeconds, { Transparency = 1 })
+    return sphere
 end
 local function frost(parent: BasePart, count: number, angle: number)
     local emitter = Instance.new("ParticleEmitter")
@@ -122,13 +105,16 @@ local function frost(parent: BasePart, count: number, angle: number)
     emitter.Parent = parent
     emitter:Emit(count)
 end
-local function sound(parent: BasePart, id: string, volume: number)
+local function sound(parent: Instance, id: string, volume: number)
     local clip = Instance.new("Sound")
     clip.SoundId, clip.Volume = id, volume
-    clip.RollOffMinDistance, clip.RollOffMaxDistance = 6, 70
-    clip.PlaybackSpeed = if id == Config.FallbackSoundId then 1.5 else 1
+    clip.Name = "IceRayCast"
+    clip.RollOffMode = Enum.RollOffMode.InverseTapered
+    clip.RollOffMinDistance, clip.RollOffMaxDistance = Config.SoundMinDistance, Config.SoundMaxDistance
+    clip.PlaybackSpeed = 1
     clip.Parent = parent
     clip:Play()
+    Debris:AddItem(clip, Config.SoundLifetime)
 end
 local function shards(model: Model, position: Vector3, count: number)
     for i = 1, count do
@@ -215,28 +201,20 @@ function Controller.Play(result: any): boolean
     local model = Instance.new("Model")
     model.Name, model.Parent = "IceShotgunBlast", workspace
     table.insert(active, { Model = model, Expires = os.clock() + Config.Lifetime })
-    local origin, direction = result.Origin, result.Direction
-    local up = if math.abs(direction.Y) > 0.95 then Vector3.new(1, 0, 0) else Vector3.new(0, 1, 0)
-    local at = CFrame.lookAt(origin, origin + direction, up)
-    local segments = if isMobile then Config.MobileConeSegments else Config.ConeSegments
-    -- Gameplay range is radial, so the cone rim must stay inside that sphere.
-    local halfAngle = math.rad(result.Angle * 0.5)
-    local radius = result.Range * math.sin(halfAngle)
-    local center = origin + direction * (result.Range * math.cos(halfAngle))
-    for i = 1, segments do
-        local angle0, angle1 = (i - 1) * math.pi * 2 / segments, i * math.pi * 2 / segments
-        local b = center + at.RightVector * (math.cos(angle0) * radius) + at.UpVector * (math.sin(angle0) * radius)
-        local c = center + at.RightVector * (math.cos(angle1) * radius) + at.UpVector * (math.sin(angle1) * radius)
-        triangle(model, origin, origin, b, c)
-    end
-    local muzzle = part("Part", model, at, Vector3.new(0.15, 0.15, 0.15)) :: Part
-    muzzle.Name, muzzle.Shape, muzzle.Material = "IceMuzzleFlash", Enum.PartType.Ball, Enum.Material.Neon
-    muzzle.Transparency = 0.15
-    tween(muzzle, 0.12, { Size = Vector3.new(1.5, 1.5, 1.5), Transparency = 1 })
-    frost(muzzle, if isMobile then Config.MobileFrostCount else Config.FrostCount, result.Angle)
-    sound(muzzle, shotSound, 0.5)
+    local origin = result.Origin
+    -- The pulse diameter is exactly twice the server radius: what players
+    -- see expanding around the caster is the area that was actually hit.
+    local center = pulse(model, origin, result.Radius)
+    frost(center, if isMobile then Config.MobileFrostCount else Config.FrostCount, 360)
+    local caster = Players:GetPlayerByUserId(result.ShooterUserId)
+    local root = caster and caster.Character and caster.Character:FindFirstChild("HumanoidRootPart")
+    -- A dedicated emitter follows the caster; the expanding pulse is never an audio source.
+    local emitter = Instance.new("Attachment")
+    emitter.Name = "IceRayCastEmitter"
+    emitter.Parent = if root and root:IsA("BasePart") then root else center
+    sound(emitter, shotSound, Config.CastVolume)
+    Debris:AddItem(emitter, Config.SoundLifetime)
     local shardCount = if isMobile then Config.MobileShardCount else Config.ShardCount
-    shards(model, origin + direction, shardCount)
     local maxImpacts = if isMobile then Config.MobileMaxImpactEffects else Config.MaxImpactEffects
     for index, hit in result.Hits do
         if index > maxImpacts then
@@ -246,7 +224,6 @@ function Controller.Play(result: any): boolean
         impact.Name, impact.Transparency = "IceImpact", 1
         frost(impact, if isMobile then 6 else 10, 180)
         shards(model, hit.Position, shardCount)
-        sound(impact, impactSound, 0.35)
     end
     return true
 end
@@ -268,15 +245,13 @@ function Controller.Init()
     task.spawn(function()
         pcall(function()
             ContentProvider:PreloadAsync(
-                { Config.ShotSoundId, Config.ImpactSoundId, Config.FrostTexture },
+                { Config.ShotSoundId, Config.FallbackSoundId, Config.FrostTexture },
                 function(id, fetchStatus)
                     if not started or generation ~= token or fetchStatus ~= Enum.AssetFetchStatus.Success then
                         return
                     end
                     if id == Config.ShotSoundId then
                         shotSound = id
-                    elseif id == Config.ImpactSoundId then
-                        impactSound = id
                     elseif id == Config.FrostTexture then
                         frostTexture = id
                     end
@@ -297,6 +272,6 @@ function Controller.Destroy()
     end
     table.clear(active)
     clearFeedback()
-    shotSound, impactSound, frostTexture = Config.FallbackSoundId, Config.FallbackSoundId, Config.FallbackTexture
+    shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 end
 return Controller

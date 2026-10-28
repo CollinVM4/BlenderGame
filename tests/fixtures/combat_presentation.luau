@@ -53,6 +53,7 @@ env.Enum.PartType = { Ball = "Ball" }
 env.Enum.EasingStyle, env.Enum.EasingDirection = { Quad = "Quad" }, { Out = "Out" }
 env.Enum.HighlightDepthMode = { Occluded = "Occluded" }
 env.Enum.PreferredInput = { Touch = "Touch", KeyboardAndMouse = "KeyboardAndMouse" }
+env.Enum.RollOffMode = { InverseTapered = "InverseTapered" }
 env.Enum.AssetFetchStatus = { Success = "Success", Failure = "Failure" }
 services.TweenService = {
     Create = function(_, object, info, properties)
@@ -115,4 +116,13 @@ local function childrenNamed(parent, name)
         end
     end
     return result
+end
+
+services.Players.GetPlayerByUserId = function(_, id)
+    for _, player in roster do
+        if player.UserId == id then
+            return player
+        end
+    end
+    return nil
 end

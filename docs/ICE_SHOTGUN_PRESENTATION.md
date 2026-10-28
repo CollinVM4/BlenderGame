@@ -1,38 +1,42 @@
-# Ice Shotgun presentation
+# Ice Ray presentation
 
-The shot cone, frost, shards, muzzle flash, sound and hit feedback are rendered
-locally by `IceShotgunPresentationController`. `IceShotgunPresentationService`
+The radial pulse, frost, shards, sound and hit feedback are rendered locally
+by `IceShotgunPresentationController`. `IceShotgunPresentationService`
 broadcasts `Shared.Events.IceShotgunResult` only after an accepted server shot.
-It contains the authoritative muzzle, direction, range, full angle, shooter,
-server timestamp and successful hits, including whether each hit actually froze.
-The remote has no server receive handler. Rejected fire requests produce no blast;
-accepted misses produce a blast with no hit marker or impact effects.
+It contains the authoritative caster root, blast radius, shooter, server
+timestamp and successful hits, including whether each hit actually froze. There
+is no direction or angle in the payload anymore. The remote has no server
+receive handler. Rejected fire requests produce no blast; accepted misses
+produce a pulse with no hit marker or impact effects.
 
-Damage, cone eligibility/raycast calculations and server cooldown are unchanged
-from Pass 1. Original server muzzle/impact cosmetics have moved to the client
-result handler to avoid duplicate bursts and sound. The existing server ice-block
-freeze, formation/shatter and gameplay locks remain in use.
+Damage, radial eligibility and server cooldown are unchanged from Pass 1,
+except that eligibility is now radius-only (see
+[ICE_SHOTGUN.md](ICE_SHOTGUN.md)). Original server impact cosmetics have moved
+to the client result handler to avoid duplicate bursts and sound. The existing
+server ice-block freeze, formation/shatter and gameplay locks remain in use.
 
 ## Visuals and budgets
 
-The translucent blue cone expands over 0.11 seconds and fades by 0.35 seconds.
-Thin, anchored native wedges form its faces; the rim respects the server's radial
-range and cone angle. Frost uses brief one-shot particle emission; shards use
-tweens with no physical simulation. Muzzle flash uses a small fading neon sphere.
-All effect geometry has collision, touch, query and shadows disabled. No client
+A transparent bluish sphere expands outward around the caster, in the style
+of an outward burst, with no movement mechanic attached. It grows to exactly
+the server blast radius over 0.11 seconds and fades by 0.35 seconds, so the
+visible edge is the hit edge. Frost uses brief one-shot particle emission
+from the pulse center; shards use tweens with no physical simulation. All
+effect geometry has collision, touch, query and shadows disabled. No client
 effects participate in hit detection or alter character properties.
 
 | Budget | Desktop | Touch |
 |---|---:|---:|
 | Concurrent blasts | 4 | 2 |
 | View distance | 100 studs | 70 studs |
-| Cone faces | 8 | 6 |
-| Muzzle frost particles | 24 | 12 |
+| Pulse spheres per blast | 1 | 1 |
+| Center frost particles | 24 | 12 |
 | Rendered impacts per shot | 4 | 2 |
 | Frost particles per rendered impact | 10 | 6 |
-| Shards at muzzle/per rendered impact | 4 | 2 |
+| Shards per rendered impact | 4 | 2 |
 
-One blast creates at most 41 native parts on desktop or 21 on touch. Particle
+One blast creates at most 21 native parts on desktop or 7 on touch (pulse
+plus one impact part and its shards per rendered impact). Particle
 lifetimes stop at 0.35 seconds; the shared cleanup removes blast models by 0.65
 seconds. Nearby simultaneous shots have a fixed concurrent budget; additional
 world bursts are dropped while confirmed local HUD feedback still updates. There

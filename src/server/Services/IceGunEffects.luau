@@ -4,6 +4,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.IceGunConfig)
+local Audio = require(game:GetService("ReplicatedStorage").Shared.Constants.IceShotgunPresentationConfig)
 local Effects = {}
 local blocks: { [Model]: BasePart } = {}
 
@@ -29,13 +30,50 @@ local function emit(part: BasePart, source: Instance, name: string, count: numbe
     end
 end
 
+-- All audible nearby freeze/thaw voices share one budget. A listener can hear
+-- only sources within MaxDistance; every such pair is within twice that range.
+-- Count overlapping clips, including different casters, instead of only one AoE.
+type Voice = { Clip: Sound, Root: BasePart, Volume: number }
+local voices: { Voice } = {}
+local function balanceVoices()
+    for _, voice in voices do
+        local count = 0
+        for _, other in voices do
+            if (voice.Root.Position - other.Root.Position).Magnitude <= Audio.SoundMaxDistance * 2 then
+                count += 1
+            end
+        end
+        voice.Clip.Volume = voice.Volume / math.max(count, 1)
+    end
+end
 local function sound(part: BasePart, source: Instance, name: string)
     local template = source:FindFirstChild(name)
     if template and template:IsA("Sound") then
         local clone = template:Clone()
-        clone.RollOffMaxDistance = 100
+        clone.Name = if name == "IceCrack" then "IceRayFreeze" else "IceRayThaw"
+        clone.RollOffMode = Enum.RollOffMode.InverseTapered
+        clone.RollOffMinDistance, clone.RollOffMaxDistance = Audio.SoundMinDistance, Audio.SoundMaxDistance
+        clone.Looped, clone.PlayOnRemove = false, false
+        local voice: Voice = {
+            Clip = clone,
+            Root = part,
+            Volume = if name == "IceCrack" then Audio.FreezeVolume else Audio.ThawVolume,
+        }
         clone.Parent = part
+        table.insert(voices, voice)
+        balanceVoices()
         clone:Play()
+        local function retire()
+            local index = table.find(voices, voice)
+            if index then
+                table.remove(voices, index)
+                clone:Destroy()
+                balanceVoices()
+            end
+        end
+        clone.Ended:Once(retire)
+        clone.Destroying:Once(retire)
+        task.delay(Audio.SoundLifetime, retire)
     end
 end
 
@@ -88,15 +126,20 @@ function Effects.Freeze(character: Model)
     blocks[character] = block
     block.Parent = workspace
     local source = templates():FindFirstChild("FreezeEffects") :: Folder
-    sound(block, source, "IceCrack")
+    sound(torso, source, "IceCrack")
     emit(block, source, "Puff", 30)
     local info = TweenInfo.new(Config.FreezeGrowthSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     TweenService:Create(block, info, { Size = fullSize }):Play()
     TweenService:Create(mesh, info, { Scale = fullScale }):Play()
-    Debris:AddItem(block, Config.FreezeSeconds + 1)
+    -- FreezeStatusService owns lifetime, including delayed thaw and early cancellation.
 end
 
 function Effects.ClearFreeze(character: Model, shatter: boolean)
+    local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+    local freezeSound = torso and torso:FindFirstChild("IceRayFreeze")
+    if freezeSound then
+        freezeSound:Destroy()
+    end
     local block = blocks[character]
     blocks[character] = nil
     if not block then
@@ -111,7 +154,10 @@ function Effects.ClearFreeze(character: Model, shatter: boolean)
         residue.Transparency = 1
         residue.Parent = workspace
         local source = templates():FindFirstChild("FreezeEffects") :: Folder
-        sound(residue, source, "Shatter")
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if root and root:IsA("BasePart") then
+            sound(root, source, "Shatter")
+        end
         emit(residue, source, "FrostSparkles", 80)
         Debris:AddItem(residue, 4)
         -- Small inert shards reuse the original ice mesh and texture; no collision platforms.

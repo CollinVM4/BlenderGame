@@ -136,7 +136,7 @@ for _, reason in { "death", "character-removing", "departure" } do
         movement.IsFrozen(target) and ice[target.Character],
         "old bat/thaw callbacks cannot unlock replacement freeze"
     )
-    advance(1.01)
+    advance(iceConfig.FreezeSeconds - 1.5 + 0.01)
     check(not movement.IsMovementLocked(target), "replacement recovers on its own deadline")
     combat.RemovePlayer(target)
     freeze.RemovePlayer(target)
