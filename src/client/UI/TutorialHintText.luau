@@ -19,6 +19,10 @@ local hints: { [string]: string } = {
     Serve = "Serve customer and get PAYED!",
 }
 function Text.Get(stage: string, preferred: Enum.PreferredInput, button: string): string?
+    if stage == "BuyJump" or stage == "BuyBat" then
+        local action = if preferred == Enum.PreferredInput.Touch then "Tap" else "Click"
+        return action .. " Upgrades and buy " .. (if stage == "BuyJump" then "JUMP 1!" else "a Bat Weapon!")
+    end
     if stage == "Blender" then
         if preferred == Enum.PreferredInput.Touch then
             return "Tap Throw to toss it in!"

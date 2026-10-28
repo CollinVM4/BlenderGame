@@ -5,8 +5,14 @@ local Config = require(Shared.Constants.Ripeness)
 local Ingredients = require(Shared.Constants.Ingredients)
 local Item = {}
 
-function Item.New(id: string, itemId: string): Types.IngredientItem
-    return { IngredientId = id, ItemId = itemId, RipenessStoredSeconds = 0, IsRipe = false }
+function Item.New(id: string, itemId: string, origin: Types.IngredientOrigin?): Types.IngredientItem
+    return {
+        IngredientId = id,
+        ItemId = itemId,
+        Origin = origin or "Unknown",
+        RipenessStoredSeconds = 0,
+        IsRipe = false,
+    }
 end
 
 function Item.ApplySourceMetadata(object: Instance, item: Types.IngredientItem)
@@ -74,14 +80,22 @@ function Item.CopyAll(items: { Types.IngredientItem }?): { Types.IngredientItem 
 end
 
 -- Legacy ID-only smoothies represent fresh ingredients. New smoothies retain units.
+function Item.GetSmoothieIngredientValue(
+    data: { Ingredients: { string }, IngredientItems: { Types.IngredientItem }? },
+    index: number,
+    now: number
+): number
+    local unit = data.IngredientItems and data.IngredientItems[index]
+    return if unit then Item.GetIngredientValue(unit, now) else Ingredients[data.Ingredients[index]].Value
+end
+
 function Item.GetSmoothieValue(
     data: { Ingredients: { string }, IngredientItems: { Types.IngredientItem }? },
     now: number
 ): number
     local total = 0
-    for index, id in data.Ingredients do
-        local unit = data.IngredientItems and data.IngredientItems[index]
-        total += if unit then Item.GetIngredientValue(unit, now) else Ingredients[id].Value
+    for index in data.Ingredients do
+        total += Item.GetSmoothieIngredientValue(data, index, now)
     end
     return total
 end

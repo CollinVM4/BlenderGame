@@ -82,7 +82,10 @@ local definitions = loadModule("Ingredients")
 local money = loadModule("MoneyFormat")
 local valueGui = root:FindFirstChild("CarryValue")
 local fullValue = definitions.Strawberry.Value + definitions.Ice.Value + definitions.Cherries.Value
-check(valueGui:FindFirstChild("Value").Text == money.Compact(fullValue), "carried ingredient total uses one monetary label")
+check(
+    valueGui:FindFirstChild("Value").Text == money.Compact(fullValue),
+    "carried ingredient total uses one monetary label"
+)
 check(not valueGui:FindFirstChild("RipenessDetails"), "ingredient stack has no rarity or Fresh/Ripe row")
 humanoid:EquipTool(slots[1])
 slots[1].Parent = backpack
@@ -122,8 +125,11 @@ local lower = hosts[1]:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCar
 local upper = hosts[3]:FindFirstChild("CarryAnchor"):FindFirstChild("OverheadCarry").C0.Position
 check((lower - positions[1]).Magnitude < 1e-6, "middle removal preserves lower visual position")
 check(math.abs(upper.Y - positions[2].Y) < 1e-6, "middle removal closes exactly the removed stack gap")
-check(valueGui:FindFirstChild("Value").Text == money.Compact(fullValue - definitions.Ice.Value)
-    and not valueGui:FindFirstChild("RipenessDetails"), "stash deposit updates value without metadata")
+check(
+    valueGui:FindFirstChild("Value").Text == money.Compact(fullValue - definitions.Ice.Value)
+        and not valueGui:FindFirstChild("RipenessDetails"),
+    "stash deposit updates value without metadata"
+)
 inventory.ClearHeld(player)
 check(hosts[1].Destroyed and hosts[3].Destroyed, "clear retires remaining overhead visuals")
 check(not root:FindFirstChild("CarryValue"), "empty inventory hides carried value")
@@ -131,18 +137,19 @@ check(not root:FindFirstChild("CarryValue"), "empty inventory hides carried valu
 carry.RefreshValue(player, {
     { Smoothie = { BlendId = "carry-value", Ingredients = { "Strawberry", "Strawberry", "Banana" } } },
 })
-check(
-    root:FindFirstChild("CarryValue"):FindFirstChild("Value").Text
-        == money.Compact(definitions.Strawberry.Value * 2 + definitions.Banana.Value),
-    "held smoothie contributes composition subtotal including duplicates"
-)
+check(not root:FindFirstChild("CarryValue"), "smoothie-only carry hides carried value")
 carry.RefreshValue(player, {
     { Smoothie = { BlendId = "carry-value", Ingredients = { "Strawberry", "Strawberry", "Banana" } } },
     { Id = "Strawberry", Item = loadModule("IngredientItem").New("Strawberry", "held-only"), Height = 1 },
 })
-check(root:FindFirstChild("CarryValue"):FindFirstChild("Value").Text
-    == money.Compact(definitions.Strawberry.Value * 3 + definitions.Banana.Value),
-    "mixed carry totals smoothie and ingredient effective values")
+check(
+    root:FindFirstChild("CarryValue"):FindFirstChild("Value").Text == money.Compact(definitions.Strawberry.Value),
+    "mixed carry shows only ingredient value"
+)
+carry.RefreshValue(player, {
+    { Smoothie = { BlendId = "carry-value", Ingredients = { "Strawberry", "Strawberry", "Banana" } } },
+})
+check(not root:FindFirstChild("CarryValue"), "removing last ingredient hides mixed carry value")
 local ripeBanana = loadModule("IngredientItem").New("Banana", "ripe-held")
 ripeBanana.IsRipe = true
 carry.RefreshValue(player, { { Id = "Banana", Item = ripeBanana, Height = 1 } })

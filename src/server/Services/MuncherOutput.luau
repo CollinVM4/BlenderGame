@@ -62,6 +62,7 @@ function Output.Spawn(ingredients: any, transaction: any): boolean
     local candidate: Instance? = nil
     local ok, result = pcall(function()
         return ingredients.Spawn(transaction.Reward, at, nil, true, {
+            Origin = "Muncher",
             MuncherImmune = true,
             BeforePublish = function(object: Instance)
                 candidate = object

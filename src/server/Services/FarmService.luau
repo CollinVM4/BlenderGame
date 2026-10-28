@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
+local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local Eligibility = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmEligibility)
 local WorldUtil = require(script.Parent.WorldUtil)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
@@ -155,6 +156,7 @@ local function grow(farm: any, row: any, session: string, generation: number, id
             nil,
             true,
             {
+                Origin = "Farm",
                 FreezeUntilPickup = true,
                 FarmManaged = true,
                 BeforePublish = function(object: Instance)
@@ -220,11 +222,7 @@ local function plant(farm: any, row: any, player: Player)
     if not id or not definition or not Eligibility.CanPlant(definition) then
         return
     end
-    local duration = (Config.GrowSeconds :: any)[definition.Rarity]
-    if not duration then
-        warn("[FarmService] Unknown rarity for " .. id .. "; using Common")
-        duration = Config.GrowSeconds.Common
-    end
+    local duration = Economy.RefillSeconds[definition.JumpLocation] * #row.Grow
     local token = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
     if not token then
         return

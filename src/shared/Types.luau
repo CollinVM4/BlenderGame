@@ -2,9 +2,11 @@
 export type BlendState = "EMPTY" | "LOADING" | "READY" | "BLENDING" | "COMPLETE" | "DISPENSED"
 export type DayState = "PREP" | "SERVING" | "FINISHED"
 export type Grade = "A" | "B" | "C" | "D"
+export type IngredientOrigin = "Market" | "Farm" | "Muncher" | "Event" | "Unknown"
 export type IngredientItem = {
     IngredientId: string,
     ItemId: string,
+    Origin: IngredientOrigin,
     RipenessStoredSeconds: number,
     RipenessStoredAt: number?,
     IsRipe: boolean,

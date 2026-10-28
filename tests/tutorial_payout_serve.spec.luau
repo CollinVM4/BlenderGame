@@ -63,3 +63,16 @@ do
     customer.DeactivateForPlayer(owner)
 end
 customer.CalculateOrderPayout = calculatePayout
+
+customer.ActivateForPlayer(owner, true)
+now += tutorialOrders[1].Arrival
+local model = customer.SpawnForPlayer(owner)
+flush()
+setup(model and customer.GetSnapshot(owner).Ready, "real-formula tutorial customer ready")
+cup = { Ingredients = table.clone(tutorialOrders[1].Ingredients), BlendId = "real-floor" }
+local before = data.GetCash(owner)
+setup(customer.Serve(owner, model), "real-formula tutorial serve")
+check(
+    data.GetCash(owner) - before == tutorialOrders[1].PayoutFloor,
+    "new economy retains tutorial floor after calculation"
+)

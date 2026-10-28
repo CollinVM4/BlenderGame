@@ -235,6 +235,68 @@ check(
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialOrderIndex") == 2, "respawn preserves current order")
+-- Upgrade guidance reads served flags, catalog prices and published purchased levels.
+local upgrades = loadModule("Upgrades")
+local function setGateCash(cash)
+    local jump, bat = p:GetAttribute("JumpPurchasedLevel"), p:GetAttribute("BatPurchasedLevel")
+    authority.SetCash(p, cash)
+    p:SetAttribute("JumpPurchasedLevel", jump)
+    p:SetAttribute("BatPurchasedLevel", bat)
+end
+for _, gate in
+    {
+        { Stage = "BuyJump", Track = "Jump", Served = 1, Next = 2 },
+        { Stage = "BuyBat", Track = "Bat", Served = 2, Next = 3 },
+    }
+do
+    orders[2].Served = gate.Served == 2
+    local attribute = gate.Track .. "PurchasedLevel"
+    local price = upgrades[gate.Track][2].Cost
+    p:SetAttribute(attribute, 0)
+    setGateCash(price - 1)
+    heartbeat:Fire(0.1)
+    check(p:GetAttribute("TutorialStage") ~= gate.Stage, "unaffordable " .. gate.Stage .. " proceeds normally")
+    for _, cash in { price, price + 1 } do
+        setGateCash(cash)
+        heartbeat:Fire(0.1)
+        check(
+            p:GetAttribute("TutorialStage") == gate.Stage
+                and p:GetAttribute("TutorialOrderIndex") == gate.Next
+                and p:GetAttribute("TutorialStashSlot") == loadModule("TutorialOrders")[gate.Next].Slot
+                and p:GetAttribute("TutorialActive")
+                and p:GetAttribute("TutorialHintReady"),
+            "affordable " .. gate.Stage .. " publishes active guidance for the next order"
+        )
+    end
+    p:SetAttribute(attribute, 1)
+    heartbeat:Fire(0.1)
+    check(
+        p:GetAttribute("TutorialStage") == (if gate.Next == 2 then "Stash" else "Order"),
+        "purchased " .. gate.Track .. " immediately resumes the next order"
+    )
+    p:SetAttribute(attribute, 0)
+    setGateCash(price)
+    orders[gate.Served].Served = false
+    heartbeat:Fire(0.1)
+    check(p:GetAttribute("TutorialStage") ~= gate.Stage, "cash alone cannot start " .. gate.Stage)
+    orders[gate.Served].Served = true
+    p:SetAttribute(attribute, 1)
+    heartbeat:Fire(0.1)
+    check(p:GetAttribute("TutorialStage") ~= gate.Stage, "pre-owned " .. gate.Track .. " skips guidance")
+end
+p:SetAttribute("JumpPurchasedLevel", 0)
+p:SetAttribute("BatPurchasedLevel", 0)
+setGateCash(upgrades.Jump[2].Cost + upgrades.Bat[2].Cost)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "BuyJump", "Jump guidance wins when both served gates qualify")
+p:SetAttribute("JumpPurchasedLevel", 1)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "BuyBat", "Bat guidance follows the outstanding Jump purchase")
+p:SetAttribute("BatPurchasedLevel", 1)
+orders[2].Served = false
+setup(authority.PurchaseUpgrade(p, "Jump", 2, authority.GetRequestContext(p)), "own Jump for remaining tutorial")
+setup(authority.PurchaseUpgrade(p, "Bat", 2, authority.GetRequestContext(p)), "own Bat for remaining tutorial")
+authority.SetCash(p, 0)
 batch = { BatchId = 2, AcceptedIngredientCount = 3, State = "READY", ProgressPercent = 0, ReadyToDispense = false }
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Turbine", "new batch belongs to current cold order")
@@ -361,6 +423,9 @@ tutorial.Mark(p, "LoadedBlender")
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Blender", "partial carry after LoadedBlender still targets blender")
 -- Missing scenery fallback, cash already held at completion, and owner-only gating.
+authority.SetCash(p, upgrades.Jump[2].Cost + upgrades.Bat[2].Cost)
+setup(authority.PurchaseUpgrade(p, "Jump", 2, authority.GetRequestContext(p)), "new session owns Jump before send-off")
+setup(authority.PurchaseUpgrade(p, "Bat", 2, authority.GetRequestContext(p)), "new session owns Bat before send-off")
 marketBase:Destroy()
 jump:Destroy()
 for _, order in orders do

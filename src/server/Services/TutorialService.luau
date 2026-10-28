@@ -2,6 +2,7 @@
 local RunService = game:GetService("RunService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Orders = require(Shared.Constants.TutorialOrders)
+local Upgrades = require(Shared.Constants.Upgrades)
 local Requests = require(Shared.Constants.CustomerRequests)
 local Evaluation = require(script.Parent.CustomerOrderEvaluation)
 local SmoothieItem = require(script.Parent.SmoothieItem)
@@ -62,6 +63,15 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
     local orders = deps.CustomerService.GetTutorialSnapshot(player)
     if not orders then
         return "Complete", nil, nil
+    end
+    local jumpOwned = (player:GetAttribute("JumpPurchasedLevel") or 0) >= 1
+    local batOwned = (player:GetAttribute("BatPurchasedLevel") or 0) >= 1
+    local cash = deps.TycoonService.GetCash(player)
+    if orders[1] and orders[1].Served and not jumpOwned and cash >= Upgrades.Jump[2].Cost then
+        return "BuyJump", 2, Orders[2].Slot
+    end
+    if orders[2] and orders[2].Served and not batOwned and cash >= Upgrades.Bat[2].Cost then
+        return "BuyBat", 3, Orders[3].Slot
     end
     for index, order in orders do
         if order.Served then

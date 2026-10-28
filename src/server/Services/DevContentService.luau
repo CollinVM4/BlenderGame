@@ -3,6 +3,7 @@ local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
 local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
+local Upgrades = require(game:GetService("ReplicatedStorage").Shared.Constants.Upgrades)
 local DevContentService = {}
 local deps: any
 function DevContentService.Init(services)
@@ -178,7 +179,7 @@ function DevContentService.SpawnIngredient(player: Player, id: string): Instance
         warn("[DevContentService] Unknown ingredient: " .. tostring(id))
         return nil
     end
-    return deps.IngredientService.Spawn(id, at, player)
+    return deps.IngredientService.Spawn(id, at, player, nil, { Origin = "Unknown" })
 end
 function DevContentService.PrepareCombination(player: Player, ids: { string }): boolean
     if not allowed(player) or #ids < 1 or #ids > Economy.MaxIngredients then
@@ -198,7 +199,7 @@ function DevContentService.PrepareCombination(player: Player, ids: { string }): 
     deps.BlendService.Reset(player)
     for index, id in ids do
         local at = staging * CFrame.new((index - (#ids + 1) / 2) * 3, 0, 0)
-        if not deps.IngredientService.Spawn(id, at, player) then
+        if not deps.IngredientService.Spawn(id, at, player, nil, { Origin = "Unknown" }) then
             deps.IngredientService.RemovePlayer(player)
             return false
         end
@@ -260,8 +261,16 @@ local function setMovementLevel(player: Player, track: string, level: number): b
     if not movementAllowed(player) then
         return false
     end
-    if type(level) ~= "number" or level ~= level or level < 0 or level > 3 or level ~= math.floor(level) then
-        warn("[Movement debug] " .. track .. " level must be an integer from 0 to 3; received " .. tostring(level))
+    local maxLevel = #(Upgrades :: any)[track] - 1
+    if type(level) ~= "number" or level ~= level or level < 0 or level > maxLevel or level ~= math.floor(level) then
+        warn(
+            "[Movement debug] "
+                .. track
+                .. " step must be an integer from 0 to "
+                .. tostring(maxLevel)
+                .. "; received "
+                .. tostring(level)
+        )
         return false
     end
     requireMovementRuntime("SetStudioLevel")

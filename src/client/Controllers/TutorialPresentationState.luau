@@ -136,6 +136,9 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
         end
     end
     -- Follow-up guidance bypasses first-order instruction retirement.
+    if (stage == "BuyJump" or stage == "BuyBat") and player:GetAttribute("TutorialActive") == true then
+        return true, ready, stage, false -- Alert pulses point to upgrades; there is no world target.
+    end
     if
         (stage == "NextCustomer" or stage == "Market" or stage == "MarketJump")
         and player:GetAttribute("TutorialActive") == true

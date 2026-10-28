@@ -23,10 +23,8 @@ function MarketService.Register(pedestal: BasePart)
             warn("[MarketService] Set an explicit valid IngredientId: " .. pedestal:GetFullName())
             return
         end
-        local seconds = pedestal:GetAttribute("RespawnSeconds")
-        if typeof(seconds) ~= "number" or seconds ~= seconds or seconds <= 0 or seconds == math.huge then
-            seconds = Economy.MarketRespawnSeconds
-        end
+        local definition = deps.IngredientService.GetDefinition(id)
+        local seconds = Economy.SpecialRefillSeconds[id] or Economy.RefillSeconds[definition.JumpLocation]
         pedestals[pedestal] = { Item = nil, RespawnAt = 0, Id = id, Seconds = seconds :: number }
     end
 end
@@ -50,8 +48,13 @@ function MarketService.Step()
         end
         if pedestal:IsDescendantOf(workspace) and not state.Item and now >= state.RespawnAt then
             local id = state.Id
-            state.Item =
-                deps.IngredientService.Spawn(id, pedestal.CFrame * CFrame.new(0, pedestal.Size.Y / 2 + 1, 0), nil, true)
+            state.Item = deps.IngredientService.Spawn(
+                id,
+                pedestal.CFrame * CFrame.new(0, pedestal.Size.Y / 2 + 1, 0),
+                nil,
+                true,
+                { Origin = "Market" }
+            )
             if state.Item then
                 pedestal:SetAttribute("StockIngredientId", id)
             else
@@ -75,6 +78,6 @@ function MarketService.Claim(player: Player, pedestal: BasePart): boolean
 end
 -- Server-only drop boundary for future ant defeat handlers.
 function MarketService.SpawnDrop(at: CFrame, id: string): Instance?
-    return deps.IngredientService.Spawn(id, at, nil)
+    return deps.IngredientService.Spawn(id, at, nil, nil, { Origin = "Market" })
 end
 return require(script.Parent.StudioServices).Wrap("MarketService", MarketService)

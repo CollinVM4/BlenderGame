@@ -13,6 +13,9 @@ return {
     CashScale = 20, -- Legacy CalculatePayout compatibility only; live orders use ingredient dollars.
     GradeMultiplier = { A = 1.25, B = 1.1, C = 0.9, D = 0.15 },
     GradeScore = { A = 4, B = 3, C = 2, D = 1 },
+    FillerValueFraction = 0.25,
+    FillerCapFraction = 0.5,
+    OriginMultiplier = { [0] = 1, [1] = 1.1, [2] = 1.25, [3] = 1.5 },
     MaxIngredients = 3,
     RequiredProgress = 65,
     BlendProgressScale = 3, -- Progress per radian of physical blade rotation.
@@ -33,7 +36,9 @@ return {
     SlapCooldown = 0.8,
     SlapRange = 8,
     StunSeconds = 0.5,
-    MarketRespawnSeconds = 12,
+    RefillSeconds = { [0] = 3, [1] = 12, [2] = 40, [3] = 90 },
+    -- Placeholder: replace with the intended secret-pedestal cadence during Studio tuning.
+    SpecialRefillSeconds = { Gummy_Bear = 300 } :: { [string]: number },
     WorldIngredientCleanupInterval = 360,
     WorldIngredientCleanupWarningSeconds = 60,
     WorldIngredientCleanupCountdownSeconds = 5,

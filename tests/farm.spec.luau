@@ -2,6 +2,7 @@
 -- Engine signals, authored geometry and elapsed time are controlled at the boundary.
 local tycoon = dependency.TycoonService
 local config = loadModule("FarmConfig")
+local economy = loadModule("Economy")
 local audio = loadModule("GameplaySfxService")
 local sounds = {}
 audio.Emit = function(id, position)
@@ -153,9 +154,9 @@ check(
     state(1) == "GROWING" and inventory.GetCarryCount(owner) == 1 and selected.Destroyed,
     "plant consumes exactly the selected authoritative instance"
 )
-check(timers[#timers].Seconds == 60, "common duration")
+check(timers[#timers].Seconds == 9, "JL0 per-row supply parity")
 check(farm.GetRowSnapshot(plot, 1).IngredientId == "Apple", "farm snapshot reports authoritative planted ingredient")
-check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 60, "client receives synchronized growth deadline")
+check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 9, "client receives synchronized growth deadline")
 check(
     #sounds == 1 and sounds[1].Id == "IngredientPlant" and sounds[1].Position == rows[1].Plant.WorldPosition,
     "plant sound only follows successful consumption"
@@ -198,7 +199,9 @@ for n, object in spawned do
         "harvest carries presentation context before publication"
     )
     check(
-        ingredients.GetRecord(object).Id == "Apple" and object.CFrame.Position.X == n,
+        ingredients.GetRecord(object).Id == "Apple"
+            and ingredients.GetRecord(object).Item.Origin == "Farm"
+            and object.CFrame.Position.X == n,
         "exact planted identity at authored grow marker"
     )
 end
@@ -250,14 +253,14 @@ local function crops()
 end
 local epoch = now
 ingredients.Init({ AnnouncementService = { Publish = function() end } })
-local commonSeconds = config.GrowSeconds.Common
-config.GrowSeconds.Common = 420
+local commonSeconds = economy.RefillSeconds[0]
+economy.RefillSeconds[0] = 140
 carry(owner, "Apple")
 plantRow(1, owner)
 advance(epoch + 360)
 check(state(1) == "GROWING" and #crops() == 0, "growing row survives six-minute sweep before products exist")
 advance(epoch + 420)
-config.GrowSeconds.Common = commonSeconds
+economy.RefillSeconds[0] = commonSeconds
 carry(owner, "Banana")
 plantRow(2, owner)
 carry(owner, "Strawberry")
@@ -329,15 +332,42 @@ end
 -- copies so no stale manually-run growth is replayed by this clock.
 table.clear(pending)
 
+carry(owner, "Gummy_Bear")
+local secretSeed = tool(owner)
+local beforeSecret = #timers
+plantRow(1, owner)
+check(
+    not loadModule("FarmEligibility").CanPlant(ingredients.GetDefinition("Gummy_Bear")),
+    "Gummy Bear is explicitly unplantable"
+)
+check(
+    state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1 and not secretSeed.Destroyed and #timers == beforeSecret,
+    "secret planting preserves item and row"
+)
+inventory.ClearHeld(owner)
+carry(owner, "Blueberry")
+plantRow(1, owner)
+check(state(1) == "GROWING" and timers[#timers].Seconds == 9, "ordinary JL0 Blueberry plants normally")
+timers[#timers].Run()
+for _, object in crops() do
+    object:Destroy()
+end
+carry(owner, "Melon")
+plantRow(1, owner)
+check(state(1) == "GROWING" and timers[#timers].Seconds == 270, "JL3 Melon grows in 270 seconds")
+timers[#timers].Run()
+for _, object in crops() do
+    object:Destroy()
+end
 local definition = ingredients.GetDefinition("Apple")
 local originalRarity = definition.Rarity
 for _, mode in { "omitted", "true" } do
     definition.Farmable = if mode == "true" then true else nil
-    for rarity, seconds in { Uncommon = 90, Rare = 120, Mystery = 210, Unknown = 60 } do
+    for rarity, seconds in { Uncommon = 9, Rare = 9, Mystery = 9, Unknown = 9 } do
         definition.Rarity = rarity
         carry(owner, "Apple")
         plantRow(1, owner)
-        check(timers[#timers].Seconds == seconds, rarity .. " duration/fallback")
+        check(timers[#timers].Seconds == seconds, rarity .. " cannot alter tier-based duration")
         timers[#timers].Run()
         for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
             if ingredients.GetRecord(object) then

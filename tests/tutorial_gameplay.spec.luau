@@ -119,6 +119,7 @@ check(
     "red acceptance starts relevant stash"
 )
 local input, wheel = references[p].BlenderInput, references[p].TurbineWheel
+local starterEarnings = 0
 for orderIndex, order in config do
     local beforeCash = dependency.TycoonService.GetCash(p)
     loadModule("Upgrades").CarryCapacity[1].Value = if orderIndex == 1 then 3 else 1
@@ -212,7 +213,26 @@ for orderIndex, order in config do
         dependency.TycoonService.GetCash(p) == beforeCash + math.max(payout, order.PayoutFloor or 0),
         "payout comes only from real serving with tutorial floor"
     )
+    local earned = dependency.TycoonService.GetCash(p) - beforeCash
+    starterEarnings += earned
+    print(string.format("STARTER %s: $%d (cumulative $%d)", order.RequestId, earned, starterEarnings))
+    if orderIndex == 1 then
+        local catalog = loadModule("Upgrades")
+        check(
+            starterEarnings >= catalog.MovementSpeed[2].Cost + catalog.SprintStamina[2].Cost,
+            "first real tutorial serve funds both first stat purchases"
+        )
+    end
     check(not customer.Serve(p, model), "duplicate serve cannot pay twice")
+    if orderIndex < 3 then
+        local track = if orderIndex == 1 then "Jump" else "Bat"
+        check(p:GetAttribute("TutorialStage") == "Buy" .. track, "real serve enables funded upgrade guidance")
+        setup(
+            dependency.TycoonService.PurchaseUpgrade(p, track, 2, dependency.TycoonService.GetRequestContext(p)),
+            "purchase tutorial upgrade through session authority"
+        )
+        heartbeat:Fire(0.1)
+    end
     if orderIndex < 3 then
         check(
             p:GetAttribute("TutorialOrderIndex") == orderIndex + 1 and p:GetAttribute("TutorialStage") == "Stash",
@@ -245,6 +265,24 @@ p.Character:FindFirstChild("HumanoidRootPart").Position = nextCustomer.Model:Get
 setup(customer.TakeOrder(p, nextCustomer.Model), "take next regular order")
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Complete", "real order acceptance completes send-off with missing scenery")
+-- First regular serves use the live payout formula with no tutorial floors.
+loadModule("Upgrades").CarryCapacity[1].Value = 3
+capacities[p] = 1
+for serveIndex = 1, 2 do
+    local regular = customer.GetQueueSnapshot(p)[1]
+    setup(regular and not regular.Model:GetAttribute("TutorialOrderIndex"), "regular customer after starters")
+    local ids = { "Banana", "Banana", "Banana" }
+    local beforeCash = dependency.TycoonService.GetCash(p)
+    setup(
+        inventory.GrantSmoothie(p, { BlendId = "first-regular-" .. serveIndex, Ingredients = ids }),
+        "regular smoothie"
+    )
+    setup(customer.Serve(p, regular.Model), "first regular serve")
+    local earned = dependency.TycoonService.GetCash(p) - beforeCash
+    check(earned > 0, "first regular order pays through live serving")
+    print(string.format("REGULAR %d (%s): $%d", serveIndex, regular.RequestId, earned))
+    flush()
+end
 -- Loss/rejection is recoverable and never masquerades as a successful serve.
 local q = player()
 q.Parent = workspaceFake
@@ -351,3 +389,50 @@ check(
 setup(inventory.CarryWorldItem(q, missedThrow), "recover missed world ingredient normally")
 heartbeat:Fire(0.1)
 check(q:GetAttribute("TutorialStage") == "Blender", "normal pickup recovers guide without granting replacement items")
+
+-- Guidance never locks real serving or discards a prepared next-order cup.
+local bypass = player()
+bypass.Parent = workspaceFake
+bypass.Character.WaitForChild = bypass.Character.FindFirstChild
+tutorial.AddPlayer(bypass)
+tutorial.ApplyCharacter(bypass, bypass.Character)
+flush()
+advance(16)
+local bypassQueue = customer.GetQueueSnapshot(bypass)
+for index = 1, 2 do
+    flush()
+    setup(customer.TakeOrder(bypass, bypassQueue[index].Model), "accept order through outstanding upgrade guidance")
+    setup(
+        inventory.GrantSmoothie(
+            bypass,
+            { BlendId = "upgrade-bypass-" .. index, Ingredients = config[index].Ingredients }
+        ),
+        "prepare next tutorial cup normally"
+    )
+    local cash = dependency.TycoonService.GetCash(bypass)
+    local served, reason = customer.Serve(bypass, bypassQueue[index].Model)
+    setup(served, "serve succeeds during outstanding BuyJump: " .. tostring(reason))
+    heartbeat:Fire(0.1)
+    check(
+        customer.GetTutorialSnapshot(bypass)[index].Served
+            and dependency.TycoonService.GetCash(bypass) >= cash + config[index].PayoutFloor
+            and #inventory.GetSmoothieInventory(bypass) == 0,
+        "successful serve commits the cup and floored payout without losing the delivery"
+    )
+    check(bypass:GetAttribute("TutorialStage") == "BuyJump", "outstanding Jump still takes guidance priority")
+end
+setup(
+    dependency.TycoonService.PurchaseUpgrade(bypass, "Jump", 2, dependency.TycoonService.GetRequestContext(bypass)),
+    "buy Jump after both serves"
+)
+heartbeat:Fire(0.1)
+check(bypass:GetAttribute("TutorialStage") == "BuyBat", "real Jump purchase hands guidance to funded Bat")
+setup(
+    dependency.TycoonService.PurchaseUpgrade(bypass, "Bat", 2, dependency.TycoonService.GetRequestContext(bypass)),
+    "buy Bat after both serves"
+)
+heartbeat:Fire(0.1)
+check(
+    bypass:GetAttribute("TutorialStage") == "Order" and bypass:GetAttribute("TutorialOrderIndex") == 3,
+    "real Bat purchase resumes Yellow"
+)

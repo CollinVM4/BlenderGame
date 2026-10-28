@@ -7,6 +7,7 @@ local Types = require(Shared.Types)
 
 export type Evaluation = {
     Grade: Types.Grade?,
+    Relevant: { boolean },
     IsWildcard: boolean,
     MatchCount: number,
     TotalSlots: number,
@@ -19,10 +20,11 @@ export type Evaluation = {
 
 local CustomerOrderEvaluation = {}
 
-local function emptyResult(request: CustomerRequests.Request, reason: string): Evaluation
+local function emptyResult(request: CustomerRequests.Request, reason: string, ingredientCount: number): Evaluation
     local isWildcard = request.Wildcard == true
     return {
         Grade = if isWildcard then nil else "D",
+        Relevant = table.create(ingredientCount, false),
         IsWildcard = isWildcard,
         MatchCount = 0,
         TotalSlots = 0,
@@ -50,32 +52,31 @@ local function matchesTag(tags: { [string]: boolean }, requestedTag: string): bo
     return false
 end
 
+CustomerOrderEvaluation.MatchesTag = matchesTag
+
 local function matchesRequirement(id: string, requirement: CustomerRequests.IngredientRequirement): boolean
     return if type(requirement) == "string" then requirement == id else table.find(requirement, id) ~= nil
 end
 
-function CustomerOrderEvaluation.Evaluate(
-    result: Types.Smoothie,
-    request: CustomerRequests.Request
-): Evaluation
+function CustomerOrderEvaluation.Evaluate(result: Types.Smoothie, request: CustomerRequests.Request): Evaluation
     local ids = result.Ingredients
     local requirements: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
     local isWildcard = request.Wildcard == true
     if #ids == 0 then
-        return emptyResult(request, "Empty smoothie")
+        return emptyResult(request, "Empty smoothie", #ids)
     end
     if #ids < Economy.MaxIngredients then
-        return emptyResult(request, "Not enough ingredients")
+        return emptyResult(request, "Not enough ingredients", #ids)
     end
     if #ids > Economy.MaxIngredients then
-        return emptyResult(request, "Too many ingredients")
+        return emptyResult(request, "Too many ingredients", #ids)
     end
 
     local ingredientTags: { [number]: { [string]: boolean } } = {}
     for index, id in ids do
         local definition = Ingredients[id]
         if not definition then
-            return emptyResult(request, "Unknown ingredient: " .. id)
+            return emptyResult(request, "Unknown ingredient: " .. id, #ids)
         end
         local tags: { [string]: boolean } = {}
         for _, tag in definition.Tags do
@@ -87,6 +88,7 @@ function CustomerOrderEvaluation.Evaluate(
     if isWildcard then
         return {
             Grade = nil,
+            Relevant = table.create(#ids, false),
             IsWildcard = true,
             MatchCount = #ids,
             TotalSlots = #ids,
@@ -99,10 +101,10 @@ function CustomerOrderEvaluation.Evaluate(
     end
     local requiredTags: { string } = request.RequiredTags or {}
     if #requiredTags == 0 and #requirements == 0 then
-        return emptyResult(request, "Empty request")
+        return emptyResult(request, "Empty request", #ids)
     end
     if request.ExactIngredients and #requirements == 0 then
-        return emptyResult(request, "ExactIngredients requires at least one RequiredIngredient")
+        return emptyResult(request, "ExactIngredients requires at least one RequiredIngredient", #ids)
     end
 
     local restrictionReason: string? = nil
@@ -167,6 +169,7 @@ function CustomerOrderEvaluation.Evaluate(
     end
     local allIngredientSlotsCovered = matchedSlots == #requirements
 
+    local relevance: { boolean } = {}
     local relevantCount = 0
     for index, id in ids do
         local relevant = false
@@ -184,6 +187,7 @@ function CustomerOrderEvaluation.Evaluate(
                 end
             end
         end
+        relevance[index] = relevant
         if relevant then
             relevantCount += 1
         end
@@ -210,6 +214,7 @@ function CustomerOrderEvaluation.Evaluate(
     if restrictionReason then
         return {
             Grade = "D",
+            Relevant = relevance,
             IsWildcard = false,
             MatchCount = matchCount,
             TotalSlots = if request.ExactIngredients then #requirements else #ids,
@@ -245,6 +250,7 @@ function CustomerOrderEvaluation.Evaluate(
     end
     return {
         Grade = grade,
+        Relevant = relevance,
         IsWildcard = false,
         MatchCount = matchCount,
         TotalSlots = if request.ExactIngredients then #requirements else #ids,

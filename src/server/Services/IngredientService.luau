@@ -37,6 +37,7 @@ function IngredientService.Spawn(
     claimable: boolean?,
     options: {
         Item: Types.IngredientItem?,
+        Origin: Types.IngredientOrigin?,
         VisualTemplate: Instance?,
         FreezeUntilPickup: boolean?,
         FarmManaged: boolean?,
@@ -47,9 +48,10 @@ function IngredientService.Spawn(
         BeforePublish: ((Instance) -> ())?,
     }?
 ): Instance?
+    -- Only creation may assign provenance. Drop/throw/respawn records are copied untouched.
     local item: Types.IngredientItem = if options and options.Item
         then table.clone(options.Item)
-        else Item.New(id, HttpService:GenerateGUID(false))
+        else Item.New(id, HttpService:GenerateGUID(false), if options then options.Origin else nil)
     if id == "PlayerHead" and options and options.VisualTemplate then
         item.VisualKey = Geometry.CapturePlayerHead(options.VisualTemplate)
     end

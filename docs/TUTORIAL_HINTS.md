@@ -80,4 +80,46 @@ CLI doubles do not prove native Beam rendering or the live authored plot's stem 
 4. Reach 100% blend progress. Confirm immediate "Dispense your smoothie!" and the same beam pair retargeted to the actual stable dispenser interaction. Walk around the base and verify continuous connection even when the gentle curve passes through walls.
 5. Verify the bright highlight always travels away from the player toward the destination. Check multiple camera angles, rotated plots, desktop/mobile sizes, and mouse/touch/controller throw wording.
 6. Reset during blending/dispensing; stream out and restore the actual stem/dispenser; remove decorative highlight pieces. Valid fixed endpoints must survive decorative removal, replacement characters must receive a fresh source, and genuinely missing endpoints must recover without a stage reset.
-7. Successfully serve RED and verify beam/temporary Attachment cleanup. Pause and respawn throughout COLD and YELLOW: no beam or top-center walkthrough hints return, but all normal yellow highlights continue until tutorial completion. Verify owner-only visibility with two clients and unchanged global announcements.
+7. Successfully serve RED and verify beam/temporary Attachment cleanup. Pause and respawn throughout COLD and YELLOW: opening walkthrough hints and beams stay retired; the upgrade hints below are explicit exceptions. Normal yellow highlights continue on gameplay stages. Verify owner-only visibility with two clients and unchanged global announcements.
+
+## Upgrade guidance after tutorial serves (2026-10-28)
+
+`TutorialService` now returns `BuyJump` after Red and `BuyBat` after Cold when the
+corresponding purchased level is below 1 and current server cash covers catalog
+row 2. Jump takes priority if both gates qualify. Purchases, pre-owned upgrades,
+or insufficient cash let the next order's existing stage proceed. These are
+guidance stages only: taking orders, preparing cups and serving remain available.
+Conditions are re-evaluated on the existing Heartbeat; no skipped-state record,
+new attribute, remote or persistence was added.
+
+`TutorialHintText` uses "Tap Upgrade and buy JUMP 1!" / "Click Upgrade and buy
+JUMP 1!" and "Tap Upgrade and buy a Bat Weapon!" / "Click Upgrade and buy a Bat
+Weapon!". Gamepad uses the desktop fallback because no Upgrades menu binding
+label exists. `TutorialPresentationState` bypasses opening text retirement for
+both stages without enabling beams or adding a read delay. Existing banner
+transitions still apply.
+
+The only runtime reader of `TutorialCustomerTarget` is `TutorialGleamController`.
+Unmapped Buy stages resolve no targets and existing cleanup clears prior gleams
+and both beam layers, including when the stage arrives before the order index.
+No target mapping, target publication exception, arrow/controller change or
+Studio asset setup is needed. Existing alert pulses point to the Upgrade menu
+or the relevant row inside the open panel.
+
+Validation: `tutorial`, `tutorial-gameplay`, `tutorial-payout-serve`,
+`tutorial-hints`, `tutorial-targets` and `tutorial-beam-stability` pass, as do
+`run_upgrade_ui_tests.py` in both initialization modes. Tests cover affordability,
+pre-ownership, purchase handoff, priority, serving Cold during BuyJump with the
+cup consumed and payout credited, exact input wording, retirement bypass,
+previous Serve beam cleanup and existing authored arrows. Red/Cold payouts and
+first regular serves retain their existing expectations. StyLua, Rojo build and
+whitespace checks pass. Roblox-aware analysis of the three changed runtime
+modules reports the same 22 `CustomerRequests.DisplayText` dependency errors as
+an isolated HEAD baseline, with no added diagnostics.
+
+Studio acceptance remains pending: sync with Rojo and restart Play; serve Red,
+buy Jump 1, serve Cold, buy Bat 1, and confirm Cold/Yellow guidance resumes after
+each purchase. Verify both menu and panel arrows, touch/click wording, no world
+beam or gleam during Buy stages, pre-owned and spent-cash skips, and unchanged
+NextCustomer/Market flow, upgrade rows and cash ticker. No live Studio session
+was used for this pass.

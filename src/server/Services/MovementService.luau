@@ -138,9 +138,10 @@ end
 function MovementService.SetStudioLevel(player: Player, track: string, level: number?)
     assertStudioServer()
     assert(track == "MovementSpeed" or track == "Jump" or track == "SprintStamina", "Invalid movement track")
+    local maxLevel = #(Upgrades :: any)[track] - 1
     assert(
-        level == nil or (type(level) == "number" and level >= 0 and level <= 3 and level == math.floor(level)),
-        "Invalid displayed level; expected 0-3"
+        level == nil or (type(level) == "number" and level >= 0 and level <= maxLevel and level == math.floor(level)),
+        "Invalid purchased step; expected 0-" .. tostring(maxLevel)
     )
     assert(resolved[player] ~= nil, "Movement player is not initialized")
     local levels = overrides[player] or {}

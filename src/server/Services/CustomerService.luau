@@ -52,9 +52,6 @@ local lastSpecialSpawn: { [string]: number } = {}
 local lastTemplates: { [string]: Model } = {}
 -- Runtime-only regular selections survive flow restarts.
 local recentTemplates: { [string]: { Model } } = {}
-local recentRequests: { [string]: { string } } = {}
-local recentRequestGroups: { [string]: { string } } = {}
-local recentRequestSimilarity: { [string]: { { string } } } = {}
 
 local function remember<T>(histories: { [string]: { T } }, player: Player, value: T, window: number)
     local history = histories[key(player)] or {}
@@ -80,7 +77,8 @@ end
 -- Validate authored request metadata; runtime matching and grading live in OrderEvaluation.
 -- Read definitions from actual ingredient IDs, never cup attributes or supplied result.Tags.
 -- Only tag comparisons ignore case; ingredient IDs and CustomerIds keep their existing semantics.
-function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Request): { string }
+function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Request, jumpTier: number?): { string }
+    local tier = jumpTier or request.MinJumpTier
     local diagnostics: { string } = {}
     local requiredIngredients: { CustomerRequests.IngredientRequirement } = request.RequiredIngredients or {}
     for slot, requirement in requiredIngredients do
@@ -96,16 +94,13 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
                     table.insert(diagnostics, "Unknown required ingredient: " .. id)
                 else
                     valid = true
-                    accessible = accessible or definition.JumpLocation <= request.MinJumpTier
+                    accessible = accessible or definition.JumpLocation <= tier
                 end
             end
             if valid and not accessible then
                 table.insert(
                     diagnostics,
-                    "No ingredient alternative at slot "
-                        .. slot
-                        .. " is accessible at MinJumpTier "
-                        .. request.MinJumpTier
+                    "No ingredient alternative at slot " .. slot .. " is accessible at Jump tier " .. tier
                 )
             end
             continue
@@ -114,14 +109,14 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
         local definition = Ingredients[id]
         if not definition then
             table.insert(diagnostics, "Unknown required ingredient: " .. id)
-        elseif definition.JumpLocation > request.MinJumpTier then
+        elseif definition.JumpLocation > tier then
             table.insert(
                 diagnostics,
                 string.format(
-                    "Required ingredient %s needs JumpLocation %d, above MinJumpTier %d",
+                    "Required ingredient %s needs JumpLocation %d, above Jump tier %d",
                     id,
                     definition.JumpLocation,
-                    request.MinJumpTier
+                    tier
                 )
             )
         end
@@ -134,6 +129,101 @@ function CustomerService.ValidateRequestDefinition(request: CustomerRequests.Req
     end
     if request.ExactIngredients and #requiredIngredients == 0 then
         table.insert(diagnostics, "ExactIngredients requires at least one RequiredIngredient")
+    end
+    if not request.Wildcard then
+        local requiredTags: { string } = request.RequiredTags or {}
+        local candidates: { { Id: string, Tags: { [string]: boolean } } } = {}
+        for id, definition in Ingredients do
+            if definition.JumpLocation > tier or table.find(forbiddenIngredients, id) then
+                continue
+            end
+            local tags: { [string]: boolean } = {}
+            for _, tag in definition.Tags do
+                tags[string.lower(tag)] = true
+            end
+            local forbidden = false
+            local forbiddenTags: { string } = request.ForbiddenTags or {}
+            for _, tag in forbiddenTags do
+                if tags[string.lower(tag)] then
+                    forbidden = true
+                    break
+                end
+            end
+            if not forbidden then
+                table.insert(candidates, { Id = id, Tags = tags })
+            end
+        end
+        for _, tag in requiredTags do
+            local found = false
+            for _, candidate in candidates do
+                if OrderEvaluation.MatchesTag(candidate.Tags, tag) then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                table.insert(diagnostics, "No accessible ingredient for tag: " .. tag)
+            end
+        end
+        -- Enumerate slot alternatives, then cover remaining tags in the available space.
+        -- Copies of the same catalog ID can occupy separate slots; world scarcity is temporal.
+        local function cover(slot: number, used: number, covered: { [number]: boolean }): boolean
+            if used > Economy.MaxIngredients then
+                return false
+            end
+            local requirement = requiredIngredients[slot]
+            local missing: number? = nil
+            if not requirement then
+                for index in requiredTags do
+                    if not covered[index] then
+                        missing = index
+                        break
+                    end
+                end
+                if not missing then
+                    return true
+                end
+            end
+            if used == Economy.MaxIngredients then
+                return false
+            end
+            local seen: { [string]: boolean } = {}
+            for _, candidate in candidates do
+                if requirement then
+                    if
+                        not (
+                            if type(requirement) == "string"
+                                then candidate.Id == requirement
+                                else table.find(requirement, candidate.Id) ~= nil
+                        )
+                    then
+                        continue
+                    end
+                elseif not OrderEvaluation.MatchesTag(candidate.Tags, requiredTags[missing :: number]) then
+                    continue
+                end
+                local nextCovered = table.clone(covered)
+                local signature = ""
+                for index, tag in requiredTags do
+                    nextCovered[index] = covered[index] or OrderEvaluation.MatchesTag(candidate.Tags, tag)
+                    signature ..= if nextCovered[index] then "1" else "0"
+                end
+                if not seen[signature] then
+                    seen[signature] = true
+                    if cover(if requirement then slot + 1 else slot, used + 1, nextCovered) then
+                        return true
+                    end
+                end
+            end
+            return false
+        end
+        if
+            #requiredIngredients > Economy.MaxIngredients
+            or (request.ExactIngredients and #requiredIngredients ~= Economy.MaxIngredients)
+            or not cover(1, 0, {})
+        then
+            table.insert(diagnostics, "Requirements cannot fit in blender capacity")
+        end
     end
     return diagnostics
 end
@@ -149,7 +239,11 @@ local function eligibleRequests(player: Player): { CustomerRequests.Request }
     local playerJumpTier = deps.TycoonService.GetJumpTier(player)
     local eligible: { CustomerRequests.Request } = {}
     for _, request in CustomerRequests.Definitions do
-        if not request.NPCOnly and not request.Wildcard and playerJumpTier >= request.MinJumpTier then
+        if
+            not request.NPCOnly
+            and not request.Wildcard
+            and #CustomerService.ValidateRequestDefinition(request, playerJumpTier) == 0
+        then
             table.insert(eligible, request)
         end
     end
@@ -165,55 +259,9 @@ local function eligibleRequests(player: Player): { CustomerRequests.Request }
     return eligible
 end
 
--- Group choice is uniform, so large groups do not dominate the request queue.
--- Missing metadata shares a legacy bucket; it never makes a request ineligible.
-local function variedRequestPool(player: Player, pool: { CustomerRequests.Request }): { CustomerRequests.Request }
-    local groups: { [string]: { CustomerRequests.Request } } = {}
-    local groupNames: { string } = {}
-    local freshGroups: { string } = {}
-    local history = recentRequestGroups[key(player)] or {}
-    for _, request in pool do
-        local group = request.RequestGroup or "Ungrouped"
-        if not groups[group] then
-            groups[group] = {}
-            table.insert(groupNames, group)
-            if not table.find(history, group) then
-                table.insert(freshGroups, group)
-            end
-        end
-        table.insert(groups[group], request)
-    end
-    local choices = if #freshGroups > 0 then freshGroups else groupNames
-    local group = choices[if #choices == 1 then 1 else math.random(1, #choices)]
-    local candidates = groups[group]
-    local recentKeys: { [string]: boolean } = {}
-    local similarityHistory: { { string } } = recentRequestSimilarity[key(player)] or {}
-    for _, keys in similarityHistory do
-        for _, concept in keys do
-            recentKeys[concept] = true
-        end
-    end
-    local fresh: { CustomerRequests.Request } = {}
-    for _, request in candidates do
-        local overlaps = false
-        local similarityKeys: { string } = request.SimilarityKeys or {}
-        for _, concept in similarityKeys do
-            if recentKeys[concept] then
-                overlaps = true
-                break
-            end
-        end
-        if not overlaps then
-            table.insert(fresh, request)
-        end
-    end
-    return if #fresh > 0 then fresh else candidates
-end
-
 local function assignRequest(player: Player, record: any): boolean
     local selectedRequest = record.FixedRequest
     local forced = selectedRequest ~= nil
-    local recentFiltered, recentFallback = false, false
     if selectedRequest and (deps.TycoonService.GetJumpTier(player)) < selectedRequest.MinJumpTier then
         diagnostic("special became ineligible before assignment; removing customer owner=" .. player.Name)
         record.Model:Destroy()
@@ -235,22 +283,7 @@ local function assignRequest(player: Player, record: any): boolean
             record.Model:Destroy()
             return false
         end
-        local pool = eligible
-        if record.CustomerType == "Regular" then
-            local fresh: { CustomerRequests.Request } = {}
-            for _, request in eligible do
-                if not table.find(recentRequests[key(player)] or {}, request.Id) then
-                    table.insert(fresh, request)
-                end
-            end
-            recentFiltered = #fresh < #eligible
-            recentFallback = #fresh == 0
-            if #fresh > 0 then
-                pool = fresh
-            end
-            pool = variedRequestPool(player, pool)
-        end
-        selectedRequest = pool[math.random(1, #pool)]
+        selectedRequest = eligible[math.random(1, #eligible)]
     end
     local request = selectedRequest :: CustomerRequests.Request
     record.Request = request
@@ -268,33 +301,16 @@ local function assignRequest(player: Player, record: any): boolean
     record.Preference = request.RequiredTags[1] or "Surprise Me"
     record.Model:SetAttribute("Preference", record.Preference)
     record.Model:SetAttribute("RequestId", request.Id)
-    if not forced and not request.Wildcard and record.CustomerType == "Regular" then
-        remember(recentRequests, player, request.Id, CustomerRequests.RegularRequestRecencyWindow)
-        remember(
-            recentRequestGroups,
-            player,
-            request.RequestGroup or "Ungrouped",
-            CustomerRequests.RegularRequestGroupRecencyWindow
-        )
-        remember(
-            recentRequestSimilarity,
-            player,
-            table.clone(request.SimilarityKeys or {}),
-            CustomerRequests.RegularRequestSimilarityRecencyWindow
-        )
-    end
     diagnostic(
         string.format(
-            "selected type=%s template=%s customerId=%s displayName=%s request=%s jumpTier=%s forced=%s requestRecencyFiltered=%s requestRecencyFallback=%s",
+            "selected type=%s template=%s customerId=%s displayName=%s request=%s jumpTier=%s forced=%s",
             record.CustomerType,
             record.TemplateName,
             record.CustomerId or "<absent>",
             record.DisplayName or "<absent>",
             request.Id,
             tostring(deps.TycoonService.GetJumpTier(player)),
-            tostring(forced),
-            tostring(recentFiltered),
-            tostring(recentFallback)
+            tostring(forced)
         )
     )
     return true
@@ -780,16 +796,38 @@ function CustomerService.CalculateOrderPayout(
     request: CustomerRequests.Request,
     evaluation: OrderEvaluation.Evaluation?
 ): (number, number)
-    local ingredientValue = IngredientItem.GetSmoothieValue(result, workspace:GetServerTimeNow())
-    evaluation = evaluation or OrderEvaluation.Evaluate(result, request)
+    local evaluated = evaluation or OrderEvaluation.Evaluate(result, request)
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
     local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
-    local gradeMultiplier = if evaluation.IsWildcard
-        then 1
-        else Economy.GradeMultiplier[evaluation.Grade :: Types.Grade]
+    local gradeMultiplier = if evaluated.IsWildcard then 1 else Economy.GradeMultiplier[evaluated.Grade :: Types.Grade]
     local muncher = if deps.MuncherService then deps.MuncherService.GetCashMultiplier(player) else 1
-    local amount = (ingredientValue + request.BasePayout) * gradeMultiplier * upgrade * entitlement * muncher
-    return math.round(amount), ingredientValue
+    if evaluated.IsWildcard then
+        return math.round(request.BasePayout * upgrade * entitlement * muncher), 0
+    end
+    local now = workspace:GetServerTimeNow()
+    local onRequestValue, fillerValue = 0, 0
+    local originMultiplier = 1
+    for index, id in result.Ingredients do
+        local value = IngredientItem.GetSmoothieIngredientValue(result, index, now)
+        if evaluated.Relevant[index] then
+            onRequestValue += value
+            local unit = result.IngredientItems and result.IngredientItems[index]
+            if unit and (unit.Origin == "Market" or unit.Origin == "Event") then
+                originMultiplier = math.max(originMultiplier, Economy.OriginMultiplier[Ingredients[id].JumpLocation])
+            end
+        else
+            fillerValue += value
+        end
+    end
+    local effectiveValue = onRequestValue
+        + math.min(fillerValue * Economy.FillerValueFraction, onRequestValue * Economy.FillerCapFraction)
+    local amount = (effectiveValue + request.BasePayout)
+        * originMultiplier
+        * gradeMultiplier
+        * upgrade
+        * entitlement
+        * muncher
+    return math.round(amount), effectiveValue
 end
 function CustomerService.CanSpawn(player: Player): (boolean, string?)
     local queue = queues[key(player)]
@@ -2011,8 +2049,7 @@ end
 function CustomerService.CleanupSession(sessionId: string)
     cleanupFlow(sessionId)
     lastSpecialSpawn[sessionId], lastTemplates[sessionId] = nil, nil
-    recentTemplates[sessionId], recentRequests[sessionId] = nil, nil
-    recentRequestGroups[sessionId], recentRequestSimilarity[sessionId] = nil, nil
+    recentTemplates[sessionId] = nil
 end
 -- Explicit server flow reset, not a departing-player cleanup path.
 function CustomerService.DeactivateForPlayer(player: Player)

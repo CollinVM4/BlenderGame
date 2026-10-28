@@ -1,5 +1,7 @@
 # Farm v1
 
+Timing and supply rules were superseded by the [2026-10-23 economy redesign](ECONOMY_REDESIGN.md). Ordinary pedestal timers now come from Economy.RefillSeconds / SpecialRefillSeconds; farm rows use tier refill times multiplied by yield. Announced spawn timing remains authored.
+
 Each plot session owns three sequential row purchases ($1,000 / $3,000 / $8,000).
 `TycoonService` stores their count as the shared `FarmRows` upgrade (tier 1 means
 zero rows), using its existing cash ledger and synchronous transaction lock.
