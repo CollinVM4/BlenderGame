@@ -128,7 +128,7 @@ do
 end
 check(shooterHumanoid.Health == 100 and deadH.Health == 0, "self and dead targets remain untouched")
 check(npcH.Health == 100, "NPC models without a wired customer system are untouched by player combat")
-advance(2.5)
+advance(config.FreezeSeconds)
 check(
     centerH.Health == 95 and not movement.IsFrozen(center),
     "blast uses existing freeze and has no delayed damage replay"
@@ -136,7 +136,7 @@ check(
 tool.Parent = shooter:FindFirstChildOfClass("Backpack")
 shotgun.ClearPlayer(shooter)
 tool.Parent = shooter.Character
-advance(config.ShotCooldown - 2.51)
+advance(config.ShotCooldown - config.FreezeSeconds - 0.01)
 local confirmedBeforeReject = shooter:GetAttribute("IceGunCooldownEnd")
 local accepted, reason = shotgun.Fire(shooter, aim)
 check(

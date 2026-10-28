@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
+local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Constants.IceShotgunPresentationConfig)
 local Controller = {}
@@ -22,7 +23,7 @@ type Blast = { Model: Model, Expires: number }
 local active: { Blast } = {}
 local connections: { RBXScriptConnection } = {}
 local started, generation = false, 0
-local shotSound, impactSound, frostTexture = Config.FallbackSoundId, Config.FallbackSoundId, Config.FallbackTexture
+local shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 local feedback: ScreenGui? = nil
 local feedbackUntil = 0
 
@@ -104,13 +105,16 @@ local function frost(parent: BasePart, count: number, angle: number)
     emitter.Parent = parent
     emitter:Emit(count)
 end
-local function sound(parent: BasePart, id: string, volume: number)
+local function sound(parent: Instance, id: string, volume: number)
     local clip = Instance.new("Sound")
     clip.SoundId, clip.Volume = id, volume
-    clip.RollOffMinDistance, clip.RollOffMaxDistance = 6, 70
-    clip.PlaybackSpeed = if id == Config.FallbackSoundId then 1.5 else 1
+    clip.Name = "IceRayCast"
+    clip.RollOffMode = Enum.RollOffMode.InverseTapered
+    clip.RollOffMinDistance, clip.RollOffMaxDistance = Config.SoundMinDistance, Config.SoundMaxDistance
+    clip.PlaybackSpeed = 1
     clip.Parent = parent
     clip:Play()
+    Debris:AddItem(clip, Config.SoundLifetime)
 end
 local function shards(model: Model, position: Vector3, count: number)
     for i = 1, count do
@@ -202,7 +206,14 @@ function Controller.Play(result: any): boolean
     -- see expanding around the caster is the area that was actually hit.
     local center = pulse(model, origin, result.Radius)
     frost(center, if isMobile then Config.MobileFrostCount else Config.FrostCount, 360)
-    sound(center, shotSound, 0.5)
+    local caster = Players:GetPlayerByUserId(result.ShooterUserId)
+    local root = caster and caster.Character and caster.Character:FindFirstChild("HumanoidRootPart")
+    -- A dedicated emitter follows the caster; the expanding pulse is never an audio source.
+    local emitter = Instance.new("Attachment")
+    emitter.Name = "IceRayCastEmitter"
+    emitter.Parent = if root and root:IsA("BasePart") then root else center
+    sound(emitter, shotSound, Config.CastVolume)
+    Debris:AddItem(emitter, Config.SoundLifetime)
     local shardCount = if isMobile then Config.MobileShardCount else Config.ShardCount
     local maxImpacts = if isMobile then Config.MobileMaxImpactEffects else Config.MaxImpactEffects
     for index, hit in result.Hits do
@@ -213,7 +224,6 @@ function Controller.Play(result: any): boolean
         impact.Name, impact.Transparency = "IceImpact", 1
         frost(impact, if isMobile then 6 else 10, 180)
         shards(model, hit.Position, shardCount)
-        sound(impact, impactSound, 0.35)
     end
     return true
 end
@@ -235,15 +245,13 @@ function Controller.Init()
     task.spawn(function()
         pcall(function()
             ContentProvider:PreloadAsync(
-                { Config.ShotSoundId, Config.ImpactSoundId, Config.FrostTexture },
+                { Config.ShotSoundId, Config.FallbackSoundId, Config.FrostTexture },
                 function(id, fetchStatus)
                     if not started or generation ~= token or fetchStatus ~= Enum.AssetFetchStatus.Success then
                         return
                     end
                     if id == Config.ShotSoundId then
                         shotSound = id
-                    elseif id == Config.ImpactSoundId then
-                        impactSound = id
                     elseif id == Config.FrostTexture then
                         frostTexture = id
                     end
@@ -264,6 +272,6 @@ function Controller.Destroy()
     end
     table.clear(active)
     clearFeedback()
-    shotSound, impactSound, frostTexture = Config.FallbackSoundId, Config.FallbackSoundId, Config.FallbackTexture
+    shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 end
 return Controller

@@ -126,7 +126,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
                             else Vector3.new(0, 0, -1)
                         customers.HitCustomer(player, model, {
                             Direction = direction,
-                            Duration = Config.FreezeSeconds,
+                            Duration = Config.CustomerRagdollSeconds,
                         })
                     end
                     break

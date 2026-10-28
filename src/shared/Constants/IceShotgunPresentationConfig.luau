@@ -27,7 +27,13 @@ return table.freeze({
     White = Color3.fromRGB(245, 250, 255),
     ShotSoundId = "rbxassetid://11900833", -- Original imported Launch.
     ImpactSoundId = "rbxassetid://4508963254", -- Original imported Shatter.
-    FallbackSoundId = "rbxasset://sounds/impact_water.mp3",
+    FallbackSoundId = "rbxassetid://32788850", -- Original icy IceCrack, never water.
+    CastVolume = 0.3,
+    FreezeVolume = 0.16,
+    ThawVolume = 0.12,
+    SoundMinDistance = 6,
+    SoundMaxDistance = 60,
+    SoundLifetime = 4, -- Independent of the short radial pulse lifetime.
     FrostTexture = "rbxassetid://276120078", -- Original imported snow.
     FallbackTexture = "rbxasset://textures/particles/sparkles_main.dds",
 })

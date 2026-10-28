@@ -1,8 +1,9 @@
 check(
-    authoredConfig.FreezeSeconds == 2.5
+    authoredConfig.FreezeSeconds == 4
+        and authoredConfig.ShotCooldown == 4.5
         and authoredConfig.FreezeGrowthSeconds == 0.2
         and authoredConfig.ImmunitySeconds == 4,
-    "central timing includes formation in 2.5 seconds and four-second immunity"
+    "central timing includes formation in 4 seconds and four-second immunity"
 )
 local freeze = loadModule("FreezeStatusService")
 local remote = { OnServerEvent = signal() }
@@ -43,12 +44,12 @@ check(
     "bat recovery cannot release the freeze lock"
 )
 check(not freeze.Apply(target), "active freeze cannot stack or extend")
-advance(2.39)
-check(movement.IsFrozen(target), "freeze remains active before 2.5 seconds")
+advance(3.89)
+check(movement.IsFrozen(target), "freeze remains active before 4 seconds")
 advance(0.01)
 check(
     not movement.IsFrozen(target) and h.JumpPower == jump and h.WalkSpeed == movement.GetBaseWalkSpeed(target),
-    "thaw restores current upgrades at 2.5 seconds including formation"
+    "thaw restores current upgrades at 4 seconds including formation"
 )
 check(not freeze.Apply(target), "thaw starts immunity")
 advance(3.99)
@@ -56,7 +57,7 @@ check(not freeze.Apply(target), "immunity lasts four seconds")
 advance(0.01)
 check(freeze.Apply(target), "freeze is eligible at immunity boundary")
 movement.SetStunned(target, true)
-advance(2.5)
+advance(4)
 check(movement.IsStunned(target) and h.WalkSpeed == 0, "thaw cannot release independent bat stun")
 movement.SetStunned(target, false)
 advance(4)
@@ -78,7 +79,7 @@ check(
     not movement.IsFrozen(target) and newHumanoid.JumpPower == jump and freeze.Apply(target),
     "respawn inherits neither freeze nor immunity"
 )
-advance(2.5)
+advance(4)
 check(not movement.IsFrozen(target), "old delayed callbacks cannot strand new-character movement")
 advance(4)
 check(freeze.Apply(target), "freeze before delayed server thaw")

@@ -6,7 +6,8 @@ return table.freeze({
     MaximumCameraDistance = 128, -- Bounds untrusted third-person camera intent.
     ShotCooldown = 4.5,
     DirectDamage = 5,
-    FreezeSeconds = 2.5,
+    FreezeSeconds = 4,
+    CustomerRagdollSeconds = 2.5,
     FreezeGrowthSeconds = 0.2,
     ImmunitySeconds = 4,
     -- Radial Ice Ray blast radius, measured in 3D from the server caster root

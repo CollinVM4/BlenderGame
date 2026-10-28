@@ -87,6 +87,7 @@ deps.CustomerService = {
             context.Direction.Magnitude > 0.99 and context.Direction.Magnitude < 1.01,
             "NPC reaction direction is a unit away-from-caster vector"
         )
+        check(context.Duration == 2.5, "NPC customer ragdoll stays 2.5 seconds independently of player freeze")
         return true
     end,
 }

@@ -150,6 +150,7 @@ SUITES = {
     "icegun-initial-owner": ("integration", ("fixtures/icegun.luau", "fixtures/icegun_input.luau", "icegun_initial_owner.spec.luau")),
     "icegun-input": ("presentation", ("fixtures/icegun.luau", "fixtures/icegun_input.luau", "icegun_input.spec.luau")),
     "icegun-presentation": ("presentation", ("fixtures/icegun.luau", "icegun_presentation.spec.luau")),
+    "ice-ray-audio": ("presentation", ("fixtures/icegun.luau", "fixtures/combat_presentation.luau", "ice_ray_audio.spec.luau")),
     "ice-shotgun-vfx": ("presentation", ("fixtures/icegun.luau", "fixtures/combat_presentation.luau", "ice_shotgun_vfx.spec.luau")),
     "character-status-outlines": ("presentation", ("fixtures/icegun.luau", "fixtures/combat_presentation.luau", "character_status_outlines.spec.luau")),
     "ice-shotgun-results": ("integration", ("fixtures/icegun.luau", "ice_shotgun_results.spec.luau")),

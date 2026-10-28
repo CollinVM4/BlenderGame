@@ -38,7 +38,18 @@ end
 check(
     playedSounds[1] == presentationConfig.FallbackSoundId
         and emitted[1].Emitter.Texture == presentationConfig.FallbackTexture,
-    "unavailable imported assets use immediate builtin sound/particle fallbacks"
+    "unavailable imported assets use immediate icy sound/particle fallbacks"
+)
+local root = localPlayer.Character:FindFirstChild("HumanoidRootPart")
+local emitter = root:FindFirstChild("IceRayCastEmitter")
+local clip = emitter and emitter:FindFirstChild("IceRayCast")
+check(
+    clip
+        and clip.Volume == 0.3
+        and clip.RollOffMinDistance == 6
+        and clip.RollOffMaxDistance == 60
+        and clip.RollOffMode == "InverseTapered",
+    "quiet cast follows caster with explicit distance attenuation"
 )
 advance(0.12)
 local pulse = blast:FindFirstChild("IceRadialPulse")
@@ -58,6 +69,7 @@ for i = 1, 20 do
     table.insert(many, { Position = vec(i * 0.1, 1, -10), UserId = i, Frozen = false })
 end
 setup(vfx.Play(shot(many)), "mobile confirmed shot")
+check(#playedSounds == 2, "AoE impacts add no duplicate audio on top of authoritative freeze sounds")
 local mobileBlast = childrenNamed(workspaceFake, "IceShotgunBlast")[1]
 check(
     #childrenNamed(mobileBlast, "IceImpact") == presentationConfig.MobileMaxImpactEffects,
@@ -99,9 +111,8 @@ setup(
     "successful sound preload shot"
 )
 check(
-    playedSounds[#playedSounds - 1] == presentationConfig.ShotSoundId
-        and playedSounds[#playedSounds] == presentationConfig.ImpactSoundId,
-    "sound hooks use the original imported clips when available"
+    playedSounds[#playedSounds] == presentationConfig.ShotSoundId,
+    "cast uses original imported Launch after successful preload"
 )
 check(
     playerGui:FindFirstChild("IceShotgunHitFeedback"):FindFirstChild("FrostFlash") ~= nil,
