@@ -11,9 +11,9 @@ local Controller = {}
 type Hit = { Position: Vector3, UserId: number, Frozen: boolean }
 type Result = {
     Origin: Vector3,
-    Direction: Vector3,
-    Range: number,
-    Angle: number,
+    -- The server hit radius. The pulse is sized to exactly this value, so
+    -- the visible blast and the actual hit area are the same sphere.
+    Radius: number,
     ShooterUserId: number,
     ServerTime: number,
     Hits: { Hit },
@@ -39,14 +39,9 @@ local function valid(result: any): boolean
     if
         typeof(result) ~= "table"
         or not vector(result.Origin)
-        or not vector(result.Direction)
-        or math.abs(result.Direction.Magnitude - 1) > 0.01
-        or not finite(result.Range)
-        or result.Range <= 0
-        or result.Range > 128
-        or not finite(result.Angle)
-        or result.Angle <= 0
-        or result.Angle >= 120
+        or not finite(result.Radius)
+        or result.Radius <= 0
+        or result.Radius > 128
         or not finite(result.ShooterUserId)
         or not finite(result.ServerTime)
         or typeof(result.Hits) ~= "table"
@@ -82,32 +77,19 @@ local function tween(object: Instance, seconds: number, properties: { [string]: 
     TweenService:Create(object, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties)
         :Play()
 end
-local function triangle(model: Model, origin: Vector3, a: Vector3, b: Vector3, c: Vector3)
-    local ab, ac, bc = b - a, c - a, c - b
-    if ab.Magnitude > ac.Magnitude and ab.Magnitude > bc.Magnitude then
-        a, c = c, a
-    elseif ac.Magnitude > bc.Magnitude then
-        a, b = b, a
-    end
-    ab, ac, bc = b - a, c - a, c - b
-    local right, back = ac:Cross(ab).Unit, bc.Unit
-    local up = back:Cross(right).Unit
-    local height = math.abs(ab:Dot(up))
-    -- Two native thin wedges per cone face; no downloaded mesh or simulated physics.
-    for _, side in
-        {
-            { Position = (a + b) / 2, Right = right, Back = back, Width = math.abs(ab:Dot(back)) },
-            { Position = (a + c) / 2, Right = right * -1, Back = back * -1, Width = math.abs(ac:Dot(back)) },
-        }
-    do
-        local final = CFrame.fromMatrix(side.Position, side.Right, up, side.Back)
-        local start = CFrame.fromMatrix(origin + (side.Position - origin) * 0.025, side.Right, up, side.Back)
-        local size = Vector3.new(0.025, height, side.Width)
-        local wedge = part("WedgePart", model, start, size * 0.025)
-        wedge.Name = "IceConePanel"
-        tween(wedge, Config.ConeGrowSeconds, { CFrame = final, Size = size })
-        tween(wedge, Config.ConeGrowSeconds + Config.ConeFadeSeconds, { Transparency = 1 })
-    end
+-- Transparent bluish pulse expanding outward from the caster, in the style
+-- of an outward burst: it starts small at the caster and grows to exactly
+-- the server hit radius, then fades. It is one native sphere, anchored and
+-- fully inert (no collision, touch, query or shadow), so it cannot block
+-- input, movement or raycasts, and it adds no movement mechanic.
+local function pulse(model: Model, origin: Vector3, radius: number): BasePart
+    local sphere = part("Part", model, CFrame.new(origin), Vector3.new(2, 2, 2)) :: Part
+    sphere.Name, sphere.Shape = "IceRadialPulse", Enum.PartType.Ball
+    sphere.Transparency = Config.PulseStartTransparency
+    local finalSize = Vector3.new(radius * 2, radius * 2, radius * 2)
+    tween(sphere, Config.PulseGrowSeconds, { Size = finalSize })
+    tween(sphere, Config.PulseGrowSeconds + Config.PulseFadeSeconds, { Transparency = 1 })
+    return sphere
 end
 local function frost(parent: BasePart, count: number, angle: number)
     local emitter = Instance.new("ParticleEmitter")
@@ -215,28 +197,13 @@ function Controller.Play(result: any): boolean
     local model = Instance.new("Model")
     model.Name, model.Parent = "IceShotgunBlast", workspace
     table.insert(active, { Model = model, Expires = os.clock() + Config.Lifetime })
-    local origin, direction = result.Origin, result.Direction
-    local up = if math.abs(direction.Y) > 0.95 then Vector3.new(1, 0, 0) else Vector3.new(0, 1, 0)
-    local at = CFrame.lookAt(origin, origin + direction, up)
-    local segments = if isMobile then Config.MobileConeSegments else Config.ConeSegments
-    -- Gameplay range is radial, so the cone rim must stay inside that sphere.
-    local halfAngle = math.rad(result.Angle * 0.5)
-    local radius = result.Range * math.sin(halfAngle)
-    local center = origin + direction * (result.Range * math.cos(halfAngle))
-    for i = 1, segments do
-        local angle0, angle1 = (i - 1) * math.pi * 2 / segments, i * math.pi * 2 / segments
-        local b = center + at.RightVector * (math.cos(angle0) * radius) + at.UpVector * (math.sin(angle0) * radius)
-        local c = center + at.RightVector * (math.cos(angle1) * radius) + at.UpVector * (math.sin(angle1) * radius)
-        triangle(model, origin, origin, b, c)
-    end
-    local muzzle = part("Part", model, at, Vector3.new(0.15, 0.15, 0.15)) :: Part
-    muzzle.Name, muzzle.Shape, muzzle.Material = "IceMuzzleFlash", Enum.PartType.Ball, Enum.Material.Neon
-    muzzle.Transparency = 0.15
-    tween(muzzle, 0.12, { Size = Vector3.new(1.5, 1.5, 1.5), Transparency = 1 })
-    frost(muzzle, if isMobile then Config.MobileFrostCount else Config.FrostCount, result.Angle)
-    sound(muzzle, shotSound, 0.5)
+    local origin = result.Origin
+    -- The pulse diameter is exactly twice the server radius: what players
+    -- see expanding around the caster is the area that was actually hit.
+    local center = pulse(model, origin, result.Radius)
+    frost(center, if isMobile then Config.MobileFrostCount else Config.FrostCount, 360)
+    sound(center, shotSound, 0.5)
     local shardCount = if isMobile then Config.MobileShardCount else Config.ShardCount
-    shards(model, origin + direction, shardCount)
     local maxImpacts = if isMobile then Config.MobileMaxImpactEffects else Config.MaxImpactEffects
     for index, hit in result.Hits do
         if index > maxImpacts then

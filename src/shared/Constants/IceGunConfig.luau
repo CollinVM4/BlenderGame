@@ -6,11 +6,14 @@ return table.freeze({
     MaximumCameraDistance = 128, -- Bounds untrusted third-person camera intent.
     ShotCooldown = 4.5,
     DirectDamage = 5,
-    ConeAngleDegrees = 50, -- Full angle; targets use a 25-degree half angle.
     FreezeSeconds = 2.5,
     FreezeGrowthSeconds = 0.2,
     ImmunitySeconds = 4,
-    MaximumRange = 22, -- Measured from the server muzzle to each target root.
+    -- Radial Ice Ray blast radius, measured in 3D from the server caster root
+    -- to each target root. The client pulse is sized to exactly this radius,
+    -- so the visible blast and the actual hit area are the same sphere.
+    -- There is no cone angle: direction and line of sight do not gate hits.
+    BlastRadius = 22,
     ProjectileLifetime = 110 / 70, -- Retained for the unused imported cosmetic projectile helper.
     TeamDamage = false, -- Server-only opt-in bypasses shared-plot and Roblox-team protection for ice shots.
     OwnershipRetrySeconds = 15,

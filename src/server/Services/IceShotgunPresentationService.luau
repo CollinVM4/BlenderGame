@@ -16,14 +16,15 @@ function Service.Init()
     remote = event
 end
 
-function Service.Emit(player: Player, origin: Vector3, direction: Vector3, hits: { Hit })
+-- Origin is the caster root and Radius is the authoritative hit radius, so
+-- clients render a pulse whose size is exactly the server hit sphere. No
+-- direction or angle is broadcast: there is no cone to draw anymore.
+function Service.Emit(player: Player, origin: Vector3, hits: { Hit })
     if remote then
         remote:FireAllClients({
             ShooterUserId = player.UserId,
             Origin = origin,
-            Direction = direction,
-            Range = Config.MaximumRange,
-            Angle = Config.ConeAngleDegrees,
+            Radius = Config.BlastRadius,
             Hits = hits,
             ServerTime = workspace:GetServerTimeNow(),
         })

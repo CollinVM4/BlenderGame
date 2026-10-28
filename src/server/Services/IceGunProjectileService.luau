@@ -1,13 +1,16 @@
 --!strict
--- Ice Shotgun cone resolver. Module name/API retained for existing tool lifecycle wiring.
+-- Ice Ray radial blast resolver. Module name/API retained for existing tool lifecycle wiring.
 -- Camera data is untrusted aim intent, never a damage target or attack origin.
+-- Hits are radius-only: no cone angle, no muzzle, no line-of-sight raycast and
+-- no projectile travel may gate them, so a target inside the sphere is hit
+-- regardless of the direction the caster faces or what stands between them.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
 local Presentation = require(script.Parent.IceShotgunPresentationService)
 local Service = {}
-local REVISION = "ice-shotgun-2026-10-12"
+local REVISION = "ice-ray-radial-2026-10-28"
 local lastDiagnostic: { [string]: number } = {}
 local function trace(player: Player, stage: string)
     if not Config.DebugLogging or not RunService:IsStudio() then
@@ -39,32 +42,38 @@ function Service.RemovePlayer(player: Player)
     player:SetAttribute("IceGunCooldownEnd", 0)
 end
 
-local function attack(player: Player, origin: Vector3, direction: Vector3, ray: RaycastParams): { Presentation.Hit }
-    local minimumDot = math.cos(math.rad(Config.ConeAngleDegrees * 0.5))
-    -- Snapshot visibility before creating effects or triggering death/drop callbacks.
+local function attack(player: Player, origin: Vector3, character: Model): { Presentation.Hit }
+    -- Snapshot every target before creating effects or triggering death/drop
+    -- callbacks, so a hit cannot change the membership of this same blast.
     local targets: { { Player: Player, Character: Model, Position: Vector3 } } = {}
+    local seen: { [Player]: boolean } = {}
     for _, victim in Players:GetPlayers() do
-        local character = victim.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
+        -- The caster is excluded here, not only by CombatService, so a future
+        -- eligibility change can never turn a radial blast into self-damage.
+        if victim == player or seen[victim] then
+            continue
+        end
+        local victimCharacter = victim.Character
+        local root = victimCharacter and victimCharacter:FindFirstChild("HumanoidRootPart")
         if
-            not character
+            not victimCharacter
             or not root
             or not root:IsA("BasePart")
             or not root:IsDescendantOf(workspace)
-            or character:FindFirstChildOfClass("ForceField")
+            or victimCharacter:FindFirstChildOfClass("ForceField")
             or not deps.CombatService.CanDamagePlayer(player, victim, Config.TeamDamage)
         then
             continue
         end
-        local offset = root.Position - origin
-        local distance = offset.Magnitude
-        if not (distance >= 0.001 and distance <= Config.MaximumRange and direction:Dot(offset.Unit) >= minimumDot) then
+        -- Radius only, in 3D. A NaN root position fails this comparison, so an
+        -- invalid pose is excluded without a Unit/NaN crash. No direction dot
+        -- product and no occlusion raycast are consulted.
+        local distance = (root.Position - origin).Magnitude
+        if not (distance <= Config.BlastRadius) then
             continue
         end
-        local obstruction = workspace:Raycast(origin, offset, ray)
-        if not obstruction or obstruction.Instance:IsDescendantOf(character) then
-            table.insert(targets, { Player = victim, Character = character, Position = root.Position })
-        end
+        seen[victim] = true
+        table.insert(targets, { Player = victim, Character = victimCharacter, Position = root.Position })
     end
     local hits: { Presentation.Hit } = {}
     for _, target in targets do
@@ -80,6 +89,50 @@ local function attack(player: Player, origin: Vector3, direction: Vector3, ray: 
         then
             local frozen = deps.FreezeStatusService.Apply(target.Player)
             table.insert(hits, { Position = target.Position, UserId = target.Player.UserId, Frozen = frozen })
+        end
+    end
+    -- NPC customers, if the customer system is wired in: reuse their existing
+    -- bat reaction (ragdoll, then return to the queue marker) without touching
+    -- their order, payout or queue membership. Bad (thief/freeloader) customers
+    -- stay ineligible here because CanHitCustomer requires a bat for them, so
+    -- an ice blast can never reject or steal through that path. Each model is
+    -- reacted to at most once per blast, and a model whose root is outside the
+    -- sphere is skipped even if another of its parts intersects the query.
+    local customers = deps.CustomerService
+    if customers then
+        local params = OverlapParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { character }
+        params.RespectCanCollide = false
+        params.MaxParts = 0
+        local reacted: { [Model]: boolean } = {}
+        for _, part in workspace:GetPartBoundsInRadius(origin, Config.BlastRadius, params) do
+            local ancestor: Instance? = part
+            while ancestor and ancestor ~= workspace do
+                if ancestor:IsA("Model") then
+                    local model = ancestor :: Model
+                    local root = model:FindFirstChild("HumanoidRootPart")
+                    if
+                        not reacted[model]
+                        and not Players:GetPlayerFromCharacter(model)
+                        and root
+                        and root:IsA("BasePart")
+                        and (root.Position - origin).Magnitude <= Config.BlastRadius
+                        and customers.CanHitCustomer(player, model)
+                    then
+                        reacted[model] = true
+                        local direction = if (root.Position - origin).Magnitude > 0
+                            then (root.Position - origin).Unit
+                            else Vector3.new(0, 0, -1)
+                        customers.HitCustomer(player, model, {
+                            Direction = direction,
+                            Duration = Config.FreezeSeconds,
+                        })
+                    end
+                    break
+                end
+                ancestor = ancestor.Parent
+            end
         end
     end
     return hits
@@ -137,40 +190,21 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
         return reject("invalid firing character")
     elseif not root or not root:IsA("BasePart") or not root:IsDescendantOf(workspace) then
         return reject("invalid character root")
+    elseif not finite(root.Position.X) or not finite(root.Position.Y) or not finite(root.Position.Z) then
+        return reject("invalid character root")
     elseif h.PlatformStand or not deps.MovementService.CanPerformGameplayAction(player) then
         return reject("gameplay action blocked")
     end
-    local handle = tool:FindFirstChild("Handle")
-    local barrel = handle and handle:FindFirstChild("GunBarrel")
-    if not handle or not handle:IsA("BasePart") or not barrel or not barrel:IsA("Attachment") then
-        return reject("missing Handle/GunBarrel")
-    end
-    local muzzle = barrel.WorldPosition
-    if Config.DebugLogging and RunService:IsStudio() then
-        trace(
-            player,
-            "geometry muzzle="
-                .. tostring(muzzle)
-                .. " root="
-                .. tostring(root.Position)
-                .. " camera="
-                .. tostring(cameraOrigin)
-                .. " direction="
-                .. tostring(cameraDirection)
-        )
-    end
-    if
-        not finite(muzzle.X)
-        or not finite(muzzle.Y)
-        or not finite(muzzle.Z)
-        or (muzzle - root.Position).Magnitude > 8
-    then
-        return reject("invalid server muzzle pose")
-    end
-    local ray = RaycastParams.new()
-    ray.FilterType = Enum.RaycastFilterType.Exclude
-    ray.FilterDescendantsInstances = { character }
-    ray.IgnoreWater = false
+    -- The blast is centered on the caster root, so Handle/GunBarrel pose,
+    -- root-to-muzzle clearance and muzzle-against-wall checks are removed:
+    -- none of them can affect a radial hit, and each of them could previously
+    -- block a blast that the radius alone should have landed. The issued-tool
+    -- check above is the only weapon check that remains.
+    -- Aim and camera data are still sanity-checked when supplied (finite
+    -- vectors, unit camera direction, bounded camera position), because a
+    -- malformed payload must still be rejected. They are no longer used to
+    -- derive a direction, an aim distance, or world occlusion: the crosshair
+    -- is activation intent only, and the server hit area is the caster sphere.
     if cameraOrigin ~= nil or cameraDirection ~= nil then
         if
             typeof(cameraOrigin) ~= "Vector3"
@@ -186,47 +220,6 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
         then
             return reject("invalid camera ray")
         end
-        local length = Config.MaximumRange + Config.MaximumCameraDistance
-        local intent = aim - cameraOrigin
-        if
-            intent.Magnitude > length + 0.1
-            or intent:Dot(cameraDirection) < 0
-            or (intent - cameraDirection * intent:Dot(cameraDirection)).Magnitude > 0.5
-        then
-            return reject("aim outside camera ray")
-        end
-        -- Resolve world occlusion on the server, independently of the client's raycast.
-        local result = workspace:Raycast(cameraOrigin, cameraDirection.Unit * length, ray)
-        aim = if result then result.Position else cameraOrigin + cameraDirection.Unit * length
-    end
-    local offset = aim - muzzle
-    if offset.Magnitude < 0.1 or offset.Magnitude > Config.MaximumRange + Config.MaximumCameraDistance + 8 then
-        return reject("aim distance")
-    end
-    local direction = offset.Unit
-    local origin = muzzle
-    -- Validate the actual launch point and root-to-muzzle path, never a fabricated
-    -- four-stud clearance point. Cone visibility uses this same muzzle.
-    local start = root.Position + Vector3.new(0, 1, 0)
-    for _, part in character:GetDescendants() do
-        if part:IsA("BasePart") and part.CanCollide then
-            local localPoint = part.CFrame:PointToObjectSpace(origin)
-            local half = part.Size * 0.5 + Vector3.new(0.1, 0.1, 0.1)
-            if
-                math.abs(localPoint.X) <= half.X
-                and math.abs(localPoint.Y) <= half.Y
-                and math.abs(localPoint.Z) <= half.Z
-            then
-                return reject("muzzle inside character collision geometry")
-            end
-        end
-    end
-    if workspace:Raycast(start, origin - start, ray) then
-        return reject("root-to-muzzle obstruction")
-    end
-    -- Also reject a muzzle enclosed by geometry or flush against a wall.
-    if workspace:Raycast(origin - direction * 0.1, direction * 0.2, ray) then
-        return reject("muzzle obstruction")
     end
     if now < (cooldown[player] or 0) then
         return reject("shot cooldown")
@@ -235,9 +228,10 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
     trace(player, "fire eligible")
     cooldown[player] = now + Config.ShotCooldown
     player:SetAttribute("IceGunCooldownEnd", workspace:GetServerTimeNow() + Config.ShotCooldown)
-    local hits = attack(player, origin, direction, ray)
-    Presentation.Emit(player, origin, direction, hits)
-    trace(player, "cone shot resolved")
+    local origin = root.Position
+    local hits = attack(player, origin, character)
+    Presentation.Emit(player, origin, hits)
+    trace(player, "radial blast resolved")
     return true
 end
 
@@ -245,7 +239,7 @@ function Service.Init(services)
     deps = services
     Presentation.Init()
     if Config.DebugLogging and RunService:IsStudio() then
-        warn("[IceGun] shotgun initialized revision=" .. REVISION .. " module=" .. script:GetFullName())
+        warn("[IceGun] radial blast initialized revision=" .. REVISION .. " module=" .. script:GetFullName())
     end
     local event = Instance.new("RemoteEvent")
     event.Name = "IceGunFire"

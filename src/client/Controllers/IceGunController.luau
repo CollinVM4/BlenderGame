@@ -291,7 +291,11 @@ function Controller.Init()
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Exclude
         params.FilterDescendantsInstances = { current }
-        local length = Config.MaximumRange + Config.MaximumCameraDistance
+        -- Crosshair intent only: the server blast is radial around the caster
+        -- and does not use this aim point for hit detection. It is still sent
+        -- so the server can reject malformed payloads, and the reticle and
+        -- cooldown behavior below are unchanged.
+        local length = Config.BlastRadius + Config.MaximumCameraDistance
         local hit = workspace:Raycast(ray.Origin, ray.Direction * length, params)
         local aim = if hit then hit.Position else ray.Origin + ray.Direction * length
         local event = ReplicatedStorage:FindFirstChild("IceGunFire")
