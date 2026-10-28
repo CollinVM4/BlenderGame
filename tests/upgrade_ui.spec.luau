@@ -323,6 +323,10 @@ local function load(name)
     return modules[name]
 end
 local display = load("UpgradeDisplay")
+local statDisplays = {
+    MovementSpeed = { 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82 },
+    SprintStamina = { 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52 },
+}
 local expected = {
     Jump = { "JUMP 0", "JUMP 1", "JUMP 2", "JUMP 3" },
     CarryCapacity = { "3 ITEMS", "5 ITEMS", "7 ITEMS" },
@@ -330,18 +334,28 @@ local expected = {
 }
 for _, track in display.Tracks do
     local tiers = load("Upgrades")[track.Id]
+    if display.IsStatTrack(track.Id) then
+        check(#statDisplays[track.Id] == #tiers, "full display sequence covers catalog")
+    end
     for level = 0, #tiers - 1 do
         local row = display.Row(track.Id, level, 99999)
         check(row.Level == level, "displayed level")
         check(row.Max == (level == #tiers - 1), "max level detection")
         check(row.Price == (if level < #tiers - 1 then tiers[level + 2].Cost else nil), "next config price")
         if display.IsStatTrack(track.Id) then
-            local prefix = if track.Id == "MovementSpeed" then "SPEED " else "STAMINA "
-            check(row.Current == prefix .. tiers[level + 1].Value, "purchased stat presentation")
+            local prefix = if track.Id == "MovementSpeed" then "SPD " else "STM "
+            local values = statDisplays[track.Id]
+            local value = tonumber(string.match(row.Current, "^" .. prefix .. "(%d+)$"))
+            check(value == values[level + 1], "scaled purchased stat sequence without decimals")
+            check(value % 1 == 0, "display value is an integer")
             check(
-                row.Next == (if row.Max then "MAX" else "+" .. (tiers[level + 2].Value - tiers[level + 1].Value)),
+                row.Next == (if row.Max then "MAX" else "+" .. (values[level + 2] - values[level + 1])),
                 "next increment"
             )
+            if level > 0 then
+                local previous = display.Row(track.Id, level - 1)
+                check(value - tonumber(string.match(previous.Current, "(%d+)$")) == 2, "every purchase adds two")
+            end
         else
             check(row.Current == expected[track.Id][level + 1], "current presentation")
             check(row.Next == (expected[track.Id][level + 2] or "MAX"), "next presentation")
@@ -398,10 +412,14 @@ set("playerCash", 800)
 -- Shop ownership is stable while effective movement attributes change.
 for _, case in
     {
-        { Id = "MovementSpeed", Step = 4, Headline = "SPEED 30", Increment = "+1", Price = "$7,000" },
-        { Id = "MovementSpeed", Step = 5, Headline = "SPEED 31", Increment = "+1", Price = "$9,000" },
-        { Id = "SprintStamina", Step = 5, Headline = "STAMINA 85", Increment = "+5", Price = "$7,500" },
-        { Id = "SprintStamina", Step = 6, Headline = "STAMINA 90", Increment = "+5", Price = "$10,000" },
+        { Id = "MovementSpeed", Step = 0, Headline = "SPD 52", Increment = "+2", Price = "$2,000" },
+        { Id = "MovementSpeed", Step = 1, Headline = "SPD 54", Increment = "+2", Price = "$3,000" },
+        { Id = "MovementSpeed", Step = 4, Headline = "SPD 60", Increment = "+2", Price = "$7,000" },
+        { Id = "MovementSpeed", Step = 5, Headline = "SPD 62", Increment = "+2", Price = "$9,000" },
+        { Id = "SprintStamina", Step = 0, Headline = "STM 24", Increment = "+2", Price = "$1,500" },
+        { Id = "SprintStamina", Step = 1, Headline = "STM 26", Increment = "+2", Price = "$2,000" },
+        { Id = "SprintStamina", Step = 5, Headline = "STM 34", Increment = "+2", Price = "$7,500" },
+        { Id = "SprintStamina", Step = 6, Headline = "STM 36", Increment = "+2", Price = "$10,000" },
     }
 do
     set(case.Id .. "PurchasedLevel", case.Step)
@@ -415,17 +433,26 @@ do
     stableOffer()
     set("IsSprinting", true)
     set("SprintWalkSpeed", 31 * 1.4)
+    set("WalkSpeed", 31 * 1.4)
+    stableOffer()
+    set("IsSprinting", false)
+    -- Effective movement modifiers do not change purchased offers either.
+    set("WalkSpeed", 999)
     set("BaseWalkSpeed", 999)
     set("StaminaMax", 999)
     set(case.Id .. "Level", 0)
     stableOffer()
-    set("IsSprinting", false)
+    set("WalkSpeed", 26)
     set("BaseWalkSpeed", 26)
     set("StaminaMax", 60)
     stableOffer()
     set(case.Id .. "PurchasedLevel", #load("Upgrades")[case.Id] - 1)
     check(
-        row.Next.Text == "MAX" and row.Price.Text == "" and row.BuyLabel.Text == "MAX" and not row.Purchase.Interactable,
+        row.Current.Text == (if case.Id == "MovementSpeed" then "SPD 82" else "STM 52")
+            and row.Next.Text == "MAX"
+            and row.Price.Text == ""
+            and row.BuyLabel.Text == "MAX"
+            and not row.Purchase.Interactable,
         "maxed stat stops offering purchases"
     )
     set(case.Id .. "PurchasedLevel", 0)
@@ -480,11 +507,11 @@ end
 click("MovementSpeed")
 result("MovementSpeed", true, "Success")
 check(view.Rows.MovementSpeed.BuyLabel.Text == "PURCHASED!", "success feedback")
-check(view.Rows.MovementSpeed.Current.Text == "SPEED 26" and view.Cash.Text == "$800", "result does not own state")
+check(view.Rows.MovementSpeed.Current.Text == "SPD 52" and view.Cash.Text == "$800", "result does not own state")
 set("MovementSpeedPurchasedLevel", 1)
 set("BaseWalkSpeed", 32)
 check(
-    view.Rows.MovementSpeed.Next.Text == "+1" and view.Rows.MovementSpeed.Price.Text == "$3,000",
+    view.Rows.MovementSpeed.Next.Text == "+2" and view.Rows.MovementSpeed.Price.Text == "$3,000",
     "replication after response"
 )
 check(
@@ -744,7 +771,7 @@ for _, asScreenGui in { false, true, false } do
     advance(0.8)
 end
 set("MovementSpeedPurchasedLevel", 2)
-check(view.Rows.MovementSpeed.Current.Text == "SPEED 28", "post-reimport upgrade replication reaches new card")
+check(view.Rows.MovementSpeed.Current.Text == "SPD 56", "post-reimport upgrade replication reaches new card")
 
 -- A disabled obsolete copy is ignored; two active copies cannot be guessed apart.
 local duplicate = import()
@@ -768,7 +795,7 @@ check(#sent == before + 1, "duplicate recovery binds a single purchase handler")
 result("MovementSpeed", true, "Success")
 set("MovementSpeedPurchasedLevel", #load("Upgrades").MovementSpeed - 1)
 check(
-    view.Rows.MovementSpeed.Current.Text == "SPEED 41" and view.Rows.MovementSpeed.Next.Text == "MAX",
+    view.Rows.MovementSpeed.Current.Text == "SPD 82" and view.Rows.MovementSpeed.Next.Text == "MAX",
     "purchase replication after duplicate recovery updates new card"
 )
 local desktop = root:FindFirstChild("Be a Blender! Desktop")
@@ -802,7 +829,7 @@ set("MovementSpeedPurchasedLevel", 0)
 set("PlotMembershipRevision", 4)
 advance(0)
 check(
-    view.Rows.MovementSpeed.Current.Text == "SPEED 26" and view.Rows.MovementSpeed.BuyLabel.Text == "BUY",
+    view.Rows.MovementSpeed.Current.Text == "SPD 52" and view.Rows.MovementSpeed.BuyLabel.Text == "BUY",
     "membership renders current replicated projection"
 )
 click("MovementSpeed")

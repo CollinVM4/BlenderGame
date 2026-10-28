@@ -154,7 +154,7 @@ do
                 -- SprintService owns the Humanoid speed application.
                 loadModule("SprintService").ApplySpeed(actor)
                 check(
-                    humanoid.WalkSpeed == 31 and row(case.Id).Current == "SPEED 31",
+                    humanoid.WalkSpeed == 31 and row(case.Id).Current == "SPD 62",
                     "purchased speed step five applies"
                 )
                 check(
@@ -163,7 +163,7 @@ do
                 )
             else
                 check(
-                    movement.GetMaxStamina(actor) == 85 and row(case.Id).Current == "STAMINA 85",
+                    movement.GetMaxStamina(actor) == 85 and row(case.Id).Current == "STM 34",
                     "purchased stamina step five applies"
                 )
             end

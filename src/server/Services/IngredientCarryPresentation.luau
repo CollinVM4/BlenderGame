@@ -37,13 +37,19 @@ function Presentation.RefreshValue(player: Player, stack: { any })
         return
     end
     local total, height = 0, 0
+    local hasIngredient = false
     for _, item in stack do
-        if item.Smoothie then
-            total += Item.GetSmoothieValue(item.Smoothie, workspace:GetServerTimeNow())
-        else
+        if not item.Smoothie then
+            hasIngredient = true
             total += Item.GetIngredientValue(item.Item, workspace:GetServerTimeNow())
             height += item.Height
         end
+    end
+    if not hasIngredient then
+        if previous then
+            previous:Destroy()
+        end
+        return
     end
     local gui = if previous then previous :: BillboardGui else Instance.new("BillboardGui")
     local staleDetails = gui:FindFirstChild("RipenessDetails")

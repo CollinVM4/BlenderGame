@@ -597,6 +597,16 @@ check(
     "failed serve without authoritative progression retains Serve guidance"
 )
 root.Position = vec(0, 0, 0)
+for _, stage in { "BuyJump", "BuyBat" } do
+    -- Stage replication can precede the new order index and its beam retirement latch.
+    p:SetAttribute("TutorialStage", stage)
+    check(
+        #beams() == 0 and #beams("TutorialStashFlow") == 0 and #highlights() == 0,
+        "entering " .. stage .. " clears the previous Serve beam and gleam before order-index replication"
+    )
+    p:SetAttribute("TutorialStage", "Serve")
+    advance()
+end
 local serveBeam = beams()[1]
 local serveStart, serveEnd = serveBeam.Attachment0, serveBeam.Attachment1
 for _, index in { 2, 3 } do
@@ -613,6 +623,46 @@ for _, index in { 2, 3 } do
         check(noHint() and #beams() == 0, "later tutorial customers never show text or stash beams, even on hesitation")
         check(#highlights() > 0, "later customers retain yellow highlights for every objective")
     end
+end
+local text = loadModule("TutorialHintText")
+for _, hint in
+    {
+        { Stage = "BuyJump", Order = 2, Ending = "JUMP 1!" },
+        { Stage = "BuyBat", Order = 3, Ending = "a Bat Weapon!" },
+    }
+do
+    for _, input in { "Touch", "KeyboardAndMouse", "Gamepad" } do
+        local action = if input == "Touch" then "Tap" else "Click"
+        check(
+            text.Get(hint.Stage, env.Enum.PreferredInput[input], "R2") == action .. " Upgrade and buy " .. hint.Ending,
+            hint.Stage .. " uses exact " .. input .. " wording"
+        )
+    end
+    p:SetAttribute("TutorialStage", "NextCustomer")
+    advance()
+    check(#beams() == 1 and #highlights() > 0, "serve guidance exists before entering " .. hint.Stage)
+    -- Stage can replicate before the next order index: cleanup must still be immediate.
+    p:SetAttribute("TutorialStage", hint.Stage)
+    p:SetAttribute("TutorialOrderIndex", hint.Order)
+    local allowed, ready, stage, beamAllowed = presentation.Read(p)
+    check(
+        allowed and ready and stage == hint.Stage and not beamAllowed and presentation.IsActive(p, stage),
+        hint.Stage .. " immediately bypasses retired text without allowing a beam"
+    )
+    check(#beams() == 0 and #highlights() == 0, "Buy stages clear world guidance immediately")
+    advance(0.2) -- Existing banner exit animation; no order-dialogue read delay.
+    check(
+        hintContains("Click Upgrade and buy " .. hint.Ending)
+            and #beams() == 0
+            and #beams("TutorialStashFlow") == 0
+            and #highlights() == 0,
+        hint.Stage .. " clears previous guidance and shows the upgrade hint without a read delay"
+    )
+    p.CharacterRemoving:Fire(p.Character)
+    check(noHint(), "upgrade hint hides while the character is removed")
+    p.CharacterAdded:Fire(p.Character)
+    advance()
+    check(hintContains("Click Upgrade and buy " .. hint.Ending), "upgrade hint resumes after respawn")
 end
 p:SetAttribute("TutorialOrderIndex", 1)
 p:SetAttribute("TutorialStage", "Stash")

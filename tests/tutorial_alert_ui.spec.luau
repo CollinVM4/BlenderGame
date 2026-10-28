@@ -25,6 +25,7 @@ alerts.Init()
 flushDeferred()
 check(not menuArrow.Visible and not jumpArrow.Visible and not batArrow.Visible, "authored arrows hidden on bind")
 set("playerCash", load("Upgrades").Jump[2].Cost)
+set("TutorialStage", "BuyJump")
 check(menuArrow.Visible and not jumpArrow.Visible and not batArrow.Visible, "threshold shows only menu arrow")
 local menuTween = alertTweens[#alertTweens]
 check(
@@ -53,6 +54,11 @@ flushDeferred()
 check(not menuArrow.Visible and replacementArrow.Visible, "reimport retires old arrow and restores current beat")
 set("playerCash", load("Upgrades").Bat[2].Cost)
 set("JumpPurchasedLevel", 1)
+set("TutorialStage", "BuyBat")
+check(
+    replacementArrow.Visible and not jumpArrow.Visible and not batArrow.Visible,
+    "BuyBat uses closed-panel menu arrow"
+)
 notifications.PanelChanged("Upgrades", true)
 check(
     not replacementArrow.Visible and not jumpArrow.Visible and batArrow.Visible,
@@ -67,6 +73,11 @@ local replacementBat = instance("ImageLabel", "BatAlert", alertPanel)
 playerGui.DescendantAdded:Fire(replacementBat)
 flushDeferred()
 check(replacementBat.Visible, "late authored arrow receives current state")
+set("BatPurchasedLevel", 1)
+check(
+    not replacementBat.Visible and not jumpArrow.Visible and not replacementArrow.Visible,
+    "purchased tracks show no Buy-stage arrow"
+)
 set("TutorialStage", "Complete")
 check(not replacementBat.Visible and not replacementArrow.Visible, "completion hides all arrows")
 for _, tween in alertTweens do
