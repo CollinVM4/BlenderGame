@@ -39,6 +39,10 @@ end
 local regularFireServer = remote.FireServer
 local enemy, enemyHumanoid = fighter("Enemy")
 ready(enemy)
+-- The enemy is the PvP-immunity check, not a blast target: keep it outside
+-- the 22-stud radial blast so a claimed owner's shot never reaches the
+-- freeze stub, which errors if freeze is ever attempted in this suite.
+enemy.Character:FindFirstChild("HumanoidRootPart").Position = vec(30, 0, 0)
 local hit = nil
 workspaceFake.Raycast = function(_, _, direction)
     if direction.Magnitude < 100 then

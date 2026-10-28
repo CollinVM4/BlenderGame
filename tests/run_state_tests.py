@@ -159,6 +159,7 @@ SUITES = {
     "icegun-simulated-combat": ("integration", ("fixtures/icegun.luau", "icegun_simulated_combat.spec.luau", "icegun_combat.spec.luau")),
     "icegun-aim": ("integration", ("fixtures/icegun.luau", "icegun_aim.spec.luau")),
     "icegun-combat": ("integration", ("fixtures/icegun.luau", "icegun_combat.spec.luau")),
+    "ice-ray-radial": ("integration", ("fixtures/icegun.luau", "ice_ray_radial.spec.luau")),
 }
 focused = {
     "fall_damage_fix_contracts": ("fall-damage",),

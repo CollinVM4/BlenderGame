@@ -1,4 +1,4 @@
--- Output-only notification contract; cone authority stays in icegun-combat.
+-- Output-only notification contract; radial authority stays in icegun-combat.
 local gun = loadModule("IceGunService")
 local shotgun = loadModule("IceGunProjectileService")
 local freeze = loadModule("FreezeStatusService")
@@ -26,6 +26,10 @@ local function owner(session)
 end
 local shooter = owner("A")
 local otherShooter = owner("C")
+-- The second shooter must start outside the first shooter's blast, but close
+-- enough to the victim to hit it later: (0, 1, -30) is 30 studs from the
+-- first shooter's root and 18 studs from the victim's root.
+otherShooter.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 1, -30)
 local victim, h = fighter("B")
 ready(victim)
 victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 1, -12)
@@ -41,11 +45,13 @@ check(
     "accepted notification lists only confirmed damaged players and real freeze result"
 )
 check(
-    results[1].Origin.Z == -2
-        and results[1].Range == 22
-        and results[1].Angle == 50
+    results[1].Origin.X == 0
+        and results[1].Origin.Z == 0
+        and results[1].Radius == 22
+        and results[1].Angle == nil
+        and results[1].Direction == nil
         and results[1].ShooterUserId == shooter.UserId,
-    "presentation uses authoritative muzzle/direction/geometry/shooter"
+    "presentation uses authoritative caster root and blast radius, with no cone direction or angle"
 )
 check(not shotgun.Fire(shooter, aim) and #results == 1, "cooldown-rejected requests emit no predicted blast")
 remote.OnServerEvent:Fire(shooter, { Hits = { { UserId = victim.UserId, Frozen = true } } })
@@ -72,10 +78,13 @@ workspaceFake.Raycast = function(_, _, direction)
     end
     return nil
 end
+-- Move the victim outside the blast radius: an accepted miss is a radius
+-- miss, not a wall or cone miss, and still broadcasts a pulse with no hits.
+victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 1, 30)
 setup(shotgun.Fire(shooter, aim), "accepted miss")
 check(
     #results == 3 and #results[3].Hits == 0 and h.Health == 90,
-    "accepted misses still broadcast a muzzle/cone, never invented impact feedback"
+    "accepted misses still broadcast a radial pulse, never invented impact feedback"
 )
 freeze.RemovePlayer(victim)
 check(victim.Character:GetAttribute("FreezeImmuneUntil") == nil, "status cleanup removes replicated immunity")
@@ -86,4 +95,4 @@ check(
     "delayed thaw publishes the full actual recovery-immunity window"
 )
 freeze.RemovePlayer(victim)
-print("PASS: Server-confirmed Ice Shotgun presentation output")
+print("PASS: Server-confirmed Ice Ray presentation output")
