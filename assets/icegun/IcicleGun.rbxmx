@@ -22,7 +22,7 @@
       </CoordinateFrame>
       <bool name="ManualActivationOnly">false</bool>
       <bool name="RequiresHandle">true</bool>
-      <string name="ToolTip">winter best season</string>
+      <string name="ToolTip" />
       <Content name="TextureId">
         <url>http://www.roblox.com/asset/?id=20518488</url>
       </Content>
