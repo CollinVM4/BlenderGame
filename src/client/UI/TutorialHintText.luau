@@ -2,21 +2,21 @@
 local Text = {}
 local hints: { [string]: string } = {
     NextCustomer = "See what the next customer wants!",
-    MarketJump = "Jump higher for valuable ingredients!",
+    MarketJump = "Jump higher for $ valuable ingredients!",
     Harvest = "Harvest your ingredients!",
     Market = "Collect more from the Central Market!",
-    BuyRow = "Buy a farm row!",
+    BuyRow = "Buy a farm row to grow ingredients!",
     Plant = "Plant an ingredient!",
     ClaimPlot = "Claim your smoothie stand!",
     Counter = "Head to your customer counter!",
     Order = "Take the customer's order!",
     Stash = "Grab ingredients from the stash!",
     Ladder = "Climb the ladder to your blender!",
-    Turbine = "Spin to blend smoothie!",
+    Turbine = "Drop down and Spin to blend smoothie!",
     Dispenser = "Dispense your smoothie!",
     FinishBatch = "Spin to finish the previous batch!",
     DrainBatch = "Dispense the previous batch to clear your blender!",
-    Serve = "Serve customer and get PAYED!",
+    Serve = "Serve customer and get MONEY!",
 }
 function Text.Get(stage: string, preferred: Enum.PreferredInput, button: string): string?
     if stage == "BuyJump" or stage == "BuyBat" then
