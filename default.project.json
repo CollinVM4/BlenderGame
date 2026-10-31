@@ -47,7 +47,7 @@
       "$className": "StarterGui",
       "$ignoreUnknownInstances": true,
       "Framewisp_CCVVMF": {
-        "$path": "Framewisp_CCWMF.rbxmx"
+        "$path": "Framewisp_Hotbar.prepared.rbxmx"
       }
     },
     "StarterPlayer": {

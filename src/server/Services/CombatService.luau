@@ -280,7 +280,19 @@ local function swingRejection(player: Player, equipped: EquippedBat?): string?
     return nil
 end
 -- Both weapons share current plot/team eligibility; their status immunity stays separate.
+local function luckyBuff(player: Player, id: string): boolean
+    return deps.LuckyBlockService ~= nil and deps.LuckyBlockService.IsBuffActive(player, id)
+end
+local function luckyImmune(player: Player): boolean
+    return luckyBuff(player, "StarPower") or luckyBuff(player, "Invincibility")
+end
 local function playerDamageRejection(attacker: Player, victim: Player, allowTeamDamage: boolean?): string?
+    if deps.ProtectionService and deps.ProtectionService.IsProtected(victim) then
+        return "target protected"
+    end
+    if luckyImmune(victim) then
+        return "target immune"
+    end
     local session = deps.TycoonService.GetSessionId(victim)
     if attacker == victim then
         return "self"
@@ -307,6 +319,12 @@ function CombatService.CanDamagePlayer(attacker: Player, victim: Player, allowTe
     return playerDamageRejection(attacker, victim, allowTeamDamage) == nil
 end
 
+local function forfeitProtection(player: Player)
+    if deps.ProtectionService and deps.ProtectionService.IsProtected(player) then
+        deps.ProtectionService.Forfeit(player)
+    end
+end
+
 function CombatService.DamagePlayer(
     attacker: Player,
     victim: Player,
@@ -321,7 +339,13 @@ function CombatService.DamagePlayer(
     if not humanoid or character:FindFirstChildOfClass("ForceField") then
         return false
     end
+    local healthBefore = humanoid.Health
     humanoid:TakeDamage(damage)
+    if humanoid.Health >= healthBefore then
+        return false
+    end
+    -- Shared successful-damage hook includes ice; bat stun also qualifies below.
+    forfeitProtection(attacker)
     return true
 end
 
@@ -356,6 +380,7 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
     character:SetAttribute("BatStunned", true)
     victim:SetAttribute("StunnedUntil", untilTime)
     deps.MovementService.SetStunned(victim, true)
+    forfeitProtection(attacker)
     local root = character:FindFirstChild("HumanoidRootPart") :: BasePart
     local attackerRoot = (attacker.Character :: Model):FindFirstChild("HumanoidRootPart") :: BasePart
     local away = Knockback.Direction(attackerRoot, root)
@@ -379,6 +404,8 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
                 or not character:IsDescendantOf(workspace)
                 or os.clock() >= state.Until
                 or not deps.MovementService.IsStunned(victim)
+                or luckyImmune(victim)
+                or (deps.ProtectionService and deps.ProtectionService.IsProtected(victim))
             then
                 releaseOwnership()
                 return
@@ -387,7 +414,7 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
                 if not deps.RagdollService.IsRagdolled(character) or root.Anchored then
                     return false
                 end
-                Knockback.Apply(root, away, level)
+                Knockback.Apply(root, away, level, if luckyBuff(attacker, "MegaBat") then 2 else 1)
                 return true
             end)
             if not ok then
@@ -443,7 +470,7 @@ function CombatService.SwingBat(player: Player): boolean
         return false
     end
     trace("SwingBat accepted")
-    attackAt[player] = os.clock() + Config.SwingCooldown
+    attackAt[player] = os.clock() + Config.SwingCooldown * (if luckyBuff(player, "MegaBat") then 0.5 else 1)
     local token = {}
     swings[player] = token
     local character = player.Character :: Model

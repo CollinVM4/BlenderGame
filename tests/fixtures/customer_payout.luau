@@ -38,7 +38,13 @@ shared.Events:FindFirstChild("RareIngredientSpawned").FireAllClients = function(
 end
 owner.DisplayName = "Payout Display"
 
+local luckyFactors = {}
 customer.Init({
+    LuckyBlockService = {
+        GetCashMultiplier = function(player)
+            return luckyFactors[player] or 1
+        end,
+    },
     AnnouncementService = announcements,
     GameplayService = {
         RegisterPlotInteraction = function(prompt, callback)

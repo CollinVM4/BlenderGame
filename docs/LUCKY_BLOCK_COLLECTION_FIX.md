@@ -30,15 +30,14 @@ no equivalent protected-metadata write.
    roulette shows silhouette beats, then the colored winner at 0.78 seconds, holds
    for the currently configured 1.7 seconds, and fades for 0.15 seconds. Tick/pop
    sounds, scaling, glow and cleanup remain unchanged. Invalid art uses text.
-6. The reserved slot repopulates within its original Level0–Level3 marker group.
+6. After reveal/hold/fade, the server publishes a separate public claim pickup.
+   The collector receives its buff or ingredient prize; the roller need not remain.
+   Block slots replenish with the 3/1/1/0 distribution. See [current server lifecycle](LUCKY_BLOCKS.md).
 
-The reported failure is client-side and occurs after committed collection and
-respawn scheduling. No client acknowledgement or reward request exists. **Current
-production code only selects and publishes rewards; it does not apply powerup
-effects or grant inventory/cash.** That pre-existing deferred feature is unchanged
-by this repair; exactly-once coverage refers to collection/reward publication.
+The imported-attribute repair remains in effect. Server rewards are now implemented;
+exactly-once coverage includes atomic pickup claims and rollback-safe ingredient batches.
 
-## Validation and Studio checks
+## Historical repair validation and Studio checks
 
 Focused suites: `lucky-block`, `lucky-block-view`, `lucky-block-controller`, and
 `lucky-block-roulette`. They cover protected metadata writes on imported model

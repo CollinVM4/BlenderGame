@@ -2,7 +2,7 @@
 -- Shared semantic contract. Generated root names and XML referents are irrelevant.
 local Registry = {}
 local panelNames: { [string]: boolean } =
-    { Index = true, Settings = true, Shop = true, Upgrades = true, Cosmetics = true }
+    { Index = true, Settings = true, Shop = true, Tasks = true, Upgrades = true, Cosmetics = true }
 Registry.Panels = panelNames
 
 function Registry.Matches(instance: Instance, role: string, names: { string }): boolean

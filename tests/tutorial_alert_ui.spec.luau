@@ -1,13 +1,21 @@
 -- Presentation contracts at the existing upgrades fake Roblox boundary.
 local alerts = load("TutorialAlertController")
 local notifications = load("MenuNotifications")
-local desktop = load("UIRegistry").Desktops(playerGui)[1]
-local alertContent = load("UIRegistry").Content(desktop)
+local registry = load("UIRegistry")
+local desktop = registry.Desktops(playerGui)[1]
+local alertContent = registry.Content(desktop)
 local leftMenu = alertContent:FindFirstChild("LeftMenu")
 local alertPanel = assert(gui.Resolve(playerGui)).Panel
-local menuArrow = instance("ImageLabel", "Alert", leftMenu)
-local jumpArrow = instance("ImageLabel", "Jump1Alert", alertPanel)
-local batArrow = instance("ImageLabel", "BatAlert", alertPanel)
+local alertScroll = registry.Child(alertPanel, "UpgradeScroll", { "UpgradeScroll" }, "ScrollingFrame")
+local alertList = registry.Child(alertScroll, "UpgradeList", { "UpgradeList" }, "GuiObject")
+local jumpCard = assert(registry.Child(alertList, "Upgrade:Jump", { "JumpCard" }, "GuiObject"))
+local batCard = assert(registry.Child(alertList, "Upgrade:Bat", { "BatCard" }, "GuiObject"))
+local menuArrow = registry.Child(leftMenu, "Alert", { "Alert" }, "ImageLabel")
+    or instance("ImageLabel", "Alert", leftMenu)
+local jumpArrow = registry.Child(jumpCard, "Jump1Alert", { "Jump1Alert" }, "ImageLabel")
+    or instance("ImageLabel", "Jump1Alert", jumpCard)
+local batArrow = registry.Child(batCard, "BatAlert", { "BatAlert" }, "ImageLabel")
+    or instance("ImageLabel", "BatAlert", batCard)
 -- Both runner modes exercise authored visibility independently of runtime state.
 for _, arrow in { menuArrow, jumpArrow, batArrow } do
     arrow.Visible = initialUi
@@ -65,11 +73,11 @@ check(
     "replicated purchase hands off to Bat"
 )
 playerGui.DescendantRemoving:Fire(batArrow)
-table.remove(alertPanel.children, table.find(alertPanel.children, batArrow))
+table.remove(batCard.children, table.find(batCard.children, batArrow))
 batArrow.Parent = nil
 flushDeferred()
 check(not batArrow.Visible and not jumpArrow.Visible, "missing authored arrow safely clears presentation")
-local replacementBat = instance("ImageLabel", "BatAlert", alertPanel)
+local replacementBat = instance("ImageLabel", "BatAlert", batCard)
 playerGui.DescendantAdded:Fire(replacementBat)
 flushDeferred()
 check(replacementBat.Visible, "late authored arrow receives current state")

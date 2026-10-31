@@ -4,11 +4,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Config = require(ReplicatedStorage.Shared.Constants.LuckyBlockPresentation)
 local Visual = require(script.Parent.LuckyBlockVisual)
+local Handoff = require(script.Parent.LuckyBlockPickupHandoff)
 local View = {}
 type Handle = { Show: (string, boolean) -> (), Fade: () -> (), Destroy: () -> () }
 local warned: { [string]: boolean } = {}
 
-function View.Create(position: Vector3, finalOnly: string?): Handle
+function View.Create(position: Vector3, finalOnly: string?, pickupId: number?, pickedUpAt: number?): Handle
     local root = Instance.new("Folder")
     root.Name = "LuckyBlockRoulette"
     local anchor = Instance.new("Part")
@@ -89,6 +90,9 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
     local beat = 0
     local disposed = false
     local fading = false
+    local revealed = false
+    local handedOff = false
+    local awaitingHandoff = false
     local tweens: { Tween } = {}
     local connections: { RBXScriptConnection } = {}
     local function tween(object: Instance, seconds: number, properties: any): Tween
@@ -110,6 +114,7 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
         end)
     )
     local view = {}
+    local destroyNow: () -> ()
     function view.Show(id: string, silhouette: boolean)
         if disposed or not Config.Rewards[id] then
             return
@@ -118,17 +123,46 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
             current.Parent = cache
         end
         beat += 1
-        current = if silhouette then shadows[id] else clone(id, false)
+        current = if silhouette
+            then shadows[id]
+            elseif pickupId and Handoff.Ready(pickupId) then nil
+            else clone(id, false)
         if current then
             current.Parent = root
             local yaw = if silhouette then (beat - 1) * Config.BeatYawDegrees else Config.RevealYawDegrees
-            current:PivotTo(anchor.CFrame * CFrame.Angles(math.rad(Config.TiltDegrees), math.rad(yaw), 0))
+            current:PivotTo(
+                if silhouette
+                    then anchor.CFrame * CFrame.Angles(math.rad(Config.TiltDegrees), math.rad(yaw), 0)
+                    else Visual.Pose(position)
+            )
             baseScale = current:GetScale()
         end
         labelGui.Enabled = not silhouette or current == nil
         label.Text = if current
             then Config.Rewards[id].Name
             else (if silhouette then "Missing visual" else Config.Rewards[id].Name .. " (missing model)")
+        if not silhouette and pickupId then
+            revealed = true
+            Handoff.Keep(
+                pickupId,
+                function()
+                    handedOff = true
+                    if current then
+                        current:Destroy()
+                        current = nil
+                    end
+                    labelGui.Enabled = false
+                    if awaitingHandoff then
+                        destroyNow()
+                    end
+                end,
+                (pickedUpAt or workspace:GetServerTimeNow())
+                    + Config.RevealSeconds
+                    + Config.HoldSeconds
+                    + Config.FadeSeconds
+                    + 60
+            )
+        end
         if silhouette then
             scale.Value = 1
             tickSound:Stop()
@@ -159,11 +193,15 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
         for _, animation in tweens do
             animation:Cancel()
         end
-        tween(scale, Config.FadeSeconds, { Value = 0.01 })
+        if pickupId and revealed then
+            scale.Value = 1 -- The prize remains at its settled reveal scale.
+        else
+            tween(scale, Config.FadeSeconds, { Value = 0.01 })
+        end
         tween(label, Config.FadeSeconds, { TextTransparency = 1, TextStrokeTransparency = 1 })
         light.Brightness = 0
     end
-    function view.Destroy()
+    destroyNow = function()
         if disposed then
             return
         end
@@ -178,6 +216,16 @@ function View.Create(position: Vector3, finalOnly: string?): Handle
         popSound:Stop()
         root:Destroy()
         cache:Destroy()
+    end
+    function view.Destroy()
+        if pickupId and revealed and not handedOff and not disposed then
+            awaitingHandoff = true
+            view.Fade()
+            tickSound:Stop()
+            popSound:Stop()
+            return -- Keep the prize across cancellation/death or delayed replication.
+        end
+        destroyNow()
     end
     root.Parent = workspace
     return view

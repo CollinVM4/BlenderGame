@@ -1,242 +1,55 @@
-# Lucky Blocks — Pass 1
+# Lucky Blocks: session rewards
 
-This is the Pass 1 foundation record. [Pass 2](LUCKY_BLOCK_ROULETTE.md) now adds
-roulette presentation and supersedes the original default-model Rojo mapping:
-the template is preserved as a Studio-authored asset and is no longer synced from
-`assets/luckyblock/LuckyBlock.rbxmx`. The runtime world spawning/pickup/animation
-presentation below is unchanged; roulette does not apply buffs.
+LuckyBlockService owns weighted rolls, public claim pickups, spawn clocks and buffs in server memory. Rolling reveals a prize; collecting the later pickup awards it to that collector, who may differ from the roller. There is no client pickup endpoint or acknowledgment.
 
-The current level spawning pass supersedes the historical spawn count and timers
-below. See [level spawning setup](LUCKY_BLOCK_LEVEL_SPAWNING.md).
+| Reward | Weight | Duration at claim | Effect |
+|---|---:|---:|---|
+| CashBoost | 15 | 90 seconds | 1.5x cash; max with shop DoubleCash, then existing Muncher factor |
+| StarPower | 13 | 10 seconds | Reject player damage, bat stun/knockback and ice freeze; sprint without stamina drain |
+| MegaBat | 17 | 15 seconds | Half swing cooldown, double slap launch; same tier and eligibility |
+| Invincibility | 17 | 8 seconds | Reject player damage, bat stun/knockback and ice freeze |
+| PantryPack | 20 | Instant | Three uniform ingredient draws from tiers 0 through collector's purchased Jump tier |
+| TopShelf | 10 | Instant | One uniform draw at collector's purchased Jump tier |
+| MysteryBox | 8 | Instant | One uniform draw across all tiers, excluding Player_Head and Dragon_Fruit |
 
-Pass 1 spawns instant world pickups, selects a server-owned reward, and publishes
-the result. It does not apply buffs, start buff timers, grant inventory items, or
-display a roulette. Duration values are provisional metadata for a later pass.
+Timed buffs use workspace:GetServerTimeNow(). Reclaiming replaces that buff's expiry with now plus its duration; different buffs coexist. Neither immunity changes fall damage, stealing or raid/slot/base protection. RemovePlayer clears buffs and both claim cooldowns, without removing world prizes.
 
-## Files
+## Roll and public pickup
 
-| Path | Responsibility |
-| --- | --- |
-| `src/shared/Constants/LuckyBlockConfig.luau` | Asset names, reward IDs/weights/durations, spawn target, respawn range, pickup checks, animation tuning |
-| `src/server/Services/LuckyBlockService.luau` | Marker lifecycle, authoritative claims, reward selection, stock cap and delayed replacement |
-| `src/client/Controllers/LuckyBlockPresentationController.luau` | Smooth local bob/rotation and streamed tag discovery |
-| `assets/luckyblock/LuckyBlock.rbxmx` | Reusable gold question-mark cube; synced to ServerStorage by Rojo |
-| `src/server/init.server.luau`, `src/client/init.client.luau` | Independent service/controller startup |
-| `default.project.json` | Template mapping; preserves Studio-authored sibling templates |
-| `tests/lucky_block.spec.luau`, `tests/run_state_tests.py` | Focused authoritative suite and manifest registration |
+TryClaim preserves the output-only LuckyBlockPickedUp and nearby LuckyBlockRevealed payloads: RewardId, optional DurationSeconds, Position, Character, PickedUpAt, PickupId, and observer UserId. Roller presentation and observer reveal still use the existing five-beat timeline, 0.78-second reveal, 1.7-second hold, 0.15-second fade, and 70-stud observer distance.
 
-The implementation reuses `WorldUtil.BindTag` and `WorldUtil.Near`. Existing
-ingredient records, pickup components, rare/mystery spawners, farm management,
-inventory ownership and loose-item cleanup are unchanged. Lucky Blocks never
-receive ingredient tags or enter the inventory registry. Only Lucky Block clones
-owned by the service are retired by its lifecycle.
+After firing those notifications, task.delay schedules the public pickup using the sum of those three presentation constants. Roller death/disconnection cannot cancel it. A tagged, non-geometric identity container replicates during the reveal; it is not yet claimable. At the unchanged server deadline, the server resolves LuckyBlockPresentation.Rewards[id].Visual from ReplicatedStorage.LuckyBlockVisuals and prepares authored art through shared LuckyBlockRewardVisual. Public art uses the exact normalized size, centered pivot and settled reveal pose as the client winner, anchored and stationary. Only unopened LuckyBlockWorld models bob and rotate.
 
-## Exact Studio setup
+The client retains the local colored prize through roulette fade/end/cancellation, while fading roulette-only lettering/light. LuckyBlockPickupHandoff hides partial public geometry/effects, waits for the matching PickupId and expected part count, removes the local prize, then exposes the public art in one render update. Claim/expiry state also releases the local prize if it arrives before art. There is no client acknowledgment. Claimed containers retain only terminal metadata until original expiry so late replication cannot resurrect a reveal; geometry and label are removed immediately on claim. Failed awards restore the same container, appearance and remaining lifetime.
 
-Rojo supplies the template. Author the spawn markers in your existing place:
+A finite 60-stud WorldBillboardStyle reward-name label uses a Terrain Attachment for its world position. Missing/malformed authored prize models warn by mapped asset name and leave this readable label-only collectible; no Lucky Block, invisible part or substitute geometry is created. Position-based proximity preserves the same living/gameplay-lock/radius checks for both normal and label-only pickups.
 
-```text
-ServerStorage
-└── LuckyBlockTemplates (Folder)
-    └── LuckyBlock (Model, Archivable = true, PrimaryPart = Root)
-        └── Root (Part, 3 × 3 × 3)
-            └── QuestionMark (SurfaceGui)
-                └── Label (TextLabel, Text = "?")
+Both lifecycle stages use living, unlocked characters within four studs, polled every 0.15 seconds. Their 0.75-second per-player cooldowns are separate. Pickups expire 60 seconds after server creation; expiry grants nothing. The first eligible collector claims atomically before world removal and award. No remote controls the prize, target, inventory or buff clock.
 
-Workspace
-├── LuckyBlockSpawns (Folder, authored in Studio)
-│   ├── Spawn01 (Part, tag: LuckyBlockSpawn)
-│   ├── Spawn02 (Part, tag: LuckyBlockSpawn)
-│   ├── ...
-│   └── Spawn10 (Part, tag: LuckyBlockSpawn)
-└── LuckyBlocks (Folder, runtime-created)
-    └── LuckyBlock (runtime clones; tag: LuckyBlockWorld)
+## Ingredient transaction and carry
 
-ReplicatedStorage
-└── Shared
-    ├── Constants
-    │   └── LuckyBlockConfig (ModuleScript)
-    └── Events
-        └── LuckyBlockPickedUp (RemoteEvent, runtime-created)
-```
+Lucky draws all IDs before validation. InventoryService.PrepareIngredientReward validates gameplay state, carried-state initialization, Backpack, living Humanoid/root, every definition and every authored ingredient template. It builds all visuals before the pickup commits; Lucky does not depend on generated fallback geometry. Missing selected art leaves the prize available until its original expiry, without exclusions or capacity reservations.
 
-Place **8–12 markers**; ten is the suggested starting layout. Their folder and
-names are organizational: the server discovers the `LuckyBlockSpawn` tag on each
-BasePart anywhere in Workspace. Do not put ingredient spawn tags on these markers.
-Set marker properties to `Anchored = true`, `Transparency = 1`, `CanCollide = false`,
-`CanTouch = false`, and `CanQuery = false`. A `1 × 1 × 1` marker centered half a stud
-below a floor surface puts its top on the floor. Keep its local Y axis upright.
-Use its CFrame for the spawn location and initial yaw.
+The returned one-shot, synchronous transaction calls GrantIngredient(player, id, true). If any grant returns false or throws, it removes only newly added held records and restores the previous selection. Discovery notifications happen only after the entire batch succeeds; notification errors cannot reopen a committed reward. A failed award restores the same PickupId with its original expiry. There are no yielding calls in this grant path.
 
-**No authored attributes are required** on markers or the template. The server
-places the model pivot three studs above the marker's top. With the supplied
-template, `PrimaryPart = Root` places the pivot at the cube center. A custom
-template should use a centered root and the same pivot relationship so proximity
-and visible placement agree. Decorative parts can be nested under the Model;
-the service anchors every part and disables collision/touch/query. It strips copied
-tags, scripts, ModuleScripts and ProximityPrompts from clones before publication.
-Keep the template purely visual and do not embed Tools or gameplay constraints.
+GrantIngredient's optional allowOverfill defaults to false and bypasses only its capacity check and the private equipVisual capacity check. Normal ingredient grants, world ingredients, stash withdrawals, world smoothies and GrantSmoothie retain their capacity gates. New ingredient records have Origin Unknown; Lucky never calls GrantSmoothie. Purchased carry capacity is unchanged.
 
-To use another model, add an archivable Model under `ServerStorage.LuckyBlockTemplates`,
-set its PrimaryPart, and change `ModelName` in the shared config. Both folder and
-model names are configurable. Missing/invalid templates warn once and retry while
-preserving pending stock, without blocking other systems. Edit the source asset
-to change the Rojo-managed default model; Studio edits to it can be overwritten
-by a later sync.
+The carry audit found native Backpack selection, ThrowHeld, overhead stacking, actual CarryCount publication, smoothie serving and storage already iterate/use the full held stack without carry-capacity truncation. Store checks stash-slot capacity. No custom hotbar, expiry, overfill UI or count clamp was added. The extra private equipVisual gate was the only overfill blocker changed.
 
-Runtime clones receive `LuckyBlockOrigin` (CFrame) and `LuckyBlockSpawnTime`
-(server-time number) for presentation. Do not author or use them as ownership
-proof. The client retries reading these attributes each render frame to tolerate
-replication order. Tagged models added later or streamed back in join the animation.
+## Personal claim feedback
 
-### Multipart imported model compatibility
+After successful timed claims, the server writes LuckyBuff<RewardId>ExpiresAt on the actual claimer. Instant rewards write LuckyInstant<RewardId>Until for a brief 2.5-second confirmation. These are server-owned session attributes and do not authorize gameplay. No attributes are written on roll or failed award. Death does not clear them or the existing buffs; RemovePlayer clears the player's state.
 
-The current animation moves the entire tagged Model with `Model:PivotTo`, so
-Parts/MeshParts in nested Models or Folders move together. No particular `Root`
-or `Visual` child name is required. Welds are not needed for this anchored cosmetic
-movement: every descendant BasePart is anchored by the server. Keep the imported
-visuals inside the single template Model; external geometry will not follow it.
+LuckyBlockHudController reads only LocalPlayer attributes using workspace:GetServerTimeNow(). LuckyBlockMessages computes ceil(max(0, expiry-now)); expired rows disappear. Entries are keyed by reward ID, so refresh updates an existing row and different buffs stack. Instant confirmations show COLLECTED without a duration. Recreating PlayerGui/the ScreenGui rebuilds the current state from attributes.
 
-Preserve these authoring assumptions:
+The compact HUD uses shared DialogueTextStyle (FredokaOne, white, 2.5px dark outline) and a composited CanvasGroup entrance fade. It occupies the central 36% of CoreUISafeInsets space, below the tutorial/announcement banner and above the hotbar/mobile control region; row height responds to available viewport height. ResetOnSpawn is false. No hotbar or control logic changes.
 
-- Set the outer template Model's PrimaryPart to an archivable BasePart descendant
-  at the intended visual/pickup center. An invisible helper Part is suitable. Keep
-  the Model and all intended cloned descendants archivable.
-- Use an upright, centered root with `PivotOffset = CFrame.identity` for the
-  simplest match to the default. Model pivots follow the PrimaryPart's pivot;
-  editing `Model.WorldPivot` alone does not override an assigned PrimaryPart.
-  See [Roblox pivot tools](https://create.roblox.com/docs/studio/pivot-tools).
-- Pickup uses `PrimaryPart.Position`, while spawn placement, reward-event Position
-  and client rotation use the model pivot. A translated PrimaryPart.PivotOffset
-  separates those centers and can make the visible block orbit the pickup center.
-  A rotated pivot offset can change the imported art's intended orientation. Center
-  the geometry relative to the root instead of compensating with a displaced pivot.
-- Pickup remains a four-stud sphere around the static server PrimaryPart, regardless
-  of the model's size, bounding box or helper root size. The client-only 0.5-stud bob
-  does not move that sphere. Scale unusually large imports and check reachability;
-  the current three-stud spawn height does not adjust for imported dimensions.
-- With StreamingEnabled, set the outer template's `ModelStreamingMode = Atomic`
-  so its root and multipart visuals stream together. The current controller checks
-  Model ancestry and presentation attributes, without waiting for every mesh or
-  the PrimaryPart to arrive. A non-atomic import can temporarily animate an
-  incomplete model. See [Roblox instance streaming](https://create.roblox.com/docs/workspace/streaming).
+## Authored assets and compatibility
 
-No runtime animation or pickup changes were needed for a correctly authored static
-multipart model. An actual imported asset still needs Studio validation: check
-relative part placement during rotation, centered pickup reach, floor clearance,
-two-client collection, and streaming out/back in. Skinned/deforming animation is
-outside this static-model compatibility inspection.
+Keep ServerStorage.LuckyBlockTemplates.LuckyBlock as an archivable Model with a PrimaryPart. Reward presentation reads ReplicatedStorage.LuckyBlockVisuals. CashBoost reuses 2xCash and StarPower reuses Star; MegaBat and Invincibility retain their visuals. PantryPack, TopShelf and MysteryBox expect models of those names. Missing reward art warns once per mapped name when spawned; the existing client renderer also warns once per missing asset, retaining safe text presentation. No geometry is invented.
 
-## Behavior and configuration
+The checkout's Rojo mappings preserve unknown authored assets but contain no reward models or authored Workspace spawn markers. The checked-in XML exports also contain no LuckyBlockVisuals, PantryPack, TopShelf, MysteryBox or LuckyBlockSpawns tree. The three prize models are therefore unverified/missing from repository sources: Collin asset tasks. Live authored marker counts cannot be reported from this checkout. Required counts are Level0 >= 3, Level1 >= 1, Level2 >= 1; Level3 is disabled.
 
-The current spawn target is one block in each of Level0?Level3 (four globally).
-Each level independently waits 180?240 seconds after collection or unexpected
-removal, then randomly selects a valid unused marker in that same level, excluding
-the previous marker when alternatives exist. Missing assets or markers retry every
-five seconds without losing the reserved slot. The existing pickup poll does not
-drive spawning. See [the current Studio hierarchy and configuration](LUCKY_BLOCK_LEVEL_SPAWNING.md).
+There is no announced-only catalog flag/set. TODO(LuckyMysteryAnnouncedOnly) identifies that missing source of truth. AnnouncedIngredientSpawn is a marker tag, not a catalog eligibility set. The catalog's actual IDs are Player_Head and Dragon_Fruit; its pre-existing PlayerHead alias is also excluded defensively. No RainbowRampage compatibility alias was needed. The ordinary IngredientGeometry fallback was discovered locally and is deliberately not used by Lucky preparation.
 
-The server checks physical root proximity every 0.15 seconds. A connected player
-with a living Humanoid and an unlocked gameplay action state must be within four
-studs of the static server block root. A successful claim applies a 0.75-second
-per-player pickup cooldown. No client pickup request, position, reward or timer is
-accepted. The block's record is removed before destruction or result publication;
-competing/reentrant claims fail. The visible block bobs locally by 0.5 studs over
-2.5 seconds and rotates 45 degrees/second. There is no server Heartbeat animation.
-
-| Reward ID | Weight / percent | Duration metadata (seconds) |
-| --- | ---: | ---: |
-| DoubleCash | 18 | 30 |
-| SuperJump | 22 | 12 |
-| RainbowRampage | 8 | 10 |
-| MegaBat | 15 | 15 |
-| IngredientMagnet | 20 | 15 |
-| Invincibility | 17 | 8 |
-
-The server uses its own loaded config table for every selection. Weights total
-100 initially; selection also supports other positive totals. Keep reward weights
-positive, durations nonnegative, and timing/animation periods positive when tuning.
-
-The collector receives `Shared.Events.LuckyBlockPickedUp.OnClientEvent` with:
-
-```luau
-{
-    RewardId = "DoubleCash", -- server-selected string
-    DurationSeconds = 30,   -- metadata only, no effect or running expiry
-    Position = Vector3.new(...), -- server spawn-pivot position
-}
-```
-
-This is an output-only notification. Pass 1 has no consumer UI or roulette; future
-presentation can subscribe to it. Future authoritative effects must be applied
-on the server and must not treat a client response to this event as a grant.
-
-## Validation
-
-Run `python tests/run_state_tests.py --luau <luau.exe> --suite lucky-block`.
-The suite loads the real service and real `WorldUtil` with engine doubles. It covers
-missing assets/recovery, five-at-ten spawning, distinct markers, distance/death/lock
-rejection, unregistered objects, simultaneous and reentrant single claims, per-player
-cooldown, automatic proximity pickup, reward/weight boundaries, randomized delay
-bounds, external removal/reparenting, marker retirement, stale timers, and marker
-scarcity. It cannot prove native physics or replication behavior.
-
-Validation for this pass:
-
-- Lucky Block focused suite: PASS (51 behavioral assertions), including exact
-  `LuckyBlockPickedUp.DurationSeconds` values for all six rewards and unchanged
-  weighted selection boundaries.
-- Existing ingredient cleanup, farm and rare/mystery announcement integration suites: PASS.
-- Existing ingredient `world` suite: FAIL at `InventoryService:721`, missing fixture
-  `TycoonService.GetPlot`; reproduced unchanged from a clean HEAD archive. Unrelated
-  production code was not changed to address it.
-- StyLua on new/changed Lucky Block Luau and bootstraps: PASS.
-- Rojo build and fresh sourcemap: PASS.
-- Roblox-aware typecheck of the three new Lucky Block modules: PASS.
-- Roblox-aware full `src` typecheck: 41 unique existing diagnostics; a separate copy
-  of the current workspace with this feature removed produces the same 41 and zero
-  new diagnostics. Full-project typecheck therefore remains red.
-- Runner self-tests: 1/5 pass; the same four failures reproduce from a clean HEAD
-  archive. Their hard-coded suite lists/order and VFX source detection are stale;
-  the new manifest entry also appears in the existing state-list mismatch. These
-  unrelated runner assertions were left unchanged.
-- Studio playtest: not run; use the checklist below.
-
-Build, sourcemap and validation logs were saved under the temporary
-`BlenderGame-luau-tools` directory.
-
-The duration metadata follow-up changed only config durations, event-payload test
-expectations, and this guide. Its focused suite, StyLua, feature typecheck, fresh
-sourcemap and Rojo build all pass. Full `src` typecheck was compared against a
-separate snapshot using the pre-follow-up config: both report the same 41 unique
-existing errors, with no new errors. Reward weights and runtime pickup/animation
-code remain unchanged. Follow-up logs use the `lucky-block-followup` filename prefix.
-
-## Studio validation checklist
-
-1. Sync Rojo. Verify the reusable model's PrimaryPart is Root, and place/tag ten
-   accessible, well-separated markers. Start a server with two clients; confirm
-   five blocks appear at distinct markers and no pickup prompts exist.
-2. Verify smooth floating/rotation on both clients. Inspect server roots: they
-   remain anchored at the authored spawn position. With StreamingEnabled, leave
-   and return to an area and verify animation resumes without duplicates.
-3. Walk into a block. Confirm it disappears for both clients and the collector
-   receives exactly one result. Observe the RemoteEvent with a temporary local
-   listener if needed; no buff or roulette should run.
-4. Have both players reach the same block together. Confirm exactly one receives
-   a result. Rapidly visit neighboring blocks; one player cannot claim twice
-   within 0.75 seconds, and can collect after that cooldown.
-5. Stand far away, die/reset, and test a gameplay action lock near a block. Confirm
-   no invalid pickup is granted. Firing `LuckyBlockPickedUp:FireServer(...)` with
-   fabricated positions/rewards must have no effect.
-6. Time several replacements: they appear after 25–40 seconds plus polling/server
-   delay, always at authored markers, never exceeding five active blocks. Repeat
-   after collecting every active block.
-7. Untag/remove an occupied marker, destroy/reparent a runtime clone, and remove
-   all markers. Confirm no reward is granted for administrative removal, no block
-   survives a removed marker, and no delayed callback recreates unavailable stock.
-   Restore markers and confirm pending stock recovers within the cap.
-8. Remove the template or its PrimaryPart before starting. Confirm a clear warning
-   and that ingredient/farm systems still start. Restore it and verify stock recovers.
-9. Confirm existing ingredient prompts, ordinary/rare/mystery respawns, farm
-   harvest, carry/stash ownership and loose-item cleanup still behave normally.
+See [presentation update validation](LUCKY_BLOCK_PRESENTATION_UPDATE.md), [spawn distribution](LUCKY_BLOCK_LEVEL_SPAWNING.md), [presentation](LUCKY_BLOCK_ROULETTE.md), and [implementation validation](LUCKY_BLOCK_VALIDATION.md). This pass adds no Studio testing tasks, persistence, products, tasks, hotbar, or protection changes.

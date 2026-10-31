@@ -73,3 +73,18 @@ do
     end
     customer.DeactivateForPlayer(owner)
 end
+
+-- The real Serve transaction must pass its acting player into the cash rule.
+config.RegularWildcardChance = 1
+for _, shop in { false, true } do
+    luckyFactors[owner] = 1.5
+    data.SetEntitlement(owner, "DoubleCash", shop)
+    customer.ActivateForPlayer(owner)
+    local model = customer.SpawnForPlayer(owner)
+    flush()
+    cup = { Ingredients = { "Blueberry", "Blueberry", "Blueberry" }, BlendId = "lucky-serve" }
+    local before = data.GetCash(owner)
+    check(customer.Serve(owner, model), "Lucky cash serve commits")
+    check(data.GetCash(owner) - before == (if shop then 500 else 375), "serve uses max shop/lucky")
+    customer.DeactivateForPlayer(owner)
+end

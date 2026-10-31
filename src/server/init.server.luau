@@ -20,6 +20,8 @@ local services: { [string]: any } = {
     LockBaseService = require(script.Services.LockBaseService),
     InitialSpawnService = require(script.Services.InitialSpawnService),
     TutorialService = require(script.Services.TutorialService),
+    ProtectionService = require(script.Services.ProtectionService),
+    TasksService = require(script.Services.TasksService),
     IngredientService = require(script.Services.IngredientService),
     LuckyBlockService = require(script.Services.LuckyBlockService),
     PlayerHeadDropService = require(script.Services.PlayerHeadDropService),
@@ -67,7 +69,7 @@ services.LockBaseService.Init(services)
 -- Inject dependencies once; service modules never require one another in cycles.
 services.AnnouncementService.Init(services)
 services.IngredientService.Init(services)
-services.LuckyBlockService.Init()
+services.LuckyBlockService.Init(services)
 services.PlayerHeadDropService.Init(services)
 services.DiscoveryService.Init(services)
 services.MovementService.Init(services)
@@ -118,6 +120,8 @@ services.TycoonService.Init({
         services.MuncherService.CleanupSession(id)
     end,
 })
+services.ProtectionService.Init()
+services.TasksService.Init(services)
 for _, name in
     {
         "InventoryService",
@@ -152,6 +156,8 @@ local function addPlayer(player: Player)
     end
     initialized[player] = true
     services.TutorialService.AddPlayer(player)
+    services.ProtectionService.AddPlayer(player)
+    services.TasksService.AddPlayer(player)
     services.PlayerDataService.AddPlayer(player)
     services.DiscoveryService.PlayerAdded(player)
     services.TycoonService.RefreshUpgradeAttributes(player)
@@ -189,7 +195,9 @@ for _, player in Players:GetPlayers() do
 end
 services.JackedNoobService.Init(services)
 Players.PlayerRemoving:Connect(function(player)
+    services.ProtectionService.RemovePlayer(player)
     services.InitialSpawnService.RemovePlayer(player)
+    services.TasksService.RemovePlayer(player)
     services.TutorialService.RemovePlayer(player)
     services.TycoonService.RemovePlayer(player, function()
         if characterConnections[player] then
@@ -213,6 +221,7 @@ Players.PlayerRemoving:Connect(function(player)
                 "IceGunProjectileService",
                 "FreezeStatusService",
                 "CombatService",
+                "LuckyBlockService",
                 "InventoryService",
                 "IngredientService",
                 "PlayerHeadDropService",

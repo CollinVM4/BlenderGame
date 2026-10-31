@@ -68,7 +68,8 @@ function Controller.Init()
         if age >= Config.RevealSeconds + Config.HoldSeconds + Config.FadeSeconds then
             return
         end
-        local view = View.Create(payload.Position, if full then nil else payload.RewardId)
+        local view =
+            View.Create(payload.Position, if full then nil else payload.RewardId, payload.PickupId, payload.PickedUpAt)
         if not view then
             return
         end

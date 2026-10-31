@@ -1,4 +1,4 @@
-"""Resolve tutorial arrows from the real Framewisp v2 export."""
+"""Resolve tutorial arrows from the real Framewisp 103026 export."""
 import argparse
 import json
 from pathlib import Path
@@ -28,7 +28,7 @@ def visit(item, parent):
         visit(child, index)
 
 
-for item in ET.parse(root / "new_export102126v2.rbxmx").getroot().findall("Item"):
+for item in ET.parse(root / "uiExport_103026.rbxmx").getroot().findall("Item"):
     visit(item, 0)
 bundle = "local exportNodes = {\n" + "\n".join(
     "{" + ",".join(json.dumps(value) for value in node) + "},"

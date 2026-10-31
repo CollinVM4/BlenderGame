@@ -2,6 +2,8 @@
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.LuckyBlockConfig)
+local Presentation = require(game:GetService("ReplicatedStorage").Shared.Constants.LuckyBlockPresentation)
+local Handoff = require(script.Parent.Parent.UI.LuckyBlockPickupHandoff)
 local Controller = {}
 local started = false
 
@@ -10,6 +12,21 @@ function Controller.Init()
         return
     end
     started = true
+    CollectionService:GetInstanceAddedSignal(Presentation.PickupTag):Connect(function(object)
+        if object:IsA("Model") then
+            Handoff.Track(object)
+        end
+    end)
+    CollectionService:GetInstanceRemovedSignal(Presentation.PickupTag):Connect(function(object)
+        if object:IsA("Model") then
+            Handoff.Untrack(object)
+        end
+    end)
+    for _, object in CollectionService:GetTagged(Presentation.PickupTag) do
+        if object:IsA("Model") then
+            Handoff.Track(object)
+        end
+    end
     local models: { [Model]: boolean } = {}
     local function add(object: Instance)
         if object:IsA("Model") then
@@ -27,6 +44,7 @@ function Controller.Init()
     end
     RunService.RenderStepped:Connect(function()
         local now = workspace:GetServerTimeNow()
+        Handoff.Step(now)
         for model in models do
             local origin = model:GetAttribute("LuckyBlockOrigin")
             local spawned = model:GetAttribute("LuckyBlockSpawnTime")

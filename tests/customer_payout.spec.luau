@@ -12,7 +12,15 @@ owner.Name, owner.DisplayName, owner.UserId = "Economy", "Economy", 42
 data.AddPlayer(owner)
 assignTestSession(owner)
 local muncher = 1
+local luckyFactor = 1
+local expectedServer = owner
 customer.Init({
+    LuckyBlockService = {
+        GetCashMultiplier = function(player)
+            check(player == expectedServer, "cash multiplier uses serving player")
+            return luckyFactor
+        end,
+    },
     PlayerDataService = data,
     TycoonService = sessionTestAuthority,
     MuncherService = {
@@ -136,3 +144,38 @@ check(
     "wildcard keeps upgrade entitlement and muncher modifiers"
 )
 print("PASS: economy payout contracts")
+
+for _, shop in { false, true } do
+    data.SetEntitlement(owner, "DoubleCash", shop)
+    luckyFactor = 1
+    local plain = customer.CalculatePayout(owner, "A")
+    luckyFactor = 1.5
+    local expected = if shop then 1 else 1.5
+    check(customer.CalculatePayout(owner, "A") == math.round(plain * expected), "flat payout uses max shop/lucky")
+    check(
+        customer.CalculateOrderPayout(owner, premium, sweet)
+            == math.round((49000 + 250) * 1.5 * 1.25 * 1.7 * (if shop then 2 else 1.5) * muncher),
+        "order payout uses max shop/lucky"
+    )
+end
+
+local teammate = instance("Player")
+teammate.Name, teammate.DisplayName, teammate.UserId = "Server", "Server", 43
+data.AddPlayer(teammate)
+setup(
+    sessionTestAuthority.JoinSession(teammate, owner, sessionTestAuthority.GetRequestContext(owner)),
+    "join serving teammate"
+)
+expectedServer = teammate
+data.SetEntitlement(owner, "DoubleCash", true)
+data.SetEntitlement(teammate, "DoubleCash", false)
+luckyFactor = 1.5
+check(
+    customer.CalculateOrderPayout(teammate, premium, requests.WildcardRequest) == math.round(250 * 1.7 * 1.5 * muncher),
+    "teammate uses own cash factors with shared payout upgrade"
+)
+local flat = customer.CalculatePayout(teammate, "A")
+check(
+    flat == math.round(economy.BasePayout * economy.CashScale * economy.GradeMultiplier.A * 1.7 * 1.5 * muncher),
+    "flat payout uses serving teammate entitlement"
+)

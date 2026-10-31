@@ -38,7 +38,19 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
-    "lucky-block": ("state", ("lucky_block.spec.luau",)),
+    "protection": ("state", ("protection.spec.luau",)),
+    "protection-gameplay": ("integration", ("fixtures/smoothie.luau", "fixtures/bat_combat.luau", "protection_gameplay.spec.luau")),
+    "protection-ice": ("integration", ("fixtures/icegun.luau", "protection_ice.spec.luau")),
+    "tasks": ("state", ("tasks.spec.luau",)),
+    "tasks-serve": ("integration", ("fixtures/customer_payout.luau", "tasks_serve.spec.luau")),
+    "tasks-steal": ("integration", ("fixtures/smoothie.luau", "tasks_steal.spec.luau")),
+    "tasks-ui": ("presentation", ("tasks_ui.spec.luau",)),
+    "lucky-hud": ("presentation", ("lucky_hud.spec.luau",)),
+    "lucky-handoff": ("presentation", ("lucky_handoff.spec.luau",)),
+    "lucky-sprint": ("state", ("lucky_sprint.spec.luau",)),
+    "lucky-inventory": ("integration", ("fixtures/smoothie.luau", "lucky_inventory.spec.luau")),
+    "lucky-combat": ("integration", ("fixtures/smoothie.luau", "fixtures/bat_combat.luau", "lucky_combat.spec.luau")),
+    "lucky-block": ("state", ("fixtures/lucky_visual_geometry.luau", "lucky_block.spec.luau")),
     "lucky-block-roulette": ("presentation", ("lucky_block_roulette.spec.luau",)),
     "lucky-block-view": ("presentation", ("lucky_block_view.spec.luau",)),
     "lucky-block-controller": ("presentation", ("lucky_block_controller.spec.luau",)),
@@ -191,6 +203,8 @@ if args.list:
         print(f"{SUITES[name][0]}: {name}")
     raise SystemExit(0)
 sources = {}
+for name in ("TasksGui", "UIRegistry", "CashRewardState"):
+    sources[name] = (ROOT / f"src/client/UI/{name}.luau").read_text(encoding="utf-8")
 for directory in ("src/shared/Constants", "src/server/Services", "src/server/Admin"):
     for path in (ROOT / directory).glob("*.luau"):
         sources[path.stem] = path.read_text(encoding="utf-8")
@@ -254,8 +268,11 @@ sources["PanelManager"] = (ROOT / "src/client/UI/PanelManager.luau").read_text(e
 sources["PlotIdentityController"] = (ROOT / "src/client/Controllers/PlotIdentityController.luau").read_text(encoding="utf-8")
 sources["UnstuckController"] = (ROOT / "src/client/Controllers/UnstuckController.luau").read_text(encoding="utf-8")
 sources["SprintController"] = (ROOT / "src/client/Controllers/SprintController.luau").read_text(encoding="utf-8")
-for name in ("LuckyBlockSequence", "LuckyBlockView", "LuckyBlockVisual"):
+for name in ("LuckyBlockSequence", "LuckyBlockView", "LuckyBlockVisual", "LuckyBlockPickupHandoff", "LuckyBlockMessages", "LuckyBlockHud"):
     sources[name] = (ROOT / f"src/client/UI/{name}.luau").read_text(encoding="utf-8")
+sources["LuckyBlockRewardVisual"] = (ROOT / "src/shared/LuckyBlockRewardVisual.luau").read_text(encoding="utf-8")
+for name in ("LuckyBlockHudController", "LuckyBlockPresentationController"):
+    sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")
 sources["LuckyBlockRouletteController"] = (ROOT / "src/client/Controllers/LuckyBlockRouletteController.luau").read_text(encoding="utf-8")
 sources["IngredientPreviewGeometry"] = (ROOT / "src/shared/IngredientPreviewGeometry.luau").read_text(encoding="utf-8")
 source_bundle = (

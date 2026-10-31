@@ -57,8 +57,10 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
         return nil
     end
     local rows: { [string]: Row } = {}
+    local cardById: { [string]: GuiObject? } = {}
     for id, name in cards do
         local card = Registry.Child(list, "Upgrade:" .. id, { name }, "GuiObject")
+        cardById[id] = card :: GuiObject?
         local level = child(card, "LevelContainer", "GuiObject")
         local current = child(level, "CurrentValue", "TextLabel")
         local nextValue = child(level, "NextValue", "TextLabel")
@@ -81,9 +83,13 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
         }
     end
     local leftMenu = child(content, "LeftMenu", "GuiObject")
+    local arrowCards: { [string]: GuiObject? } = {
+        Jump1Alert = cardById.Jump,
+        BatAlert = cardById.Bat,
+    }
     local panelArrows: { [string]: GuiObject } = {}
-    for _, name in { "Jump1Alert", "BatAlert" } do
-        local arrow = importedChild(panel, name .. "_pulse", name, "GuiObject")
+    for name, card in arrowCards do
+        local arrow = importedChild(card, name .. "_pulse", name, "GuiObject")
         if arrow then
             panelArrows[name] = arrow :: GuiObject
         end

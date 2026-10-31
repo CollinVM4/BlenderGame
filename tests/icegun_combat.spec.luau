@@ -244,3 +244,19 @@ check(
     "one-life admin grant fires through normal combat without gamepass ownership"
 )
 print("PASS: Ice Ray radial blast/combat integration")
+
+-- Lucky immunity uses the central damage decision, so rejected ice never freezes.
+local luckyImmune = {}
+deps.LuckyBlockService = {
+    IsBuffActive = function(player, id)
+        return luckyImmune[player] == id
+    end,
+}
+for _, buff in { "StarPower", "Invincibility" } do
+    local immune, h = target("Lucky" .. buff, vec(0, 0, -8))
+    luckyImmune[immune] = buff
+    local before = h.Health
+    advance(config.ShotCooldown + 1)
+    check(shotgun.Fire(shooter, aim), "ice shot remains valid with Lucky immune target")
+    check(h.Health == before and not movement.IsFrozen(immune), "Lucky immunity prevents ice damage and freeze")
+end

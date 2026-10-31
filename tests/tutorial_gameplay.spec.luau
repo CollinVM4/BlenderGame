@@ -29,6 +29,9 @@ local function advance(seconds)
     flush()
     heartbeat:Fire(0.1)
 end
+local tasks = loadModule("TasksService")
+tasks.Init(dependency)
+dependency.TasksService = tasks
 local tutorial = loadModule("TutorialService")
 dependency.TutorialService = tutorial
 dependency.FarmService = {
@@ -68,6 +71,15 @@ end
 p.Parent = workspaceFake
 p.Character.WaitForChild = p.Character.FindFirstChild
 tutorial.AddPlayer(p)
+local setAttribute = p.SetAttribute
+p.SetAttribute = function(self, name, value)
+    local previous = self:GetAttribute(name)
+    setAttribute(self, name, value)
+    if previous ~= value then
+        self:GetAttributeChangedSignal(name):Fire()
+    end
+end
+tasks.AddPlayer(p)
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 local config = loadModule("TutorialOrders")
@@ -210,8 +222,9 @@ for orderIndex, order in config do
     setup(customer.Serve(p, model), "normal committed tutorial serve")
     heartbeat:Fire(0.1)
     check(
-        dependency.TycoonService.GetCash(p) == beforeCash + math.max(payout, order.PayoutFloor or 0),
-        "payout comes only from real serving with tutorial floor"
+        dependency.TycoonService.GetCash(p)
+            == beforeCash + math.max(payout, order.PayoutFloor or 0) + (if orderIndex == 3 then 9000 else 0),
+        "payout includes tutorial floor and the locked third-serve milestone"
     )
     local earned = dependency.TycoonService.GetCash(p) - beforeCash
     starterEarnings += earned
@@ -244,6 +257,10 @@ check(
     p:GetAttribute("TutorialStage") == "NextCustomer" and p:GetAttribute("TutorialActive"),
     "all three fulfilled serves wait for next regular order"
 )
+check(
+    p:GetAttribute("TasksServeTotal") == 3 and p:GetAttribute("TasksServeThreshold") == 10,
+    "three real tutorial serves activate cumulative 3/10"
+)
 inventory.InitializeTutorialStash(p)
 check(
     slot(p, 3).Count == 0 and slot(p, 4).Count == 0 and slot(p, 5).Count == 0,
@@ -265,6 +282,12 @@ p.Character:FindFirstChild("HumanoidRootPart").Position = nextCustomer.Model:Get
 setup(customer.TakeOrder(p, nextCustomer.Model), "take next regular order")
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Complete", "real order acceptance completes send-off with missing scenery")
+local beforeTutorialReward = dependency.TycoonService.GetCash(p)
+flush()
+check(
+    dependency.TycoonService.GetCash(p) == beforeTutorialReward + 5000,
+    "tutorial completion pays separately on its observed transition"
+)
 -- First regular serves use the live payout formula with no tutorial floors.
 loadModule("Upgrades").CarryCapacity[1].Value = 3
 capacities[p] = 1

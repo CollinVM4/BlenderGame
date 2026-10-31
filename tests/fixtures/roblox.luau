@@ -373,6 +373,7 @@ local function instance(class)
     return object
 end
 local shared = {
+    LuckyBlockRewardVisual = "LuckyBlockRewardVisual",
     WorldBillboardStyle = "WorldBillboardStyle",
     MobilePromptDebug = "MobilePromptDebug",
     IngredientName = "IngredientName",

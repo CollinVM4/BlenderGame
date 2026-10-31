@@ -1,7 +1,7 @@
 """Apply the menu policy to a Framewisp export without rewriting its artwork XML.
 
-Run before Rojo sync/build. The default command prepares Framewisp_CCWMF.rbxmx
-in place; --input preserves the source and writes that Rojo-mapped asset. Fail on an
+Run before Rojo sync/build. The default command reads uiExport_103026.rbxmx
+and writes Framewisp_Hotbar.prepared.rbxmx; --input also preserves its source. Fail on an
 unknown generated wiring contract rather than installing competing handlers.
 """
 import argparse
@@ -15,9 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BEGIN = "-- BEGIN BLENDER MAIN MENUS"
 END = "-- END BLENDER MAIN MENUS"
 
-DEFAULT_INPUT = ROOT / "Framewisp_CCWMF.rbxmx"
+DEFAULT_INPUT = ROOT / "uiExport_103026.rbxmx"
+DEFAULT_OUTPUT = ROOT / "Framewisp_Hotbar.prepared.rbxmx"
 PANELS = ("Index", "Settings", "Shop", "Upgrades", "Cosmetics")
-PERSISTENT = ("TOP", "LeftMenu", "RightMenu", "CashDisplay", "Cash", "{Coins}")
+PERSISTENT = ("TOP", "Hotbar", "LeftMenu", "RightMenu", "CashDisplay", "Cash", "{Coins}")
 GUI_OBJECTS = {"Frame", "CanvasGroup", "ScrollingFrame", "ImageLabel", "ImageButton",
                "TextLabel", "TextButton", "TextBox", "ViewportFrame", "VideoFrame"}
 
@@ -234,7 +235,7 @@ def main(argv=None):
     if args.path is not None and args.input is not None:
         parser.error("Use either the legacy positional path or --input")
     source = args.input if args.input is not None else (args.path or DEFAULT_INPUT)
-    destination = args.output if args.output is not None else (DEFAULT_INPUT if args.input is not None else source)
+    destination = args.output if args.output is not None else (source if args.path is not None else DEFAULT_OUTPUT)
     for label, path in (("Input", source), ("Output", destination)):
         if path.suffix.lower() != ".rbxmx":
             parser.error(f"{label} must use the .rbxmx XML format: {path}")

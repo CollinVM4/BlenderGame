@@ -36,8 +36,9 @@ local function advance(seconds)
 end
 local views = {}
 cache.LuckyBlockView = {
-    Create = function(position, finalOnly)
-        local view = { Position = position, FinalOnly = finalOnly, Shows = {} }
+    Create = function(position, finalOnly, pickupId, pickedUpAt)
+        local view =
+            { Position = position, FinalOnly = finalOnly, PickupId = pickupId, PickedUpAt = pickedUpAt, Shows = {} }
         view.Show = function(id, shadow)
             table.insert(view.Shows, { Id = id, Shadow = shadow })
         end
@@ -86,7 +87,7 @@ local function message(player, id, reward)
     return {
         UserId = player.UserId,
         Character = player.Character,
-        RewardId = reward or "IngredientMagnet",
+        RewardId = reward or "PantryPack",
         PickupId = id,
         PickedUpAt = now,
         Position = vec(12, 6, 9),
@@ -123,15 +124,15 @@ collector.CharacterRemoving:Fire(oldCharacter)
 check(not views[3].Destroyed, "stale old-character removal cannot cancel the replacement avatar's roulette")
 collector.CharacterRemoving:Fire(collector.Character)
 check(views[3].Destroyed, "reset cancels the new character's presentation")
-nearby.OnClientEvent:Fire(message(other, 5, "DoubleCash"))
+nearby.OnClientEvent:Fire(message(other, 5, "CashBoost"))
 check(#views == 4 and #views[4].Shows == 0, "nearby notification schedules no silhouette ticks")
 check(
-    views[4].FinalOnly == "DoubleCash" and (views[4].Position - views[1].Position).Magnitude == 0,
+    views[4].FinalOnly == "CashBoost" and (views[4].Position - views[1].Position).Magnitude == 0,
     "nearby final-only view uses the same server collection position"
 )
 advance(0.78)
 check(
-    #views[4].Shows == 1 and views[4].Shows[1].Id == "DoubleCash" and not views[4].Shows[1].Shadow,
+    #views[4].Shows == 1 and views[4].Shows[1].Id == "CashBoost" and not views[4].Shows[1].Shadow,
     "nearby player sees only the final server-selected reward"
 )
 services.Players.PlayerRemoving:Fire(other)
@@ -151,3 +152,8 @@ local invalid = message(collector, 8)
 invalid.Position = nil
 pickup.OnClientEvent:Fire(invalid)
 check(#views == 6, "missing collection position cannot fall back to the avatar's location")
+
+check(
+    views[1].PickupId ~= nil and views[1].PickedUpAt ~= nil,
+    "reveal forwards server identity/deadline origin into public handoff"
+)

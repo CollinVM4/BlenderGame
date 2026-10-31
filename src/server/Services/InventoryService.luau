@@ -52,6 +52,9 @@ type HeldItem = {
 }
 local held: { [Player]: { HeldItem } } = {}
 local nextCarryItemId = 0
+-- Prepared Lucky grants are synchronous and private to this module. Discovery
+-- is deferred until the entire batch commits; rollback removes only new records.
+local preparedGrants: { [Player]: { [string]: { Instance } } } = {}
 local function topItem(player: Player): HeldItem?
     local stack = held[player]
     return if stack then stack[#stack] else nil
@@ -419,13 +422,14 @@ local function equipVisual(
     smoothie: Types.SmoothieData?,
     onCommitted: (() -> ())?,
     announcementOwnership: Types.AnnouncementOwnership?,
-    ingredientItem: Types.IngredientItem?
+    ingredientItem: Types.IngredientItem?,
+    allowOverfill: boolean?
 ): boolean
     local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if
-        InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
+        (not allowOverfill and InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player))
         or not backpack
         or not humanoid
         or humanoid.Health <= 0
@@ -555,7 +559,7 @@ local function equipVisual(
         switching[player] = nil
         return false
     end
-    if id and not smoothie and deps.DiscoveryService then
+    if id and not smoothie and deps.DiscoveryService and not preparedGrants[player] then
         deps.DiscoveryService.DiscoverIngredient(player, id)
     end
     return true
@@ -576,21 +580,122 @@ end
 
 -- Server-only direct reward path. Use the same item identity, geometry and held
 -- stack as a world pickup, without publishing an unclaimed object to Workspace.
-function InventoryService.GrantIngredient(player: Player, id: string): boolean
+function InventoryService.GrantIngredient(player: Player, id: string, allowOverfill: boolean?): boolean
     if
         not MovementService.CanPerformGameplayAction(player)
         or not carried[player]
         or not deps.IngredientService.GetDefinition(id)
-        or InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player)
+        or (not allowOverfill and InventoryService.GetCarryCount(player) >= InventoryService.GetCarryCapacity(player))
     then
         return false
     end
-    local visual = deps.IngredientService.CreateVisual(id)
+    local prepared = preparedGrants[player]
+    local visual = if prepared then table.remove(prepared[id]) else deps.IngredientService.CreateVisual(id)
     if not visual then
         return false
     end
     local item = Item.New(id, game:GetService("HttpService"):GenerateGUID(false), "Unknown")
-    return equipVisual(player, id, visual, nil, nil, nil, item)
+    return equipVisual(player, id, visual, nil, nil, nil, item, allowOverfill)
+end
+
+-- Validates all non-capacity conditions and builds every visual before the
+-- caller commits a pickup. The returned one-shot transaction never yields.
+function InventoryService.PrepareIngredientReward(player: Player, ids: { string }): (() -> boolean)?
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if
+        not MovementService.CanPerformGameplayAction(player)
+        or not carried[player]
+        or not player:FindFirstChildOfClass("Backpack")
+        or not humanoid
+        or humanoid.Health <= 0
+        or not root
+        or not root:IsA("BasePart")
+        or preparedGrants[player]
+    then
+        return nil
+    end
+    local visuals: { [string]: { Instance } } = {}
+    local function dispose()
+        for _, list in visuals do
+            for _, visual in list do
+                visual:Destroy()
+            end
+        end
+    end
+    for _, id in ids do
+        -- Lucky rewards require authored art. Ordinary grants retain their
+        -- existing geometry behavior, including its legacy fallback path.
+        local templates = game:GetService("ServerStorage"):FindFirstChild("Ingredients")
+        local template = templates and templates:FindFirstChild(id)
+        if
+            not deps.IngredientService.GetDefinition(id)
+            or not template
+            or not (template:IsA("Model") or template:IsA("BasePart"))
+            or not template.Archivable
+            or not WorldUtil.Part(template)
+        then
+            dispose()
+            return nil
+        end
+        local ok, visual = pcall(deps.IngredientService.CreateVisual, id)
+        if not ok or not visual then
+            dispose()
+            return nil
+        end
+        visuals[id] = visuals[id] or {}
+        table.insert(visuals[id], visual)
+    end
+    local used = false
+    return function(): boolean
+        if used then
+            return false
+        end
+        used = true
+        local equipped = selectedItem(player)
+        local previous: { [HeldItem]: boolean } = {}
+        local existing: { HeldItem } = held[player] or {}
+        for _, record in existing do
+            previous[record] = true
+        end
+        preparedGrants[player] = visuals
+        local ok, granted = pcall(function(): boolean
+            for _, id in ids do
+                if not InventoryService.GrantIngredient(player, id, true) then
+                    return false
+                end
+            end
+            return true
+        end)
+        if not ok or not granted then
+            switching[player] = true
+            local stack = held[player] or {}
+            for index = #stack, 1, -1 do
+                if not previous[stack[index]] then
+                    removeAt(player, index)
+                end
+            end
+            switching[player] = nil
+            if equipped and previous[equipped] and equipped.Tool.Parent then
+                pcall(equipTool, player, humanoid :: Humanoid, equipped.Tool)
+            end
+        end
+        preparedGrants[player] = nil
+        dispose()
+        if not ok or not granted then
+            return false
+        end
+        if deps.DiscoveryService then
+            for _, id in ids do
+                -- Notification failure cannot turn an already committed grant into a retry.
+                local discovered, problem = pcall(deps.DiscoveryService.DiscoverIngredient, player, id)
+                if not discovered then
+                    warn("[LuckyBlock] Discovery notification failed: " .. tostring(problem))
+                end
+            end
+        end
+        return true
+    end
 end
 
 -- Separate loose smoothie path; replicated contents never enter this transaction.
@@ -1178,6 +1283,9 @@ function InventoryService.CanWithdraw(player: Player, owner: Player, index: numb
     if friendly(player, owner) then
         return true
     end
+    if deps.ProtectionService and deps.ProtectionService.IsProtected(owner) then
+        return false
+    end
     local plot = deps.TycoonService.GetPlot(owner)
     if plot and deps.LockBaseService and deps.LockBaseService.IsLocked(plot) then
         return false
@@ -1366,6 +1474,10 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
         deps.AnnouncementService.Acquired(player, ownership)
     end
     if not friendly(player, owner) then
+        if deps.TasksService then
+            deps.TasksService.RecordSteal(player)
+        end
+        deps.PlayerDataService.IncrementStat(player, "IngredientsStolen")
         local state = InventoryService.GetStashRaidState(owner)
         if state.SessionId and state.State == "Normal" then
             local raidEnd = workspace:GetServerTimeNow() + StashConfig.RaidWindowSeconds
@@ -1377,6 +1489,9 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
     end
     if not smoothie and friendly(player, owner) and deps.TutorialService then
         deps.TutorialService.Mark(player, "TookStashItem")
+    end
+    if not friendly(player, owner) and deps.ProtectionService and deps.ProtectionService.IsProtected(player) then
+        deps.ProtectionService.Forfeit(player)
     end
     stashChanged:Fire(owner)
     return true

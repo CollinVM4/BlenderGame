@@ -211,6 +211,7 @@ local outerPosition, outerSize, innerPosition, innerSize = outer.Position, outer
 local thumbY, fillY, fillHeight, fillAnchor = thumb.Position.Y, fill.Position.Y, fill.Size.Y, fill.AnchorPoint
 track.AbsolutePosition, track.AbsoluteSize = { X = 100 }, { X = 200 }
 outer.AbsolutePosition, outer.AbsoluteSize = { X = 100 }, { X = 200 }
+thumb.AbsoluteSize = { X = 20 }
 plot:SetAttribute("StandName", "Fresh Stand")
 plot:SetAttribute("TeammateUserId", 303)
 view.Status.Text = "PLOT"
@@ -290,10 +291,42 @@ for _, fn in delays do
     fn()
 end
 check(view.Status.Text == "PLOT", "failure window restores authored title")
+local function checkEdges(range)
+    local trackLeft, trackWidth = track.AbsolutePosition.X, track.AbsoluteSize.X
+    local knobCenter = trackLeft + thumb.Position.X.Scale * trackWidth + thumb.Position.X.Offset
+    local knobLeft = knobCenter - thumb.AbsoluteSize.X / 2
+    local knobRight = knobCenter + thumb.AbsoluteSize.X / 2
+    local fillWidth = fill.Size.X.Scale * trackWidth + fill.Size.X.Offset
+    local fillLeft = trackLeft
+        + fill.Position.X.Scale * trackWidth
+        + fill.Position.X.Offset
+        - fill.AnchorPoint.X * fillWidth
+    local fillRight = fillLeft + fillWidth
+    check(knobLeft >= range.AbsolutePosition.X, "knob left stays inside range")
+    check(knobRight <= range.AbsolutePosition.X + range.AbsoluteSize.X, "knob right stays inside range")
+    check(math.abs(fillLeft - range.AbsolutePosition.X) < 0.000001, "fill left stays at range left")
+    check(math.abs(fillRight - knobCenter) < 0.000001, "fill right meets knob center in pixels")
+    return knobLeft, knobRight
+end
 local function display(value, message)
     check(music.GetVolume() == value and fill.Size.X.Scale == value and thumb.Position.X.Scale == value, message)
     check(fill.Position.X.Scale - fill.AnchorPoint.X * fill.Size.X.Scale == 0, "fill stays left-aligned")
+    checkEdges(track)
 end
+for _, value in { 0, 0.25, 0.5, 0.75, 1 } do
+    music.SetVolume(value)
+    display(value, "volume refresh keeps scale and pixel geometry aligned")
+    local inset = (0.5 - value) * 20
+    check(thumb.Position.X.Offset == inset and fill.Size.X.Offset == inset, "knob and fill use half-width inset")
+end
+-- AbsoluteSize can become available after the first render; layout refreshes it.
+thumb.AbsoluteSize = { X = 0 }
+music.SetVolume(0)
+local authoredInset = (thumb.Size.X.Scale * track.AbsoluteSize.X + thumb.Size.X.Offset) / 2
+check(thumb.Position.X.Offset == authoredInset, "pre-layout knob uses authored width")
+thumb.AbsoluteSize = { X = 20 }
+thumb:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check(thumb.Position.X.Offset == 10 and fill.Size.X.Offset == 10, "knob layout refresh uses resolved width")
 local touch = { UserInputType = "Touch", Position = { X = 100 } }
 thumb.InputBegan:Fire(touch)
 display(0, "touch at left seeks zero")
@@ -312,9 +345,13 @@ display(1, "touch right seeks full")
 touch.Position.X = 400
 input.InputChanged:Fire(touch)
 display(1, "drag clamps above track")
+local _, rightEdge = checkEdges(track)
+check(rightEdge == 300, "drag beyond right pins knob edge to track right")
 touch.Position.X = 0
 input.InputChanged:Fire(touch)
 display(0, "drag clamps below track")
+local leftEdge = checkEdges(track)
+check(leftEdge == 100, "drag beyond left pins knob edge to track left")
 local decoration = instance("Frame", "DecorativeFX", view.Panel)
 playerGui.DescendantAdded:Fire(decoration)
 flush()
@@ -346,6 +383,20 @@ check(
     music.GetVolume() == 0.5 and thumb.Position.X.Offset == 100 and fill.Size.X.Offset == 100,
     "OuterSlider bounds work before group layout"
 )
+for _, value in { 0, 0.5, 1 } do
+    fallbackTouch.Position.X = 100 + value * 200
+    input.InputChanged:Fire(fallbackTouch)
+    local expectedOffset = value * 200 + (0.5 - value) * 20
+    check(
+        music.GetVolume() == value
+            and thumb.Position.X.Scale == value
+            and fill.Size.X.Scale == value
+            and thumb.Position.X.Offset == expectedOffset
+            and fill.Size.X.Offset == expectedOffset,
+        "fallback range offsets include knob inset"
+    )
+    checkEdges(outer)
+end
 input.InputEnded:Fire(fallbackTouch)
 track.AbsoluteSize = { X = 200 }
 music.SetVolume(0.75)

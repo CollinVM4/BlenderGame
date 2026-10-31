@@ -25,6 +25,7 @@ do
     local failVisual = false
     inventory.Init({
         PlayerDataService = {
+            IncrementStat = function() end,
             GetUpgrade = function(_, name)
                 return 1
             end,

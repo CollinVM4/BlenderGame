@@ -2,6 +2,7 @@ require(script.Controllers.WorldStrokeController).Init()
 require(script.Controllers.LockBaseVisibilityController).Init()
 require(script.Controllers.LuckyBlockPresentationController).Init()
 require(script.Controllers.LuckyBlockRouletteController).Init()
+require(script.Controllers.LuckyBlockHudController).Init()
 -- Combat presentation registers independently of yielding menu controllers.
 require(script.Controllers.CharacterStatusOutlineController).Init()
 task.spawn(function()
@@ -43,9 +44,11 @@ SprintController.Init()
 require(script.Controllers.StashPromptController).Init()
 
 require(script.Controllers.UpgradesController).Init()
+require(script.Controllers.TasksController).Init()
 require(script.Controllers.SettingsController).Init()
 
 require(script.Controllers.CarryInputController).Init()
+require(script.Controllers.HotbarController).Init()
 
 require(script.Controllers.SessionInteractionController).Init()
 

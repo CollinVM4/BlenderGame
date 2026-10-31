@@ -97,17 +97,30 @@ local function renderVolume(view: View, value: number)
     if not track or not thumb or not fill then
         return
     end
+    local clamped = math.clamp(value, 0, 1)
     local range = bounds(view)
     local offset = if range and range ~= track then range.AbsolutePosition.X - track.AbsolutePosition.X else 0
-    local widthOffset = if range and range ~= track then value * range.AbsoluteSize.X else 0
+    local widthOffset = if range and range ~= track then clamped * range.AbsoluteSize.X else 0
+    -- thumb.AnchorPoint is (0.5, 0.5) in the checked-in export, so
+    -- Position.X places the knob CENTER. Inset that center by half a
+    -- knob so the knob's edges, not just its center, stay in range.
+    local knobWidth = thumb.AbsoluteSize.X
+    if knobWidth <= 0 and range then
+        knobWidth = thumb.Size.X.Scale * range.AbsoluteSize.X + thumb.Size.X.Offset
+    end
+    if range then
+        knobWidth = math.min(knobWidth, range.AbsoluteSize.X)
+    end
+    local inset = (0.5 - clamped) * knobWidth
     local position, size, fillPosition = thumb.Position, fill.Size, fill.Position
-    thumb.Position = UDim2.new(value, offset + widthOffset, position.Y.Scale, position.Y.Offset)
-    fill.Size = UDim2.new(value, widthOffset, size.Y.Scale, size.Y.Offset)
+    thumb.Position = UDim2.new(clamped, offset + widthOffset + inset, position.Y.Scale, position.Y.Offset)
+    fill.Size = UDim2.new(clamped, widthOffset + inset, size.Y.Scale, size.Y.Offset)
     -- The export centers ProgressBar's anchor. Keep its left edge at the
-    -- track's left while changing width, without altering its anchor or Y.
+    -- range's left while changing width, without altering its anchor or Y.
+    -- Its right edge now meets the inset knob center, not the old center.
     fill.Position = UDim2.new(
-        value * fill.AnchorPoint.X,
-        offset + widthOffset * fill.AnchorPoint.X,
+        clamped * fill.AnchorPoint.X,
+        offset + widthOffset * fill.AnchorPoint.X + fill.AnchorPoint.X * inset,
         fillPosition.Y.Scale,
         fillPosition.Y.Offset
     )
@@ -334,6 +347,9 @@ function Gui.Observe(
                 local layoutSurfaces: { GuiObject } = { track }
                 if current.Outer then
                     table.insert(layoutSurfaces, current.Outer)
+                end
+                if current.Thumb then
+                    table.insert(layoutSurfaces, current.Thumb)
                 end
                 for _, surface in layoutSurfaces do
                     for _, property in { "AbsolutePosition", "AbsoluteSize" } do

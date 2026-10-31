@@ -5,13 +5,15 @@ owns the shared stud-size/culling/text contracts and repository-wide direct-size
 lint. This is an independent presentation check, not a prerequisite for gameplay
 state suites. See [the convention, sizing table and Studio acceptance](../docs/BILLBOARD_CONVENTION.md).
 
-Lucky Blocks: `--suite lucky-block` owns authoritative spawning, proximity claims,
-weighted selection, contention/cooldown, replacement and nearby notification contracts.
-Separate presentation suites `lucky-block-roulette`, `lucky-block-view` and
-`lucky-block-controller` own five-beat timing, fixed-position world models,
-opaque silhouettes, asset fallback, and client lifecycle.
-See [Pass 1 setup](../docs/LUCKY_BLOCKS.md) and [Pass 2 Studio acceptance](../docs/LUCKY_BLOCK_ROULETTE.md).
-No buff mechanics are included.
+Lucky Blocks: `--suite lucky-block` owns spawn clocks, roll/claim lifecycle, buff clocks,
+item selection and recovery. `lucky-inventory` owns actual overfill and batch rollback;
+`lucky-combat` owns buff combat integration; `lucky-sprint` owns stamina effects.
+Cash contracts remain in customer-payout/customer-payout-serve; ice immunity stays
+in icegun-combat (also reused by icegun-simulated-combat). Presentation remains
+separate in lucky-block-roulette, lucky-block-view and lucky-block-controller.
+`lucky-handoff` covers partial/terminal replication and stationary public rewards;
+`lucky-hud` covers server-expiry messages, keyed refresh, styling and UI recreation.
+See [current behavior](../docs/LUCKY_BLOCKS.md) and [validation](../docs/LUCKY_BLOCK_VALIDATION.md).
 
 Fall damage: `--suite fall-damage` owns the unchanged damage curve and scripted
 Heartbeat episode contracts: same-ledge walk/jump comparisons, high-speed grazes,
