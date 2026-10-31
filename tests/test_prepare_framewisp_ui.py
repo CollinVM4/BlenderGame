@@ -202,8 +202,9 @@ class CLITests(unittest.TestCase):
         (self.root / "tools").mkdir()
         self.script = self.root / "tools/prepare_framewisp_ui.py"
         shutil.copyfile(ROOT / "tools/prepare_framewisp_ui.py", self.script)
-        self.default = self.root / "Framewisp_CCWMF.rbxmx"
-        shutil.copyfile(ROOT / "Framewisp_CCWMF.rbxmx", self.default)
+        self.default = self.root / "Framewisp_Hotbar.prepared.rbxmx"
+        shutil.copyfile(ROOT / "uiExport_103026.rbxmx", self.root / "uiExport_103026.rbxmx")
+        shutil.copyfile(ROOT / "uiExport_103026.rbxmx", self.default)
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.root,
@@ -262,7 +263,7 @@ class CLITests(unittest.TestCase):
 
 class ExternalMenuTests(unittest.TestCase):
     def test_new_export_preserves_scripts_and_artwork(self):
-        source = ROOT / "new_export.rbxmx"
+        source = ROOT / "uiExport_103026.rbxmx"
         original = source.read_bytes()
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "prepared.rbxmx"

@@ -32,6 +32,11 @@ local desktop = assert(registry.Desktops(playerGui)[1])
 local content = assert(registry.Content(desktop))
 local leftMenu = assert(content:FindFirstChild("LeftMenu"))
 local panel = assert(content:FindFirstChild("Upgrades"))
+local list = assert(panel:FindFirstChild("UpgradeScroll")):FindFirstChild("UpgradeList")
+local arrowCards = {
+    Jump1Alert = assert(list:FindFirstChild("JumpCard")),
+    BatAlert = assert(list:FindFirstChild("BatCard")),
+}
 local gui = load("UpgradesGui")
 local view = assert(gui.Resolve(playerGui))
 check(view.Panel == panel, "real exported Upgrades panel resolves")
@@ -44,8 +49,8 @@ local state = load("TutorialAlertState")
 for _, beat in state.Beats do
     local arrow = view.PanelArrows[beat.ArrowName]
     check(
-        arrow ~= nil and arrow == panel:FindFirstChild(beat.ArrowName),
-        "beat key resolves its real direct panel child"
+        arrow ~= nil and arrow == arrowCards[beat.ArrowName]:FindFirstChild(beat.ArrowName),
+        "beat key resolves its real direct card child"
     )
     check(arrow:IsA("ImageLabel") and arrow.Visible, "panel arrow starts with real exported class and visibility")
     local result = state.new().Evaluate({
@@ -71,4 +76,4 @@ for _, beat in state.Beats do
         "tagged panel fallback retains exported keys"
     )
 end
-print(string.format("PASS: v2 export tutorial arrow resolution (%d contracts)", count))
+print(string.format("PASS: 103026 export tutorial arrow resolution (%d contracts)", count))

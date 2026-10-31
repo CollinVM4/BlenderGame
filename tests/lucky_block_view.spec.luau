@@ -136,11 +136,11 @@ for id, definition in config.Rewards do
     source.Parent = folder
     sources[id] = source
 end
-local old = sources.DoubleCash
+local old = sources.CashBoost
 old:Destroy()
 local multipart = instance("Model")
-multipart.Name, multipart.Parent = config.Rewards.DoubleCash.Visual, folder
-sources.DoubleCash = multipart
+multipart.Name, multipart.Parent = config.Rewards.CashBoost.Visual, folder
+sources.CashBoost = multipart
 local first, second = sourcePart("A", "Part", vec(-2, 0, 0)), sourcePart("B", "MeshPart", vec(2, 0, 0))
 first.Parent, second.Parent = multipart, multipart
 local union = sourcePart("Union", "UnionOperation")
@@ -284,10 +284,10 @@ for id in config.Rewards do
             )
         end
     end
-    if id == "DoubleCash" then
+    if id == "CashBoost" then
         local a, b = model:FindFirstChild("A", true), model:FindFirstChild("B", true)
         check(
-            model:FindFirstChild(config.Rewards.DoubleCash.Visual):GetAttribute("RewardCategory") == "Powerup"
+            model:FindFirstChild(config.Rewards.CashBoost.Visual):GetAttribute("RewardCategory") == "Powerup"
                 and a:GetAttribute("GameplayVariant") == 7,
             "imported silhouettes preserve legitimate model and descendant attributes"
         )
@@ -298,7 +298,7 @@ for id in config.Rewards do
     end
 end
 check(#created == cachedCount, "silhouette beats reuse cached geometry without constructing tick resources")
-view.Show("DoubleCash", false)
+view.Show("CashBoost", false)
 local winner = activeModels()[1]
 local tickSound, popSound
 -- Select by configured sound IDs instead of descendant order.
@@ -315,7 +315,7 @@ setup(tickSound and popSound, "configured tick and reveal sounds exist")
 check(popSound.IsPlaying and not tickSound.IsPlaying, "winner stops rolling ticks and plays the reveal sound")
 local colored = winner:FindFirstChild("A", true)
 check(
-    winner:FindFirstChild(config.Rewards.DoubleCash.Visual):GetAttribute("RewardCategory") == "Powerup"
+    winner:FindFirstChild(config.Rewards.CashBoost.Visual):GetAttribute("RewardCategory") == "Powerup"
         and colored:GetAttribute("GameplayVariant") == 7,
     "colored reward preserves legitimate attributes without writing protected RBX_ metadata"
 )
@@ -396,18 +396,18 @@ for _, object in created do
     disposed = disposed and object.Destroyed == true
 end
 check(disposed, "cleanup also releases all hidden cached resources")
-local unavailable = sources.SuperJump
+local unavailable = sources.TopShelf
 unavailable.Parent = nil
 local missing = renderer.Create(position)
-missing.Show("SuperJump", true)
+missing.Show("TopShelf", true)
 check(#activeModels() == 0 and #warnings == 1, "missing model logs a clear warning without replacement geometry")
-missing.Show("SuperJump", false)
+missing.Show("TopShelf", false)
 check(#activeModels() == 0 and #warnings == 1, "minimal temporary text fallback does not invent a colored powerup")
 missing.Destroy()
 unavailable.Parent = folder
-local observer = renderer.Create(position, "IngredientMagnet")
+local observer = renderer.Create(position, "PantryPack")
 check(#activeModels() == 0, "observer does not prepare or show silhouette beats")
-observer.Show("IngredientMagnet", false)
+observer.Show("PantryPack", false)
 check(
     #activeModels() == 1
         and (activeModels()[1]:GetBoundingBox().Position - (position + vec(0, 2.5, 0))).Magnitude < 1e-6,
@@ -449,20 +449,20 @@ local function finish(expectModel)
     end
     callbacks = {}
 end
-local healthyClone = sources.IngredientMagnet.Clone
+local healthyClone = sources.PantryPack.Clone
 local partial
-function sources.IngredientMagnet:Clone()
+function sources.PantryPack:Clone()
     partial = healthyClone(self)
     partial.Size = nil -- Simulates unusable imported geometry during normalization.
     return partial
 end
 local broken = renderer.Create(position)
-check(manager.Start("collector", "IngredientMagnet", true, broken), "malformed art cannot abort roulette startup")
+check(manager.Start("collector", "PantryPack", true, broken), "malformed art cannot abort roulette startup")
 finish(false)
 check(partial.Destroyed and #activeModels() == 0, "failed visual is cleaned and text-only reveal finishes")
-sources.IngredientMagnet.Clone = healthyClone
+sources.PantryPack.Clone = healthyClone
 local recovered = renderer.Create(position)
-check(manager.Start("collector", "IngredientMagnet", true, recovered), "later valid pickup starts after malformed art")
+check(manager.Start("collector", "PantryPack", true, recovered), "later valid pickup starts after malformed art")
 finish(true)
 check(#activeModels() == 0, "recovered reveal also finishes and cleans up")
 local allReleased = true
@@ -470,3 +470,50 @@ for _, object in created do
     allReleased = allReleased and object.Destroyed == true
 end
 check(allReleased, "malformed and subsequent reveals leave no renderer resources behind")
+
+-- A real reveal retains its colored prize through fade/cancellation until public
+-- art is complete, then gives up its geometry before the public copy is shown.
+local handoff = loadModule("LuckyBlockPickupHandoff")
+local persistent = renderer.Create(position, nil, 101, now)
+persistent.Show("CashBoost", false)
+local prize = activeModels()[1]
+persistent.Fade()
+local _, settledSize = prize:GetBoundingBox()
+check(
+    math.abs(math.max(settledSize.X, settledSize.Y, settledSize.Z) - config.ModelSize) < 0.001,
+    "roulette fade leaves settled prize at intended size"
+)
+local settledPose = prize:GetPivot()
+persistent.Destroy()
+check(
+    prize.Parent ~= nil and not prize.Destroyed,
+    "sequence end or roller death retains revealed prize while replication is pending"
+)
+local public = instance("Model")
+public.DescendantAdded = signal()
+public:SetAttribute("PickupId", 101)
+public:SetAttribute("PickupState", "Available")
+public:SetAttribute("VisualPartCount", 2)
+local art = instance("Model")
+art.Name, art.Parent = "RewardVisual", public
+local a = instance("BasePart")
+a.Parent = art
+handoff.Track(public)
+handoff.Step(now)
+check(
+    not prize.Destroyed and a.LocalTransparencyModifier == 1,
+    "delayed public descendants never overlap or remove the retained prize"
+)
+local b = instance("BasePart")
+b.Parent = art
+public.DescendantAdded:Fire(b)
+handoff.Step(now)
+check(
+    prize.Destroyed and a.LocalTransparencyModifier == 0 and b.LocalTransparencyModifier == 0,
+    "ready public prize atomically replaces local revealed art"
+)
+check(
+    (settledPose.Position - loadModule("LuckyBlockVisual").Pose(position).Position).Magnitude < 0.001,
+    "handoff uses common settled orientation/position helper"
+)
+handoff.Untrack(public)

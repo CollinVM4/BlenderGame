@@ -84,8 +84,8 @@ pass, so final playtest sign-off remains pending:
    and full-dollar next prices. Confirm Jump/Bat rows and their tutorial arrows.
 4. Browse while sprinting and while an effective movement modifier is active.
    Purchased headlines, next increments and prices must remain identical to idle.
-   Lucky Block movement buff mechanics are not currently implemented; automated
-   coverage changes effective projections and uses the real Studio override seam.
+   Lucky StarPower now preserves sprint stamina during drain ticks; it does not
+   change purchased movement projections or the Studio override seam.
 5. Confirm MAX hides the price, disables buying and cannot spend cash again.
 
 Existing server Command Bar setters remain available through DevContentService:

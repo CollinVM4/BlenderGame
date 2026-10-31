@@ -1,5 +1,5 @@
 --!strict
--- Instant world rewards are not inventory items. Only this service owns these clones.
+-- Session-only rolls, public reward pickups, and buff clocks.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
@@ -7,8 +7,28 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local Config = require(Shared.Constants.LuckyBlockConfig)
 local Presentation = require(Shared.Constants.LuckyBlockPresentation)
 local WorldUtil = require(script.Parent.WorldUtil)
+local BillboardStyle = require(Shared.WorldBillboardStyle)
+local RewardVisual = require(Shared.LuckyBlockRewardVisual)
+local Ingredients = require(Shared.Constants.Ingredients)
 local Service = {}
+local deps: any
+local buffs: { [Player]: { [string]: number } } = {}
+local pickupClaim: { [Player]: number } = {}
+type Pickup = {
+    PickupId: number,
+    RewardId: string,
+    Position: Vector3,
+    PickedUpAt: number,
+    ExpiresAt: number,
+    Model: Model?,
+    LabelAnchor: Attachment?,
+}
+local pickups: { [number]: Pickup } = {}
+local level0Waiting = false
+local spawnPickup: (Pickup) -> ()
 type Slot = { Level: string, Model: Model?, Previous: BasePart?, Waiting: boolean }
+local slots: { Slot } = {}
+local populate: (Slot) -> boolean
 type Record = { Marker: BasePart, Origin: CFrame, Connections: { RBXScriptConnection }, Slot: Slot }
 local markers: { [BasePart]: boolean } = {}
 local records: { [Model]: Record } = {}
@@ -22,6 +42,34 @@ local nearbyRemote: RemoteEvent
 local pickupId = 0
 local started = false
 local assetWarning = false
+local rewardWarnings: { [string]: boolean } = {}
+
+function Service.IsBuffActive(player: Player, rewardId: string): boolean
+    local state = buffs[player]
+    return state ~= nil and (state[rewardId] or 0) > workspace:GetServerTimeNow()
+end
+
+function Service.GetCashMultiplier(player: Player): number
+    return if Service.IsBuffActive(player, "CashBoost") then 1.5 else 1
+end
+
+local function respawn(slot: Slot)
+    local seconds = Config.Respawn.MinRespawnSeconds
+        + math.random() * (Config.Respawn.MaxRespawnSeconds - Config.Respawn.MinRespawnSeconds)
+    if slot.Level ~= "Level0" or not Config.Spawn.Level0Sync then
+        schedule(slot, seconds)
+    elseif not level0Waiting then
+        level0Waiting = true
+        task.delay(seconds, function()
+            level0Waiting = false
+            for _, candidate in slots do
+                if candidate.Level == "Level0" and not candidate.Model and not populate(candidate) then
+                    schedule(candidate, Config.Spawn.RetrySeconds)
+                end
+            end
+        end)
+    end
+end
 
 local function retire(model: Model, alreadyDestroying: boolean?)
     local record = records[model]
@@ -34,11 +82,7 @@ local function retire(model: Model, alreadyDestroying: boolean?)
         connection:Disconnect()
     end
     record.Slot.Model = nil
-    schedule(
-        record.Slot,
-        Config.Respawn.MinRespawnSeconds
-            + math.random() * (Config.Respawn.MaxRespawnSeconds - Config.Respawn.MinRespawnSeconds)
-    )
+    respawn(record.Slot)
     if not alreadyDestroying then
         model:Destroy()
     end
@@ -78,7 +122,7 @@ function Service.TryClaim(player: Player, model: Model): boolean
     retire(model)
     remote:FireClient(player, {
         RewardId = selected.Id,
-        DurationSeconds = selected.DurationSeconds, -- Metadata only; no buff clock starts in Pass 1.
+        DurationSeconds = selected.DurationSeconds,
         Position = position,
         Character = character,
         PickedUpAt = pickedUpAt,
@@ -104,6 +148,38 @@ function Service.TryClaim(player: Player, model: Model): boolean
             })
         end
     end
+    -- Replicate identity before the deadline. Clients can retain a revealed prize
+    -- until this same container's art arrives, or observe a claim before art arrives.
+    local container = Instance.new("Model")
+    container.Name = "LuckyRewardPickup"
+    container:SetAttribute("PickupId", pickupId)
+    container:SetAttribute("RewardId", selected.Id)
+    container:SetAttribute("PickedUpAt", pickedUpAt)
+    container:SetAttribute("PickupPosition", position)
+    container:SetAttribute("PickupState", "Pending")
+    CollectionService:AddTag(container, Presentation.PickupTag)
+    container.Parent = folder
+    local pickup: Pickup = {
+        PickupId = pickupId,
+        RewardId = selected.Id,
+        Position = position,
+        PickedUpAt = pickedUpAt,
+        ExpiresAt = 0,
+        Model = container,
+        LabelAnchor = nil,
+    }
+    container.Destroying:Connect(function()
+        if pickup.LabelAnchor then
+            pickup.LabelAnchor:Destroy()
+            pickup.LabelAnchor = nil
+        end
+    end)
+    task.delay(Presentation.RevealSeconds + Presentation.HoldSeconds + Presentation.FadeSeconds, function()
+        pickup.ExpiresAt = workspace:GetServerTimeNow() + 60
+        container:SetAttribute("ExpiresAt", pickup.ExpiresAt)
+        pickups[pickup.PickupId] = pickup
+        spawnPickup(pickup)
+    end)
     return true
 end
 
@@ -144,10 +220,11 @@ local function spawnAt(marker: BasePart, slot: Slot): boolean
     model:PivotTo(origin)
     model:SetAttribute("LuckyBlockOrigin", origin)
     model:SetAttribute("LuckyBlockSpawnTime", workspace:GetServerTimeNow())
-    model:SetAttribute("Level", slot.Level)
-    records[model] = { Marker = marker, Origin = origin, Connections = {}, Slot = slot }
-    slot.Model = model
-    slot.Previous = marker
+    local blockSlot = slot :: Slot
+    model:SetAttribute("Level", blockSlot.Level)
+    records[model] = { Marker = marker :: BasePart, Origin = origin, Connections = {}, Slot = blockSlot }
+    blockSlot.Model = model
+    blockSlot.Previous = marker
     model.Parent = folder
     local connections = records[model].Connections
     table.insert(
@@ -165,6 +242,145 @@ local function spawnAt(marker: BasePart, slot: Slot): boolean
         end)
     )
     CollectionService:AddTag(model, Config.WorldTag)
+    return true
+end
+
+local function clearPickupAppearance(pickup: Pickup)
+    if pickup.LabelAnchor then
+        pickup.LabelAnchor:Destroy()
+        pickup.LabelAnchor = nil
+    end
+    local visual = pickup.Model and pickup.Model:FindFirstChild("RewardVisual")
+    if visual then
+        visual:Destroy()
+    end
+end
+
+spawnPickup = function(pickup: Pickup)
+    local model = pickup.Model
+    if not model or workspace:GetServerTimeNow() >= pickup.ExpiresAt then
+        return
+    end
+    local sourceFolder = game:GetService("ReplicatedStorage"):FindFirstChild(Presentation.VisualFolderName)
+    local visualName = Presentation.Rewards[pickup.RewardId].Visual
+    local visual = RewardVisual.Clone(sourceFolder and sourceFolder:FindFirstChild(visualName), false)
+    local partCount = 0
+    if visual then
+        visual.Name = "RewardVisual"
+        visual:PivotTo(RewardVisual.Pose(pickup.Position))
+        for _, object in visual:GetDescendants() do
+            if object:IsA("BasePart") then
+                partCount += 1
+            end
+        end
+        visual.Parent = model
+        rewardWarnings[visualName] = nil
+    elseif not rewardWarnings[visualName] then
+        rewardWarnings[visualName] = true
+        warn(
+            "[LuckyBlock] Missing usable "
+                .. Presentation.VisualFolderName
+                .. "."
+                .. visualName
+                .. "; label only (Collin asset task)"
+        )
+    end
+    -- An Attachment on Terrain gives the fallback label a world position without
+    -- inventing a part/mesh. Pickup proximity uses the original server position.
+    local anchor = Instance.new("Attachment")
+    anchor.Name = "LuckyRewardLabelAnchor"
+    anchor.CFrame = CFrame.new(pickup.Position)
+    anchor.Parent = workspace.Terrain
+    pickup.LabelAnchor = anchor
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "LuckyRewardLabel"
+    gui.Adornee = anchor
+    gui.StudsOffsetWorldSpace = Vector3.new(0, Presentation.HeightOffset + 2, 0)
+    BillboardStyle.ApplyBillboard(
+        gui,
+        { WidthStuds = 5, HeightStuds = 1, MaxDistance = Config.Pickup.LabelMaxDistance }
+    )
+    local label = Instance.new("TextLabel")
+    BillboardStyle.ApplyText(label, { TextScaled = true })
+    label.Text = Presentation.Rewards[pickup.RewardId].Name
+    label.Parent = gui
+    gui.Parent = anchor
+    model:SetAttribute("VisualPartCount", partCount)
+    model:SetAttribute("PickupState", "Available")
+end
+
+local function prepareReward(player: Player, rewardId: string): (() -> boolean)?
+    for _, reward in Config.Rewards do
+        if reward.Id == rewardId and reward.DurationSeconds then
+            return function(): boolean
+                buffs[player] = buffs[player] or {}
+                buffs[player][rewardId] = workspace:GetServerTimeNow() + (reward.DurationSeconds :: number)
+                player:SetAttribute("LuckyBuff" .. rewardId .. "ExpiresAt", buffs[player][rewardId])
+                return true
+            end
+        end
+    end
+    local tier = deps.TycoonService.GetJumpTier(player)
+    local pool: { string } = {}
+    -- TODO(LuckyMysteryAnnouncedOnly): catalog has no announced-only flag/set.
+    -- Authored announced spawn tags describe markers, not ingredient eligibility.
+    for id, definition in Ingredients do
+        local eligible = if rewardId == "PantryPack"
+            then definition.JumpLocation >= 0 and definition.JumpLocation <= tier
+            elseif rewardId == "TopShelf" then definition.JumpLocation == tier
+            else id ~= "Player_Head" and id ~= "PlayerHead" and id ~= "Dragon_Fruit"
+        if eligible then
+            table.insert(pool, id)
+        end
+    end
+    if #pool == 0 then
+        return nil
+    end
+    table.sort(pool)
+    local ids = {}
+    for _ = 1, if rewardId == "PantryPack" then 3 else 1 do
+        table.insert(ids, pool[math.random(1, #pool)])
+    end
+    return deps.InventoryService.PrepareIngredientReward(player, ids)
+end
+
+function Service.TryClaimPickup(player: Player, model: Model): boolean
+    local id = model:GetAttribute("PickupId")
+    local pickup = if typeof(id) == "number" then pickups[id] else nil
+    local now = workspace:GetServerTimeNow()
+    if
+        not pickup
+        or pickup.Model ~= model
+        or player.Parent ~= Players
+        or now >= pickup.ExpiresAt
+        or not model:IsDescendantOf(folder)
+        or (pickupClaim[player] and now - pickupClaim[player] < Config.Pickup.PlayerCooldownSeconds)
+        or not WorldUtil.NearPosition(player, pickup.Position, Config.Pickup.Radius)
+    then
+        return false
+    end
+    local award = prepareReward(player, pickup.RewardId)
+    if not award then
+        return false
+    end
+    -- No yields: prepared inventory transaction rolls back the whole batch on failure.
+    pickups[pickup.PickupId] = nil
+    model:SetAttribute("PickupState", "Claimed")
+    clearPickupAppearance(pickup)
+    if not award() then
+        pickups[pickup.PickupId] = pickup
+        spawnPickup(pickup)
+        return false
+    end
+    pickupClaim[player] = now
+    if not buffs[player] or not buffs[player][pickup.RewardId] then
+        player:SetAttribute("LuckyInstant" .. pickup.RewardId .. "Until", now + Presentation.InstantMessageSeconds)
+    end
+    -- Keep only replicated terminal identity until original expiry. A client that
+    -- receives the claim before the art can still dispose its local reveal.
+    task.delay(math.max(0, pickup.ExpiresAt - workspace:GetServerTimeNow()), function()
+        model:Destroy()
+    end)
     return true
 end
 
@@ -209,7 +425,7 @@ local function markerLevel(marker: BasePart): string?
     return "Level0"
 end
 
-local function populate(slot: Slot): boolean
+populate = function(slot: Slot): boolean
     if slot.Model then
         return true
     end
@@ -227,9 +443,17 @@ local function populate(slot: Slot): boolean
             end
         end
     end
-    if validCount == 0 then
+    if validCount < (Config.Spawn.SlotsPerLevel :: { [string]: number })[slot.Level] then
         if not levelWarnings[slot.Level] then
-            warn("[LuckyBlock] " .. slot.Level .. " has no valid LuckyBlockSpawn markers; retrying until configured")
+            warn(
+                "[LuckyBlock] "
+                    .. slot.Level
+                    .. " has "
+                    .. validCount
+                    .. " valid markers; needs "
+                    .. (Config.Spawn.SlotsPerLevel :: { [string]: number })[slot.Level]
+                    .. "; retrying empty slots"
+            )
             levelWarnings[slot.Level] = true
         end
     else
@@ -262,6 +486,27 @@ schedule = function(slot: Slot, seconds: number)
 end
 
 local function tick()
+    for id, pickup in pickups do
+        if workspace:GetServerTimeNow() >= pickup.ExpiresAt then
+            pickups[id] = nil
+            clearPickupAppearance(pickup)
+            if pickup.Model then
+                pickup.Model:SetAttribute("PickupState", "Expired")
+                pickup.Model:Destroy()
+            end
+        elseif pickup.Model then
+            for _, player in Players:GetPlayers() do
+                -- A failed award can leave recovery waiting for repaired art.
+                local model = pickup.Model
+                if not model then
+                    break
+                end
+                if Service.TryClaimPickup(player, model) then
+                    break
+                end
+            end
+        end
+    end
     for model in records do
         for _, player in Players:GetPlayers() do
             if Service.TryClaim(player, model) then
@@ -274,13 +519,20 @@ end
 
 function Service.RemovePlayer(player: Player)
     lastClaim[player] = nil
+    pickupClaim[player] = nil
+    buffs[player] = nil
+    for _, reward in Config.Rewards do
+        player:SetAttribute("LuckyBuff" .. reward.Id .. "ExpiresAt", nil)
+        player:SetAttribute("LuckyInstant" .. reward.Id .. "Until", nil)
+    end
 end
 
-function Service.Init()
+function Service.Init(services: any)
     if started then
         return
     end
     started = true
+    deps = services
     local existing = workspace:FindFirstChild(Config.WorldFolderName)
     assert(not existing or existing:IsA("Folder"), "LuckyBlocks must be a Folder")
     folder = if existing then existing :: Folder else Instance.new("Folder")
@@ -314,14 +566,14 @@ function Service.Init()
         end
     end)
     for _, level in Config.Spawn.Levels do
-        for _ = 1, Config.Spawn.MaxActivePerLevel do
+        for _ = 1, (Config.Spawn.SlotsPerLevel :: { [string]: number })[level] do
             local slot: Slot = { Level = level, Model = nil, Previous = nil, Waiting = false }
+            table.insert(slots, slot)
             if not populate(slot) then
                 schedule(slot, Config.Spawn.RetrySeconds)
             end
         end
     end
-    Players.PlayerRemoving:Connect(Service.RemovePlayer)
     tick()
 end
 

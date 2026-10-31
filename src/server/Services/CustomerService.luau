@@ -781,10 +781,12 @@ function CustomerService.SelectReaction(): string
 end
 function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): number
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
-    local multiplier = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    local shopFactor = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    local luckyFactor = if deps.LuckyBlockService then deps.LuckyBlockService.GetCashMultiplier(player) else 1
+    local cashFactor = math.max(shopFactor, luckyFactor)
     local muncher = if deps.MuncherService then deps.MuncherService.GetCashMultiplier(player) else 1
     return math.round(
-        Economy.BasePayout * Economy.CashScale * Economy.GradeMultiplier[grade] * upgrade * multiplier * muncher
+        Economy.BasePayout * Economy.CashScale * Economy.GradeMultiplier[grade] * upgrade * cashFactor * muncher
     )
 end
 
@@ -798,11 +800,13 @@ function CustomerService.CalculateOrderPayout(
 ): (number, number)
     local evaluated = evaluation or OrderEvaluation.Evaluate(result, request)
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
-    local entitlement = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    local shopFactor = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
     local gradeMultiplier = if evaluated.IsWildcard then 1 else Economy.GradeMultiplier[evaluated.Grade :: Types.Grade]
+    local luckyFactor = if deps.LuckyBlockService then deps.LuckyBlockService.GetCashMultiplier(player) else 1
+    local cashFactor = math.max(shopFactor, luckyFactor)
     local muncher = if deps.MuncherService then deps.MuncherService.GetCashMultiplier(player) else 1
     if evaluated.IsWildcard then
-        return math.round(request.BasePayout * upgrade * entitlement * muncher), 0
+        return math.round(request.BasePayout * upgrade * cashFactor * muncher), 0
     end
     local now = workspace:GetServerTimeNow()
     local onRequestValue, fillerValue = 0, 0
@@ -825,7 +829,7 @@ function CustomerService.CalculateOrderPayout(
         * originMultiplier
         * gradeMultiplier
         * upgrade
-        * entitlement
+        * cashFactor
         * muncher
     return math.round(amount), effectiveValue
 end
@@ -1839,6 +1843,11 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
             end
         end
         deps.TycoonService.CreditTransaction(transaction, payout)
+    end
+    if deps.TasksService then
+        -- Task completion accepts every valid rated cup, including C/D.
+        -- Order fulfillment and its ordinary payout/reaction stay independent.
+        payout += deps.TasksService.RecordServe(player, evaluation.IsValid, freeloader, transaction, record)
     end
     if deps.AnnouncementService then
         deps.AnnouncementService.Served(player, result.Ingredients, payout)

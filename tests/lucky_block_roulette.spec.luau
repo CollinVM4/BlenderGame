@@ -3,11 +3,11 @@ local gameplay = loadModule("LuckyBlockConfig")
 local audio = loadModule("GameplayAudio")
 for id, expected in
     {
-        DoubleCash = "2xCash",
-        SuperJump = "Jump",
-        RainbowRampage = "Star",
+        CashBoost = "2xCash",
+        TopShelf = "TopShelf",
+        StarPower = "Star",
         MegaBat = "MegaBat",
-        IngredientMagnet = "Magnet",
+        PantryPack = "PantryPack",
         Invincibility = "Invincibility",
     }
 do
@@ -16,7 +16,7 @@ end
 for _, reward in gameplay.Rewards do
     check(config.Rewards[reward.Id] ~= nil, "every server reward has a visual mapping")
 end
-check(config.Rewards.IngredientMagnet.Visual == "Magnet", "magnet reward maps to the authored Magnet visual")
+check(config.Rewards.PantryPack.Visual == "PantryPack", "magnet reward maps to the authored Magnet visual")
 check(
     config.TickSoundId == audio.IngredientPickupSoundId
         and config.PopSoundId == audio.IngredientThrowSoundId
@@ -70,7 +70,7 @@ local function view()
 end
 local manager = sequence.new(schedule)
 local first = view()
-manager.Start("collector", "RainbowRampage", true, first)
+manager.Start("collector", "StarPower", true, first)
 check(#first.Shows == 1 and first.Shows[1].At == 0 and first.Shows[1].Shadow, "first silhouette is immediate")
 advance(0.56)
 local seen = {}
@@ -86,7 +86,7 @@ advance(0.779)
 check(#first.Shows == 5, "reward is not revealed early")
 advance(0.78)
 check(
-    #first.Shows == 6 and first.Shows[6].Id == "RainbowRampage" and not first.Shows[6].Shadow,
+    #first.Shows == 6 and first.Shows[6].Id == "StarPower" and not first.Shows[6].Shadow,
     "0.78-second reveal always matches the server reward"
 )
 advance(config.RevealSeconds + config.HoldSeconds - 0.001)
@@ -96,7 +96,7 @@ check(first.Fades == 1, "fade starts after the configured hold duration")
 advance(config.RevealSeconds + config.HoldSeconds + config.FadeSeconds)
 check(first.Destroyed, "timeline releases presentation after fade")
 local old, replacement = view(), view()
-manager.Start("collector", "SuperJump", true, old)
+manager.Start("collector", "TopShelf", true, old)
 manager.Start("collector", "MegaBat", true, replacement)
 check(old.Destroyed, "rapid pickup replaces previous presentation")
 advance(clock + 2)
@@ -105,31 +105,31 @@ check(
     "cancelled timeline cannot reveal stale rewards"
 )
 local observer = view()
-manager.Start("observer", "IngredientMagnet", false, observer)
+manager.Start("observer", "PantryPack", false, observer)
 check(#observer.Shows == 0, "observer has no silhouette sequence")
 advance(clock + 0.78)
 check(
-    #observer.Shows == 1 and observer.Shows[1].Id == "IngredientMagnet" and not observer.Shows[1].Shadow,
+    #observer.Shows == 1 and observer.Shows[1].Id == "PantryPack" and not observer.Shows[1].Shadow,
     "observer gets only the synchronized final reveal"
 )
 manager.Cancel("observer")
 check(observer.Destroyed, "departure/reset cancellation releases observer view")
 local delayed = view()
-manager.Start("late", "DoubleCash", true, delayed, 0.3)
+manager.Start("late", "CashBoost", true, delayed, 0.3)
 check(
     #delayed.Shows == 1 and delayed.Shows[1].Shadow,
     "latency catches up to one current tick instead of replaying a backlog"
 )
 advance(clock + 0.48)
 check(
-    delayed.Shows[#delayed.Shows].Id == "DoubleCash" and not delayed.Shows[#delayed.Shows].Shadow,
+    delayed.Shows[#delayed.Shows].Id == "CashBoost" and not delayed.Shows[#delayed.Shows].Shadow,
     "latency does not extend the final reveal deadline"
 )
 local expired = view()
 check(
     not manager.Start(
             "expired",
-            "DoubleCash",
+            "CashBoost",
             true,
             expired,
             config.RevealSeconds + config.HoldSeconds + config.FadeSeconds

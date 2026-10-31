@@ -69,9 +69,11 @@ restores the track's authored Active value.
 ProgressBar exports with AnchorPoint (0.5, 0.5). Its X position follows its new
 width so its left edge stays at the track left and its right edge meets the knob.
 AnchorPoint, Y position and height remain authored. Knob preserves AnchorPoint
-and Y while X follows volume. OuterSlider and InnerSlider are never moved or
-resized. Slider absolute bounds take priority; OuterSlider bounds are used if
-the group has no width yet, then layout signals reconcile to group coordinates.
+and Y. Its center is inset by half the knob width so its edges stay inside the
+track at both ends, and the fill ends at the knob center. OuterSlider and
+InnerSlider are never moved or resized. Slider absolute bounds take priority;
+OuterSlider bounds are used if the group has no width yet, then layout signals
+reconcile to group coordinates.
 
 MusicPresentation.TrackIds defaults to an empty list. Configure authorized
 rbxassetid:// strings for playback. Enabled/volume preferences are per-player

@@ -50,23 +50,26 @@ end
 function BatKnockback.Apply(
     root: BasePart,
     away: Vector3,
-    tuning: { HorizontalKnockback: number, VerticalKnockback: number }?
+    tuning: { HorizontalKnockback: number, VerticalKnockback: number }?,
+    scale: number?
 )
     local mass = root.AssemblyMass
     if not root.Anchored and mass > 0 and mass < math.huge then
         local horizontal = if tuning then tuning.HorizontalKnockback else Config.Knockback.HorizontalSpeed
         local vertical = if tuning then tuning.VerticalKnockback else Config.Knockback.UpwardSpeed
+        horizontal *= scale or 1
+        vertical *= scale or 1
         -- Direction is already a horizontal unit vector; do not normalize the combined launch.
         local velocity = away * horizontal + Vector3.new(0, vertical, 0)
         if tuning then
             local current = root.AssemblyLinearVelocity
             local planar = Vector3.new(current.X, 0, current.Z)
             local launched = planar + away * horizontal
-            if launched.Magnitude > Config.Knockback.MaxHorizontalSpeed then
-                launched = launched.Unit * Config.Knockback.MaxHorizontalSpeed
+            if launched.Magnitude > (Config.Knockback.MaxHorizontalSpeed * (scale or 1)) then
+                launched = launched.Unit * (Config.Knockback.MaxHorizontalSpeed * (scale or 1))
             end
             -- Bound only upward accumulation. Real falling speed still reaches FallDamageService.
-            local upward = math.min(current.Y + vertical, Config.Knockback.MaxUpwardSpeed)
+            local upward = math.min(current.Y + vertical, (Config.Knockback.MaxUpwardSpeed * (scale or 1)))
             velocity = launched - planar + Vector3.new(0, upward - current.Y, 0)
         end
         root:ApplyImpulse(velocity * mass)

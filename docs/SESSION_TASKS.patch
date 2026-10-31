@@ -1,0 +1,1166 @@
+diff --git a/src/shared/Constants/TasksConfig.luau b/src/shared/Constants/TasksConfig.luau
+new file mode 100644
+--- /dev/null
++++ b/src/shared/Constants/TasksConfig.luau
+@@ -0,0 +1,8 @@
++--!strict
++return {
++    TutorialReward = 5000,
++    PerServeRate = { [0] = 3000, [1] = 15000, [2] = 30000, [3] = 40000 },
++    StealTarget = 10,
++    StealMinimumReward = 2500,
++    StealCashRate = 0.05,
++}
+diff --git a/src/server/Services/TasksService.luau b/src/server/Services/TasksService.luau
+new file mode 100644
+--- /dev/null
++++ b/src/server/Services/TasksService.luau
+@@ -0,0 +1,231 @@
++--!strict
++local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.TasksConfig)
++local HttpService = game:GetService("HttpService")
++local Film = require(script.Parent.FilmingUtil)
++local Service = {}
++export type State = {
++    Serve: {
++        TotalServes: number,
++        ActiveThreshold: number,
++        LockedReward: number,
++        LastPaidThreshold: number,
++        TutorialTaskPaid: boolean,
++    },
++    StealProgress: number,
++}
++type Runtime = {
++    State: State,
++    Connections: { RBXScriptConnection },
++    TutorialComplete: boolean,
++    TutorialPending: boolean,
++    Queued: boolean,
++    Busy: boolean,
++    LastServe: any,
++}
++local deps: any
++local players: { [Player]: Runtime } = {}
++
++local function nextThreshold(total: number): number
++    return if total < 3 then 3 elseif total < 10 then 10 else (math.floor(total / 10) + 1) * 10
++end
++local function lockReward(player: Player, threshold: number, previous: number): number
++    local block = if threshold == 3 then 3 elseif threshold == 10 then 7 else 10
++    return math.max(Config.PerServeRate[deps.TycoonService.GetJumpTier(player)] * block, previous)
++end
++local function stealReward(player: Player): number
++    return math.max(Config.StealMinimumReward, Config.StealCashRate * deps.TycoonService.GetCash(player))
++end
++local function publish(player: Player, runtime: Runtime)
++    local state = runtime.State
++    player:SetAttribute("TasksTutorialComplete", runtime.TutorialComplete)
++    player:SetAttribute("TasksTutorialReward", Config.TutorialReward)
++    player:SetAttribute("TasksServeTotal", state.Serve.TotalServes)
++    player:SetAttribute("TasksServeThreshold", state.Serve.ActiveThreshold)
++    player:SetAttribute("TasksServeReward", state.Serve.LockedReward)
++    player:SetAttribute("TasksStealProgress", state.StealProgress)
++    player:SetAttribute("TasksStealTarget", Config.StealTarget)
++    player:SetAttribute("TasksStealReward", stealReward(player))
++end
++-- CreditTransaction returns nil on success and asserts on failure. Treat an
++-- explicit false as failure too, so neither guard nor progress can consume it.
++local function credit(transaction: string, reward: number): boolean
++    local ok, result = pcall(deps.TycoonService.CreditTransaction, transaction, reward)
++    if not ok then
++        warn("[Tasks] Credit failed: " .. tostring(result))
++    end
++    return ok and result ~= false
++end
++local function feedback(player: Player, reward: number)
++    Film.Emit(player, "TaskReward", { BlendId = HttpService:GenerateGUID(false), Payout = reward })
++end
++local function payTutorial(player: Player, runtime: Runtime)
++    if not runtime.TutorialPending or runtime.Busy or runtime.State.Serve.TutorialTaskPaid then
++        return
++    end
++    local transaction = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
++    if not transaction then
++        return
++    end
++    runtime.Busy = true
++    local paid = credit(transaction, Config.TutorialReward)
++    if paid then
++        runtime.State.Serve.TutorialTaskPaid = true
++        runtime.TutorialPending = false
++    end
++    deps.TycoonService.EndTransaction(transaction)
++    runtime.Busy = false
++    if paid then
++        feedback(player, Config.TutorialReward)
++    end
++end
++local function queueTutorial(player: Player, runtime: Runtime)
++    if runtime.Queued or not runtime.TutorialPending then
++        return
++    end
++    runtime.Queued = true
++    -- Tutorial.Mark can publish Complete inside Serve. Never nest a transaction.
++    task.defer(function()
++        runtime.Queued = false
++        if players[player] == runtime then
++            payTutorial(player, runtime)
++        end
++    end)
++end
++function Service.Init(services: any)
++    deps = services
++end
++-- Optional authoritative session count supports activation/reconciliation only;
++-- never read CustomersServed, PlayerData records, or replicated progress here.
++function Service.AddPlayer(player: Player, qualifyingCount: number?)
++    if players[player] then
++        return
++    end
++    local total = qualifyingCount or 0
++    local threshold = nextThreshold(total)
++    local runtime: Runtime = {
++        State = {
++            Serve = {
++                TotalServes = total,
++                ActiveThreshold = threshold,
++                LockedReward = lockReward(player, threshold, 0),
++                LastPaidThreshold = if threshold == 3 then 0 elseif threshold == 10 then 3 else threshold - 10,
++                TutorialTaskPaid = false,
++            },
++            StealProgress = 0,
++        },
++        Connections = {},
++        TutorialComplete = player:GetAttribute("TutorialStage") == "Complete",
++        TutorialPending = false,
++        Queued = false,
++        Busy = false,
++        LastServe = nil,
++    }
++    players[player] = runtime
++    table.insert(
++        runtime.Connections,
++        player:GetAttributeChangedSignal("TutorialStage"):Connect(function()
++            local complete = player:GetAttribute("TutorialStage") == "Complete"
++            if complete and not runtime.TutorialComplete and not runtime.State.Serve.TutorialTaskPaid then
++                runtime.TutorialPending = true
++                queueTutorial(player, runtime)
++            end
++            runtime.TutorialComplete = complete
++            publish(player, runtime)
++        end)
++    )
++    for _, attribute in { "playerCash", "PlotSessionId" } do
++        table.insert(
++            runtime.Connections,
++            player:GetAttributeChangedSignal(attribute):Connect(function()
++                publish(player, runtime)
++                queueTutorial(player, runtime)
++            end)
++        )
++    end
++    publish(player, runtime)
++end
++-- event is the server-owned customer record, not the plot transaction ID (which
++-- is reused). It also guards reentrant/duplicate observations of the same serve.
++function Service.RecordServe(
++    player: Player,
++    qualifies: boolean,
++    freeloader: boolean,
++    transaction: string,
++    event: any
++): number
++    local runtime = players[player]
++    if not runtime or not qualifies or freeloader or runtime.Busy then
++        return 0
++    end
++    local serve = runtime.State.Serve
++    local repeated = event ~= nil and runtime.LastServe == event
++    if repeated and serve.TotalServes < serve.ActiveThreshold then
++        return 0
++    end
++    runtime.Busy = true
++    if not repeated then
++        serve.TotalServes += 1
++        runtime.LastServe = event
++    end
++    local bonus = 0
++    -- A failed credit retains the qualifying observation and the unpaid live
++    -- crossing. A later observation/retry can settle it without counting twice.
++    while serve.TotalServes >= serve.ActiveThreshold and serve.LastPaidThreshold < serve.ActiveThreshold do
++        local reward = serve.LockedReward
++        if not credit(transaction, reward) then
++            break
++        end
++        bonus += reward
++        serve.LastPaidThreshold = serve.ActiveThreshold
++        serve.ActiveThreshold = nextThreshold(serve.ActiveThreshold)
++        serve.LockedReward = lockReward(player, serve.ActiveThreshold, reward)
++    end
++    publish(player, runtime)
++    runtime.Busy = false
++    return bonus
++end
++function Service.RecordSteal(player: Player)
++    local runtime = players[player]
++    if not runtime or runtime.Busy then
++        return
++    end
++    local state = runtime.State
++    state.StealProgress += 1
++    if state.StealProgress < Config.StealTarget then
++        publish(player, runtime)
++        return
++    end
++    local transaction = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
++    if not transaction then
++        publish(player, runtime)
++        return
++    end
++    runtime.Busy = true
++    local paidReward = 0
++    while state.StealProgress >= Config.StealTarget do
++        local reward = stealReward(player)
++        local cashBefore = deps.TycoonService.GetCash(player)
++        if not credit(transaction, reward) then
++            break
++        end
++        -- The cash authority applies whole-dollar rounding at credit time.
++        paidReward += deps.TycoonService.GetCash(player) - cashBefore
++        state.StealProgress -= Config.StealTarget
++    end
++    deps.TycoonService.EndTransaction(transaction)
++    runtime.Busy = false
++    publish(player, runtime)
++    if paidReward > 0 then
++        feedback(player, paidReward)
++    end
++end
++function Service.RemovePlayer(player: Player)
++    local runtime = players[player]
++    players[player] = nil
++    if runtime then
++        for _, connection in runtime.Connections do
++            connection:Disconnect()
++        end
++    end
++end
++return Service
+diff --git a/src/server/Services/CustomerService.luau b/src/server/Services/CustomerService.luau
+--- a/src/server/Services/CustomerService.luau
++++ b/src/server/Services/CustomerService.luau
+@@ -1844,6 +1844,11 @@
+         end
+         deps.TycoonService.CreditTransaction(transaction, payout)
+     end
++    if deps.TasksService then
++        -- Task completion accepts every valid rated cup, including C/D.
++        -- Order fulfillment and its ordinary payout/reaction stay independent.
++        payout += deps.TasksService.RecordServe(player, evaluation.IsValid, freeloader, transaction, record)
++    end
+     if deps.AnnouncementService then
+         deps.AnnouncementService.Served(player, result.Ingredients, payout)
+     end
+diff --git a/src/server/Services/InventoryService.luau b/src/server/Services/InventoryService.luau
+--- a/src/server/Services/InventoryService.luau
++++ b/src/server/Services/InventoryService.luau
+@@ -1471,6 +1471,10 @@
+         deps.AnnouncementService.Acquired(player, ownership)
+     end
+     if not friendly(player, owner) then
++        if deps.TasksService then
++            deps.TasksService.RecordSteal(player)
++        end
++        deps.PlayerDataService.IncrementStat(player, "IngredientsStolen")
+         local state = InventoryService.GetStashRaidState(owner)
+         if state.SessionId and state.State == "Normal" then
+             local raidEnd = workspace:GetServerTimeNow() + StashConfig.RaidWindowSeconds
+diff --git a/src/server/init.server.luau b/src/server/init.server.luau
+--- a/src/server/init.server.luau
++++ b/src/server/init.server.luau
+@@ -20,6 +20,7 @@
+     LockBaseService = require(script.Services.LockBaseService),
+     InitialSpawnService = require(script.Services.InitialSpawnService),
+     TutorialService = require(script.Services.TutorialService),
++    TasksService = require(script.Services.TasksService),
+     IngredientService = require(script.Services.IngredientService),
+     LuckyBlockService = require(script.Services.LuckyBlockService),
+     PlayerHeadDropService = require(script.Services.PlayerHeadDropService),
+@@ -118,6 +119,7 @@
+         services.MuncherService.CleanupSession(id)
+     end,
+ })
++services.TasksService.Init(services)
+ for _, name in
+     {
+         "InventoryService",
+@@ -152,6 +154,7 @@
+     end
+     initialized[player] = true
+     services.TutorialService.AddPlayer(player)
++    services.TasksService.AddPlayer(player)
+     services.PlayerDataService.AddPlayer(player)
+     services.DiscoveryService.PlayerAdded(player)
+     services.TycoonService.RefreshUpgradeAttributes(player)
+@@ -190,6 +193,7 @@
+ services.JackedNoobService.Init(services)
+ Players.PlayerRemoving:Connect(function(player)
+     services.InitialSpawnService.RemovePlayer(player)
++    services.TasksService.RemovePlayer(player)
+     services.TutorialService.RemovePlayer(player)
+     services.TycoonService.RemovePlayer(player, function()
+         if characterConnections[player] then
+diff --git a/src/client/UI/UIRegistry.luau b/src/client/UI/UIRegistry.luau
+--- a/src/client/UI/UIRegistry.luau
++++ b/src/client/UI/UIRegistry.luau
+@@ -2,7 +2,7 @@
+ -- Shared semantic contract. Generated root names and XML referents are irrelevant.
+ local Registry = {}
+ local panelNames: { [string]: boolean } =
+-    { Index = true, Settings = true, Shop = true, Upgrades = true, Cosmetics = true }
++    { Index = true, Settings = true, Shop = true, Tasks = true, Upgrades = true, Cosmetics = true }
+ Registry.Panels = panelNames
+ 
+ function Registry.Matches(instance: Instance, role: string, names: { string }): boolean
+diff --git a/src/client/UI/TasksGui.luau b/src/client/UI/TasksGui.luau
+new file mode 100644
+--- /dev/null
++++ b/src/client/UI/TasksGui.luau
+@@ -0,0 +1,37 @@
++--!strict
++local Registry = require(script.Parent.UIRegistry)
++local Gui = {}
++export type Entry = { Objective: TextLabel, Progress: TextLabel, Reward: TextLabel }
++export type View = { Serve: Entry, Steal: Entry }
++local function importedChild(parent: Instance?, exported: string, class: string): Instance?
++    return Registry.Child(parent, exported, { exported }, class)
++end
++local function entry(panel: Instance, name: string): Entry?
++    local row = importedChild(panel, name, "GuiObject")
++    local objective = importedChild(row, "Objective", "TextLabel")
++    local progress = importedChild(row, "Progress", "TextLabel")
++    local reward = importedChild(row, "Reward", "TextLabel")
++    if objective and progress and reward then
++        return { Objective = objective :: TextLabel, Progress = progress :: TextLabel, Reward = reward :: TextLabel }
++    end
++    return nil
++end
++function Gui.Resolve(playerGui: PlayerGui): View?
++    local selected: View? = nil
++    for _, desktop in Registry.Desktops(playerGui) do
++        if Registry.ActiveRoot(desktop, playerGui) then
++            local panel = Registry.Child(Registry.Content(desktop), "Panel:Tasks", { "Tasks" }, "GuiObject")
++            if panel then
++                local serve, steal = entry(panel, "ServeTask"), entry(panel, "StealTask")
++                if serve and steal then
++                    if selected then
++                        return nil
++                    end
++                    selected = { Serve = serve, Steal = steal }
++                end
++            end
++        end
++    end
++    return selected
++end
++return Gui
+diff --git a/src/client/UI/CashRewardState.luau b/src/client/UI/CashRewardState.luau
+--- a/src/client/UI/CashRewardState.luau
++++ b/src/client/UI/CashRewardState.luau
+@@ -6,7 +6,7 @@
+ function State.New(): (any, any, any, number) -> (boolean, string)
+     local seen: { [string]: boolean } = {}
+     return function(moment: any, owner: any, payload: any, localUserId: number): (boolean, string)
+-        if moment ~= "CustomerReaction" then
++        if moment ~= "CustomerReaction" and moment ~= "TaskReward" then
+             return false, "wrong moment"
+         elseif owner ~= localUserId then
+             return false, "owner mismatch"
+diff --git a/src/client/Controllers/TasksController.luau b/src/client/Controllers/TasksController.luau
+new file mode 100644
+--- /dev/null
++++ b/src/client/Controllers/TasksController.luau
+@@ -0,0 +1,58 @@
++--!strict
++local Players = game:GetService("Players")
++local Gui = require(script.Parent.Parent.UI.TasksGui)
++local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
++local Controller = {}
++local started = false
++function Controller.Init()
++    if started then
++        return
++    end
++    started = true
++    task.spawn(function()
++        local player = Players.LocalPlayer
++        local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
++        local function refresh()
++            local view = Gui.Resolve(playerGui)
++            if not view then
++                return
++            end
++            local function number(name: string): number
++                local value = player:GetAttribute(name)
++                return if typeof(value) == "number" then value else 0
++            end
++            local tutorial = player:GetAttribute("TasksTutorialComplete") ~= true
++            local threshold = number("TasksServeThreshold")
++            view.Serve.Objective.Text = if tutorial
++                then "Finish the tutorial"
++                else "Serve " .. threshold .. " customers"
++            view.Serve.Progress.Visible = not tutorial
++            view.Serve.Progress.Text = if tutorial then "" else number("TasksServeTotal") .. "/" .. threshold
++            view.Serve.Reward.Text = "Reward: "
++                .. MoneyFormat.Full(number(if tutorial then "TasksTutorialReward" else "TasksServeReward"))
++            view.Steal.Objective.Text = "Steal " .. number("TasksStealTarget")
++            view.Steal.Progress.Text = number("TasksStealProgress") .. "/" .. number("TasksStealTarget")
++            view.Steal.Reward.Text = "Reward: " .. MoneyFormat.Full(number("TasksStealReward")) .. " (estimate)"
++        end
++        for _, name in
++            {
++                "TasksTutorialComplete",
++                "TasksTutorialReward",
++                "TasksServeThreshold",
++                "TasksServeTotal",
++                "TasksServeReward",
++                "TasksStealTarget",
++                "TasksStealProgress",
++                "TasksStealReward",
++            }
++        do
++            player:GetAttributeChangedSignal(name):Connect(refresh)
++        end
++        playerGui.DescendantAdded:Connect(refresh)
++        playerGui.DescendantRemoving:Connect(function()
++            task.defer(refresh)
++        end)
++        refresh()
++    end)
++end
++return Controller
+diff --git a/src/client/init.client.luau b/src/client/init.client.luau
+--- a/src/client/init.client.luau
++++ b/src/client/init.client.luau
+@@ -44,6 +44,7 @@
+ require(script.Controllers.StashPromptController).Init()
+ 
+ require(script.Controllers.UpgradesController).Init()
++require(script.Controllers.TasksController).Init()
+ require(script.Controllers.SettingsController).Init()
+ 
+ require(script.Controllers.CarryInputController).Init()
+diff --git a/tests/run_state_tests.py b/tests/run_state_tests.py
+--- a/tests/run_state_tests.py
++++ b/tests/run_state_tests.py
+@@ -38,6 +38,10 @@
+ # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
+ # because it still contains presentation and Studio-adapter checks (see README.md).
+ SUITES = {
++    "tasks": ("state", ("tasks.spec.luau",)),
++    "tasks-serve": ("integration", ("fixtures/customer_payout.luau", "tasks_serve.spec.luau")),
++    "tasks-steal": ("integration", ("fixtures/smoothie.luau", "tasks_steal.spec.luau")),
++    "tasks-ui": ("presentation", ("tasks_ui.spec.luau",)),
+     "lucky-hud": ("presentation", ("lucky_hud.spec.luau",)),
+     "lucky-handoff": ("presentation", ("lucky_handoff.spec.luau",)),
+     "lucky-sprint": ("state", ("lucky_sprint.spec.luau",)),
+@@ -196,6 +200,8 @@
+         print(f"{SUITES[name][0]}: {name}")
+     raise SystemExit(0)
+ sources = {}
++for name in ("TasksGui", "UIRegistry", "CashRewardState"):
++    sources[name] = (ROOT / f"src/client/UI/{name}.luau").read_text(encoding="utf-8")
+ for directory in ("src/shared/Constants", "src/server/Services", "src/server/Admin"):
+     for path in (ROOT / directory).glob("*.luau"):
+         sources[path.stem] = path.read_text(encoding="utf-8")
+diff --git a/tests/tasks.spec.luau b/tests/tasks.spec.luau
+new file mode 100644
+--- /dev/null
++++ b/tests/tasks.spec.luau
+@@ -0,0 +1,214 @@
++local tasks = loadModule("TasksService")
++local tier, failCredit, reenter = 0, false, nil
++local authority = setmetatable({
++    GetJumpTier = function()
++        return tier
++    end,
++    CreditTransaction = function(id, amount)
++        if reenter then
++            local callback = reenter
++            reenter = nil
++            callback()
++        end
++        if failCredit then
++            error("injected credit failure")
++        end
++        return sessionTestAuthority.CreditTransaction(id, amount)
++    end,
++}, { __index = sessionTestAuthority })
++tasks.Init({ TycoonService = authority })
++local function actor(complete, historical)
++    local p = instance("Player")
++    p.Name, p.DisplayName, p.UserId = "TaskPlayer", "Task Player", #allInstances
++    local setAttribute = p.SetAttribute
++    p.SetAttribute = function(self, name, value)
++        local old = self:GetAttribute(name)
++        setAttribute(self, name, value)
++        if old ~= value then
++            self:GetAttributeChangedSignal(name):Fire()
++        end
++    end
++    assignTestSession(p)
++    p:SetAttribute("TutorialStage", if complete then "Complete" else "ServeCustomer")
++    tasks.AddPlayer(p, historical)
++    return p
++end
++local function serve(p, success, freeloader, event)
++    local id = authority.BeginTransaction(p, authority.GetRequestContext(p))
++    setup(id, "serve transaction")
++    local bonus = tasks.RecordServe(p, success ~= false, freeloader == true, id, event or {})
++    authority.EndTransaction(id)
++    return bonus
++end
++local p = actor(false)
++check(p:GetAttribute("TasksServeReward") == 9000, "first reward locks before tutorial serves")
++serve(p, false)
++serve(p, true, true)
++check(p:GetAttribute("TasksServeTotal") == 0, "failed and Freeloader observations excluded")
++serve(p)
++serve(p)
++local event = {}
++check(serve(p, true, false, event) == 9000, "third tutorial serve pays Serve 3")
++check(
++    p:GetAttribute("TasksServeTotal") == 3 and p:GetAttribute("TasksServeThreshold") == 10,
++    "next milestone displays cumulative 3/10"
++)
++local before = authority.GetCash(p)
++check(serve(p, true, false, event) == 0 and authority.GetCash(p) == before, "same customer cannot pay or count twice")
++check(p:GetAttribute("TasksTutorialComplete") == false, "background counting independent of tutorial text")
++local id = authority.BeginTransaction(p, authority.GetRequestContext(p))
++p:SetAttribute("TutorialStage", "Complete")
++check(authority.GetCash(p) == before, "tutorial cannot nest into final serve transaction")
++authority.EndTransaction(id)
++flush()
++check(
++    authority.GetCash(p) == before + 5000 and p:GetAttribute("TasksTutorialComplete"),
++    "observed completion pays separately after transaction"
++)
++p:SetAttribute("TutorialStage", "Other")
++p:SetAttribute("TutorialStage", "Complete")
++flush()
++check(authority.GetCash(p) == before + 5000, "tutorial reward pays once per session")
++tier = 3
++check(p:GetAttribute("TasksServeReward") == 21000, "active milestone stays locked after tier change")
++for _ = 4, 10 do
++    serve(p)
++end
++check(
++    p:GetAttribute("TasksServeThreshold") == 20 and p:GetAttribute("TasksServeReward") == 400000,
++    "new tier applies at next activation"
++)
++tier = 0
++for _ = 11, 50 do
++    serve(p)
++end
++check(
++    p:GetAttribute("TasksServeThreshold") == 60 and p:GetAttribute("TasksServeTotal") == 50,
++    "20/30/40/50 advance cumulatively and indefinitely"
++)
++check(p:GetAttribute("TasksServeReward") == 400000, "next reward never decreases after tier drop")
++local historical = actor(true, 23)
++check(
++    authority.GetCash(historical) == 0 and historical:GetAttribute("TasksServeThreshold") == 30,
++    "historical count reconciles with no cash"
++)
++check(historical:GetAttribute("TasksTutorialComplete"), "already Complete activation skips tutorial display")
++flush()
++check(authority.GetCash(historical) == 0, "already Complete has no retroactive tutorial reward")
++for _ = 24, 30 do
++    serve(historical)
++end
++check(authority.GetCash(historical) == 30000, "historical reconciliation does not suppress next live crossing")
++local retry = actor(true)
++serve(retry)
++serve(retry)
++local retryEvent = {}
++failCredit = true
++check(
++    serve(retry, true, false, retryEvent) == 0 and authority.GetCash(retry) == 0,
++    "failed credit cannot consume milestone"
++)
++failCredit = false
++reenter = function()
++    check(
++        tasks.RecordServe(retry, true, false, authority.GetSessionId(retry), retryEvent) == 0,
++        "reentrant crossing rejected"
++    )
++end
++check(serve(retry, true, false, retryEvent) == 9000, "failed crossing can retry once")
++check(
++    serve(retry, true, false, retryEvent) == 0 and authority.GetCash(retry) == 9000,
++    "retried successful crossing cannot pay twice"
++)
++for _, example in { { 10000, 2500 }, { 1000000, 50000 }, { 10000000, 500000 } } do
++    local thief = actor(true)
++    authority.SetCash(thief, example[1])
++    check(thief:GetAttribute("TasksStealReward") == example[2], "cash changes refresh server estimate")
++    for _ = 1, 10 do
++        tasks.RecordSteal(thief)
++    end
++    check(
++        authority.GetCash(thief) == example[1] + example[2] and thief:GetAttribute("TasksStealProgress") == 0,
++        "steal formula and atomic reset"
++    )
++    local cash = authority.GetCash(thief)
++    for _ = 1, 10 do
++        tasks.RecordSteal(thief)
++    end
++    check(
++        authority.GetCash(thief) == cash + math.floor(math.max(2500, 0.05 * cash)),
++        "steal immediately repeats using current shared cash"
++    )
++    check(thief:GetAttribute("TasksServeTotal") == 0, "stealing independent of serving")
++end
++local thief = actor(true)
++for _ = 1, 9 do
++    tasks.RecordSteal(thief)
++end
++failCredit = true
++tasks.RecordSteal(thief)
++check(
++    thief:GetAttribute("TasksStealProgress") == 10 and authority.GetCash(thief) == 0,
++    "steal payment failure preserves completion opportunity"
++)
++failCredit = false
++tasks.RecordSteal(thief)
++check(
++    thief:GetAttribute("TasksStealProgress") == 1 and authority.GetCash(thief) == 2500,
++    "next theft settles pending completion and counts the new transfer"
++)
++local leaving = actor(false)
++leaving:SetAttribute("TutorialStage", "Complete")
++tasks.RemovePlayer(leaving)
++flush()
++check(authority.GetCash(leaving) == 0, "leave cancels queued tutorial payment")
++leaving:SetAttribute("TutorialStage", "Other")
++leaving:SetAttribute("TutorialStage", "Complete")
++flush()
++check(authority.GetCash(leaving) == 0, "removed player no longer observes transitions")
++tasks.AddPlayer(leaving)
++check(
++    leaving:GetAttribute("TasksServeTotal") == 0 and leaving:GetAttribute("TasksStealProgress") == 0,
++    "fresh session starts from zero without saved state"
++)
++
++for _, sample in { { 0, 9000 }, { 1, 45000 }, { 2, 90000 }, { 3, 120000 } } do
++    tier = sample[1]
++    local scaled = actor(true)
++    check(scaled:GetAttribute("TasksServeReward") == sample[2], "each configured Jump tier locks its initial reward")
++end
++tier = 0
++local teamOwner, teamThief = actor(true), actor(true)
++authority.RemovePlayer(teamThief)
++setup(
++    authority.JoinSession(teamThief, teamOwner, authority.GetRequestContext(teamOwner)),
++    "task actor joins shared pot"
++)
++authority.SetCash(teamOwner, 1000000)
++for _ = 1, 10 do
++    tasks.RecordSteal(teamThief)
++end
++check(
++    authority.GetCash(teamOwner) == 1050000 and authority.GetCash(teamThief) == 1050000,
++    "steal percentage reads and credits team shared cash"
++)
++local tutorialRetry = actor(false)
++failCredit = true
++tutorialRetry:SetAttribute("TutorialStage", "Complete")
++flush()
++check(authority.GetCash(tutorialRetry) == 0, "failed tutorial credit does not mark transition paid")
++failCredit = false
++authority.SetCash(tutorialRetry, 100)
++flush()
++check(authority.GetCash(tutorialRetry) == 5100, "pending tutorial transition retries on cash publication")
++
++loadModule("FilmingUtil").Init()
++local rounded = actor(true)
++authority.SetCash(rounded, 1000001)
++for _ = 1, 10 do
++    tasks.RecordSteal(rounded)
++end
++check(
++    authority.GetCash(rounded) == 1050001 and presentation[#presentation].Payload.Payout == 50000,
++    "standalone feedback reports whole dollars actually credited by cash authority"
++)
+diff --git a/tests/tasks_serve.spec.luau b/tests/tasks_serve.spec.luau
+new file mode 100644
+--- /dev/null
++++ b/tests/tasks_serve.spec.luau
+@@ -0,0 +1,132 @@
++loadModule("FilmingUtil").Init()
++local tasks = loadModule("TasksService")
++tasks.Init({ TycoonService = sessionTestAuthority })
++tasks.AddPlayer(owner)
++customer.Init({
++    TasksService = tasks,
++    PlayerDataService = data,
++    TycoonService = setmetatable({
++        GetReference = function(_, name)
++            return refs[name]
++        end,
++    }, { __index = sessionTestAuthority }),
++    BlendService = {
++        GetCup = function()
++            return cup
++        end,
++        ConsumeCup = function()
++            local result = cup
++            cup = nil
++            return result
++        end,
++    },
++    GameplayService = {
++        RegisterPlotInteraction = function(prompt, callback)
++            prompt.Triggered:Connect(callback)
++        end,
++    },
++}, function() end)
++-- Tasks counts valid rated cups independently of order fulfillment, including
++-- C/D, while grading and payout keep using the real evaluator.
++for index, recipe in
++    {
++        { "Blueberry", "Blueberry", "Blueberry" },
++        { "Blueberry", "Blueberry", "Banana" },
++        { "Blueberry", "Banana", "Banana" },
++        { "Banana", "Banana", "Banana" },
++    }
++do
++    customer.ActivateForPlayer(owner)
++    local model = customer.SpawnForPlayer(owner)
++    flush()
++    cup = { Ingredients = recipe, BlendId = "task-serve-" .. index }
++    local evaluation = customer.EvaluateOrder(cup, config.Definitions[1])
++    setup(evaluation.IsValid, "valid rated cup qualifies")
++    check(evaluation.Grade == ({ "A", "B", "C", "D" })[index], "real evaluation covers each grade")
++    local before = sessionTestAuthority.GetCash(owner)
++    setup(customer.Serve(owner, model), "real serve")
++    check(owner:GetAttribute("TasksServeTotal") == index, "all valid grades count through Serve")
++    check(
++        not customer.Serve(owner, model) and owner:GetAttribute("TasksServeTotal") == index,
++        "replayed customer cannot count twice"
++    )
++    local event = presentation[#presentation]
++    check(
++        event.Payload.Payout == sessionTestAuthority.GetCash(owner) - before,
++        "single existing serve feedback combines order and milestone cash"
++    )
++    customer.DeactivateForPlayer(owner)
++end
++check(owner:GetAttribute("TasksServeThreshold") == 10, "real third serve advances to 3/10")
++customer.ActivateForPlayer(owner)
++local model = customer.SpawnForPlayer(owner)
++flush()
++cup = { Ingredients = { "Banana", "Banana", "Banana", "Banana" }, BlendId = "failed-task-serve" }
++setup(customer.Serve(owner, model), "invalid rated cup is consumed")
++check(owner:GetAttribute("TasksServeTotal") == 4, "invalid real cup excluded")
++customer.DeactivateForPlayer(owner)
++config.RegularWildcardChance = 1
++customer.ActivateForPlayer(owner)
++model = customer.SpawnForPlayer(owner)
++flush()
++cup = { Ingredients = { "Banana", "Banana", "Banana" }, BlendId = "wildcard-task-serve" }
++setup(customer.Serve(owner, model), "fulfilled wildcard serve")
++check(
++    owner:GetAttribute("TasksServeTotal") == 5 and model:GetAttribute("IsWildcard"),
++    "wildcard qualifies without a grade"
++)
++
++customer.DeactivateForPlayer(owner)
++local function child(class, name, parent)
++    local item = instance(class)
++    item.Name, item.Parent = name, parent
++    if class == "Humanoid" then
++        item.RigType = { Name = "R15" }
++    end
++    return item
++end
++local folder = child("Folder", "CustomerNPCs", storage)
++local special = child("Folder", "Special", folder)
++local template = child("Model", "SpecialSource", special)
++local humanoid = child("Humanoid", "Humanoid", template)
++local root = child("Part", "HumanoidRootPart", template)
++template.PrimaryPart = root
++local clone = template.Clone
++template.Clone = function(self)
++    local copy = clone(self)
++    copy:FindFirstChildOfClass("Humanoid").Died = signal()
++    return copy
++end
++template:SetAttribute("CustomerId", "steak")
++config.NPCs.steak.RequestId = "Blue"
++config.SpecialCustomerChance = 1
++config.SpecialWildcardChance = 1
++now += loadModule("Economy").SpecialCustomerCooldownSeconds + 1
++customer.ActivateForPlayer(owner)
++model = customer.SpawnForPlayer(owner)
++flush()
++setup(model and model:GetAttribute("CustomerId") == "steak", "authored special encounter")
++cup = { Ingredients = { "Banana", "Banana", "Banana" }, BlendId = "special-task-serve" }
++setup(customer.Serve(owner, model), "fulfilled special wildcard serve")
++check(owner:GetAttribute("TasksServeTotal") == 6, "special fulfilled orders use same counting hook")
++customer.DeactivateForPlayer(owner)
++for _, definition in originalDefinitions do
++    if definition.Id == "Freeloader" then
++        table.insert(config.Definitions, definition)
++    end
++end
++sessionTestAuthority.SetCash(owner, 1000000)
++setup(
++    sessionTestAuthority.PurchaseUpgrade(owner, "Bat", 2, sessionTestAuthority.GetRequestContext(owner)),
++    "eligible for Freeloader"
++)
++template:SetAttribute("CustomerId", "freeloader")
++config.SpecialWildcardChance = 0
++now += loadModule("Economy").SpecialCustomerCooldownSeconds + 1
++customer.ActivateForPlayer(owner)
++model = customer.SpawnForPlayer(owner)
++flush()
++setup(model and model:GetAttribute("CustomerId") == "freeloader", "Freeloader encounter")
++cup = { Ingredients = { "Banana", "Banana", "Banana" }, BlendId = "freeloader-task-serve" }
++setup(customer.Serve(owner, model), "real Freeloader serve")
++check(owner:GetAttribute("TasksServeTotal") == 6, "real Freeloader excluded from task progress")
+diff --git a/tests/tasks_steal.spec.luau b/tests/tasks_steal.spec.luau
+new file mode 100644
+--- /dev/null
++++ b/tests/tasks_steal.spec.luau
+@@ -0,0 +1,73 @@
++loadModule("FilmingUtil").Init()
++local tasks = loadModule("TasksService")
++local tycoon = dependency.TycoonService
++tasks.Init({ TycoonService = tycoon })
++dependency.TasksService = tasks
++dependency.PlayerDataService.IncrementStat = dataService.IncrementStat
++local owner, teammate, enemy = player(), player(), player()
++tasks.AddPlayer(enemy)
++tasks.AddPlayer(owner)
++tasks.AddPlayer(teammate)
++tycoon.RemovePlayer(teammate)
++setup(tycoon.JoinSession(teammate, owner, tycoon.GetRequestContext(owner)), "join stash team")
++local function stolen()
++    return dataService.GetSnapshot(enemy).Stats.IngredientsStolen
++end
++carry(owner, "Banana")
++setup(inventory.Deposit(owner, "Banana", 1), "protected stash seed")
++check(not inventory.Withdraw(enemy, 1, owner), "protected withdrawal excluded")
++setup(inventory.Withdraw(teammate, 1, owner), "friendly teammate withdrawal")
++check(teammate:GetAttribute("TasksStealProgress") == 0 and stolen() == 0, "friendly take does not record theft")
++inventory.ClearHeld(teammate)
++carry(owner, "Banana")
++setup(inventory.Deposit(owner, "Banana", 3), "ingredient seed")
++local locked = true
++dependency.LockBaseService = {
++    IsLocked = function()
++        return locked
++    end,
++}
++check(not inventory.Withdraw(enemy, 3, owner), "locked withdrawal excluded")
++locked = false
++local backpack = enemy:FindFirstChildOfClass("Backpack")
++backpack.Parent = nil
++check(not inventory.Withdraw(enemy, 3, owner) and stolen() == 0, "failed equip excluded")
++backpack.Parent = enemy
++setup(inventory.Steal(enemy, owner, 3), "Steal routes through successful Withdraw")
++check(
++    enemy:GetAttribute("TasksStealProgress") == 1 and stolen() == 1,
++    "ingredient transfer counts once in both independent counters"
++)
++inventory.ClearHeld(enemy)
++grant(owner, "task-smoothie")
++setup(press(owner, "STORE", 3), "smoothie stash seed")
++setup(inventory.Withdraw(enemy, 3, owner), "smoothie theft")
++check(
++    enemy:GetAttribute("TasksStealProgress") == 2 and stolen() == 2,
++    "smoothie transfer reaches same single success hook"
++)
++inventory.ClearHeld(enemy)
++for _ = 1, 8 do
++    carry(owner, "Banana")
++    setup(inventory.Deposit(owner, "Banana", 3), "repeat ingredient seed")
++    setup(inventory.Withdraw(enemy, 3, owner), "repeat successful theft")
++    inventory.ClearHeld(enemy)
++end
++check(
++    enemy:GetAttribute("TasksStealProgress") == 0 and stolen() == 10 and tycoon.GetCash(enemy) == 2500,
++    "real tenth transfer resets task while lifetime stat remains ten"
++)
++check(
++    presentation[#presentation].Moment == "TaskReward" and presentation[#presentation].Payload.Payout == 2500,
++    "standalone completion uses existing cash feedback remote"
++)
++carry(owner, "Banana")
++setup(inventory.Deposit(owner, "Banana", 3), "NPC seed")
++setup(inventory.RemoveThiefIngredient(owner, tycoon.GetSessionId(owner)) ~= nil, "NPC removes ingredient")
++check(enemy:GetAttribute("TasksStealProgress") == 0 and stolen() == 10, "NPC path cannot advance player theft")
++carry(owner, "Banana")
++setup(inventory.Deposit(owner, "Banana", 3), "protection seed")
++now += loadModule("Economy").NormalStash.RaidWindowSeconds
++check(not inventory.Withdraw(enemy, 3, owner) and stolen() == 10, "raid-protected rejection contributes nothing")
++setup(inventory.Withdraw(owner, 3), "own stash remains accessible")
++check(dataService.GetSnapshot(owner).Stats.IngredientsStolen == 0, "own take does not increment stat")
+diff --git a/tests/tasks_ui.spec.luau b/tests/tasks_ui.spec.luau
+new file mode 100644
+--- /dev/null
++++ b/tests/tasks_ui.spec.luau
+@@ -0,0 +1,42 @@
++local gui = loadModule("TasksGui")
++local registry = loadModule("UIRegistry")
++local playerGui = instance("PlayerGui")
++check(gui.Resolve(playerGui) == nil and registry.Panels.Tasks == true, "missing authored panel fails soft")
++local function child(class, name, parent)
++    local item = instance(class)
++    item.Name, item.Parent, item.Visible, item.Enabled = name, parent, true, true
++    return item
++end
++local root = child("ScreenGui", "Export", playerGui)
++local desktop = child("Frame", "Be a Blender! Desktop", root)
++local content = child("Frame", "DesktopContent", desktop)
++local panel = child("Frame", "Tasks", content)
++for _, name in { "ServeTask", "StealTask" } do
++    local row = child("Frame", name, panel)
++    for _, label in { "Objective", "Progress", "Reward" } do
++        child("TextLabel", label, row)
++    end
++end
++local view = gui.Resolve(playerGui)
++check(
++    view and view.Serve.Reward == panel:FindFirstChild("ServeTask"):FindFirstChild("Reward"),
++    "binds exact exported semantic hierarchy"
++)
++check(registry.PanelId(panel) == "Tasks", "Tasks participates in existing panel registry")
++panel.Name = "Tasks_list"
++check(gui.Resolve(playerGui) == nil, "role suffix names are not the binding contract")
++panel.Name = "Tasks"
++local duplicate = child("Frame", "Tasks", content)
++check(gui.Resolve(playerGui) == nil, "ambiguous exports fail soft")
++duplicate:Destroy()
++root.Enabled = false
++check(gui.Resolve(playerGui) == nil, "disabled export cannot bind")
++local accept = loadModule("CashRewardState").New()
++check(
++    accept("TaskReward", 42, { BlendId = "task-1", Payout = 5000 }, 42),
++    "standalone task payment reuses existing flying cash acceptance"
++)
++check(
++    not accept("TaskReward", 42, { BlendId = "task-1", Payout = 5000 }, 42),
++    "standalone feedback shares duplicate protection"
++)
+diff --git a/tests/tutorial_gameplay.spec.luau b/tests/tutorial_gameplay.spec.luau
+--- a/tests/tutorial_gameplay.spec.luau
++++ b/tests/tutorial_gameplay.spec.luau
+@@ -29,6 +29,9 @@
+     flush()
+     heartbeat:Fire(0.1)
+ end
++local tasks = loadModule("TasksService")
++tasks.Init(dependency)
++dependency.TasksService = tasks
+ local tutorial = loadModule("TutorialService")
+ dependency.TutorialService = tutorial
+ dependency.FarmService = {
+@@ -68,6 +71,15 @@
+ p.Parent = workspaceFake
+ p.Character.WaitForChild = p.Character.FindFirstChild
+ tutorial.AddPlayer(p)
++local setAttribute = p.SetAttribute
++p.SetAttribute = function(self, name, value)
++    local previous = self:GetAttribute(name)
++    setAttribute(self, name, value)
++    if previous ~= value then
++        self:GetAttributeChangedSignal(name):Fire()
++    end
++end
++tasks.AddPlayer(p)
+ tutorial.ApplyCharacter(p, p.Character)
+ flush()
+ local config = loadModule("TutorialOrders")
+@@ -210,8 +222,9 @@
+     setup(customer.Serve(p, model), "normal committed tutorial serve")
+     heartbeat:Fire(0.1)
+     check(
+-        dependency.TycoonService.GetCash(p) == beforeCash + math.max(payout, order.PayoutFloor or 0),
+-        "payout comes only from real serving with tutorial floor"
++        dependency.TycoonService.GetCash(p)
++            == beforeCash + math.max(payout, order.PayoutFloor or 0) + (if orderIndex == 3 then 9000 else 0),
++        "payout includes tutorial floor and the locked third-serve milestone"
+     )
+     local earned = dependency.TycoonService.GetCash(p) - beforeCash
+     starterEarnings += earned
+@@ -244,6 +257,10 @@
+     p:GetAttribute("TutorialStage") == "NextCustomer" and p:GetAttribute("TutorialActive"),
+     "all three fulfilled serves wait for next regular order"
+ )
++check(
++    p:GetAttribute("TasksServeTotal") == 3 and p:GetAttribute("TasksServeThreshold") == 10,
++    "three real tutorial serves activate cumulative 3/10"
++)
+ inventory.InitializeTutorialStash(p)
+ check(
+     slot(p, 3).Count == 0 and slot(p, 4).Count == 0 and slot(p, 5).Count == 0,
+@@ -265,6 +282,12 @@
+ setup(customer.TakeOrder(p, nextCustomer.Model), "take next regular order")
+ heartbeat:Fire(0.1)
+ check(p:GetAttribute("TutorialStage") == "Complete", "real order acceptance completes send-off with missing scenery")
++local beforeTutorialReward = dependency.TycoonService.GetCash(p)
++flush()
++check(
++    dependency.TycoonService.GetCash(p) == beforeTutorialReward + 5000,
++    "tutorial completion pays separately on its observed transition"
++)
+ -- First regular serves use the live payout formula with no tutorial floors.
+ loadModule("Upgrades").CarryCapacity[1].Value = 3
+ capacities[p] = 1
+diff --git a/tests/stash_interaction.spec.luau b/tests/stash_interaction.spec.luau
+--- a/tests/stash_interaction.spec.luau
++++ b/tests/stash_interaction.spec.luau
+@@ -25,6 +25,7 @@
+     local failVisual = false
+     inventory.Init({
+         PlayerDataService = {
++            IncrementStat = function() end,
+             GetUpgrade = function(_, name)
+                 return 1
+             end,
+diff --git a/docs/SESSION_TASKS.md b/docs/SESSION_TASKS.md
+new file mode 100644
+--- /dev/null
++++ b/docs/SESSION_TASKS.md
+@@ -0,0 +1,128 @@
++# Session-only Tasks implementation
++
++Branch: `feature/session-tasks`. Working diff only; no commit, merge, or publication. Existing local work was preserved. The current checkout also received concurrent ProtectionService edits during implementation. `SESSION_TASKS.patch` contains only Tasks changes against the captured incoming working tree, excluding all pre-existing and concurrent feature changes. It is for review or application to that incoming snapshot; these changes are already present in the current workspace.
++
++## C/D qualification clarification
++
++The inspected `CustomerOrderEvaluation.Evaluate` sets IsFulfilled true only for A/B. This conflicted with the initial requirement to count C/D through that gate. The user explicitly clarified: "allow C/D ratings to count towards customer serve progress". CustomerService therefore passes evaluation.IsValid as Tasks qualification, separately from order success. All valid consumed non-Freeloader cups count, including C/D cups whose order is unfulfilled. Rejected operations and invalid cups count zero. Grading, order success, normal payout formulas, and protection remain unchanged. The real Serve integration test verifies A, B, C, and D ratings count once each.
++
++## Implemented behavior
++
++- TasksService owns the exact requested Serve/StealProgress state entirely in server memory. Bootstrap initializes it before gameplay and clears it and its listeners on player removal. No PlayerData record access, saved state, DataStore, remotes, or persistence were added for Tasks.
++- Serve milestones are cumulative 3/10/20/30/+10. First reward locks before live serves; tier changes do not alter an active reward, and subsequent locks never decrease. Optional authoritative session-count reconciliation selects the next milestone without paying passed milestones. CustomersServed is never read.
++- CustomerService.Serve calls RecordServe with evaluation.IsValid qualification after the order credit, inside its existing transaction. The server-owned customer record guards duplicate observations. Task bonus is included in the existing single CustomerReaction payout/feedback pass. Failed credits preserve the qualifying observation and an unpaid live crossing for a later serve/retry; guards advance only after successful credit. No yielding work was added to that sequence.
++- TutorialStage observation distinguishes activation inspection from an in-session transition. Already Complete activates without tutorial cash or tutorial text. Observed completion pays the single configured $5,000 once through a standalone transaction. A deferred callback avoids nesting into the current serve transaction; failed/unavailable payment remains pending and can retry on a later cash/membership publication. Removal cancels queued payment. In the real tutorial, the third serve reaches NextCustomer; accepting the next regular order publishes Complete. The actual third serve independently pays the locked $9,000 Serve 3 milestone, despite the tutorial Jump purchase.
++- InventoryService.Withdraw records successful non-friendly ingredient and smoothie transfers at its one shared success gate, then increments IngredientsStolen once. Steal delegates to Withdraw and has no additional hook. RemoveThiefIngredient remains separate and has no Tasks/stat hook. Existing friendly, equip, slot, lock, and raid protection gates are unchanged.
++- Steal 10 pays max(configured $2,500 floor, configured 5% of current shared team cash), then resets and repeats. Failed payment preserves the transfer count and unsettled completion; a subsequent theft can settle it while retaining that new transfer. IngredientsStolen never resets with the task counter. Estimates refresh server-side on cash/membership publication.
++- Standalone tutorial/steal payments use the existing GameplayPresentation remote and cash animation/ticker paths, with TaskReward accepted by CashRewardState and the existing GUID replay guard. No payment/claim endpoint or bonus banner was added. Steal feedback reports actual credited whole dollars after the existing cash authority applies rounding.
++
++## Optional UI contract
++
++The mapped export is `Framewisp_Hotbar.prepared.rbxmx`; inspection found no Tasks/ServeTask/StealTask hierarchy. No artwork, model, ScreenGui, layout, or style was authored. Server behavior works without the panel. TasksGui follows UIRegistry desktop/content/active-root resolution and importedChild-style semantic binding; missing or ambiguous hierarchy returns nil. Registry.Panels.Tasks is true.
++
++Expected exported names, without role suffixes:
++
++```text
++Tasks
++  ServeTask
++    Objective (TextLabel)
++    Progress (TextLabel)
++    Reward (TextLabel)
++  StealTask
++    Objective (TextLabel)
++    Progress (TextLabel)
++    Reward (TextLabel)
++```
++
++Tasks is a direct child of the registry-resolved desktop content; each task entry is a GuiObject. The controller writes only text and tutorial progress visibility. It shows Finish the tutorial with the configured reward, then cumulative serve progress and its locked reward; steal reward is labeled as an estimate. It hides the numeric tutorial progress field because the existing tutorial has no numeric fraction contract. Server-owned display attributes: TasksTutorialComplete, TasksTutorialReward, TasksServeTotal, TasksServeThreshold, TasksServeReward, TasksStealProgress, TasksStealTarget, TasksStealReward. No Studio setup is required for server gameplay. Artwork placement/mobile readability remain with Collin as requested; no Studio testing tasks were added.
++
++## Files in the focused patch
++
++- `src/shared/Constants/TasksConfig.luau`
++- `src/server/Services/TasksService.luau`
++- `src/server/Services/CustomerService.luau`
++- `src/server/Services/InventoryService.luau`
++- `src/server/init.server.luau`
++- `src/client/UI/UIRegistry.luau`
++- `src/client/UI/TasksGui.luau`
++- `src/client/UI/CashRewardState.luau`
++- `src/client/Controllers/TasksController.luau`
++- `src/client/init.client.luau`
++- `tests/run_state_tests.py`
++- `tests/tasks.spec.luau`
++- `tests/tasks_serve.spec.luau`
++- `tests/tasks_steal.spec.luau`
++- `tests/tasks_ui.spec.luau`
++- `tests/tutorial_gameplay.spec.luau`
++- `tests/stash_interaction.spec.luau`
++
++## Automated validation
++
++Tools reused from the existing local validation directory: Luau 0.745, StyLua 2.6.0, Luau LSP 1.70.1 and its Roblox definitions, Rojo 7.7.0. No tools were downloaded. Tests use the repository's mocked engine boundary; no Studio/live runtime checks were run or claimed.
++
++Focused task/state/integration/presentation and requested existing suites: 6/6 pass. The existing stash suite was additionally run and passes (490 behavioral checks); its PlayerData stub needed the new IncrementStat dependency, while authoritative theft-stat assertions live only in tasks_steal.spec.luau. Coverage includes actual special/wildcard/Freeloader serves, actual three tutorial serves and completion, transaction failures/retries/reentrancy, all four reward tiers, historical progress, indefinite thresholds, shared cash and all three formula examples, real successful/failed/protected/locked/raid/NPC/friendly ingredient/smoothie transfers, resetting progress versus stat totals, missing UI, and cleanup. C/D qualification follows the user clarification above.
++
++Full current workspace: 105/137 pass (state 19/25, integration 52/68, presentation 34/44), exit 1. This includes three concurrent protection suites. Isolated Tasks-only tree: 102/134 pass, exit 1. Captured incoming checkout: 98/130 pass, exit 1. The exact same 32 failures reproduce in the incoming checkout; no new failures remain. Presentation runs remain separately classified.
++
++StyLua formatting and check: exit 0 on all touched Luau files. Rojo sourcemap/build: exit 0. New Tasks modules plus UIRegistry/CashRewardState typecheck: exit 0. All touched production modules typecheck: exit 1, 40 diagnostics, exactly matching the incoming checkout after normalizing source locations: CustomerRequests 22, CombatService 9, CustomerService 1, JackedNoobService 8. No new diagnostics. git diff --check and focused patch git apply --check: exit 0.
++
++Reproduction commands (PowerShell; equivalent direct CLI invocations executed by the validation subprocess runner):
++
++```powershell
++$tools = "$env:TEMP/BlenderGame-lucky-block-validation-20261030-1541a6c"
++$out = "$env:TEMP/blender-tasks-mu7611ml"
++$rojo = 'C:/Users/Collin Van Meter/.aftman/tool-storage/rojo-rbx/rojo/7.7.0/rojo.exe'
++python tests/run_state_tests.py --luau "$tools/luau/luau.exe" --suite tasks --suite tasks-serve --suite tasks-steal --suite tasks-ui --suite customer-payout-serve --suite tutorial-gameplay
++python tests/run_state_tests.py --luau "$tools/luau/luau.exe" --suite stash
++python tests/run_state_tests.py --luau "$tools/luau/luau.exe"
++python "$out/baseline/tests/run_state_tests.py" --luau "$tools/luau/luau.exe"
++python "$out/tasks-only/tests/run_state_tests.py" --luau "$tools/luau/luau.exe"
++$owned = Get-Content "$out/owned.json" | ConvertFrom-Json
++$luauFiles = @($owned | Where-Object { $_ -like '*.luau' })
++$sourceFiles = @($owned | Where-Object { $_ -like 'src/*' })
++& "$tools/stylua/stylua.exe" $luauFiles
++& "$tools/stylua/stylua.exe" --check $luauFiles
++& $rojo sourcemap --output "$out/sourcemap.json"
++& $rojo build -o "$out/tasks.rbxlx"
++& "$tools/lsp/luau-lsp.exe" analyze --platform roblox --sourcemap "$out/sourcemap.json" --definitions "$tools/roblox.d.luau" $sourceFiles
++& "$tools/lsp/luau-lsp.exe" analyze --platform roblox --sourcemap "$out/sourcemap.json" --definitions "$tools/roblox.d.luau" src/server/Services/TasksService.luau src/shared/Constants/TasksConfig.luau src/client/Controllers/TasksController.luau src/client/UI/TasksGui.luau src/client/UI/CashRewardState.luau src/client/UI/UIRegistry.luau
++git diff --check
++git -C "$out/baseline" apply --check "$PWD/docs/SESSION_TASKS.patch"
++```
++
++Baseline typechecking used the same source list restricted to files already present in `$out/baseline`, that directory as cwd, and its own Rojo sourcemap at `$out/baseline-sourcemap.json`. Raw logs, the incoming snapshot, isolated Tasks tree, and generated build are retained in `$out` outside the delivered diff.
++
++Baseline-reproduced failures:
++
++- `ripeness`
++- `smoothie-world`
++- `smoothie`
++- `customer-validation`
++- `customer-compatibility`
++- `sprint`
++- `tutorial-claim`
++- `muncher-vacuum`
++- `ingredient-cleanup`
++- `ripeness-lifecycle`
++- `discovery-customers`
++- `plot-session-races`
++- `plot-session-progression`
++- `plot-session-requests`
++- `plot-session`
++- `customer-queue`
++- `customer-serve-anywhere`
++- `legacy-state`
++- `legacy-movement`
++- `requests`
++- `world`
++- `smoothie-roundtrip`
++- `tutorial-hints`
++- `ripeness-presentation`
++- `jacked-noob-hit-presentation`
++- `bat-controller`
++- `ingredient-hold`
++- `vfx`
++- `customer-order-text`
++- `customer-orders`
++- `blend-presentation`
++- `icegun-presentation`

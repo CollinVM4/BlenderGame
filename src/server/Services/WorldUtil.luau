@@ -16,18 +16,20 @@ function WorldUtil.Part(instance: Instance?): BasePart?
     return instance:FindFirstChildWhichIsA("BasePart", true)
 end
 
-function WorldUtil.Near(player: Player, target: Instance?, distance: number): boolean
+function WorldUtil.NearPosition(player: Player, position: Vector3, distance: number): boolean
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    local part = WorldUtil.Part(target)
     return root ~= nil
         and root:IsA("BasePart")
         and humanoid ~= nil
         and humanoid.Health > 0
         and MovementService.CanPerformGameplayAction(player)
-        and part ~= nil
-        and part:IsDescendantOf(workspace)
-        and (root.Position - part.Position).Magnitude <= distance
+        and (root.Position - position).Magnitude <= distance
+end
+
+function WorldUtil.Near(player: Player, target: Instance?, distance: number): boolean
+    local part = WorldUtil.Part(target)
+    return part ~= nil and part:IsDescendantOf(workspace) and WorldUtil.NearPosition(player, part.Position, distance)
 end
 
 function WorldUtil.Prompt(part: BasePart, name: string, text: string): ProximityPrompt

@@ -8,6 +8,7 @@ local getSprintEvent = require(ReplicatedStorage.Shared.Events.SprintEvents)
 
 local SprintService = {}
 local movement: any
+local lucky: any
 local started = false
 
 local staminaCurrent: { [Player]: number } = {}
@@ -98,6 +99,7 @@ function SprintService.Init(dependencies)
     end
     started = true
     movement = dependencies.MovementService
+    lucky = dependencies.LuckyBlockService
     local sprintEvent = getSprintEvent()
     movement.Changed:Connect(function(player: Player)
         -- Deferred character/stun notifications can arrive after player cleanup.
@@ -127,8 +129,10 @@ function SprintService.Init(dependencies)
                 isSprinting[player] = false
             end
             if isSprinting[player] then
-                staminaCurrent[player] =
-                    math.max(0, staminaCurrent[player] - SprintConfig.STAMINA_DRAIN_RATE * deltaTime)
+                if not (lucky and lucky.IsBuffActive(player, "StarPower")) then
+                    staminaCurrent[player] =
+                        math.max(0, staminaCurrent[player] - SprintConfig.STAMINA_DRAIN_RATE * deltaTime)
+                end
                 if staminaCurrent[player] <= 0 then
                     isSprinting[player] = false
                 end

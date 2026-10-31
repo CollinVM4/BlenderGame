@@ -1,14 +1,17 @@
 --!strict
 local Audio = require(script.Parent.GameplayAudio)
 local rewards: { [string]: { Visual: string, Name: string } } = {
-    DoubleCash = { Visual = "2xCash", Name = "Double Cash" },
-    SuperJump = { Visual = "Jump", Name = "Super Jump" },
-    RainbowRampage = { Visual = "Star", Name = "Star Power" },
+    CashBoost = { Visual = "2xCash", Name = "Cash Boost" },
+    StarPower = { Visual = "Star", Name = "Star Power" },
     MegaBat = { Visual = "MegaBat", Name = "Mega Bat" },
-    IngredientMagnet = { Visual = "Magnet", Name = "Ingredient Magnet" },
+    PantryPack = { Visual = "PantryPack", Name = "Pantry Pack" },
+    TopShelf = { Visual = "TopShelf", Name = "Top Shelf" },
+    MysteryBox = { Visual = "MysteryBox", Name = "Mystery Box" },
     Invincibility = { Visual = "Invincibility", Name = "Invincibility" },
 }
 return {
+    PickupTag = "LuckyRewardPickup",
+    InstantMessageSeconds = 2.5,
     VisualFolderName = "LuckyBlockVisuals",
     NearbyEventName = "LuckyBlockRevealed",
     NearbyDistance = 70,

@@ -6,7 +6,7 @@ local State = {}
 function State.New(): (any, any, any, number) -> (boolean, string)
     local seen: { [string]: boolean } = {}
     return function(moment: any, owner: any, payload: any, localUserId: number): (boolean, string)
-        if moment ~= "CustomerReaction" then
+        if moment ~= "CustomerReaction" and moment ~= "TaskReward" then
             return false, "wrong moment"
         elseif owner ~= localUserId then
             return false, "owner mismatch"

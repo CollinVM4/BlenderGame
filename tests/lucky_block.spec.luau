@@ -101,304 +101,386 @@ function template:Clone()
     end
     return model
 end
+local presentationConfig = loadModule("LuckyBlockPresentation")
+local rewardFolder = instance("Folder")
+for id, entry in presentationConfig.Rewards do
+    local asset = instance("Model")
+    asset.Name, asset.Parent = entry.Visual, rewardFolder
+    local part = instance("BasePart")
+    part.Name, part.Parent = id .. "Art", asset
+    part.Size = vec(1, 2, 1)
+end
+services.ReplicatedStorage.FindFirstChild = function(_, name)
+    return if name == presentationConfig.VisualFolderName then rewardFolder else nil
+end
+workspaceFake.Terrain = instance("Part")
+workspaceFake.Terrain.Parent = workspaceFake
+local frameNew = env.CFrame.new
+env.CFrame.new = function(x, y, z)
+    if type(x) == "table" then
+        return frame(x.X, x.Y, x.Z)
+    end
+    return frameNew(x, y, z)
+end
+local total, timed = 0, 0
+for _, reward in config.Rewards do
+    total += reward.Weight
+    if reward.DurationSeconds then
+        timed += 1
+    end
+end
+check(#config.Rewards == 7 and timed == 4 and total == 100, "seven prizes, four buffs, total weight 100")
+for _, old in { "DoubleCash", "SuperJump", "RainbowRampage", "IngredientMagnet" } do
+    check(presentationConfig.Rewards[old] == nil, "obsolete prize removed")
+end
+local selectedIds, grantedTo, failure = nil, nil, false
+local tier = 0
+local expectedClaimer = nil
 local service = loadModule("LuckyBlockService")
-service.Init()
+service.Init({
+    TycoonService = {
+        GetJumpTier = function(player)
+            check(player == expectedClaimer, "item pool reads claimer tier")
+            return tier
+        end,
+    },
+    InventoryService = {
+        PrepareIngredientReward = function(player, ids)
+            selectedIds = ids
+            return function()
+                if failure then
+                    return false
+                end
+                grantedTo = player
+                return true
+            end
+        end,
+    },
+})
 local world = workspaceFake:FindFirstChild(config.WorldFolderName)
-service.Init()
-check(#world:GetChildren() == 4, "ten authored markers start four active blocks; init is idempotent")
-check(
-    world:GetChildren()[1]:GetAttribute("RBX_ReimportId") == "imported-block"
-        and world:GetChildren()[1].PrimaryPart:GetAttribute("VisualVariant") == "Gold"
-        and template:GetAttribute("RBX_ReimportId") == "imported-block",
-    "server native cloning preserves imported metadata and legitimate attributes without protected writes"
-)
-local function byLevel(level)
+local function blocks(level)
+    local result = {}
     for _, block in world:GetChildren() do
         if block:GetAttribute("Level") == level then
-            return block
+            table.insert(result, block)
+        end
+    end
+    return result
+end
+local function prize(id)
+    for _, model in world:GetChildren() do
+        if model:GetAttribute("PickupId") == id and model:GetAttribute("PickupState") == "Available" then
+            return model
         end
     end
 end
-local function verifyLevels()
-    for _, level in config.Spawn.Levels do
-        check(byLevel(level) ~= nil, "initial/replenished stock includes " .. level)
-    end
-    for _, block in world:GetChildren() do
-        local origin = block:GetAttribute("LuckyBlockOrigin")
-        local matched = false
-        for _, marker in authored do
-            if marker.CFrame.Position.X == origin.Position.X then
-                matched = marker:GetAttribute("ExpectedLevel") == block:GetAttribute("Level")
-            end
-        end
-        check(matched, "random selection stays inside the block's level")
-    end
-end
-verifyLevels()
-local origins = {}
-for _, model in world:GetChildren() do
-    local origin = model:GetAttribute("LuckyBlockOrigin")
-    check(not origins[origin.Position.X], "active blocks occupy distinct authored locations")
-    origins[origin.Position.X] = true
-end
-local event = shared.Events:FindFirstChild(config.RewardEventName)
-local receipts = {}
-function event:FireClient(player, payload)
-    table.insert(receipts, { Player = player, Payload = payload })
-    -- Reentrant contender must see an already committed removal.
-    if self.Contender then
-        check(
-            not service.TryClaim(self.Contender, self.ClaimedModel),
-            "publication cannot reenter an already claimed block"
-        )
-    end
+for level, expected in config.Spawn.SlotsPerLevel do
+    check(#blocks(level) == expected, "configured slot count " .. level)
 end
 local function subject()
     local player = instance("Player")
-    player.UserId = #allInstances
     player.Parent = services.Players
-    local character = instance("Model")
-    character.Parent, player.Character = workspaceFake, character
-    local hrp = instance("BasePart")
-    hrp.Name, hrp.Parent = "HumanoidRootPart", character
-    local h = instance("Humanoid")
-    h.Health, h.Parent = 100, character
-    return player, hrp, h
+    player.Character = instance("Model")
+    player.Character.Parent = workspaceFake
+    local root = instance("BasePart")
+    root.Name, root.Parent = "HumanoidRootPart", player.Character
+    local humanoid = instance("Humanoid")
+    humanoid.Health, humanoid.Parent = 100, player.Character
+    return player, root, humanoid
 end
-
-local p, hrp, humanoid = subject()
-local contender, contenderRoot = subject()
-local first = byLevel("Level2")
-local otherLevels = { byLevel("Level0"), byLevel("Level1"), byLevel("Level3") }
-local previousOrigin = first:GetAttribute("LuckyBlockOrigin")
-hrp.Position = first.PrimaryPart.Position + vec(100, 0, 0)
-check(not service.TryClaim(p, first), "far player cannot claim")
-hrp.Position = first.PrimaryPart.Position
-humanoid.Health = 0
-check(not service.TryClaim(p, first), "dead player cannot claim")
-humanoid.Health, p.Locked = 100, true
-check(not service.TryClaim(p, first), "existing gameplay action lock is respected")
-p.Locked = false
-local foreign = instance("Model")
-foreign.Parent = world
-check(not service.TryClaim(p, foreign), "unregistered models cannot grant rewards")
-foreign:Destroy()
-contenderRoot.Position = hrp.Position
-event.Contender, event.ClaimedModel = contender, first
-check(service.TryClaim(p, first), "near living player claims")
-event.Contender = nil
-check(not service.TryClaim(contender, first), "simultaneous contender loses single claim")
-check(#receipts == 1 and first.Parent == nil, "one receipt and world removal per claim")
-check(#world:GetChildren() == 3 and not byLevel("Level2"), "only Level2 is empty after its claim")
-local second = byLevel("Level0")
-hrp.Position = second.PrimaryPart.Position
-check(not service.TryClaim(p, second), "per-player cooldown prevents rapid claims of distinct blocks")
-step(config.Respawn.MinRespawnSeconds - 0.01)
-check(#world:GetChildren() == 3, "replacement cannot appear before minimum delay")
-step(config.Respawn.MaxRespawnSeconds - config.Respawn.MinRespawnSeconds + 0.01)
-check(#world:GetChildren() == 4, "one replacement returns by maximum delay without nearby players")
-for _, block in otherLevels do
-    check(block.Parent == world, "Level2 cooldown leaves other levels untouched")
+local roller, root = subject()
+local claimer, claimRoot, health = subject()
+expectedClaimer = claimer
+local event = shared.Events:FindFirstChild(config.RewardEventName)
+local receipts = {}
+function event:FireClient(player, payload)
+    table.insert(receipts, payload)
 end
+local rewardRoll = 0
+local drawIndex = 1
+env.math = table.clone(math)
+env.math.random = function(low, high)
+    return if low then math.clamp(drawIndex, low, high) else rewardRoll
+end
+local reveal = presentationConfig.RevealSeconds + presentationConfig.HoldSeconds + presentationConfig.FadeSeconds
+local function roll(block, fraction)
+    rewardRoll = fraction
+    root.Position = block.PrimaryPart.Position
+    check(service.TryClaim(roller, block), "server rolls live block")
+    return receipts[#receipts].PickupId
+end
+local cycleStart = now
+local initial = blocks("Level0")
+local id = roll(initial[1], 0)
+check(not prize(id), "no pickup during reveal")
+step(1)
+local id2 = roll(initial[2], 0.15)
+service.RemovePlayer(roller)
+roller.Parent = nil
+step(reveal - 1 - 0.01)
+check(not prize(id), "deadline derives from reveal hold fade constants")
+step(0.01)
+local pickup = prize(id)
+check(pickup ~= nil, "roller leave does not cancel server spawn")
+local rewardArt = pickup:FindFirstChild("RewardVisual")
 check(
-    byLevel("Level2"):GetAttribute("LuckyBlockOrigin").Position.X ~= previousOrigin.Position.X,
-    "replacement avoids its previous location when alternatives exist"
+    rewardArt and rewardArt:FindFirstChild(presentationConfig.Rewards.CashBoost.Visual),
+    "public collectible resolves authored presentation Visual mapping"
 )
-verifyLevels()
-check(service.TryClaim(p, second), "cooldown expires without blocking future pickups")
-step(config.Respawn.MaxRespawnSeconds)
-for _, receipt in receipts do
-    local reward
-    for _, definition in config.Rewards do
-        if definition.Id == receipt.Payload.RewardId then
-            reward = definition
+check(not services.CollectionService:HasTag(pickup, config.WorldTag), "reward never enters unopened block animation")
+check(services.CollectionService:HasTag(pickup, presentationConfig.PickupTag), "public reward registers its own handoff identity")
+local visualPose = loadModule("LuckyBlockRewardVisual").Pose(pickup:GetAttribute("PickupPosition"))
+check((rewardArt:GetPivot().Position - visualPose.Position).Magnitude < 0.001, "public prize uses settled reveal pose")
+for _, part in rewardArt:GetDescendants() do
+    if part:IsA("BasePart") then
+        check(part.Anchored and not part.CanCollide, "public reward geometry is anchored and inert")
+    end
+end
+check(roller:GetAttribute("LuckyBuffCashBoostExpiresAt") == nil, "roll publishes no timed message")
+claimRoot.Position = pickup:GetAttribute("PickupPosition")
+health.Health = 0
+check(not service.TryClaimPickup(claimer, pickup), "dead claimer rejected")
+health.Health = 100
+local nearbyBlock = blocks("Level2")[1]
+claimRoot.Position = nearbyBlock.PrimaryPart.Position
+check(service.TryClaim(claimer, nearbyBlock), "claimer can roll a block immediately before collecting prize")
+claimRoot.Position = pickup:GetAttribute("PickupPosition")
+check(service.TryClaimPickup(claimer, pickup), "living different player collects")
+check(
+    claimer:GetAttribute("LuckyBuffCashBoostExpiresAt") == now + 90
+        and roller:GetAttribute("LuckyBuffCashBoostExpiresAt") == nil,
+    "only successful claimer receives authoritative expiry"
+)
+check(
+    not pickup:FindFirstChild("RewardVisual") and pickup:GetAttribute("PickupState") == "Claimed",
+    "successful claim removes prize and publishes terminal identity"
+)
+check(not service.TryClaimPickup(claimer, pickup), "duplicate claim rejected")
+local contender, contenderRoot = subject()
+contenderRoot.Position = claimRoot.Position
+check(not service.TryClaimPickup(contender, pickup), "competing eligible claimer rejected")
+check(
+    service.GetCashMultiplier(claimer) == 1.5 and service.GetCashMultiplier(roller) == 1,
+    "cash buff belongs to claimer"
+)
+step(1)
+local star = prize(id2)
+claimRoot.Position = star:GetAttribute("PickupPosition")
+check(service.TryClaimPickup(claimer, star), "different buff coexists")
+check(
+    service.IsBuffActive(claimer, "StarPower") and service.IsBuffActive(claimer, "CashBoost"),
+    "independent buff clocks"
+)
+step(10)
+check(
+    not service.IsBuffActive(claimer, "StarPower") and service.IsBuffActive(claimer, "CashBoost"),
+    "independent expiration"
+)
+step(cycleStart + 180 - now - 0.01)
+check(#blocks("Level0") == 1 and initial[3].Parent == world, "unclaimed stock remains during shared clock")
+step(0.01)
+check(
+    #blocks("Level0") == 3 and initial[3].Parent == world,
+    "first shared deadline fills empties without resetting or replacing stock"
+)
+roller.Parent = services.Players
+local refreshId = roll(blocks("Level0")[1], 0)
+step(reveal)
+claimRoot.Position = prize(refreshId):GetAttribute("PickupPosition")
+check(service.TryClaimPickup(claimer, prize(refreshId)), "cash refresh claim")
+check(claimer:GetAttribute("LuckyBuffCashBoostExpiresAt") == now + 90, "refresh publishes replacement server expiry")
+step(80)
+check(service.IsBuffActive(claimer, "CashBoost"), "refresh starts a new full duration")
+step(10)
+check(not service.IsBuffActive(claimer, "CashBoost"), "refresh replaces rather than adds duration")
+service.RemovePlayer(claimer)
+check(not service.IsBuffActive(claimer, "CashBoost"), "leave clears buffs")
+-- Item pools are selected for the claimer; failed transactions restore the same identity/lifetime.
+for _, sample in { { 0.62, "PantryPack", 3 }, { 0.82, "TopShelf", 1 }, { 0.92, "MysteryBox", 1 } } do
+    step(240)
+    local itemId = roll(blocks("Level1")[1], sample[1])
+    step(reveal)
+    local model = prize(itemId)
+    check(model:GetAttribute("RewardId") == sample[2], "weighted instant reward")
+    claimRoot.Position = model:GetAttribute("PickupPosition")
+    local beforeArt = model:FindFirstChild("RewardVisual")
+    local beforePose, beforeScale = beforeArt:GetPivot(), beforeArt:GetScale()
+    local beforeNotice = claimer:GetAttribute("LuckyInstant" .. sample[2] .. "Until")
+    failure = true
+    check(not service.TryClaimPickup(claimer, model), "failed grant leaves prize available")
+    local restored = prize(itemId)
+    check(restored == model and restored:GetAttribute("PickupState") == "Available", "same pickup identity restored")
+    local restoredArt = restored:FindFirstChild("RewardVisual")
+    check(
+        restoredArt
+            and restoredArt:GetScale() == beforeScale
+            and (restoredArt:GetPivot().Position - beforePose.Position).Magnitude < 0.001,
+        "failed grant restores same reward scale and pose"
+    )
+    check(
+        claimer:GetAttribute("LuckyInstant" .. sample[2] .. "Until") == beforeNotice,
+        "failed claim cannot display a confirmation"
+    )
+    failure = false
+    check(service.TryClaimPickup(claimer, restored) and grantedTo == claimer, "claimer receives item grant")
+    check(#selectedIds == sample[3], "all selected prize units awarded")
+    check(
+        claimer:GetAttribute("LuckyInstant" .. sample[2] .. "Until") == now + presentationConfig.InstantMessageSeconds
+            and roller:GetAttribute("LuckyInstant" .. sample[2] .. "Until") == nil,
+        "instant confirmation goes only to successful claimer"
+    )
+    for _, ingredientId in selectedIds do
+        local definition = loadModule("Ingredients")[ingredientId]
+        if sample[2] ~= "MysteryBox" then
+            check(definition.JumpLocation == 0, "pool uses claimer purchased tier")
+        else
+            check(ingredientId ~= "Player_Head" and ingredientId ~= "Dragon_Fruit", "mystery exclusions")
         end
     end
-    check(
-        reward and receipt.Payload.DurationSeconds == reward.DurationSeconds,
-        "reward ID and duration come from server config"
-    )
 end
--- Automatic proximity pickup, without any client intent or prompt.
-players = { contender }
-local third = world:GetChildren()[1]
-contenderRoot.Position = third.PrimaryPart.Position
-step(0.2)
-check(third.Parent == nil and #receipts == 3, "server proximity poll collects without a client request")
-players = {}
-local fourth = world:GetChildren()[1]
-fourth:Destroy()
-check(#receipts == 3, "external removal grants no reward")
-step(config.Respawn.MaxRespawnSeconds)
-check(#world:GetChildren() == 4, "external destruction also replenishes within the active cap")
+step(240)
+local expiresId = roll(blocks("Level2")[1], 0.62)
+step(reveal)
+local expires = prize(expiresId)
+step(59)
+claimRoot.Position = expires:GetAttribute("PickupPosition")
+failure = true
+check(not service.TryClaimPickup(claimer, expires), "late failure recovers prize")
+step(1)
+check(not prize(expiresId), "recovery never extends original sixty-second lifetime")
+step(240)
+local untouchedId = roll(blocks("Level1")[1], 0)
+step(reveal)
+step(60)
+check(not prize(untouchedId), "unclaimed pickups expire without award")
+check(not service.IsBuffActive(roller, "CashBoost"), "rolling never applies buff")
+print("PASS: Lucky server lifecycle")
+
+-- Independent upper-level clocks and previous-marker avoidance.
+failure = false
+step(240)
+local firstUpper, otherUpper = blocks("Level1")[1], blocks("Level2")[1]
+local oldPosition = otherUpper:GetAttribute("LuckyBlockOrigin").Position.X
+local upperStart = now
+roll(firstUpper, 0)
+step(10)
+roll(otherUpper, 0)
+step(170)
+check(#blocks("Level1") == 1 and #blocks("Level2") == 0, "Level1 and Level2 retain independent clocks")
+step(10)
+check(#blocks("Level2") == 1, "second upper level refills at its own deadline")
+check(
+    blocks("Level2")[1]:GetAttribute("LuckyBlockOrigin").Position.X ~= oldPosition,
+    "slot avoids previous marker when alternatives exist"
+)
+-- Mystery can reach a tier the claimer has not purchased.
+local mysteryPool = {}
+for ingredientId in loadModule("Ingredients") do
+    if ingredientId ~= "Player_Head" and ingredientId ~= "Dragon_Fruit" then
+        table.insert(mysteryPool, ingredientId)
+    end
+end
+table.sort(mysteryPool)
+drawIndex = table.find(mysteryPool, "Mystery")
+local mysteryId = roll(blocks("Level1")[1], 0.92)
+step(reveal)
+claimRoot.Position = prize(mysteryId):GetAttribute("PickupPosition")
+check(
+    service.TryClaimPickup(claimer, prize(mysteryId)) and selectedIds[1] == "Mystery",
+    "MysteryBox includes unreachable tier three"
+)
+drawIndex = 1
+-- Purchased tier is evaluated at pickup claim, after the roll.
+step(240)
+local shelfId = roll(blocks("Level2")[1], 0.82)
+step(reveal)
+tier = 2
+claimRoot.Position = prize(shelfId):GetAttribute("PickupPosition")
+check(service.TryClaimPickup(claimer, prize(shelfId)), "claim TopShelf after purchased-tier change")
+check(loadModule("Ingredients")[selectedIds[1]].JumpLocation == 2, "TopShelf uses current purchased tier")
+
+-- Missing authored markers retry without inventing replacements or enabling Level3.
 for _, marker in authored do
-    services.CollectionService:RemoveTag(marker, config.MarkerTag)
-    services.CollectionService:GetInstanceRemovedSignal(config.MarkerTag):Fire(marker)
+    if marker:GetAttribute("ExpectedLevel") == "Level1" then
+        services.CollectionService:RemoveTag(marker, config.MarkerTag)
+        services.CollectionService:GetInstanceRemovedSignal(config.MarkerTag):Fire(marker)
+    end
 end
-check(#world:GetChildren() == 0, "removing markers retires their blocks")
-step(config.Respawn.MaxRespawnSeconds)
-check(#world:GetChildren() == 0, "stale timers cannot spawn at removed markers")
-services.CollectionService:AddTag(authored[1], config.MarkerTag)
-services.CollectionService:GetInstanceAddedSignal(config.MarkerTag):Fire(authored[1])
-step(config.Spawn.RetrySeconds)
-check(#world:GetChildren() == 1, "too few markers cap stock at available authored locations")
-local invalidGroup = instance("Part")
-invalidGroup.Name, invalidGroup.Parent = "Level3", container
-local invalid = instance("BasePart")
-invalid.Name, invalid.Parent = "Invalid", invalidGroup
-services.CollectionService:AddTag(invalid, config.MarkerTag)
-services.CollectionService:GetInstanceAddedSignal(config.MarkerTag):Fire(invalid)
-local invalidAttribute = instance("BasePart")
-invalidAttribute.Parent = container
-invalidAttribute:SetAttribute("Level", 9)
-services.CollectionService:AddTag(invalidAttribute, config.MarkerTag)
-services.CollectionService:GetInstanceAddedSignal(config.MarkerTag):Fire(invalidAttribute)
-step(config.Spawn.RetrySeconds)
-check(#world:GetChildren() == 1, "invalid level folders/attributes do not crash or spawn in another level")
-local missingWarning = false
+step(240)
+check(#blocks("Level1") == 0, "missing markers never generate fallback locations")
+local missingLevel = false
 for _, message in warnings do
-    missingWarning = missingWarning or string.find(message, "Level2 has no valid", 1, true) ~= nil
+    missingLevel = missingLevel or string.find(message, "Level1 has 0", 1, true) ~= nil
+    check(not string.find(message, "Level3 has", 1, true), "disabled level never warns about markers")
 end
-check(missingWarning, "missing level warns clearly")
-local stock = world:GetChildren()[1]
-stock.Parent = storage
-stock.AncestryChanged:Fire()
-check(stock.Destroyed and #receipts == 3, "reparented blocks retire without rewards")
-step(config.Respawn.MaxRespawnSeconds)
-check(#world:GetChildren() == 1, "reparenting cannot duplicate active world stock")
-env.math = table.clone(math)
-local rewardRoll = 0
-env.math.random = function(low, high)
-    return if low then low else rewardRoll
-end
-for _, sample in
-    {
-        { 0, "DoubleCash", 30 },
-        { 0.18, "SuperJump", 12 },
-        { 0.40, "RainbowRampage", 10 },
-        { 0.48, "MegaBat", 15 },
-        { 0.63, "IngredientMagnet", 15 },
-        { 0.83, "Invincibility", 8 },
-        { 0.999, "Invincibility", 8 },
-    }
-do
-    rewardRoll = sample[1]
-    local block = world:GetChildren()[1]
-    hrp.Position = block.PrimaryPart.Position
-    check(service.TryClaim(p, block), "weighted boundary sample claims a live block")
-    check(receipts[#receipts].Payload.RewardId == sample[2], "configured weight boundary selects " .. sample[2])
-    check(
-        receipts[#receipts].Payload.DurationSeconds == sample[3],
-        "LuckyBlockPickedUp reports the expected duration metadata for " .. sample[2]
-    )
-    step(config.Respawn.MaxRespawnSeconds)
-end
-
-local nearby = shared.Events:FindFirstChild("LuckyBlockRevealed")
-local notifications = {}
-function nearby:FireClient(player, payload)
-    table.insert(notifications, { Player = player, Payload = payload })
-end
-local closePlayer, closeRoot = subject()
-local farPlayer, farRoot = subject()
-local finalBlock = world:GetChildren()[1]
-hrp.Position = finalBlock.PrimaryPart.Position
-closeRoot.Position = hrp.Position + vec(70, 0, 0)
-farRoot.Position = hrp.Position + vec(70.1, 0, 0)
-players = { p, closePlayer, farPlayer }
-check(service.TryClaim(p, finalBlock), "valid claim publishes nearby final reward")
-check(
-    #notifications == 1 and notifications[1].Player == closePlayer,
-    "only nearby observers receive a reveal; collector and distant players are excluded"
-)
-local published = notifications[1].Payload
-local collected = receipts[#receipts].Payload
-check(
-    published.RewardId == collected.RewardId and published.DurationSeconds == collected.DurationSeconds,
-    "nearby reveal matches the server-selected reward and duration"
-)
-check(
-    published.Character == p.Character
-        and published.Position == collected.Position
-        and published.UserId == p.UserId
-        and published.PickupId == collected.PickupId
-        and published.PickedUpAt == collected.PickedUpAt,
-    "nearby identity and timing match the committed pickup"
-)
-check(
-    not service.TryClaim(closePlayer, finalBlock) and #notifications == 1,
-    "replayed claims cannot publish nearby presentation"
-)
-nearby.OnServerEvent = signal()
-nearby.OnServerEvent:Fire(closePlayer, { RewardId = "FakeReward", Character = p.Character })
-check(#notifications == 1, "client submissions to the output-only reveal remote have no effect")
-
--- Deterministic timer endpoints, retained stock during asset failures, and late authoring.
-players = {}
-step(config.Respawn.MaxRespawnSeconds)
-for _, seconds in scheduledDelays do
-    if seconds ~= config.Pickup.PollSeconds and seconds ~= config.Spawn.RetrySeconds then
-        check(
-            seconds >= config.Respawn.MinRespawnSeconds and seconds <= config.Respawn.MaxRespawnSeconds,
-            "every lifecycle cooldown lies within configured limits"
-        )
-    end
-end
-for _, roll in { 0, 1 } do
-    rewardRoll = roll
-    local block = world:GetChildren()[1]
-    block:Destroy()
-    local expected = config.Respawn.MinRespawnSeconds
-        + roll * (config.Respawn.MaxRespawnSeconds - config.Respawn.MinRespawnSeconds)
-    step(expected - 0.01)
-    check(#world:GetChildren() == 0, "endpoint cooldown does not spawn early")
-    step(0.01)
-    check(#world:GetChildren() == 1, "endpoint cooldown spawns at the configured deadline")
-end
-local beforeAssetFailure = #receipts
-world:GetChildren()[1]:Destroy()
-template.PrimaryPart = nil
-step(config.Respawn.MaxRespawnSeconds)
-check(#world:GetChildren() == 0, "invalid template preserves empty slot safely")
-template.PrimaryPart = root
-step(config.Spawn.RetrySeconds)
-check(
-    #world:GetChildren() == 1 and #receipts == beforeAssetFailure,
-    "repaired asset replenishes reserved slot without a pickup or reward"
-)
-for index = 2, #authored do
-    services.CollectionService:AddTag(authored[index], config.MarkerTag)
-    services.CollectionService:GetInstanceAddedSignal(config.MarkerTag):Fire(authored[index])
-end
-step(config.Spawn.RetrySeconds)
-check(#world:GetChildren() == 4, "late marker configuration recovers all missing levels")
-verifyLevels()
--- Legacy flat markers remain usable as Level0; no implicit cross-level assignment.
+check(missingLevel, "enabled level warns when below required marker count")
 for _, marker in authored do
-    if marker:GetAttribute("ExpectedLevel") == "Level0" then
-        marker.Parent = workspaceFake
-        marker:SetAttribute("Level", nil)
+    if marker:GetAttribute("ExpectedLevel") == "Level1" then
+        services.CollectionService:AddTag(marker, config.MarkerTag)
+        services.CollectionService:GetInstanceAddedSignal(config.MarkerTag):Fire(marker)
     end
 end
-byLevel("Level0"):Destroy()
-step(config.Respawn.MaxRespawnSeconds)
-check(#world:GetChildren() == 4 and byLevel("Level0"), "unassigned legacy flat markers retain Level0 compatibility")
+step(config.Spawn.RetrySeconds)
+check(#blocks("Level1") == 1, "missing markers recover on five-second retry")
 
--- Run into each level's block through the actual server poll, then replenish
--- that level independently. Client reveal failures cannot reopen a retired claim.
-for _, level in config.Spawn.Levels do
-    local block = byLevel(level)
-    local count = #receipts
-    hrp.Position = block.PrimaryPart.Position
-    players = { p }
-    step(config.Pickup.PollSeconds)
-    players = {}
-    check(block.Destroyed and not byLevel(level), "server proximity contact collects " .. level)
-    check(#receipts == count + 1, "contact publishes exactly one server-selected reward for " .. level)
-    check(not service.TryClaim(contender, block), "client reveal cannot make " .. level .. " collectible again")
-    step(config.Respawn.MinRespawnSeconds - 0.01)
-    check(not byLevel(level), level .. " does not respawn before three minutes")
-    step(config.Respawn.MaxRespawnSeconds - config.Respawn.MinRespawnSeconds + 0.01)
-    check(byLevel(level) ~= nil and #world:GetChildren() == 4, level .. " respawns by four minutes")
-    check(#receipts == count + 1, "respawn itself grants no duplicate reward for " .. level)
+-- Cleanup clears active buffs and both cooldowns without removing public prizes.
+step(240)
+local cleanupA = roll(blocks("Level0")[1], 0.28)
+step(1)
+local cleanupB = roll(blocks("Level0")[1], 0.45)
+step(reveal)
+claimRoot.Position = prize(cleanupA):GetAttribute("PickupPosition")
+check(
+    service.TryClaimPickup(claimer, prize(cleanupA)) and service.IsBuffActive(claimer, "MegaBat"),
+    "MegaBat clock starts at claim"
+)
+local remaining = prize(cleanupB)
+claimRoot.Position = remaining:GetAttribute("PickupPosition")
+check(not service.TryClaimPickup(claimer, remaining), "pickup cooldown blocks another prize")
+service.RemovePlayer(claimer)
+check(
+    not service.IsBuffActive(claimer, "MegaBat") and remaining.Parent == world,
+    "cleanup clears active buff but preserves prize"
+)
+check(
+    service.TryClaimPickup(claimer, remaining) and service.IsBuffActive(claimer, "Invincibility"),
+    "cleanup clears pickup cooldown"
+)
+service.RemovePlayer(claimer)
+check(not service.IsBuffActive(claimer, "Invincibility"), "cleanup clears invincibility")
+check(claimer:GetAttribute("LuckyBuffInvincibilityExpiresAt") == nil, "player cleanup clears replicated HUD expiry")
+
+-- Missing authored prize art remains a label-only collectible, never a block.
+step(240)
+local missingSource = rewardFolder:FindFirstChild(presentationConfig.Rewards.CashBoost.Visual)
+missingSource.Parent = nil
+local missingId = roll(blocks("Level2")[1], 0)
+step(reveal)
+local labelOnly = prize(missingId)
+check(
+    labelOnly
+        and not labelOnly:FindFirstChild("RewardVisual")
+        and not labelOnly:FindFirstChildWhichIsA("BasePart", true),
+    "missing reward creates no substitute geometry"
+)
+local fallbackLabel
+for _, anchor in workspaceFake.Terrain:GetChildren() do
+    local gui = anchor:FindFirstChild("LuckyRewardLabel")
+    if gui then
+        fallbackLabel = gui
+    end
 end
+check(
+    fallbackLabel
+        and fallbackLabel.MaxDistance == 60
+        and fallbackLabel:FindFirstChildOfClass("TextLabel").Text == "Cash Boost",
+    "missing art retains readable finite-distance world label"
+)
+local namedWarning = false
+for _, message in warnings do
+    namedWarning = namedWarning or string.find(message, "LuckyBlockVisuals.2xCash", 1, true) ~= nil
+end
+check(namedWarning, "missing asset warning names exact authored visual")
+claimRoot.Position = labelOnly:GetAttribute("PickupPosition")
+check(service.TryClaimPickup(claimer, labelOnly), "label-only prize preserves server proximity collection")
+missingSource.Parent = rewardFolder
