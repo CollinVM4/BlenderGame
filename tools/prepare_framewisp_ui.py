@@ -1,6 +1,6 @@
 """Apply the menu policy to a Framewisp export without rewriting its artwork XML.
 
-Run before Rojo sync/build. The default command reads uiExport_103026.rbxmx
+Run before Rojo sync/build. The default command reads newestExport.rbxmx
 and writes Framewisp_Hotbar.prepared.rbxmx; --input also preserves its source. Fail on an
 unknown generated wiring contract rather than installing competing handlers.
 """
@@ -9,18 +9,68 @@ import base64
 import sys
 from pathlib import Path
 import re
+import struct
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 BEGIN = "-- BEGIN BLENDER MAIN MENUS"
 END = "-- END BLENDER MAIN MENUS"
 
-DEFAULT_INPUT = ROOT / "uiExport_103026.rbxmx"
+DEFAULT_INPUT = ROOT / "newestExport.rbxmx"
 DEFAULT_OUTPUT = ROOT / "Framewisp_Hotbar.prepared.rbxmx"
 PANELS = ("Index", "Settings", "Shop", "Upgrades", "Cosmetics")
 PERSISTENT = ("TOP", "Hotbar", "LeftMenu", "RightMenu", "CashDisplay", "Cash", "{Coins}")
 GUI_OBJECTS = {"Frame", "CanvasGroup", "ScrollingFrame", "ImageLabel", "ImageButton",
                "TextLabel", "TextButton", "TextBox", "ViewportFrame", "VideoFrame"}
+
+
+def hotbar_text_bounds(text, tree):
+    """Retain authored text bounds before Framewisp's runtime scaler changes TextSize."""
+    for bar in tree.iter("Item"):
+        if item_name(bar) != "Hotbar":
+            continue
+        for slot in bar.findall("Item"):
+            if item_name(slot) not in ("Slot1", "Slot1_button", "Slot1_button_smooth"):
+                continue
+            for label in slot.findall("Item"):
+                if item_name(label) not in ("Label", "Label_text", "Number", "Number_text"):
+                    continue
+                if label.get("class") not in ("TextLabel", "TextButton", "TextBox"):
+                    continue
+                minimum = float(label.findtext("./Properties/float[@name='TextSize']"))
+                prop = label.find("./Properties/BinaryString[@name='AttributesSerialize']")
+                original = prop.text if prop is not None and prop.text else ""
+                data = base64.b64decode("".join(original.split())) if original else struct.pack("<I", 0)
+                def marker(key):
+                    return struct.pack("<I", len(key)) + key.encode() + b"\x06"
+                def number(key, default):
+                    position = data.find(marker(key))
+                    return struct.unpack_from("<d", data, position + len(marker(key)))[0] if position >= 0 else default
+                # On repeated preparation the stored authored minimum wins over
+                # any generated/runtime text edits in a saved prepared export.
+                minimum = number("HotbarTextMin", minimum)
+                maximum = number("HotbarTextMax", max(minimum, number("FigmaFontSize", minimum)))
+                for key, value in (("HotbarTextMin", minimum), ("HotbarTextMax", maximum)):
+                    token = marker(key)
+                    position = data.find(token)
+                    if position >= 0:
+                        start = position + len(token)
+                        data = data[:start] + struct.pack("<d", value) + data[start + 8:]
+                    else:
+                        data = struct.pack("<I", struct.unpack_from("<I", data)[0] + 1) + data[4:] + token + struct.pack("<d", value)
+                encoded = base64.b64encode(data).decode()
+                ref = re.escape(label.attrib["referent"])
+                pattern = r'(<Item\b(?=[^>]*\breferent="' + ref + r'")[^>]*>\s*<Properties>)(.*?)(</Properties>)'
+                def stamp(match):
+                    properties, count = re.subn(r'<BinaryString name="AttributesSerialize">.*?</BinaryString>',
+                                               '<BinaryString name="AttributesSerialize">' + encoded + '</BinaryString>', match[2], flags=re.S)
+                    if not count:
+                        properties += '<BinaryString name="AttributesSerialize">' + encoded + '</BinaryString>'
+                    return match[1] + properties + match[3]
+                text, count = re.subn(pattern, stamp, text, flags=re.S)
+                if count != 1:
+                    raise ValueError("Could not stamp authored hotbar text bounds")
+    return text
 
 
 def semantic(item):
@@ -220,6 +270,7 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
         text, count = re.subn(pattern, hide, text, flags=re.S)
         if count != 1:
             raise ValueError("Could not locate exact panel properties")
+    text = hotbar_text_bounds(text, tree)
     destination = output if output is not None else path
     destination.write_text(text, encoding="utf-8", newline="\n")
     print(f"Prepared {destination.resolve()}: {len(panel_refs)} existing main panel(s) default hidden")

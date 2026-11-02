@@ -1,3 +1,10 @@
+-- Wings input and shop initialize independently of yielding controllers.
+task.spawn(function()
+    require(script.Controllers.WingsController).Init()
+end)
+task.spawn(function()
+    require(script.Controllers.WingsShopAdapter).Init()
+end)
 require(script.Controllers.WorldStrokeController).Init()
 require(script.Controllers.LockBaseVisibilityController).Init()
 require(script.Controllers.LuckyBlockPresentationController).Init()

@@ -5,16 +5,15 @@ local StarterGui = game:GetService("StarterGui")
 local CAS = game:GetService("ContextActionService")
 local UIS = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
+local TextService = game:GetService("TextService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Gui = require(script.Parent.Parent.UI.HotbarGui)
 local IngredientViewport = require(script.Parent.Parent.UI.IngredientViewport)
 local Geometry = require(Shared.IngredientPreviewGeometry)
 local Registry = require(script.Parent.Parent.UI.UIRegistry)
 local Controller = {}
--- 56px targets fit a 320px phone without reducing any target below 48px.
-local MIN_SLOT_WIDTH = 56
+local MIN_SLOT_WIDTH = 48
 local BAR_HEIGHT, MAX_WIDTH = 96, 960
-local AUTHORED_WIDTH_SCALE = 0.483333319
 local ACTION = "HotbarSelect"
 local KEYS = {
     Enum.KeyCode.One,
@@ -36,9 +35,9 @@ type Binding = {
     Id: string?,
     Dispose: (() -> ())?,
     Connection: RBXScriptConnection,
-    OriginalImage: string,
     OriginalParent: Instance?,
     Clone: boolean,
+    Metrics: Gui.Metrics,
 }
 local function disconnect(list: { RBXScriptConnection })
     for _, c in list do
@@ -83,8 +82,8 @@ local function visual(tool: Tool, icon: ImageLabel): (() -> ())?
     local viewport = Instance.new("ViewportFrame")
     viewport.Name = "HotbarToolPreview"
     viewport.BackgroundTransparency = 1
-    viewport.Size, viewport.Position, viewport.AnchorPoint = icon.Size, icon.Position, icon.AnchorPoint
-    viewport.Rotation, viewport.ZIndex = icon.Rotation, icon.ZIndex
+    viewport.Size, viewport.Position, viewport.AnchorPoint = UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Vector2.zero
+    viewport.ZIndex = icon.ZIndex
     viewport.Ambient, viewport.LightColor = Color3.fromRGB(190, 190, 190), Color3.new(1, 1, 1)
     local world = Instance.new("WorldModel")
     world.Parent = viewport
@@ -102,7 +101,7 @@ local function visual(tool: Tool, icon: ImageLabel): (() -> ())?
         local distance = Geometry.Distance(size, if pixels.Y > 0 then pixels.X / pixels.Y else 1, 35)
         camera.CFrame = CFrame.lookAt(Vector3.new(1, 0.65, 1).Unit * distance, Vector3.zero)
     end
-    viewport.Parent = icon.Parent
+    viewport.Parent = icon
     frame()
     local resized = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(frame)
     local disposed = false
@@ -184,7 +183,20 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             binding.Dispose = nil
         end
         binding.Tool, binding.Kind, binding.Id = nil, nil, nil
-        binding.Slot.Icon.Image = binding.OriginalImage
+        local icon = binding.Slot.Icon
+        icon.Image = ""
+        -- Remove prior render sources, including legacy sibling previews. The
+        -- authored ImageLabel is the sole host; constraints are not sources.
+        for _, child in icon:GetChildren() do
+            if child:IsA("ViewportFrame") or child:IsA("ImageLabel") then
+                child:Destroy()
+            end
+        end
+        for _, child in binding.Slot.Button:GetChildren() do
+            if child.Name == "IngredientPreview" or child.Name == "HotbarToolPreview" then
+                child:Destroy()
+            end
+        end
         binding.Slot.Selected.Visible = false
         binding.Slot.Button.Visible = false
         binding.Slot.Button.NextSelectionLeft = binding.Slot.Button
@@ -218,6 +230,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         elseif layout and savedLayout then
             layout.FillDirection, layout.SortOrder, layout.HorizontalAlignment =
                 savedLayout.FillDirection, savedLayout.SortOrder, savedLayout.HorizontalAlignment
+            layout.Padding = savedLayout.Padding
             if view then
                 layout.Parent = view.Bar
             end
@@ -261,7 +274,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             humanoid:EquipTool(tool)
         end
     end
-    local function bind(slot: Gui.Slot, clone: boolean)
+    local function bind(slot: Gui.Slot, clone: boolean, metrics: Gui.Metrics)
         local binding: Binding
         binding = {
             Slot = slot,
@@ -269,14 +282,21 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             Kind = nil,
             Id = nil,
             Dispose = nil,
-            OriginalImage = slot.Icon.Image,
             OriginalParent = slot.Button.Parent,
             Clone = clone,
+            Metrics = metrics,
             Connection = slot.Button.Activated:Connect(function()
                 selectTool(binding.Tool)
             end),
         }
         slot.Button.Active, slot.Button.Selectable = true, true
+        Gui.Aspect(slot.Button, metrics.Ratio)
+        Gui.Aspect(slot.Icon, metrics.IconRatio)
+        slot.Icon.ScaleType = Enum.ScaleType.Fit
+        Gui.Text(slot.Label, metrics.TextMin, metrics.TextMax)
+        local minimum = slot.Button:FindFirstChildOfClass("UISizeConstraint") or Instance.new("UISizeConstraint")
+        minimum.Parent = slot.Button
+        minimum.MinSize = Vector2.new(MIN_SLOT_WIDTH, MIN_SLOT_WIDTH)
         slot.Button.Parent = host
         table.insert(pool, binding)
         table.insert(
@@ -356,8 +376,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         current.Bar.AnchorPoint = Vector2.new(0.5, 1)
         current.Bar.Position = UDim2.new(0.5, 0, 1, -bottom)
-        local desiredWidth = math.max(pixels.X * AUTHORED_WIDTH_SCALE, 9 * MIN_SLOT_WIDTH + 8 * 8)
-        current.Bar.Size = UDim2.new(math.min(0.9, MAX_WIDTH / pixels.X, desiredWidth / pixels.X), 0, 0, BAR_HEIGHT)
+        -- The floor affects the canvas only, never the outer bar width.
+        local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
+        current.Bar.Size =
+            UDim2.fromScale(math.min(0.9, MAX_WIDTH / pixels.X, desiredWidth / pixels.X), BAR_HEIGHT / pixels.Y)
         local padding = scroll:FindFirstChildOfClass("UIPadding")
         local width = scroll.AbsoluteWindowSize.X
         local horizontalPadding = if padding
@@ -366,11 +388,69 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 + padding.PaddingRight.Offset
             else 0
         local gap = layout.Padding.Scale * width + layout.Padding.Offset
-        local slotWidth = math.max(MIN_SLOT_WIDTH, math.min(BAR_HEIGHT, (width - horizontalPadding - 8 * gap) / 9))
+        local nominal = math.max(0, (width - horizontalPadding - 8 * gap) / 9)
+        local bandHeight = scroll.AbsoluteSize.Y - scroll.ScrollBarThickness
+        local canvas = horizontalPadding
         for _, binding in pool do
-            binding.Slot.Button.Size = UDim2.new(0, slotWidth, 1, -8)
+            local slot, metrics = binding.Slot, binding.Metrics
+            local label = slot.Label :: TextLabel
+            -- Uniform growth meets BOTH floors before constraints run. Neither
+            -- constraint resolution order nor overflow can stretch one axis.
+            local slotWidth =
+                math.max(MIN_SLOT_WIDTH, MIN_SLOT_WIDTH * metrics.Ratio, math.min(nominal, bandHeight * metrics.Ratio))
+            local labelWidth = 0.96
+            local iconBottom = slot.Icon.Position.Y.Scale + slot.Icon.Size.Y.Scale * (1 - slot.Icon.AnchorPoint.Y)
+            local available = math.max(0.1, 0.98 - iconBottom)
+            local bounds = TextService:GetTextSize(
+                slot.Label.Text,
+                metrics.TextMin,
+                slot.Label.Font,
+                Vector2.new(slotWidth * labelWidth, math.huge)
+            )
+            -- A long name can grow its square/rectangle uniformly within the
+            -- existing band; horizontal canvas growth absorbs the extra width.
+            while bounds.Y + 1 > slotWidth / metrics.Ratio * available and slotWidth / metrics.Ratio < bandHeight do
+                slotWidth = math.min(bandHeight * metrics.Ratio, slotWidth * 1.1)
+                bounds = TextService:GetTextSize(
+                    slot.Label.Text,
+                    metrics.TextMin,
+                    slot.Label.Font,
+                    Vector2.new(slotWidth * labelWidth, math.huge)
+                )
+            end
+            local height = slotWidth / metrics.Ratio
+            if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
+                return false
+            end
+            slot.Button.Size = UDim2.fromScale(slotWidth / width, height / scroll.AbsoluteSize.Y)
+            local labelHeight = math.min(
+                available,
+                math.max((bounds.Y + 1) / height, metrics.LabelHeight, metrics.TextMax * 1.2 / height)
+            )
+            label.Size = UDim2.fromScale(labelWidth, labelHeight)
+            label.Position = UDim2.fromScale(
+                0.5,
+                math.min(1 - labelHeight / 2, math.max(metrics.LabelY, iconBottom + labelHeight / 2))
+            )
+            local number = slot.Button:FindFirstChild("Number")
+            if number and number:IsA("TextLabel") then
+                local authoredMinimum = number:GetAttribute("HotbarTextMin")
+                local minimum = if typeof(authoredMinimum) == "number" then authoredMinimum else number.TextSize
+                number:SetAttribute("HotbarTextMin", minimum)
+                local fontSize = number:GetAttribute("FigmaFontSize")
+                Gui.Text(number, minimum, math.max(minimum, if typeof(fontSize) == "number" then fontSize else minimum))
+                local numberBounds =
+                    TextService:GetTextSize(number.Text, minimum, number.Font, Vector2.new(math.huge, math.huge))
+                number.Size = UDim2.fromScale(
+                    math.max(number.Size.X.Scale, numberBounds.X / slotWidth),
+                    math.max(number.Size.Y.Scale, numberBounds.Y / height)
+                )
+            end
+            if binding.Tool then
+                canvas += slotWidth + gap
+            end
         end
-        scroll.CanvasSize = UDim2.fromOffset(horizontalPadding + #items * slotWidth + math.max(0, #items - 1) * gap, 0)
+        scroll.CanvasSize = UDim2.fromScale(math.max(0, canvas - (if #items > 0 then gap else 0)) / width, 0)
         for _, binding in pool do
             if binding.Slot.Button.Visible then
                 local size = binding.Slot.Button.AbsoluteSize
@@ -390,6 +470,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local function setup(nextView: Gui.View): boolean
         view = nextView
         local bar = nextView.Bar
+        local metrics = {}
+        for index, slot in nextView.Slots do
+            metrics[index] = Gui.Metrics(slot, nextView.Root)
+            slot.Icon.Image = ""
+            slot.Button.Visible = false
+        end
         pristine = nextView.Slots[1].Button:Clone()
         savedBar = { AnchorPoint = bar.AnchorPoint, Position = bar.Position, Size = bar.Size }
         if bar:IsA("ScrollingFrame") then
@@ -412,16 +498,19 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 FillDirection = existing.FillDirection,
                 SortOrder = existing.SortOrder,
                 HorizontalAlignment = existing.HorizontalAlignment,
+                Padding = existing.Padding,
             }
             existing.Parent = scroll
         else
             local created = Instance.new("UIListLayout")
-            created.Padding = UDim.new(0, 8)
+            created.Padding = UDim.new(8 / 928, 0)
             created.Parent = scroll
             layout = created
             ownedLayout = true
         end
         local list = layout :: UIListLayout
+        local authoredWidth = math.max(1, bar.AbsoluteSize.X)
+        list.Padding = UDim.new(list.Padding.Scale + list.Padding.Offset / authoredWidth, 0)
         list.FillDirection, list.SortOrder = Enum.FillDirection.Horizontal, Enum.SortOrder.LayoutOrder
         list.HorizontalAlignment = Enum.HorizontalAlignment.Left
         for _, child in bar:GetChildren() do
@@ -432,8 +521,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 child.Visible = false
             end
         end
-        for _, slot in nextView.Slots do
-            bind(slot, false)
+        for index, slot in nextView.Slots do
+            bind(slot, false, metrics[index])
         end
         table.insert(uiConnections, scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
         table.insert(
@@ -444,6 +533,13 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 end
             end)
         )
+        return true
+    end
+    local function activateKeys()
+        if bound then
+            return
+        end
+        CAS:UnbindAction(ACTION)
         CAS:BindAction(ACTION, function(_, state, input)
             if not enabled or guarded() then
                 return Enum.ContextActionResult.Pass
@@ -459,7 +555,6 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             return Enum.ContextActionResult.Sink
         end, false, table.unpack(KEYS))
         bound = true
-        return true
     end
     local function collect(): boolean
         local found: { [Tool]: boolean } = {}
@@ -535,6 +630,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         if stopped then
             return
         end
+        if removing then
+            release()
+            return
+        end
         local root, bar = Gui.Find(playerGui)
         if view and (root ~= view.Root or bar ~= view.Bar) then
             release()
@@ -577,7 +676,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 release()
                 return
             end
-            bind(slot, true)
+            bind(slot, true, pool[1].Metrics)
         end
         -- Keep unchanged Tools in their existing bindings; order is LayoutOrder,
         -- never authored child enumeration or duplicated exported LayoutOrder.
@@ -610,8 +709,25 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 target.Tool, target.Kind, target.Id = item.Tool, item.Kind, item.Id
                 local dispose = if item.Kind == "Ingredient" and item.Id
                     then IngredientViewport.Create(target.Slot.Icon, item.Id)
-                    elseif item.Kind ~= "Ingredient" then visual(item.Tool, target.Slot.Icon)
                     else nil
+                if not dispose then
+                    dispose = visual(item.Tool, target.Slot.Icon)
+                end
+                -- IngredientViewport's shared pipeline initially creates a
+                -- sibling. Move that one render into the cleared icon host.
+                for _, child in target.Slot.Button:GetChildren() do
+                    if child:IsA("ViewportFrame") and child.Name == "IngredientPreview" then
+                        child.Size, child.Position, child.AnchorPoint =
+                            UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Vector2.zero
+                        child.Rotation = 0
+                        child.Parent = target.Slot.Icon
+                    end
+                end
+                for _, child in target.Slot.Icon:GetChildren() do
+                    if child:IsA("ViewportFrame") then
+                        Gui.Aspect(child, target.Metrics.IconRatio)
+                    end
+                end
                 target.Dispose = dispose
                 if not dispose then
                     local art = if item.Kind == "Bat"
@@ -621,9 +737,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                     if art then
                         target.Slot.Icon.Image = art
                     else
+                        target.Slot.Icon.Image = current.GenericImage
                         warning(
                             "icon:" .. (item.Id or item.Kind),
-                            "no preview/fallback for " .. (item.Id or item.Kind) .. "; authored SlotIcon retained"
+                            "missing icon for "
+                                .. (item.Id or item.Kind)
+                                .. "; using authored Glossy Fruit Trio Sticker 1"
                         )
                     end
                 end
@@ -631,6 +750,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             local slot = target.Slot
             local label = slot.Label :: TextLabel
             label.Text = item.Label
+            local number = slot.Button:FindFirstChild("Number")
+            if number and number:IsA("TextLabel") then
+                number.Text = if index <= 9 then tostring(index) elseif index == 10 then "0" else ""
+            end
             slot.Button.LayoutOrder = index
             slot.Selected.Visible, slot.Button.Visible = item.Tool.Parent == character, true
             ordered[index] = target
@@ -657,6 +780,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end)
             if ok then
                 enabled = true
+                activateKeys()
             else
                 warning("handoff", "CoreGui handoff failed; custom bindings released")
                 release()
@@ -784,6 +908,22 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
         end)
     )
+    -- Synchronous clearing before the deferred first render/data collection.
+    local _, initialBar = Gui.Find(playerGui)
+    if initialBar then
+        initialBar.Visible = false
+        for _, child in initialBar:GetChildren() do
+            if Registry.Matches(child, "Slot1", { "Slot1", "Slot1_button", "Slot1_button_smooth" }) then
+                if child:IsA("GuiObject") then
+                    child.Visible = false
+                end
+                local icon = Registry.Child(child, "SlotIcon", { "SlotIcon", "SlotIcon_image" }, "ImageLabel")
+                if icon and icon:IsA("ImageLabel") then
+                    Gui.ClearTemplate(icon)
+                end
+            end
+        end
+    end
     uiChanged()
     watchContainers()
     local function stopSession()

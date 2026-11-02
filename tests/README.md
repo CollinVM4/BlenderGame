@@ -369,3 +369,15 @@ report, baseline failures and outstanding Studio session log are in
 joint physical accessibility and uniform whole-pool prompt selection; its earlier
 recency/group/similarity prompt-selection contracts above are retired. Template
 recency and special/fixed request behavior remain separate.
+
+
+## Angel Wings
+
+`--suite wings-ownership` covers live entitlement/purchase and character lifecycle.
+`--suite wings-flight` covers the server airborne budget and real fall-tracker
+integration, including glide landing protection across update ordering.
+`--suite wings-input` is separate presentation/input/onboarding coverage.
+`python tests/run_wings_shop_tests.py --luau <luau.exe>` resolves the actual authored
+card in newestExport and its prepared output, including rename failures.
+See [Angel Wings](../docs/ANGEL_WINGS.md) for asset/UI audit, validation limitations
+and the required pending PC/mobile/console and two-client Studio checks.

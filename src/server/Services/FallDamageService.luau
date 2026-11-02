@@ -7,6 +7,7 @@ local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Fal
 local Diagnostics = require(script.Parent.FallDamageDiagnostics)
 local FallDamageService = {}
 local MovementService: any = nil
+local WingsService: any = nil
 
 type State = {
     Character: Model,
@@ -32,7 +33,10 @@ local GROUNDED_STATES: { [Enum.HumanoidStateType]: boolean } = {
     [Enum.HumanoidStateType.GettingUp] = true,
 }
 
-local function reset(state: State)
+local function reset(player: Player, state: State)
+    if WingsService then
+        WingsService.ResetFallEpisode(player, state.Character)
+    end
     state.Airborne = false
     state.Peak = 0
     state.SoftTime = 0
@@ -237,6 +241,10 @@ local function evaluateLanding(player: Player, state: State, cause: string)
     local compensated = compensation(player)
     local effective = math.max(0, peak - compensated)
     local damage = FallDamageService.ComputeDamage(effective)
+    local glideProtected = WingsService and WingsService.ConsumeGlideLandingProtection(player, state.Character)
+    if glideProtected then
+        damage = 0
+    end
     -- Consume before TakeDamage, which can synchronously trigger death/reset.
     state.Airborne, state.Peak, state.SoftTime = false, 0, 0
     local before = humanoid.Health
@@ -254,8 +262,9 @@ local function evaluateLanding(player: Player, state: State, cause: string)
         cause = cause,
         healthBefore = before,
         healthAfter = humanoid.Health,
-        reason = if damage <= 0
-            then "safe-effective-speed"
+        reason = if glideProtected
+            then "glide-protected"
+            elseif damage <= 0 then "safe-effective-speed"
             elseif applied > 0 then "applied"
             elseif state.Character:FindFirstChildOfClass("ForceField") then "forcefield-protected"
             else "no-health-decrease",
@@ -265,6 +274,9 @@ end
 function FallDamageService.RemovePlayer(player: Player)
     local state = states[player]
     if state then
+        if WingsService then
+            WingsService.ResetFallEpisode(player, state.Character)
+        end
         emit(state, "removed")
         FallDamageService.DisableDiagnostics(player)
         for _, connection in state.Connections do
@@ -313,7 +325,7 @@ function FallDamageService.ApplyCharacter(player: Player, character: Model)
             if state.Airborne then
                 emit(state, "reset", { reason = "death" })
             end
-            reset(state)
+            reset(player, state)
         end)
     )
 end
@@ -323,13 +335,14 @@ end
 function FallDamageService.NotifyRecoveryTeleport(player: Player, character: Model)
     local state = states[player]
     if state and state.Character == character and player.Character == character then
-        reset(state)
+        reset(player, state)
         emit(state, "reset", { reason = "authorized-recovery-teleport" })
     end
 end
 
 function FallDamageService.Init(dependencies)
     MovementService = dependencies.MovementService
+    WingsService = dependencies.WingsService
     RunService.Heartbeat:Connect(function(dt)
         for player, state in states do
             local root, humanoid = state.Root, state.Humanoid
@@ -373,7 +386,7 @@ function FallDamageService.Init(dependencies)
                         travel = (root.Position - state.LastPosition).Magnitude,
                     })
                 end
-                reset(state)
+                reset(player, state)
                 continue
             end
             state.LastPosition, state.LastVelocity = root.Position, velocity
@@ -382,11 +395,21 @@ function FallDamageService.Init(dependencies)
             if not state.Airborne then
                 if not support then
                     state.Airborne, state.Peak, state.SoftTime = true, down, 0
+                    if WingsService then
+                        WingsService.ResetFallEpisode(player, state.Character, true)
+                    end
                     emit(state, "episode-start")
                 end
                 continue
             end
             state.Peak = math.max(state.Peak, down)
+            if WingsService then
+                WingsService.ObserveFallLanding(
+                    player,
+                    state.Character,
+                    support and (down <= state.Peak - Config.ImpactSpeedDrop or down <= Config.SettleVerticalSpeed)
+                )
+            end
             if support and down <= state.Peak - Config.ImpactSpeedDrop then
                 evaluateLanding(player, state, "impact")
             elseif support and down <= Config.SettleVerticalSpeed then

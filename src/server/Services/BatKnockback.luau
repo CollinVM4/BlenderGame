@@ -1,6 +1,10 @@
 --!strict
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.BatConfig)
 local BatKnockback = {}
+-- Bat launch and wings can overlap. Restore the original simulation policy only
+-- when the last borrower releases, regardless of cancellation order.
+type Lease = { Count: number, Automatic: boolean, Owner: Player? }
+local leases: { [BasePart]: Lease } = setmetatable({}, { __mode = "k" }) :: any
 
 -- Player launches borrow server simulation only around the initial impulse.
 -- The returned release is also called by combat death/reset/recovery cleanup.
@@ -8,14 +12,25 @@ function BatKnockback.TakeOwnership(root: BasePart): (() -> ())?
     if root.Anchored or not root:CanSetNetworkOwnership() then
         return nil
     end
-    local automatic, owner = root:GetNetworkOwnershipAuto(), root:GetNetworkOwner()
+    local lease = leases[root]
+    if not lease then
+        lease = { Count = 0, Automatic = root:GetNetworkOwnershipAuto(), Owner = root:GetNetworkOwner() }
+    end
     root:SetNetworkOwner(nil)
+    lease.Count += 1
+    leases[root] = lease
     local released = false
     return function()
         if released then
             return
         end
         released = true
+        lease.Count -= 1
+        if lease.Count > 0 then
+            return
+        end
+        leases[root] = nil
+        local automatic, owner = lease.Automatic, lease.Owner
         local ok, problem = pcall(function(): string?
             if not root:IsDescendantOf(workspace) or not root:CanSetNetworkOwnership() then
                 return nil

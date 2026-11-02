@@ -13,6 +13,7 @@ local services: { [string]: any } = {
     RagdollService = require(script.Services.RagdollService),
     UnstuckService = require(script.Services.UnstuckService),
     FallDamageService = require(script.Services.FallDamageService),
+    WingsService = require(script.Services.WingsService),
     HealthRegenService = require(script.Services.HealthRegenService),
     CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
@@ -136,6 +137,7 @@ for _, name in
 do
     services[name].Init(services)
 end
+services.WingsService.Init(services)
 services.FreezeStatusService.Init(services)
 services.IceGunProjectileService.Init(services)
 services.IceGunService.Init(services)
@@ -162,6 +164,7 @@ local function addPlayer(player: Player)
     services.DiscoveryService.PlayerAdded(player)
     services.TycoonService.RefreshUpgradeAttributes(player)
     services.MovementService.RefreshPlayer(player)
+    services.WingsService.AddPlayer(player)
     services.IceGunService.AddPlayer(player)
     services.InventoryService.AddPlayer(player)
     services.GameService.AddPlayer(player)
@@ -178,6 +181,7 @@ local function addPlayer(player: Player)
         services.MovementService.ApplyCharacter(player, character)
         services.SprintService.ResetCharacter(player)
         services.FallDamageService.ApplyCharacter(player, character)
+        services.WingsService.ApplyCharacter(player, character)
         services.HealthRegenService.ApplyCharacter(player, character)
     end
     removingConnections[player] = player.CharacterRemoving:Connect(function(character)
@@ -232,6 +236,7 @@ Players.PlayerRemoving:Connect(function(player)
                 "DiscoveryService",
                 "PlayerDataService",
                 "FallDamageService",
+                "WingsService",
                 "HealthRegenService",
             }
         do

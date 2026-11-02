@@ -120,6 +120,9 @@ SUITES = {
     "customer-validation": ("state", ("customer_validation.spec.luau",)),
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
     "sprint": ("state", ("sprint.spec.luau",)),
+    "wings-input": ("presentation", ("fixtures/wings.luau", "wings_input.spec.luau")),
+    "wings-flight": ("integration", ("fixtures/wings.luau", "wings_flight.spec.luau")),
+    "wings-ownership": ("state", ("fixtures/wings.luau", "wings_ownership.spec.luau")),
     "fall-damage": ("state", ("fall_damage.spec.luau",)),
     "health-regen": ("state", ("health_regen.spec.luau",)),
     "legacy-state": ("integration", ("server_state.spec.luau",)),
@@ -215,7 +218,7 @@ sources["RareIngredientPresentationController"] = (ROOT / "src/client/Controller
 sources["TutorialPresentationState"] = (ROOT / "src/client/Controllers/TutorialPresentationState.luau").read_text(encoding="utf-8")
 sources["TutorialHintController"] = (ROOT / "src/client/Controllers/TutorialHintController.luau").read_text(encoding="utf-8")
 sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
-for name in ("IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):
+for name in ("WingsHoldSensor", "WingsController", "WingsShopAdapter", "IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):
     sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")
 for name in ("IceShotgunPresentationController", "CharacterStatusOutlineController"):
     sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")

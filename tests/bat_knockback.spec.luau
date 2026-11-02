@@ -112,3 +112,25 @@ for _, mode in { "automatic", "player", "server", "departed", "handoff", "remove
     release()
     check(root.NetworkOwner == owner and not root.AutoOwner, "ownership release is idempotent")
 end
+
+-- Wings releases on stun while bat still needs its initial server simulation.
+for _, reverse in { false, true } do
+    local root = rootAt(0, 0, 0)
+    local wingsRelease = assert(knockback.TakeOwnership(root))
+    local batRelease = assert(knockback.TakeOwnership(root))
+    if reverse then
+        batRelease()
+    else
+        wingsRelease()
+    end
+    check(
+        not root:GetNetworkOwnershipAuto() and root:GetNetworkOwner() == nil,
+        "overlapping borrower retains server simulation"
+    )
+    if reverse then
+        wingsRelease()
+    else
+        batRelease()
+    end
+    check(root:GetNetworkOwnershipAuto(), "last borrower restores original policy in either release order")
+end
