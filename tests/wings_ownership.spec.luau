@@ -56,7 +56,7 @@ local d, dh = subject(true)
 local clone = d.Character:FindFirstChild("AngelWings")
 dh.Health = 0
 dh.Died:Fire()
-check(clone.Destroyed and not wings.IsGliding(d), "death clears wings and flight immediately")
+check(clone.Destroyed and not wings.IsWingControlled(d), "death clears wings and flight immediately")
 
 local failurePlayer = subject(false)
 marketplaceFailure = true

@@ -16,7 +16,7 @@ The server verifies live entitlement, grants a sanitized registered accessory, o
 
 Lift channel: **local client RenderStepped, gated by server WingState**. WingsService no longer writes root velocity or borrows network ownership. The client preserves X/Z and faster rising momentum, approaches 45 studs/s at 300 studs/s?, floors each Powered entry at 30 studs/s, and caps glide descent at -20. The server retains entitlement, energy, movement eligibility, recharge and landing protection. The glide overspeed latch is removed. BatKnockback itself is unchanged by this correction. No new movement detector is included; modified clients ignoring WingState remain outside this pass.
 
-FallDamageService retains its existing curve, thresholds, compensation and landing/void rules. Its optional wings callbacks delimit each fall episode, observe genuine landing candidates, and atomically consume glide protection before damage. Wings also captures provisional pre-touchdown glide evidence so reverse Heartbeat order / different ground-confirmation windows cannot erase it. Graze, release, lock, reset, teleport and subsequent episodes invalidate evidence. There is no timed immunity flag.
+FallDamageService retains its existing curve, thresholds, compensation and landing/void rules. Its optional wings callbacks delimit each fall episode, observe genuine landing candidates, and atomically consume engaged-wing protection (Powered or Gliding, server JumpHeld and eligible) before damage. Wings also captures provisional pre-touchdown engaged-wing evidence so reverse Heartbeat order / different ground-confirmation windows cannot erase it. Graze, release, lock, reset, teleport and subsequent episodes invalidate evidence. There is no timed immunity flag.
 
 No jump catalog, JumpPower/tier, WalkSpeed/stamina, payout, gameplay action gate, DataStore, tutorial, hotbar or 2x Cash production logic was changed by this wings pass. Separate concurrent hotbar/UI-source edits in the workspace belong to the other ongoing work.
 
@@ -84,3 +84,36 @@ rojo build default.project.json --output <place.rbxlx>
 6. **Fall/interaction regression:** high-peak glide landing safe; release immediately before landing and one second earlier damages normally; no stale protection next fall; graze/bunny hop under 0.2s does not refill; walk-offs engage. Verify stun/freeze/knockback, sprint drain, bat, ice gun, carry/throw/store/serve and existing 2x Cash display.
 
 All physical, device-specific, live Marketplace, progression-height and multiplayer results remain **Pending manual Studio verification**. Balance values remain exactly those supplied in Rev3.
+
+
+## Engaged landing follow-up - 2026-11-02
+
+Code implemented against HEAD `3389a9d`; **Studio acceptance PENDING**.
+
+The requested functions remain at their original paths. `IsGliding` is renamed to `IsWingControlled` in `src/server/Services/WingsService.luau`; the predicate now accepts Powered OR Gliding while retaining the server-observed JumpHeld and eligible checks. Both captures use the new predicate: ObserveFallLanding and the grounded branch of step. All references in wings_flight, wings_input and wings_ownership specs use the new name; there are no stale executable references.
+
+The nil-only capture, forced-false cancellation, SetJumpHeld release behavior, one-shot ConsumeGlideLandingProtection and 0.2-second grounded confirmation are unchanged. Falling, Airborne, Grounded and ungranted players do not satisfy the predicate. The existing provisional landing capture still survives a subsequent Grounded publication if wings updates before fall evaluation. Server-observed input arriving after evaluation has no retroactive effect. No release grace window or persistent immunity was added.
+
+**FallDamageService.luau is unchanged byte-for-byte from HEAD**, including evaluateLanding, its Heartbeat episode loop, peak tracking, jump compensation, thresholds/curve, and the diagnostic reason `glide-protected`. ConsumeGlideLandingProtection keeps its existing name/API.
+
+Changed files in this follow-up:
+
+- `src/server/Services/WingsService.luau`: predicate rename/broadening and the two capture call sites; the only production change.
+- `tests/wings_flight.spec.luau`: renamed references and lethal-peak integration coverage for Powered/Gliding protection, unchanged diagnostic reason, release damage, unowned damage, captured protection invalidated by release, next-fall freshness, one-shot consumption, and wings-first landing capture.
+- `tests/wings_input.spec.luau`: cancellation assertion renamed to IsWingControlled.
+- `tests/wings_ownership.spec.luau`: death/cleanup assertion renamed to IsWingControlled.
+- `docs/ANGEL_WINGS.md`: this summary and current protection description.
+
+The Powered regression failed on the pre-pass implementation at `Powered held through lethal-peak landing prevents all damage`, then passed after the predicate change. The server atomically publishes Falling on release, so a private Powered/JumpHeld=false combination cannot be produced through its API; the release regression also verifies that a Powered display attribute cannot restore a captured exemption after server JumpHeld becomes false.
+
+Validation: wings-flight, wings-ownership, wings-input, wings-shop (both authored and prepared exports), and the fall-damage suite PASS. StyLua on all changed Luau files and the default-project Rojo build PASS. Full-source Roblox-aware typecheck reports 212 existing TypeError headers; a fresh isolated archive of HEAD reports the same 212 normalized diagnostics, with no new diagnostic introduced. Tests use the real fall tracker with mocked engine boundaries; they do not establish Studio physics/input timing.
+
+Required Studio acceptance from a height known lethal without wings:
+
+| Scenario | Result |
+| --- | --- |
+| Build lethal speed, engage late with energy remaining (Powered), hold through touchdown; zero fall damage | PENDING |
+| Build lethal speed, engage with energy exhausted (Gliding), hold through touchdown; zero fall damage | PENDING |
+| Same fall, release Jump before touchdown; normal peak-based damage | PENDING |
+
+No connected Roblox Studio tool is available to run these scenarios in this session. Sync the default Rojo project and start a new Play session with an entitled account; no new Studio objects or configuration are required. This follow-up is not a Studio acceptance sign-off.

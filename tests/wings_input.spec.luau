@@ -54,7 +54,7 @@ action("", "Begin", key)
 fly(p, h, root, 2)
 check(state(p) == "Gliding", "CAS hold eventually drives glide")
 action("", "Cancel", key)
-check(not wings.IsGliding(p), "CAS cancellation clears glide input")
+check(not wings.IsWingControlled(p), "CAS cancellation clears glide input")
 local finger = { UserInputType = "Touch", UserInputState = "Begin" }
 button.InputBegan:Fire(finger)
 check(sends[#sends] == true, "existing native mobile jump button reports press")

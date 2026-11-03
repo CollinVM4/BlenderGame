@@ -71,13 +71,15 @@ check(state(s) == "Gliding", "external impulses do not replenish powered time")
 for _ = 1, 12 do
     tick(s, sh, sr, 0.025, -70, false)
 end
-check(state(s) == "Gliding" and wings.IsGliding(s), "persistent fast descent never latches glide off")
+check(state(s) == "Gliding" and wings.IsWingControlled(s), "persistent fast descent never latches glide off")
 
 local n, nh, nr = subject(false)
 wings.SetJumpHeld(n, true)
 tick(n, nh, nr, 0.5, -100, false)
 check(
-    nr.AssemblyLinearVelocity.Y == -100 and not wings.IsGliding(n) and not n.Character:FindFirstChild("AngelWings"),
+    nr.AssemblyLinearVelocity.Y == -100
+        and not wings.IsWingControlled(n)
+        and not n.Character:FindFirstChild("AngelWings"),
     "unowned input grants no lift, glide or accessory"
 )
 n:SetAttribute("WingState", "Gliding")
@@ -85,7 +87,10 @@ n:SetAttribute("WingsOwnership", "Owned")
 tick(n, nh, nr, 0.025, -180, false)
 local unownedHealth = nh.Health
 tick(n, nh, nr, 0.025, 0, true)
-check(nh.Health < unownedHealth and not wings.IsGliding(n), "spoofed display attributes confer no landing exemption")
+check(
+    nh.Health < unownedHealth and not wings.IsWingControlled(n),
+    "spoofed display attributes confer no landing exemption"
+)
 for _, power in { 60, 85, 95, 116 } do
     local t, th, tr = subject(true, power)
     wings.SetJumpHeld(t, true)
@@ -175,3 +180,91 @@ check(
     state(pub) == "Grounded" and publishes == afterGrounded,
     "sustained grounded state does not republish during recharge"
 )
+
+-- Engaged-landing protection uses the real fall tracker and diagnostics. Keep
+-- these integration contracts here rather than duplicating the damage curve.
+do
+    local records = {}
+    local previousWarn = env.warn
+    env.warn = function(message)
+        table.insert(records, message)
+    end
+    local function damageRecord()
+        for index = #records, 1, -1 do
+            if string.find(records[index], "event=damage ", 1, true) then
+                return records[index]
+            end
+        end
+        error("expected a landing damage diagnostic")
+    end
+    local function lethalFall(owned, mode)
+        local p, h, root = subject(owned)
+        h.Health = 100
+        table.clear(records)
+        setup(fall.EnableDiagnostics(p), "wing landing diagnostics enabled")
+        tick(p, h, root, 0.025, -220, false)
+        if mode then
+            wings.SetJumpHeld(p, true)
+            if mode == "Gliding" then
+                fly(p, h, root, 1.8)
+            else
+                tick(p, h, root, 0.025, -220, false)
+            end
+            check(
+                state(p) == mode and wings.IsWingControlled(p),
+                "late engagement has the requested server-controlled flight state"
+            )
+        end
+        return p, h, root
+    end
+    local expectedDamage = fall.ComputeDamage(220 - 60)
+    check(expectedDamage >= 100, "recorded peak is lethal without wing protection")
+    for _, mode in { "Powered", "Gliding" } do
+        local p, h, root = lethalFall(true, mode)
+        tick(p, h, root, 0.025, 0, true)
+        check(h.Health == 100, mode .. " held through lethal-peak landing prevents all damage")
+        check(
+            string.find(damageRecord(), "reason=glide-protected", 1, true) ~= nil,
+            mode .. " retains the existing protected diagnostic reason"
+        )
+        check(not wings.ConsumeGlideLandingProtection(p, p.Character), "engaged landing protection is consumed once")
+        wings.SetJumpHeld(p, false)
+        tick(p, h, root, 0.025, -220, false)
+        tick(p, h, root, 0.025, 0, true)
+        check(h.Health == 100 - expectedDamage, "next fall after " .. mode .. " protection evaluates the peak fresh")
+    end
+    for _, mode in { "Powered", "Gliding" } do
+        local p, h, root = lethalFall(true, mode)
+        wings.SetJumpHeld(p, false)
+        check(state(p) == "Falling", "releasing " .. mode .. " immediately revokes the engaged state")
+        tick(p, h, root, 0.025, 0, true)
+        check(h.Health == 100 - expectedDamage, "release before touchdown gets full peak damage without grace")
+    end
+    local unowned, uh, ur = lethalFall(false, nil)
+    wings.SetJumpHeld(unowned, true)
+    unowned:SetAttribute("WingState", "Powered")
+    tick(unowned, uh, ur, 0.025, 0, true)
+    check(
+        uh.Health == 100 - expectedDamage,
+        "no wings grant means full lethal-peak damage despite spoofed Powered display"
+    )
+    local released, rh, rr = lethalFall(true, "Powered")
+    -- Capture while engaged, then release before consumption. The service
+    -- atomically leaves Powered on release; a display attribute cannot undo it.
+    wings.ObserveFallLanding(released, released.Character, true)
+    wings.SetJumpHeld(released, false)
+    released:SetAttribute("WingState", "Powered")
+    tick(released, rh, rr, 0.025, 0, true)
+    check(
+        rh.Health == 100 - expectedDamage,
+        "Powered display with server JumpHeld false cannot preserve a captured exemption"
+    )
+    -- Wings-first grounding must retain Powered evidence just as Glide did.
+    local reverse, vh, vr = lethalFall(true, "Powered")
+    vh.Mode, vh.FloorMaterial, vr.AssemblyLinearVelocity = "Running", "Concrete", vec(7, 0, 9)
+    heartbeats[2](0.25)
+    check(state(reverse) == "Grounded", "ground confirmation can precede fall evaluation")
+    heartbeats[1](0.25)
+    check(vh.Health == 100, "Powered landing capture survives wings-first grounding")
+    env.warn = previousWarn
+end

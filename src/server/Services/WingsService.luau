@@ -273,10 +273,13 @@ function Service.SetJumpHeld(player: Player, held: any)
         publish(player, flight, if flight.State == "Grounded" then "Grounded" else "Falling")
     end
 end
-function Service.IsGliding(player: Player): boolean
+function Service.IsWingControlled(player: Player): boolean
     local state = states[player]
     local flight = state and state.Flight
-    return flight ~= nil and flight.State == "Gliding" and flight.JumpHeld and eligible(player, flight)
+    return flight ~= nil
+        and (flight.State == "Powered" or flight.State == "Gliding")
+        and flight.JumpHeld
+        and eligible(player, flight)
 end
 -- Explicit coordination with fall damage avoids timers and Heartbeat ordering.
 -- Every fall start/reset invalidates evidence, even if wings have not recharged.
@@ -296,7 +299,7 @@ function Service.ObserveFallLanding(player: Player, character: Model, candidate:
     if not candidate then
         flight.LandingCandidate = nil
     elseif flight.LandingCandidate == nil then
-        flight.LandingCandidate = Service.IsGliding(player)
+        flight.LandingCandidate = Service.IsWingControlled(player)
     end
     if not flight.JumpHeld or not movementAllowed(player, flight) then
         flight.LandingCandidate = false
@@ -408,7 +411,7 @@ local function step(player: Player, state: State, flight: Flight, dt: number)
         -- Provisional pre-touchdown evidence, consumed only if fall damage later
         -- confirms a genuine landing. Its graze/reset callback clears this.
         if flight.FallEpisode and flight.LandingCandidate == nil then
-            flight.LandingCandidate = Service.IsGliding(player)
+            flight.LandingCandidate = Service.IsWingControlled(player)
         end
         flight.GroundedTime += dt
         -- Stop client lift immediately; recharge still requires sustained support.
