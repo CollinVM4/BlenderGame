@@ -402,6 +402,19 @@ function FallDamageService.Init(dependencies)
                 end
                 continue
             end
+            if
+                not support
+                and state.Peak > 0
+                and velocity.Y > 0
+                and WingsService
+                and WingsService.IsWingControlled(player)
+            then
+                -- A wing-powered upward recovery ends the previous drop. Release
+                -- afterward cannot restore that peak; a later descent is fresh.
+                emit(state, "reset", { reason = "wing-ascent", previousPeak = state.Peak })
+                state.Peak, state.SoftTime = 0, 0
+                WingsService.ResetFallEpisode(player, state.Character, true)
+            end
             state.Peak = math.max(state.Peak, down)
             if WingsService then
                 WingsService.ObserveFallLanding(

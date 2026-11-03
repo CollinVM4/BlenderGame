@@ -1,7 +1,6 @@
 --!strict
 -- Server output only. Cosmetic clients never choose hits or acknowledge damage.
 local Events = game:GetService("ReplicatedStorage").Shared.Events
-local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.IceGunConfig)
 local Service = {}
 export type Hit = { Position: Vector3, UserId: number, Frozen: boolean }
 local remote: RemoteEvent?
@@ -19,12 +18,13 @@ end
 -- Origin is the caster root and Radius is the authoritative hit radius, so
 -- clients render a pulse whose size is exactly the server hit sphere. No
 -- direction or angle is broadcast: there is no cone to draw anymore.
-function Service.Emit(player: Player, origin: Vector3, hits: { Hit })
+function Service.Emit(player: Player, origin: Vector3, hits: { Hit }, stage: "Init" | "Surge", radius: number)
     if remote then
         remote:FireAllClients({
             ShooterUserId = player.UserId,
             Origin = origin,
-            Radius = Config.BlastRadius,
+            Radius = radius,
+            Stage = stage,
             Hits = hits,
             ServerTime = workspace:GetServerTimeNow(),
         })

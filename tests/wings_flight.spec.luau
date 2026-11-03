@@ -266,5 +266,35 @@ do
     check(state(reverse) == "Grounded", "ground confirmation can precede fall evaluation")
     heartbeats[1](0.25)
     check(vh.Health == 100, "Powered landing capture survives wings-first grounding")
+    -- Recovering upward cancels the earlier drop even if Jump is released
+    -- before landing. A later descent still builds a fresh damage peak.
+    for _, laterDown in { 0, 80, 140, 220 } do
+        local saved, savedHumanoid, savedRoot = lethalFall(true, "Powered")
+        tick(saved, savedHumanoid, savedRoot, 0.025, 30, false)
+        wings.SetJumpHeld(saved, false)
+        tick(saved, savedHumanoid, savedRoot, 0.025, -laterDown, false)
+        tick(saved, savedHumanoid, savedRoot, 0.1, 0, true)
+        check(
+            savedHumanoid.Health == 100 - fall.ComputeDamage(laterDown - 60),
+            "upward wing burst discards the old peak; subsequent descent is evaluated fresh"
+        )
+    end
+    for _, insufficientRecovery in { 0, -5 } do
+        local falling, fallingHumanoid, fallingRoot = lethalFall(true, "Powered")
+        tick(falling, fallingHumanoid, fallingRoot, 0.025, insufficientRecovery, false)
+        wings.SetJumpHeld(falling, false)
+        tick(falling, fallingHumanoid, fallingRoot, 0.025, 0, true)
+        check(
+            fallingHumanoid.Health == 100 - expectedDamage,
+            "slowing or stopping descent without upward recovery retains the old peak after release"
+        )
+    end
+    local inactive, inactiveHumanoid, inactiveRoot = lethalFall(true, nil)
+    tick(inactive, inactiveHumanoid, inactiveRoot, 0.025, 30, false)
+    tick(inactive, inactiveHumanoid, inactiveRoot, 0.025, 0, true)
+    check(
+        inactiveHumanoid.Health == 100 - expectedDamage,
+        "upward impulse without engaged wings does not trigger the wing recovery rule"
+    )
     env.warn = previousWarn
 end

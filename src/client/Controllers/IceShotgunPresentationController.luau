@@ -8,9 +8,11 @@ local ContentProvider = game:GetService("ContentProvider")
 local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Constants.IceShotgunPresentationConfig)
+local GameplayConfig = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
 local Controller = {}
 type Hit = { Position: Vector3, UserId: number, Frozen: boolean }
 type Result = {
+    Stage: "Init" | "Surge",
     Origin: Vector3,
     -- The server hit radius. The pulse is sized to exactly this value, so
     -- the visible blast and the actual hit area are the same sphere.
@@ -19,7 +21,8 @@ type Result = {
     ServerTime: number,
     Hits: { Hit },
 }
-type Blast = { Model: Model, Expires: number }
+type Blast = { Model: Model, Sphere: BasePart, Expires: number }
+local held: { [number]: Blast? } = {}
 local active: { Blast } = {}
 local connections: { RBXScriptConnection } = {}
 local started, generation = false, 0
@@ -39,6 +42,7 @@ end
 local function valid(result: any): boolean
     if
         typeof(result) ~= "table"
+        or (result.Stage ~= "Init" and result.Stage ~= "Surge")
         or not vector(result.Origin)
         or not finite(result.Radius)
         or result.Radius <= 0
@@ -70,7 +74,7 @@ local function part(class: string, model: Model, at: CFrame, size: Vector3): Bas
     local p = Instance.new(class) :: BasePart
     p.Anchored, p.CanCollide, p.CanTouch, p.CanQuery, p.Massless = true, false, false, false, true
     p.CastShadow = false
-    p.Color, p.Material, p.Transparency = Config.Blue, Enum.Material.Glass, 0.72
+    p.Color, p.Material, p.Transparency = Config.Blue, Enum.Material.Ice, 0.72
     p.CFrame, p.Size, p.Parent = at, size, model
     return p
 end
@@ -78,19 +82,24 @@ local function tween(object: Instance, seconds: number, properties: { [string]: 
     TweenService:Create(object, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties)
         :Play()
 end
--- Transparent bluish pulse expanding outward from the caster, in the style
--- of an outward burst: it starts small at the caster and grows to exactly
--- the server hit radius, then fades. It is one native sphere, anchored and
--- fully inert (no collision, touch, query or shadow), so it cannot block
--- input, movement or raycasts, and it adds no movement mechanic.
-local function pulse(model: Model, origin: Vector3, radius: number): BasePart
+-- A held init sphere stays at activation position until the confirmed surge.
+local function pulse(model: Model, origin: Vector3): BasePart
     local sphere = part("Part", model, CFrame.new(origin), Vector3.new(2, 2, 2)) :: Part
     sphere.Name, sphere.Shape = "IceRadialPulse", Enum.PartType.Ball
     sphere.Transparency = Config.PulseStartTransparency
-    local finalSize = Vector3.new(radius * 2, radius * 2, radius * 2)
-    tween(sphere, Config.PulseGrowSeconds, { Size = finalSize })
-    tween(sphere, Config.PulseGrowSeconds + Config.PulseFadeSeconds, { Transparency = 1 })
     return sphere
+end
+local function expand(blast: Blast, origin: Vector3, radius: number, fade: boolean)
+    local sphere = blast.Sphere
+    sphere.CFrame = CFrame.new(origin)
+    tween(sphere, Config.PulseGrowSeconds, { Size = Vector3.new(radius * 2, radius * 2, radius * 2) })
+    if fade then
+        task.delay(Config.PulseGrowSeconds, function()
+            if blast.Model.Parent then
+                tween(sphere, Config.PulseFadeSeconds, { Transparency = 1 })
+            end
+        end)
+    end
 end
 local function frost(parent: BasePart, count: number, angle: number)
     local emitter = Instance.new("ParticleEmitter")
@@ -176,6 +185,11 @@ local function prune()
         local blast = active[i]
         if now >= blast.Expires or not blast.Model.Parent then
             blast.Model:Destroy()
+            for shooter, pending in held do
+                if pending == blast then
+                    held[shooter] = nil
+                end
+            end
             table.remove(active, i)
         end
     end
@@ -194,17 +208,29 @@ function Controller.Play(result: any): boolean
     end
     showFeedback(result)
     prune()
-    local maximum = if isMobile then Config.MobileMaxActiveBlasts else Config.MaxActiveBlasts
-    if #active >= maximum then
-        return false
+    local blast: Blast? = held[result.ShooterUserId]
+    if result.Stage == "Init" and blast then
+        blast.Model:Destroy()
+        prune()
+        blast = nil
     end
-    local model = Instance.new("Model")
-    model.Name, model.Parent = "IceShotgunBlast", workspace
-    table.insert(active, { Model = model, Expires = os.clock() + Config.Lifetime })
-    local origin = result.Origin
-    -- The pulse diameter is exactly twice the server radius: what players
-    -- see expanding around the caster is the area that was actually hit.
-    local center = pulse(model, origin, result.Radius)
+    if not blast then
+        local maximum = if isMobile then Config.MobileMaxActiveBlasts else Config.MaxActiveBlasts
+        if #active >= maximum then
+            return false
+        end
+        local model = Instance.new("Model")
+        model.Name, model.Parent = "IceShotgunBlast", workspace
+        local created: Blast = { Model = model, Sphere = pulse(model, result.Origin), Expires = 0 }
+        table.insert(active, created)
+        blast = created
+    end
+    assert(blast)
+    local isInit = result.Stage == "Init"
+    blast.Expires = os.clock() + Config.Lifetime + (if isInit then GameplayConfig.SurgeChargeSeconds else 0)
+    held[result.ShooterUserId] = if isInit then blast else nil
+    local model, center = blast.Model, blast.Sphere
+    expand(blast, result.Origin, result.Radius, not isInit)
     frost(center, if isMobile then Config.MobileFrostCount else Config.FrostCount, 360)
     local caster = Players:GetPlayerByUserId(result.ShooterUserId)
     local root = caster and caster.Character and caster.Character:FindFirstChild("HumanoidRootPart")
@@ -271,6 +297,7 @@ function Controller.Destroy()
         blast.Model:Destroy()
     end
     table.clear(active)
+    table.clear(held)
     clearFeedback()
     shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 end

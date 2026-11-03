@@ -10,11 +10,13 @@ return table.freeze({
     CustomerRagdollSeconds = 2.5,
     FreezeGrowthSeconds = 0.2,
     ImmunitySeconds = 4,
-    -- Radial Ice Ray blast radius, measured in 3D from the server caster root
+    -- Radial Ice Ray surge radius, measured in 3D from the server caster root
     -- to each target root. The client pulse is sized to exactly this radius,
     -- so the visible blast and the actual hit area are the same sphere.
     -- There is no cone angle: direction and line of sight do not gate hits.
     BlastRadius = 22,
+    InitBlastRadius = 8,
+    SurgeChargeSeconds = 0.5,
     ProjectileLifetime = 110 / 70, -- Retained for the unused imported cosmetic projectile helper.
     TeamDamage = false, -- Server-only opt-in bypasses shared-plot and Roblox-team protection for ice shots.
     OwnershipRetrySeconds = 15,

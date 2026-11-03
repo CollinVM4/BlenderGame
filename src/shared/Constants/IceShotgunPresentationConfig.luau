@@ -7,7 +7,7 @@ return table.freeze({
     -- pulse is fully grown by 0.11s and fully faded by 0.35s.
     PulseGrowSeconds = 0.11,
     PulseFadeSeconds = 0.24,
-    PulseStartTransparency = 0.45,
+    PulseStartTransparency = 0.25,
     ViewDistance = 100,
     MobileViewDistance = 70,
     MaxActiveBlasts = 4,

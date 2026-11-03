@@ -10,7 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.IceGunConfig)
 local Presentation = require(script.Parent.IceShotgunPresentationService)
 local Service = {}
-local REVISION = "ice-ray-radial-2026-10-28"
+local REVISION = "ice-ray-two-stage-2026-11-02"
 local lastDiagnostic: { [string]: number } = {}
 local function trace(player: Player, stage: string)
     if not Config.DebugLogging or not RunService:IsStudio() then
@@ -34,7 +34,7 @@ local function finite(v: number): boolean
 end
 
 function Service.ClearPlayer(_player: Player)
-    -- Shots resolve synchronously; putting away the Tool must not reset cooldown.
+    -- Putting away the Tool must not reset cooldown or cancel a paid surge.
 end
 
 function Service.RemovePlayer(player: Player)
@@ -42,7 +42,14 @@ function Service.RemovePlayer(player: Player)
     player:SetAttribute("IceGunCooldownEnd", 0)
 end
 
-local function attack(player: Player, origin: Vector3, character: Model): { Presentation.Hit }
+local function attack(
+    player: Player,
+    origin: Vector3,
+    character: Model,
+    radius: number,
+    reacted: { [Model]: boolean },
+    damaged: { [Player]: boolean }
+): { Presentation.Hit }
     -- Snapshot every target before creating effects or triggering death/drop
     -- callbacks, so a hit cannot change the membership of this same blast.
     local targets: { { Player: Player, Character: Model, Position: Vector3 } } = {}
@@ -50,7 +57,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
     for _, victim in Players:GetPlayers() do
         -- The caster is excluded here, not only by CombatService, so a future
         -- eligibility change can never turn a radial blast into self-damage.
-        if victim == player or seen[victim] then
+        if victim == player or seen[victim] or damaged[victim] then
             continue
         end
         local victimCharacter = victim.Character
@@ -69,7 +76,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
         -- invalid pose is excluded without a Unit/NaN crash. No direction dot
         -- product and no occlusion raycast are consulted.
         local distance = (root.Position - origin).Magnitude
-        if not (distance <= Config.BlastRadius) then
+        if not (distance <= radius) then
             continue
         end
         seen[victim] = true
@@ -87,6 +94,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
                 Config.TeamDamage
             )
         then
+            damaged[target.Player] = true
             local frozen = deps.FreezeStatusService.Apply(target.Player)
             table.insert(hits, { Position = target.Position, UserId = target.Player.UserId, Frozen = frozen })
         end
@@ -96,7 +104,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
     -- their order, payout or queue membership. Bad (thief/freeloader) customers
     -- stay ineligible here because CanHitCustomer requires a bat for them, so
     -- an ice blast can never reject or steal through that path. Each model is
-    -- reacted to at most once per blast, and a model whose root is outside the
+    -- reacted to at most once per activation, and a model whose root is outside the
     -- sphere is skipped even if another of its parts intersects the query.
     local customers = deps.CustomerService
     if customers then
@@ -105,8 +113,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
         params.FilterDescendantsInstances = { character }
         params.RespectCanCollide = false
         params.MaxParts = 0
-        local reacted: { [Model]: boolean } = {}
-        for _, part in workspace:GetPartBoundsInRadius(origin, Config.BlastRadius, params) do
+        for _, part in workspace:GetPartBoundsInRadius(origin, radius, params) do
             local ancestor: Instance? = part
             while ancestor and ancestor ~= workspace do
                 if ancestor:IsA("Model") then
@@ -117,7 +124,7 @@ local function attack(player: Player, origin: Vector3, character: Model): { Pres
                         and not Players:GetPlayerFromCharacter(model)
                         and root
                         and root:IsA("BasePart")
-                        and (root.Position - origin).Magnitude <= Config.BlastRadius
+                        and (root.Position - origin).Magnitude <= radius
                         and customers.CanHitCustomer(player, model)
                     then
                         reacted[model] = true
@@ -229,9 +236,38 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
     cooldown[player] = now + Config.ShotCooldown
     player:SetAttribute("IceGunCooldownEnd", workspace:GetServerTimeNow() + Config.ShotCooldown)
     local origin = root.Position
-    local hits = attack(player, origin, character)
-    Presentation.Emit(player, origin, hits)
-    trace(player, "radial blast resolved")
+    local reacted: { [Model]: boolean } = {}
+    -- Freeze immunity only blocks re-freezing; damage needs activation-local deduplication.
+    local damaged: { [Player]: boolean } = {}
+    local hits = attack(player, origin, character, Config.InitBlastRadius, reacted, damaged)
+    Presentation.Emit(player, origin, hits, "Init", Config.InitBlastRadius)
+    -- Keep identity without retaining the activation character in delayed work.
+    local activation = setmetatable({ character }, { __mode = "v" })
+    task.delay(Config.SurgeChargeSeconds, function()
+        local current = player.Character
+        local humanoid = current and current:FindFirstChildOfClass("Humanoid")
+        local surgeRoot = current and current:FindFirstChild("HumanoidRootPart")
+        if
+            player.Parent ~= Players
+            or not current
+            or current ~= activation[1]
+            or not humanoid
+            or humanoid.Health <= 0
+            or not surgeRoot
+            or not surgeRoot:IsA("BasePart")
+            or not surgeRoot:IsDescendantOf(workspace)
+            or not finite(surgeRoot.Position.X)
+            or not finite(surgeRoot.Position.Y)
+            or not finite(surgeRoot.Position.Z)
+        then
+            return
+        end
+        local surgeOrigin = surgeRoot.Position
+        local surgeHits = attack(player, surgeOrigin, current, Config.BlastRadius, reacted, damaged)
+        Presentation.Emit(player, surgeOrigin, surgeHits, "Surge", Config.BlastRadius)
+        trace(player, "surge resolved")
+    end)
+    trace(player, "init burst resolved")
     return true
 end
 

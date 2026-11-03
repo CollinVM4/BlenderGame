@@ -47,7 +47,7 @@ env.TweenInfo = {
         return { Time = seconds }
     end,
 }
-env.Enum.Material = { Glass = "Glass", Neon = "Neon" }
+env.Enum.Material = { Ice = "Ice", Glass = "Glass", Neon = "Neon" }
 env.Enum.NormalId = { Front = "Front" }
 env.Enum.PartType = { Ball = "Ball" }
 env.Enum.EasingStyle, env.Enum.EasingDirection = { Quad = "Quad" }, { Out = "Out" }

@@ -6,12 +6,57 @@ local function shot(hits, origin)
     return {
         Origin = origin or vec(0, 1, -2),
         Radius = 22,
+        Stage = "Surge",
         ShooterUserId = localPlayer.UserId,
         ServerTime = workspaceFake:GetServerTimeNow(),
         Hits = hits or {},
     }
 end
 check(#childrenNamed(workspaceFake, "IceShotgunBlast") == 0, "initialization never predicts a blast")
+local unknown = shot()
+unknown.Stage = "Unknown"
+check(not vfx.Play(unknown), "unknown stage is rejected")
+local init = shot()
+init.Stage, init.Radius = "Init", 8
+setup(vfx.Play(init), "init visual")
+local heldBlast = childrenNamed(workspaceFake, "IceShotgunBlast")[1]
+local replaced = heldBlast
+setup(vfx.Play(init), "replacement init")
+heldBlast = childrenNamed(workspaceFake, "IceShotgunBlast")[1]
+check(
+    replaced.Destroyed and #childrenNamed(workspaceFake, "IceShotgunBlast") == 1,
+    "new init replaces previous held blast"
+)
+local heldPulse = heldBlast:FindFirstChild("IceRadialPulse")
+check(heldPulse.Material == "Ice" and heldPulse.Transparency == 0.25, "icy pulse material and opacity")
+advance(0.5)
+check(heldPulse.Size.X == 16 and heldPulse.Transparency == 0.25, "small sphere holds through charge")
+-- Fill every remaining slot before surge: reuse must bypass allocation budget.
+for i = 2, presentationConfig.MaxActiveBlasts do
+    local other = shot()
+    other.ShooterUserId = localPlayer.UserId + i
+    setup(vfx.Play(other), "other shooter at active budget")
+end
+setup(vfx.Play(shot(nil, vec(3, 1, 0))), "surge reuses init")
+check(
+    #childrenNamed(workspaceFake, "IceShotgunBlast") == presentationConfig.MaxActiveBlasts
+        and heldBlast:FindFirstChild("IceRadialPulse") == heldPulse,
+    "surge reuses model and sphere without another active slot"
+)
+check(heldPulse.CFrame.Position.X == 3, "reused surge moves to current server origin")
+advance(0.11)
+check(heldPulse.Size.X == 44, "surge expands reused sphere to full diameter")
+advance(0.24)
+check(heldPulse.Transparency == 1, "surge fades after expansion")
+advance(0.31)
+check(heldBlast.Destroyed, "surge resets bounded expiry")
+init.ServerTime = workspaceFake:GetServerTimeNow()
+setup(vfx.Play(init), "cancelled init visual")
+advance(1.16)
+check(#childrenNamed(workspaceFake, "IceShotgunBlast") == 0, "cancelled init expires without surge")
+-- Reset audio observations before the existing fallback and budget contracts.
+table.clear(playedSounds)
+table.clear(emitted)
 resultRemote.OnClientEvent:Fire(shot({ { Position = vec(0, 1, -12), UserId = 7, Frozen = true } }))
 local blast = childrenNamed(workspaceFake, "IceShotgunBlast")[1]
 check(blast ~= nil, "server-confirmed result renders a blast")

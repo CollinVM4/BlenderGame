@@ -11,6 +11,8 @@ shotgun.Init(deps)
 gun.Init(deps)
 check(
     authoredConfig.BlastRadius == 22
+        and authoredConfig.InitBlastRadius == 8
+        and authoredConfig.SurgeChargeSeconds == 0.5
         and authoredConfig.ConeAngleDegrees == nil
         and authoredConfig.ShotCooldown == 4.5
         and authoredConfig.DirectDamage == 5,
@@ -90,6 +92,7 @@ check(
     shooter:GetAttribute("IceGunCooldownEnd") == workspaceFake:GetServerTimeNow() + config.ShotCooldown,
     "accepted blast publishes the 4.5-second server deadline"
 )
+advance(config.SurgeChargeSeconds)
 for _, pair in
     {
         { center, centerH },
@@ -136,7 +139,7 @@ check(
 tool.Parent = shooter:FindFirstChildOfClass("Backpack")
 shotgun.ClearPlayer(shooter)
 tool.Parent = shooter.Character
-advance(config.ShotCooldown - config.FreezeSeconds - 0.01)
+advance(config.ShotCooldown - config.FreezeSeconds - config.SurgeChargeSeconds - 0.01)
 local confirmedBeforeReject = shooter:GetAttribute("IceGunCooldownEnd")
 local accepted, reason = shotgun.Fire(shooter, aim)
 check(
@@ -149,11 +152,13 @@ check(
 )
 advance(0.11)
 check(shotgun.Fire(shooter, aim), "blast eligible after server cooldown")
+advance(config.SurgeChargeSeconds)
 check(centerH.Health == 90, "next blast deals exactly five damage")
 check(not movement.IsFrozen(center), "damage during freeze immunity does not re-freeze")
 advance(config.ShotCooldown)
 config.TeamDamage = true
 check(shotgun.Fire(shooter, aim), "server explicitly opts in to friendly fire")
+advance(config.SurgeChargeSeconds)
 check(
     allyH.Health == 95 and teammateH.Health == 95 and shooterHumanoid.Health == 100,
     "opt-in permits both teammate types, still rejects self"
@@ -202,15 +207,19 @@ advance(config.ShotCooldown)
 sessions[shooter] = nil
 local before = centerH.Health
 check(shotgun.Fire(shooter, aim) and centerH.Health == before, "pre-claim ownership permits effects but never PvP")
+advance(config.SurgeChargeSeconds)
+check(centerH.Health == before, "pre-claim surge also cannot damage")
 sessions[shooter] = "A"
 advance(config.ShotCooldown)
 local old = center.Character
 center.Character = instance("Model")
 check(not combat.DamagePlayer(shooter, center, old, 5), "stale target character cannot receive damage")
 center.Character = old
+freeze.RemovePlayer(center)
 setup(freeze.Apply(center), "immunity test freeze")
 advance(config.FreezeSeconds)
 check(shotgun.Fire(shooter, aim), "blast during target recovery immunity")
+advance(config.SurgeChargeSeconds)
 check(
     centerH.Health == before - 5 and not movement.IsFrozen(center),
     "freeze immunity prevents re-freeze without blocking damage"

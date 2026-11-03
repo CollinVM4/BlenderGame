@@ -41,22 +41,31 @@ end
 local aim = vec(0, 1, -100)
 setup(shotgun.Fire(shooter, aim), "accepted result shot")
 check(
-    #results == 1 and #results[1].Hits == 1 and results[1].Hits[1].UserId == victim.UserId and results[1].Hits[1].Frozen,
+    #results == 1 and results[1].Stage == "Init" and results[1].Radius == 8 and #results[1].Hits == 0,
+    "init payload carries small authoritative radius"
+)
+advance(config.SurgeChargeSeconds)
+check(
+    results[2].Stage == "Surge" and results[2].Radius == 22 and results[2].ServerTime > results[1].ServerTime,
+    "surge payload has fresh timestamp and full radius"
+)
+check(
+    #results == 2 and #results[2].Hits == 1 and results[2].Hits[1].UserId == victim.UserId and results[2].Hits[1].Frozen,
     "accepted notification lists only confirmed damaged players and real freeze result"
 )
 check(
     results[1].Origin.X == 0
         and results[1].Origin.Z == 0
-        and results[1].Radius == 22
+        and results[2].Radius == 22
         and results[1].Angle == nil
         and results[1].Direction == nil
         and results[1].ShooterUserId == shooter.UserId,
     "presentation uses authoritative caster root and blast radius, with no cone direction or angle"
 )
-check(not shotgun.Fire(shooter, aim) and #results == 1, "cooldown-rejected requests emit no predicted blast")
+check(not shotgun.Fire(shooter, aim) and #results == 2, "cooldown-rejected requests emit no predicted blast")
 remote.OnServerEvent:Fire(shooter, { Hits = { { UserId = victim.UserId, Frozen = true } } })
 check(
-    #results == 1 and h.Health == 95,
+    #results == 2 and h.Health == 95,
     "client writes to the presentation remote cannot cause gameplay or presentation"
 )
 advance(config.FreezeSeconds)
@@ -65,8 +74,9 @@ check(
     "published freeze immunity begins at actual authoritative thaw"
 )
 setup(shotgun.Fire(otherShooter, aim), "another shooter during immunity")
+advance(config.SurgeChargeSeconds)
 check(
-    #results == 2 and #results[2].Hits == 1 and not results[2].Hits[1].Frozen and h.Health == 90,
+    #results == 4 and #results[4].Hits == 1 and not results[4].Hits[1].Frozen and h.Health == 90,
     "damage feedback distinguishes immune hits from a new freeze"
 )
 advance(config.ShotCooldown)
@@ -82,8 +92,9 @@ end
 -- miss, not a wall or cone miss, and still broadcasts a pulse with no hits.
 victim.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 1, 30)
 setup(shotgun.Fire(shooter, aim), "accepted miss")
+advance(config.SurgeChargeSeconds)
 check(
-    #results == 3 and #results[3].Hits == 0 and h.Health == 90,
+    #results == 6 and #results[5].Hits == 0 and #results[6].Hits == 0 and h.Health == 90,
     "accepted misses still broadcast a radial pulse, never invented impact feedback"
 )
 freeze.RemovePlayer(victim)

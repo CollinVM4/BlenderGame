@@ -94,7 +94,7 @@ The requested functions remain at their original paths. `IsGliding` is renamed t
 
 The nil-only capture, forced-false cancellation, SetJumpHeld release behavior, one-shot ConsumeGlideLandingProtection and 0.2-second grounded confirmation are unchanged. Falling, Airborne, Grounded and ungranted players do not satisfy the predicate. The existing provisional landing capture still survives a subsequent Grounded publication if wings updates before fall evaluation. Server-observed input arriving after evaluation has no retroactive effect. No release grace window or persistent immunity was added.
 
-**FallDamageService.luau is unchanged byte-for-byte from HEAD**, including evaluateLanding, its Heartbeat episode loop, peak tracking, jump compensation, thresholds/curve, and the diagnostic reason `glide-protected`. ConsumeGlideLandingProtection keeps its existing name/API.
+In the initial engaged-landing follow-up, FallDamageService was unchanged. The upward-recovery amendment below now adds a narrow Heartbeat peak reset. evaluateLanding, jump compensation, thresholds/curve, and the diagnostic reason `glide-protected` remain unchanged. ConsumeGlideLandingProtection keeps its existing name/API.
 
 Changed files in this follow-up:
 
@@ -117,3 +117,20 @@ Required Studio acceptance from a height known lethal without wings:
 | Same fall, release Jump before touchdown; normal peak-based damage | PENDING |
 
 No connected Roblox Studio tool is available to run these scenarios in this session. Sync the default Rojo project and start a new Play session with an entitled account; no new Studio objects or configuration are required. This follow-up is not a Studio acceptance sign-off.
+
+
+## Upward wing recovery amendment - 2026-11-02
+
+An airborne upward wing burst now cancels the downward peak accumulated before that recovery. After the server observes positive vertical velocity while IsWingControlled is true, the fall tracker clears the old peak and soft-landing timer and resets the wings landing candidate for the continuing airborne episode. Releasing Jump after this recovery does not restore the old peak. Any subsequent descent builds a new peak and can still cause normal fall damage.
+
+This amendment supersedes the earlier rule only for a completed upward recovery. Slowing the descent or reaching zero vertical velocity does not clear the peak. Releasing without an upward recovery still cancels engaged-landing protection immediately. An upward impulse without eligible engaged wings does not trigger this reset. No timer, release grace, blanket airborne immunity, client-sent velocity/state payload or damage refund was added. evaluateLanding and the damage curve remain unchanged; the optional diagnostic reset reason is `wing-ascent`.
+
+Files changed by this amendment:
+
+- `src/server/Services/FallDamageService.luau`: narrow airborne wing-ascent reset in the existing Heartbeat episode loop.
+- `tests/wings_flight.spec.luau`: real fall-tracker regressions for upward recovery followed by release and immediate/low/moderate/lethal subsequent descent, plus non-upward and inactive-wing controls. The new recovery regression failed before the change and passes afterward.
+- `docs/ANGEL_WINGS.md`: this behavior and acceptance record.
+
+Validation: wings-flight, fall-damage and wings-ownership PASS; changed-file StyLua and default-project Rojo build PASS. Full-source Roblox-aware typecheck matches a fresh archive of HEAD `84a8f76`: 212 existing normalized TypeError headers in both, no new diagnostics. Concurrent ice-ray changes in the shared workspace were not modified by this amendment.
+
+Studio acceptance remains **PENDING**: build lethal downward speed, engage wings until visibly rising, release, then land from a short remaining drop without damage from the original fall. Repeat with a subsequent long drop and confirm that the new descent still damages normally. Merely slow the fall without rising, release and confirm the original peak still applies. No new Studio setup is required.
