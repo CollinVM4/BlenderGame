@@ -52,6 +52,11 @@ local handle = instance("Part")
 handle.Name, handle.Parent = "Handle", template
 local attachment = instance("Attachment")
 attachment.Name, attachment.Parent, attachment.CFrame = "BodyBackAttachment", handle, env.CFrame.new()
+-- Engine-owned accessory attachment boundary; tests select modern/legacy rigs.
+local accessoryJointClass = "RigidConstraint"
+local accessoryAttachHook
+local mesh = instance("SpecialMesh")
+mesh.Name, mesh.Parent, mesh.Scale = "SpecialMesh", handle, vec(2, 3, 4)
 local ownership, marketplaceCalls, prompts = {}, 0, 0
 local marketplaceFailure, promptFailure = false, false
 local marketplaceHook = nil
@@ -105,6 +110,24 @@ local function subject(owned, power)
     h.JumpPower = p.JumpPower
     h.GetState = function(self)
         return self.Mode
+    end
+    h.AddAccessory = function(self, accessory)
+        accessory.Parent = self.Parent
+        local wingHandle = accessory:FindFirstChild("Handle")
+        local wingBack = wingHandle:FindFirstChild("BodyBackAttachment")
+        local torso = self.Parent:FindFirstChild("UpperTorso") or self.Parent:FindFirstChild("Torso")
+        local bodyBack = torso:FindFirstChild("BodyBackAttachment")
+        local joint = instance(accessoryJointClass)
+        joint.Parent = wingHandle
+        if accessoryJointClass == "RigidConstraint" then
+            joint.Name, joint.Attachment0, joint.Attachment1 = "AccessoryRigidConstraint", bodyBack, wingBack
+        else
+            joint.Name, joint.Part0, joint.Part1 = "AccessoryWeld", torso, wingHandle
+            joint.C0, joint.C1 = bodyBack.CFrame, wingBack.CFrame
+        end
+        if accessoryAttachHook then
+            accessoryAttachHook(accessory)
+        end
     end
     h.TakeDamage = function(self, damage)
         self.Health -= damage

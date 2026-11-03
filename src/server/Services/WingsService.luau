@@ -6,7 +6,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Constants.WingsConfig)
-local Ownership = require(script.Parent.BatKnockback)
 local Service = {}
 local deps: any
 local passId = Config.WingsGamePassId
@@ -18,15 +17,12 @@ type Flight = {
     Root: BasePart,
     Clone: Instance?,
     Connections: { RBXScriptConnection },
-    Release: (() -> ())?,
     Granted: boolean,
     Energy: number,
     PoweredTime: number,
     JumpHeld: boolean,
     GroundedTime: number,
     State: string,
-    Overspeed: number,
-    InvalidGlide: boolean,
     -- FallDamageService owns the episode and genuine landing boundary. This
     -- candidate is captured there before either service can publish Grounded.
     FallEpisode: boolean,
@@ -62,11 +58,9 @@ local function warnOnce(key: string, message: string)
     end
 end
 local function publish(player: Player, flight: Flight, value: string)
-    flight.State = value
-    player:SetAttribute("WingState", value)
-    if value ~= "Powered" and value ~= "Gliding" and flight.Release then
-        flight.Release()
-        flight.Release = nil
+    if flight.State ~= value then
+        flight.State = value
+        player:SetAttribute("WingState", value)
     end
 end
 local function clearCharacter(player: Player, state: State)
@@ -74,9 +68,6 @@ local function clearCharacter(player: Player, state: State)
     state.Flight = nil
     if not flight then
         return
-    end
-    if flight.Release then
-        flight.Release()
     end
     for _, connection in flight.Connections do
         connection:Disconnect()
@@ -144,6 +135,7 @@ function Service.GrantIfOwned(player: Player): Instance?
             or item:IsA("RemoteEvent")
             or item:IsA("RemoteFunction")
             or item:IsA("JointInstance")
+            or item:IsA("Constraint")
         then
             item:Destroy()
         elseif item:IsA("BasePart") then
@@ -153,21 +145,41 @@ function Service.GrantIfOwned(player: Player): Instance?
     end
     local handle = clone:FindFirstChild("Handle")
     local attachment = handle and handle:FindFirstChild("BodyBackAttachment")
-    if not handle or not handle:IsA("BasePart") or not attachment or not attachment:IsA("Attachment") then
+    if
+        not clone:IsA("Accessory")
+        or not handle
+        or not handle:IsA("BasePart")
+        or not attachment
+        or not attachment:IsA("Attachment")
+    then
         clone:Destroy()
         warnOnce("structure", "Expected supplied single Handle / BodyBackAttachment accessory.")
         return nil
     end
+    -- Let Humanoid attach AND scale the supplied accessory. Upgraded avatars
+    -- use AccessoryRigidConstraint; a pre-parented custom Motor6D is not a
+    -- durable accessory joint across native rig/appearance rebuilds.
     local back = torso:FindFirstChild("BodyBackAttachment")
-    local origin = if back and back:IsA("Attachment") then back.CFrame else CFrame.new(0, 0, torso.Size.Z * 0.5)
-    local motor = Instance.new("Motor6D")
-    motor.Name, motor.Part0, motor.Part1 = "WingMotor", torso, handle
-    motor.C0, motor.C1 = origin, attachment.CFrame
-    motor:SetAttribute("WingRestC0", origin)
-    motor.Parent = handle
-    handle.CFrame = torso.CFrame * motor.C0 * motor.C1:Inverse()
+    if not back then
+        -- R6/custom torso fallback: keep the same back origin as before.
+        local fallback = Instance.new("Attachment")
+        fallback.Name = "BodyBackAttachment"
+        fallback.CFrame = CFrame.new(0, 0, torso.Size.Z * 0.5)
+        fallback.Parent = torso
+    elseif not back:IsA("Attachment") then
+        clone:Destroy()
+        warnOnce("attachment", "Expected torso BodyBackAttachment to be an Attachment.")
+        return nil
+    end
+    local ok, problem = pcall(function()
+        flight.Humanoid:AddAccessory(clone)
+    end)
+    if not ok then
+        clone:Destroy()
+        warnOnce("attach", "Could not attach wings: " .. tostring(problem))
+        return nil
+    end
     flight.Clone, flight.Granted = clone, true
-    clone.Parent = flight.Character
     return clone
 end
 function Service.PlayerOwns(player: Player, force: boolean?): boolean?
@@ -264,11 +276,7 @@ end
 function Service.IsGliding(player: Player): boolean
     local state = states[player]
     local flight = state and state.Flight
-    return flight ~= nil
-        and flight.State == "Gliding"
-        and flight.JumpHeld
-        and not flight.InvalidGlide
-        and eligible(player, flight)
+    return flight ~= nil and flight.State == "Gliding" and flight.JumpHeld and eligible(player, flight)
 end
 -- Explicit coordination with fall damage avoids timers and Heartbeat ordering.
 -- Every fall start/reset invalidates evidence, even if wings have not recharged.
@@ -290,7 +298,7 @@ function Service.ObserveFallLanding(player: Player, character: Model, candidate:
     elseif flight.LandingCandidate == nil then
         flight.LandingCandidate = Service.IsGliding(player)
     end
-    if not flight.JumpHeld or not movementAllowed(player, flight) or flight.InvalidGlide then
+    if not flight.JumpHeld or not movementAllowed(player, flight) then
         flight.LandingCandidate = false
     end
 end
@@ -303,7 +311,6 @@ function Service.ConsumeGlideLandingProtection(player: Player, character: Model)
     local protect = flight.FallEpisode
         and flight.LandingCandidate == true
         and flight.JumpHeld
-        and not flight.InvalidGlide
         and movementAllowed(player, flight)
     flight.FallEpisode, flight.LandingCandidate = false, nil
     return protect
@@ -344,15 +351,12 @@ function Service.ApplyCharacter(player: Player, character: Model)
         Root = root,
         Clone = nil,
         Connections = {},
-        Release = nil,
         Granted = false,
         Energy = Config.FlightDurationSeconds,
         PoweredTime = 0,
         JumpHeld = false,
         GroundedTime = 0,
-        State = "Airborne",
-        Overspeed = 0,
-        InvalidGlide = false,
+        State = "", -- First publish must initialize the replicated state.
         FallEpisode = false,
         LandingCandidate = nil,
     }
@@ -407,23 +411,20 @@ local function step(player: Player, state: State, flight: Flight, dt: number)
             flight.LandingCandidate = Service.IsGliding(player)
         end
         flight.GroundedTime += dt
-        -- Do not apply airborne lift during the confirmation interval.
-        if flight.Release then
-            flight.Release()
-            flight.Release = nil
-        end
+        -- Stop client lift immediately; recharge still requires sustained support.
         if flight.GroundedTime >= Config.GroundedConfirmSeconds then
-            flight.Energy, flight.PoweredTime, flight.Overspeed = Config.FlightDurationSeconds, 0, 0
-            flight.InvalidGlide = false
+            flight.Energy, flight.PoweredTime = Config.FlightDurationSeconds, 0
             publish(player, flight, "Grounded")
             if state.Owned == false then
                 removeWings(flight)
             end
+        else
+            publish(player, flight, "Airborne")
         end
         return
     end
     flight.GroundedTime = 0
-    if not flight.JumpHeld or flight.InvalidGlide then
+    if not flight.JumpHeld then
         publish(
             player,
             flight,
@@ -444,38 +445,6 @@ local function step(player: Player, state: State, flight: Flight, dt: number)
     else
         target = "Gliding"
     end
-    local velocity = flight.Root.AssemblyLinearVelocity
-    if target == "Gliding" and velocity.Y < -(Config.GlideDescentVelocity + Config.GlideOverspeedTolerance) then
-        flight.Overspeed += dt
-        if flight.Overspeed > Config.GlideOverspeedSeconds then
-            flight.InvalidGlide, flight.LandingCandidate = true, false
-            publish(player, flight, "Falling")
-            return
-        end
-    else
-        flight.Overspeed = 0
-    end
-    -- Same channel as bat launch: borrow server simulation before writing Y,
-    -- restore the previous network policy immediately on exit/cancel/cleanup.
-    if not flight.Release then
-        local ok, release = pcall(Ownership.TakeOwnership, flight.Root)
-        if ok then
-            flight.Release = release
-        else
-            warnOnce("ownership", "Could not borrow server simulation: " .. tostring(release))
-        end
-    end
-    if not flight.Release then
-        publish(player, flight, "Falling")
-        return
-    end
-    local y = velocity.Y
-    if target == "Powered" and y < Config.PoweredAscentVelocity then
-        y = math.min(Config.PoweredAscentVelocity, y + Config.PoweredApproachAccel * poweredDt)
-    elseif target == "Gliding" and y < -Config.GlideDescentVelocity then
-        y = -Config.GlideDescentVelocity
-    end
-    flight.Root.AssemblyLinearVelocity = Vector3.new(velocity.X, y, velocity.Z)
     publish(player, flight, if flight.Energy <= 0 then "Gliding" else target)
 end
 function Service.Init(services)

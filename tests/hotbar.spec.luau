@@ -741,12 +741,12 @@ do
             icon.Image ~= templateImage and sources == 1,
             "actual mounted export has one non-template source per occupied slot"
         )
-        if index == 2 or index == 3 then
+        if index == 4 or index == 5 then
             check(icon.Image == generic, "mounted export intentional fallback resolved")
         end
     end
-    check(buttons[4]:FindFirstChild("SlotIcon").Image == batImage, "mounted bat card artwork resolved")
-    check(buttons[5]:FindFirstChild("SlotIcon").Image == iceImage, "mounted ice ray artwork resolved")
+    check(buttons[1]:FindFirstChild("SlotIcon").Image == batImage, "mounted bat card artwork resolved")
+    check(buttons[2]:FindFirstChild("SlotIcon").Image == iceImage, "mounted ice ray artwork resolved")
     stop()
     flush()
 end
@@ -816,39 +816,39 @@ do
     local buttons = visible(f)
     check(#buttons == 12, "eight ingredients at capacity five plus four other Tools all display")
     check(
-        label(buttons[9]) == "Smoothie"
-            and label(buttons[10]) == "Smoothie"
-            and label(buttons[11]) == "Bat"
-            and label(buttons[12]) == "Ice Gun",
+        label(buttons[1]) == "Bat"
+            and label(buttons[2]) == "Ice Gun"
+            and label(buttons[11]) == "Smoothie"
+            and label(buttons[12]) == "Smoothie",
         "category order and labels"
     )
-    check(buttons[11]:GetChildren()[2].Image == "export-bat-art", "bat fallback resolved from authored card")
+    check(buttons[1]:GetChildren()[2].Image == "export-bat-art", "bat fallback resolved from authored card")
     check(previews - before == 8, "ingredient viewports once per distinct Tool")
     for i = 1, 8 do
-        buttons[i].Activated:Fire()
+        buttons[i + 2].Activated:Fire()
         flush()
         check(ingredients[i].Parent == f.Character, "CarryItemId order independent of child order")
     end
     check(previews - before == 8, "equip moves preserve bindings and renders")
-    buttons[8].Activated:Fire()
+    buttons[10].Activated:Fire()
     flush()
     local eq, uneq = f.Counts()
     check(eq == 8 and uneq == 1 and ingredients[8].Parent == f.Backpack, "button activation only equips/toggles")
     ingredients[3].Name = "Fresh Apple"
     flush()
-    check(label(visible(f)[3]) == "Fresh Apple", "live ingredient label verbatim")
-    visible(f)[9].Activated:Fire()
+    check(label(visible(f)[5]) == "Fresh Apple", "live ingredient label verbatim")
+    visible(f)[11].Activated:Fire()
     flush()
     check(smoothie1.Parent == f.Character, "first smoothie selected")
-    visible(f)[9].Activated:Fire()
+    visible(f)[11].Activated:Fire()
     flush()
-    visible(f)[9].Activated:Fire()
+    visible(f)[11].Activated:Fire()
     flush()
     check(smoothie1.Parent == f.Character, "smoothie sequence retained across reparent moves")
     ingredients[1]:Destroy()
     flush()
     buttons = visible(f)
-    check(#buttons == 11 and buttons[8]:GetChildren()[3].Visible, "selection follows Tool after index shift")
+    check(#buttons == 11 and buttons[10]:GetChildren()[3].Visible, "selection follows Tool after index shift")
     local scroll = f.Bar:FindFirstChildOfClass("ScrollingFrame")
     check(scroll.AbsoluteCanvasSize.X >= 11 * 48, "spacing-aware overflow canvas")
     check(buttons[1].AbsoluteSize.X >= 48, "named minimum target width")
@@ -872,7 +872,7 @@ do
     f.Player.GameplayPaused = false
     callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Zero })
     flush()
-    check(bat.Parent == f.Character, "zero selects visible index ten after shift")
+    check(smoothie1.Parent == f.Backpack, "zero toggles the selected smoothie at visible index ten after shift")
     for index = 2, 8 do
         ingredients[index]:Destroy()
     end
@@ -1188,7 +1188,7 @@ do
     end
     check(missingWarnings() == 1, "intentional fallback reports missing id exactly once")
     check(
-        visible(f)[1]:FindFirstChild("SlotIcon").Image == "export-generic-art",
+        visible(f)[2]:FindFirstChild("SlotIcon").Image == "export-generic-art",
         "fallback is intentional distinct export artwork"
     )
     local callback = cas.Actions.HotbarSelect
@@ -1201,15 +1201,19 @@ do
     callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Nine })
     local eq2, uneq2 = f.Counts()
     check(eq == eq2 and uneq == uneq2, "absent visible index has no equip effect")
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Three })
+    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
+    flush()
+    check(bat.Parent == f.Character, "key one reaches pinned bat through click path")
+    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
     flush()
     check(bat.Parent == f.Backpack, "key uses exact click toggle path")
+    local beforeRemoval = f.Counts()
     missing1.Parent = nil
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    local eq3 = f.Counts()
-    check(eq3 == eq2, "removed Tool cannot be equipped before rebuild")
-    flush()
     callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Two })
+    local eq3 = f.Counts()
+    check(eq3 == beforeRemoval, "removed Tool cannot be equipped before rebuild")
+    flush()
+    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
     flush()
     check(bat.Parent == f.Character, "key remaps after current view order shifts")
     f.Tool("Another missing", "Missing", 3)
@@ -1253,3 +1257,37 @@ check(Controller.Classify((function()
     return tool
 end)()) == "Ice", "classification priority")
 print("Hotbar contracts passed:", count)
+
+-- Weapon pinning compacts present items; no reserved gaps.
+do
+    local f = fixture(true)
+    local ingredient = f.Tool("Apple", "Apple", 1)
+    local ice = f.Tool("Ray")
+    ice:SetAttribute("IceGunWeapon", true)
+    local bat = f.Tool("Bat")
+    bat:SetAttribute("BatLevel", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local callback = cas.Actions.HotbarSelect
+    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
+    flush()
+    check(bat.Parent == f.Character, "key one selects pinned bat")
+    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Two })
+    flush()
+    check(ice.Parent == f.Character, "key two selects pinned ice ray")
+    bat:Destroy()
+    flush()
+    check(
+        label(visible(f)[1]) == "Ice Gun" and label(visible(f)[2]) == "Apple",
+        "absent bat compacts ice then ingredient"
+    )
+    ice:Destroy()
+    flush()
+    check(label(visible(f)[1]) == "Apple", "absent weapons leave no reserved gaps")
+    local nextBat = f.Tool("Bat")
+    nextBat:SetAttribute("BatLevel", 1)
+    flush()
+    check(label(visible(f)[2]) == "Apple", "absent ice places ingredients directly after bat")
+    stop()
+    flush()
+end

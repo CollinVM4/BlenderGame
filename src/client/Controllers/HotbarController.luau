@@ -612,7 +612,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 observed[tool] = nil
             end
         end
-        local rank = { Ingredient = 1, Smoothie = 2, Bat = 3, Ice = 4 }
+        local rank = { Bat = 1, Ice = 2, Ingredient = 3, Smoothie = 4 }
         table.sort(nextItems, function(a, b)
             local ar, br = rank[a.Kind], rank[b.Kind]
             if ar ~= br then

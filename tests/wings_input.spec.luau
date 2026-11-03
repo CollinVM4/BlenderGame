@@ -89,12 +89,53 @@ replicated.WaitForChild = replicated.FindFirstChild
 local controller = loadModule("WingsController")
 controller.SetWingPose = function() end
 controller.Init()
-services.RunService.RenderStepped:Fire()
-services.RunService.RenderStepped:Fire()
+services.RunService.RenderStepped:Fire(1 / 60)
+services.RunService.RenderStepped:Fire(1 / 60)
 check(
     #messages == 1 and messages[1] == "JUMP TO FLY!\n\nHold Jump in the air to flap your wings. Keep holding to glide!",
     "first grant shows verbatim onboarding once"
 )
 wings.ApplyCharacter(p, p.Character)
-services.RunService.RenderStepped:Fire()
+services.RunService.RenderStepped:Fire(1 / 60)
 check(#messages == 1, "respawn never repeats session onboarding")
+
+-- Exercise the actual local RenderStepped lift independently of pose rendering.
+local function renderLift(stateValue, y, dt)
+    p:SetAttribute("WingState", stateValue)
+    root.AssemblyLinearVelocity = vec(7, y, 9)
+    services.RunService.RenderStepped:Fire(dt or 1 / 60)
+    check(
+        root.AssemblyLinearVelocity.X == 7 and root.AssemblyLinearVelocity.Z == 9,
+        "client lift preserves horizontal velocity"
+    )
+    return root.AssemblyLinearVelocity.Y
+end
+for _, inactive in { "Falling", "Airborne", "Grounded" } do
+    check(renderLift(inactive, -100) == -100, "inactive server state writes no lift")
+end
+check(renderLift("Powered", -100, 0) == 30, "entry burst floors falling velocity at 30")
+check(renderLift("Powered", -100, 0) == -100, "entry burst fires once per Powered entry")
+check(renderLift("Powered", 40, 0.1) == 45, "approach stops at configured target")
+check(renderLift("Powered", 0, 0.01) == 3, "approach uses render dt")
+check(renderLift("Powered", 116) == 116, "Powered preserves faster jump momentum")
+check(renderLift("Gliding", -100) == -20, "dive glide caps fast descent")
+check(renderLift("Gliding", 35) == 35, "glide preserves rising momentum")
+check(renderLift("Gliding", -10) == -10, "glide preserves slower descent")
+check(renderLift("Powered", 60, 0) == 60, "reentry burst is a floor rather than an addition")
+check(renderLift("Falling", -100) == -100, "server cancellation stops lift on the next render frame")
+check(renderLift("Powered", -100, 0) == 30, "a new Powered entry receives exactly one burst")
+local other, oh, otherRoot = subject(true)
+other:SetAttribute("WingState", "Powered")
+otherRoot.AssemblyLinearVelocity = vec(1, -100, 2)
+services.Players.GetPlayers = function()
+    return { p, other }
+end
+renderLift("Grounded", -100)
+check(otherRoot.AssemblyLinearVelocity.Y == -100, "local lift never drives another player")
+p.Character = nil
+services.RunService.RenderStepped:Fire(1 / 60)
+p.Character = other.Character
+otherRoot.Name = "MissingRoot"
+p:SetAttribute("WingState", "Powered")
+services.RunService.RenderStepped:Fire(1 / 60)
+check(otherRoot.AssemblyLinearVelocity.Y == -100, "missing local character/root safely skips lift")

@@ -121,6 +121,7 @@ SUITES = {
     "customer-compatibility": ("state", ("customer_compatibility.spec.luau",)),
     "sprint": ("state", ("sprint.spec.luau",)),
     "wings-input": ("presentation", ("fixtures/wings.luau", "wings_input.spec.luau")),
+    "wings-pose": ("presentation", ("fixtures/wings.luau", "wings_pose.spec.luau")),
     "wings-flight": ("integration", ("fixtures/wings.luau", "wings_flight.spec.luau")),
     "wings-ownership": ("state", ("fixtures/wings.luau", "wings_ownership.spec.luau")),
     "fall-damage": ("state", ("fall_damage.spec.luau",)),

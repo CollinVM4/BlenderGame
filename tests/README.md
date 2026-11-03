@@ -376,7 +376,11 @@ recency and special/fixed request behavior remain separate.
 `--suite wings-ownership` covers live entitlement/purchase and character lifecycle.
 `--suite wings-flight` covers the server airborne budget and real fall-tracker
 integration, including glide landing protection across update ordering.
-`--suite wings-input` is separate presentation/input/onboarding coverage.
+`--suite wings-input` is separate client lift/input/onboarding coverage.
+`--suite wings-pose` checks native/legacy accessory attachment posing, retained
+avatar scaling, rebuilt constraints, visible width-pulse math and actual render-loop
+glide-transition timing. See [the feel-fix work log](../docs/ANGEL_WINGS_FEEL_FIX.md)
+for the attachment repair and pending Studio visual/two-client/progression acceptance.
 `python tests/run_wings_shop_tests.py --luau <luau.exe>` resolves the actual authored
 card in newestExport and its prepared output, including rename failures.
 See [Angel Wings](../docs/ANGEL_WINGS.md) for asset/UI audit, validation limitations

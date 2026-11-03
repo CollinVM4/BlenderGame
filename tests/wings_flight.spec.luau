@@ -15,7 +15,10 @@ tick(p, h, root, 0.025, -100, false)
 check(state(p) == "Falling" and root.AssemblyLinearVelocity.Y == -100, "release stops glide without resetting velocity")
 wings.SetJumpHeld(p, true)
 tick(p, h, root, 0.025, -30, false)
-check(state(p) == "Gliding" and root.AssemblyLinearVelocity.Y == -20, "exhausted rehold reenters descent-only glide")
+check(
+    state(p) == "Gliding" and root.AssemblyLinearVelocity.Y == -30,
+    "exhausted rehold authorizes glide without server velocity writes"
+)
 
 local function remainingAfterPause(taps)
     local q, hum, r = subject(true)
@@ -68,7 +71,7 @@ check(state(s) == "Gliding", "external impulses do not replenish powered time")
 for _ = 1, 12 do
     tick(s, sh, sr, 0.025, -70, false)
 end
-check(state(s) == "Falling" and not wings.IsGliding(s), "persistent overspeed cancels glide and exemption")
+check(state(s) == "Gliding" and wings.IsGliding(s), "persistent fast descent never latches glide off")
 
 local n, nh, nr = subject(false)
 wings.SetJumpHeld(n, true)
@@ -134,3 +137,41 @@ wings.ResetFallEpisode(a, a.Character, true)
 wings.ObserveFallLanding(a, a.Character, true)
 wings.SetJumpHeld(a, false)
 check(not wings.ConsumeGlideLandingProtection(a, a.Character), "release invalidates pending landing evidence")
+
+-- Publish only real transitions, including the first airborne initialization.
+local pub, ph, pr = subject(true)
+check(state(pub) == "Airborne", "first airborne state is published")
+local originalSet = pub.SetAttribute
+local publishes = 0
+pub.SetAttribute = function(self, key, value)
+    if key == "WingState" then
+        publishes += 1
+    end
+    originalSet(self, key, value)
+end
+wings.SetJumpHeld(pub, true)
+tick(pub, ph, pr, 0.025, -100, false)
+tick(pub, ph, pr, 0.025, -100, false)
+check(publishes == 1 and state(pub) == "Powered", "unchanged Powered publishes exactly once")
+check(
+    pr.AssemblyLinearVelocity.Y == -100 and pr.Automatic ~= false,
+    "server neither writes lift nor borrows network ownership"
+)
+wings.SetJumpHeld(pub, false)
+wings.SetJumpHeld(pub, true)
+tick(pub, ph, pr, 0.025, -100, false)
+check(state(pub) == "Powered", "reholding during a fast dive resumes remaining energy")
+tick(pub, ph, pr, 0.025, 0, true)
+check(state(pub) == "Airborne", "provisional support immediately revokes client lift before recharge")
+
+for _ = 1, 10 do
+    tick(pub, ph, pr, 0.025, 0, true)
+end
+local afterGrounded = publishes
+for _ = 1, 10 do
+    tick(pub, ph, pr, 0.025, 0, true)
+end
+check(
+    state(pub) == "Grounded" and publishes == afterGrounded,
+    "sustained grounded state does not republish during recharge"
+)
