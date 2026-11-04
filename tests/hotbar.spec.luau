@@ -117,6 +117,8 @@ local function timers()
     end
     flush()
 end
+local failHostCreation = false
+local failReparentStage = nil
 local new
 local function emitAncestors(parent, event, child)
     while parent do
@@ -125,6 +127,9 @@ local function emitAncestors(parent, event, child)
     end
 end
 new = function(class, name, parent)
+    if failHostCreation and class == "Frame" and name == nil then
+        error("forced host creation failure")
+    end
     local props = {
         Name = name or class,
         ClassName = class,
@@ -214,6 +219,9 @@ new = function(class, name, parent)
         return attrs[key]
     end
     function object:SetAttribute(key, value)
+        if failReparentStage == "marker" and key == "HotbarReparented" and value == true then
+            error("forced marker failure")
+        end
         attrs[key] = value
         sig("attr:" .. key):Fire()
     end
@@ -224,6 +232,7 @@ new = function(class, name, parent)
         return sig(key)
     end
     function object:Destroy()
+        self.Destroyed = true
         self.Destroying:Fire()
         for _, child in self:GetChildren() do
             child:Destroy()
@@ -305,6 +314,9 @@ new = function(class, name, parent)
                     props.CanvasSize.Y.Scale * size.Y + props.CanvasSize.Y.Offset
                 )
             elseif key == "AbsolutePosition" then
+                if props.Name == "HotbarHost" and props.Parent then
+                    return props.Parent.AbsolutePosition
+                end
                 if props.ScreenPosition then
                     return props.ScreenPosition
                 end
@@ -336,6 +348,13 @@ new = function(class, name, parent)
         end,
         __newindex = function(_, key, value)
             local previous = props[key]
+            if key == "Parent" and value then
+                if failReparentStage == "host parent" and props.Name == "HotbarHost" then
+                    error("forced host parent failure")
+                elseif failReparentStage == "bar parent" and props.Name == "Hotbar" and value.Name == "HotbarHost" then
+                    error("forced bar parent failure")
+                end
+            end
             if key == "Parent" and previous ~= value then
                 if previous then
                     emitAncestors(previous, "DescendantRemoving", object)
@@ -486,6 +505,9 @@ local function requireModule(name)
             Color3 = Color3,
             task = task,
             typeof = function(value)
+                if type(value) == "table" and value.X and value.Y then
+                    return if type(value.X) == "table" then "UDim2" else "Vector2"
+                end
                 return type(value)
             end,
             warn = function(message)
@@ -619,13 +641,298 @@ local function near(actual, expected, message)
         message .. ": " .. tostring(actual) .. " expected " .. tostring(expected)
     )
 end
+-- Screen docking uses a letterboxed desktop and a distinct full-screen root.
+local function screenFixture(width, height)
+    local f = fixture(true)
+    f.Root.Pixels = v(width, height)
+    f.Root.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    local desktopWidth, desktopHeight = math.min(width, height * (16 / 9)), math.min(height, width / (16 / 9))
+    f.Desktop.Pixels = v(desktopWidth, desktopHeight)
+    f.Desktop.ScreenPosition = v((width - desktopWidth) / 2, (height - desktopHeight) / 2)
+    local content = new("CanvasGroup", "DesktopContent")
+    content.Size = UDim2.fromScale(1, 1)
+    content.ZIndex, content.ClipsDescendants = 6, true
+    for _, child in f.Desktop:GetChildren() do
+        child.Parent = content
+    end
+    content.Parent = f.Desktop
+    f.Content = content
+    f.Bar.ZIndex = 538
+    local shop = new("Frame", "Shop", content)
+    local scroll = new("ScrollingFrame", "ShopScroll", shop)
+    local list = new("Frame", "ShopList", scroll)
+    local card = new("Frame", "Ice Gun", list)
+    new("ImageLabel", "IceGunImage", card).Image = "export-ice-art"
+    f.Tool("Apple", "Apple", 1)
+    return f
+end
+if testCase == "all" or testCase == "reparent" then
+    do
+        local f = screenFixture(390, 844)
+        local before = Gui.Resolve(f.PlayerGui)
+        local geometry = { f.Bar.AnchorPoint, f.Bar.Position, f.Bar.Size }
+        local metrics = {}
+        for i, slot in before.Slots do
+            metrics[i] = Gui.Metrics(slot, f.Root)
+        end
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        local screenHost = f.Bar.Parent
+        check(
+            screenHost.Name == "HotbarHost" and screenHost.Parent == f.Root,
+            "same bar docks directly under its ScreenGui"
+        )
+        check(
+            f.Bar.ZIndex == 538 and screenHost.ZIndex == 6,
+            "sibling host inherits content stacking; bar ZIndex preserved"
+        )
+        check(
+            screenHost.Active == false and screenHost.ClipsDescendants == false and screenHost.Visible,
+            "host permits input pass-through and unclipped rendering"
+        )
+        check(
+            screenHost.BackgroundTransparency == 1 and screenHost.BorderSizePixel == 0,
+            "host has no background or border"
+        )
+        near(screenHost.Size.X.Scale, 1, "host fills screen width")
+        near(screenHost.Size.Y.Scale, 1, "host fills screen height")
+        near(screenHost.Position.X.Scale, 0, "host starts at screen origin X")
+        near(screenHost.Position.Y.Scale, 0, "host starts at screen origin Y")
+        check(screenHost.AnchorPoint == Vector2.zero, "host anchor is zero")
+        for i, slot in before.Slots do
+            check(slot.Button:IsDescendantOf(f.Bar), "same slot remains below the bar through its scroll")
+            check(Gui.Metrics(slot, f.Root) == metrics[i], "authored metrics cache survives reparent and resize")
+        end
+        local root, bar = Gui.Find(f.PlayerGui)
+        check(root == f.Root and bar == before.Bar, "Find preserves render identity after setup")
+        local after = Gui.Resolve(f.PlayerGui)
+        check(
+            after and after.Bar == before.Bar and #after.Slots == #before.Slots,
+            "Resolve recognizes same live slots through HotbarScroll"
+        )
+        check(
+            after.BatImage == before.BatImage
+                and after.IceImage == before.IceImage
+                and after.GenericImage == before.GenericImage,
+            "Resolve retains all three panel fallbacks after setup"
+        )
+        f.Backpack:GetChildren()[1].Name = "Apple renamed"
+        flush()
+        check(
+            f.Bar.Parent == screenHost and not core.Enabled,
+            "next render retains custom bar instead of identity release"
+        )
+        stop()
+        flush()
+        check(
+            f.Bar.Parent == f.Content and not f.Bar.Destroyed,
+            "release restores original content before host destruction; bar survives"
+        )
+        check(
+            f.Bar.AnchorPoint == geometry[1] and f.Bar.Position == geometry[2] and f.Bar.Size == geometry[3],
+            "release restores authored geometry"
+        )
+        check(
+            not f.Bar.Visible and f.Bar:GetAttribute("HotbarReparented") == nil,
+            "release hides and clears reparent marker"
+        )
+        check(screenHost.Destroyed and screenHost.Parent == nil, "release removes owned screen host")
+        for _, slot in before.Slots do
+            check(slot.Button.Parent == f.Bar and not slot.Button.Destroyed, "release restores original slot instances")
+        end
+        print("PASS reparent identity, metrics, render continuity, panel fallback, release survival")
+    end
+    for _, mode in { "desktop hidden", "root disabled" } do
+        local f = screenFixture(390, 844)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        if mode == "desktop hidden" then
+            f.Desktop.Visible = false
+        else
+            f.Root.Enabled = false
+        end
+        local root, bar = Gui.Find(f.PlayerGui)
+        check(root == nil and bar == nil, "reparented bar respects " .. mode)
+        flush()
+        check(
+            core.Enabled and f.Bar.Parent == f.Content and not f.Bar.Visible,
+            "visibility loss restores native Backpack and original bar"
+        )
+        stop()
+        flush()
+        print("PASS reparent visibility", mode)
+    end
+    do
+        local f = screenFixture(390, 844)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        local duplicate = new("Frame", "Hotbar", f.Content)
+        local countBefore = #warnings
+        local root, bar = Gui.Find(f.PlayerGui)
+        check(
+            root == nil and bar == nil and #warnings == countBefore + 1,
+            "content and hosted bar ambiguity warns and returns neither"
+        )
+        Gui.Find(f.PlayerGui)
+        check(#warnings == countBefore + 1, "ambiguity warning deduplicated")
+        local duplicateAgain = new("Frame", "Hotbar", f.Content)
+        root, bar = Gui.Find(f.PlayerGui)
+        check(root == nil and bar == nil, "multiple content bars cannot conceal hosted ambiguity")
+        duplicate:Destroy()
+        duplicateAgain:Destroy()
+        flush()
+        stop()
+        flush()
+        print("PASS reparent ambiguity")
+    end
+    for _, case in
+        {
+            { 390, 844, "touch", 93, 16 },
+            { 844, 390, "touch", 64, 16 },
+            { 1920, 1080, "desktop", 96, 12 },
+            { 1920, 1080, "gamepad", 96, 54 },
+        }
+    do
+        local width, height, mode = case[1], case[2], case[3]
+        local f = screenFixture(width, height)
+        uis.TouchEnabled, uis.GamepadEnabled = mode == "touch", mode == "gamepad"
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        local screenHost = f.Bar.Parent
+        near(screenHost.AbsoluteSize.X, width, "screen host width")
+        near(screenHost.AbsoluteSize.Y, height, "screen host height")
+        near(f.Bar.AbsoluteSize.Y, case[4], "height measured against screen host")
+        near(-f.Bar.Position.Y.Offset, case[5], "bottom rule measured against screen host")
+        near(f.Bar.AbsoluteSize.X, math.min(width * 0.483333319, width * 0.9, 960), "host width and existing cap")
+        near(f.Content.AbsoluteSize.Y, math.min(height, width / (16 / 9)), "desktop remains letterboxed")
+        check(not core.Enabled, "docked viewport remains custom")
+        if width == 390 then
+            f.Root.Pixels = v(844, 390)
+            screenHost:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+            flush()
+            near(f.Bar.AbsoluteSize.Y, 64, "rotation remeasures height without inventory event")
+            near(f.Bar.AbsoluteSize.X, 844 * 0.483333319, "rotation recalculates pixel-derived width")
+            near(-f.Bar.Position.Y.Offset, 16, "rotation redocks bottom")
+            f.Root.Pixels = v(390, 844)
+            screenHost:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+            flush()
+            near(f.Bar.AbsoluteSize.Y, 93, "rotation back restores portrait height")
+            check(f.Bar.Parent == screenHost and not core.Enabled, "rotation preserves ownership and native handoff")
+        end
+        stop()
+        flush()
+        print("PASS reparent viewport", width, height, mode, "bottom", case[5], "height", case[4])
+    end
+    uis.TouchEnabled, uis.GamepadEnabled = false, false
+    do
+        local f = screenFixture(390, 844)
+        f.Root.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(f.Bar.Parent.ZIndex == 1 and f.Bar.ZIndex == 538, "Global leaves host default and retains bar stacking")
+        stop()
+        flush()
+        print("PASS reparent Global stacking")
+    end
+    do
+        local f = screenFixture(390, 844)
+        local countBefore = #warnings
+        failHostCreation = true
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(
+            f.Bar.Parent == f.Content and not core.Enabled,
+            "host creation failure retains original viewport logic and custom Backpack handoff"
+        )
+        near(f.Bar.AbsoluteSize.Y, 64, "failure measures letterboxed content")
+        check(
+            #warnings == countBefore + 1 and string.find(warnings[#warnings], "forced host creation failure", 1, true),
+            "reparent failure reports reason once"
+        )
+        f.Backpack:GetChildren()[1].Name = "Apple renamed"
+        flush()
+        check(#warnings == countBefore + 1, "reparent failure does not warn again on render")
+        check(f.Root:FindFirstChild("HotbarHost") == nil, "failed creation leaves no host")
+        stop()
+        flush()
+        failHostCreation = false
+        print("PASS reparent failure soft fallback")
+        -- A subsequent session can dock the same bar after ordinary release.
+        local stopAgain = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(f.Bar.Parent.Name == "HotbarHost" and not core.Enabled, "reinit docks original restored bar")
+        stopAgain()
+        flush()
+        print("PASS reparent reinitialization")
+    end
+    for _, stage in { "host parent", "bar parent", "marker" } do
+        local f = screenFixture(390, 844)
+        failReparentStage = stage
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(
+            f.Bar.Parent == f.Content and not f.Bar.Destroyed and not core.Enabled,
+            "partial reparent rolls back and keeps working custom bar: " .. stage
+        )
+        check(
+            f.Bar:GetAttribute("HotbarReparented") == nil and f.Root:FindFirstChild("HotbarHost") == nil,
+            "partial reparent clears marker and destroys only empty host: " .. stage
+        )
+        near(f.Bar.AbsoluteSize.Y, 64, "partial failure uses existing content resize")
+        stop()
+        flush()
+        failReparentStage = nil
+        print("PASS reparent rollback", stage)
+    end
+    do
+        local f = screenFixture(390, 844)
+        local foreignHost = new("Frame", "HotbarHost", f.Root)
+        foreignHost.Size = UDim2.fromScale(1, 1)
+        local anchor, position, size = f.Bar.AnchorPoint, f.Bar.Position, f.Bar.Size
+        foreignHost:SetAttribute("HotbarAuthoredAnchor", anchor)
+        foreignHost:SetAttribute("HotbarAuthoredPosition", position)
+        foreignHost:SetAttribute("HotbarAuthoredSize", size)
+        f.Bar.Parent = foreignHost
+        f.Bar.Size = UDim2.fromScale(0.4, 0.1)
+        f.Bar:SetAttribute("HotbarReparented", true)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(
+            f.Bar.Parent == foreignHost and not core.Enabled,
+            "already hosted bar continues without nesting or taking host ownership"
+        )
+        local hosts = 0
+        for _, child in f.Root:GetChildren() do
+            if child.Name == "HotbarHost" then
+                hosts += 1
+            end
+        end
+        check(hosts == 1, "already reparented bar gets no duplicate host")
+        stop()
+        flush()
+        check(
+            f.Bar.Parent == f.Content and not foreignHost.Destroyed and not f.Bar.Destroyed,
+            "unowned host is preserved; recovery parent is original DesktopContent"
+        )
+        check(
+            f.Bar.AnchorPoint == anchor and f.Bar.Position == position and f.Bar.Size == size,
+            "stale host metadata restores authored geometry instead of resized geometry"
+        )
+        foreignHost:Destroy()
+        print("PASS reparent already hosted guard")
+    end
+    if testCase == "reparent" then
+        return
+    end
+end
+
 if testCase == "all" or testCase == "docking" or testCase == "dock-portrait" or testCase == "dock-landscape" then
     for _, size in { v(390, 844), v(844, 390) } do
         if testCase == "dock-portrait" and size.X ~= 390 or testCase == "dock-landscape" and size.X ~= 844 then
             continue
         end
         local f = fixture(true)
-        f.Desktop.Pixels = size
+        f.Root.Pixels = size
         -- Narrow authored fake ensures the expanded right control has zero overlap.
         f.Bar.Size = UDim2.fromScale(if size.X == 390 then 0.34 else 0.4, 0.088888891)
         uis.TouchEnabled = true
@@ -660,7 +967,7 @@ if testCase == "all" or testCase == "docking" then
     for _, viewport in viewports do
         local name, width, height, input, bottom, target = table.unpack(viewport)
         local f = fixture(true)
-        f.Desktop.Pixels = v(width, height)
+        f.Root.Pixels = v(width, height)
         uis.TouchEnabled, uis.GamepadEnabled = input == "touch", input == "gamepad"
         for i = 1, 12 do
             f.Tool("Apple", "Apple", i)
@@ -694,8 +1001,8 @@ if testCase == "all" or testCase == "docking" then
     -- Widened authored bar shrinks before lifting; all slots still scroll.
     for _, leftSide in { false, true } do
         local f = fixture(true)
-        f.Desktop.Pixels = v(844, 390)
-        f.Desktop.ScreenPosition = v(37, 55)
+        f.Root.Pixels = v(844, 390)
+        f.Root.ScreenPosition = v(37, 55)
         f.Bar.Size = UDim2.fromScale(0.95, 0.1)
         touchButton(f, "JumpButton", 37 + (if leftSide then 0 else 744), 55 + 270, if leftSide then 120 else 100, 120)
         for i = 1, 12 do
@@ -720,7 +1027,7 @@ if testCase == "all" or testCase == "docking" then
     -- Only the overlapping control contributes to a necessary, permitted lift.
     do
         local f = fixture(true)
-        f.Desktop.Pixels = v(240, 500)
+        f.Root.Pixels = v(240, 500)
         touchButton(f, "JumpButton", 150, 400, 90, 100)
         cas.Buttons.ThrowHeld = touchButton(f, "Throw", 0, 200, 20, 300)
         f.Tool("Apple", "Apple", 1)
@@ -735,7 +1042,7 @@ if testCase == "all" or testCase == "docking" then
     -- High and invisible action buttons cannot lift or shrink the bar.
     do
         local f = fixture(true)
-        f.Desktop.Pixels = v(844, 390)
+        f.Root.Pixels = v(844, 390)
         cas.Buttons.SprintHeld = touchButton(f, "Sprint", 400, 130, 70, 70)
         cas.Buttons.IceShotgunFire = touchButton(f, "Fire", 400, 270, 70, 120)
         cas.Buttons.IceShotgunFire.Visible = false
@@ -750,7 +1057,7 @@ if testCase == "all" or testCase == "docking" then
     end
     do
         local f = fixture(true)
-        f.Desktop.Pixels = v(240, 390)
+        f.Root.Pixels = v(240, 390)
         touchButton(f, "JumpButton", 145, 150, 95, 240)
         local tool = f.Tool("Apple", "Apple", 1)
         local before = #warnings
@@ -772,7 +1079,7 @@ if testCase == "all" or testCase == "docking" then
     -- Late Jump/CAS additions and removals use the existing coalesced UI watch.
     do
         local f = fixture(true)
-        f.Desktop.Pixels = v(844, 390)
+        f.Root.Pixels = v(844, 390)
         f.Bar.Size = UDim2.fromScale(0.9, 0.1)
         local tool = f.Tool("Apple", "Apple", 1)
         local stop = Controller.Start(f.Player, f.PlayerGui)
@@ -810,7 +1117,7 @@ if testCase == "all" or testCase == "docking" then
     end
     for _, size in { v(390, 80), v(47, 500) } do
         local f = fixture(true)
-        f.Desktop.Pixels = size
+        f.Root.Pixels = size
         uis.TouchEnabled = true
         f.Tool("Apple", "Apple", 1)
         local stop = Controller.Start(f.Player, f.PlayerGui)
@@ -825,7 +1132,7 @@ if testCase == "all" or testCase == "docking" then
     -- User-approved label accommodation at the new 64px minimum band.
     do
         local f = fixture(true)
-        f.Desktop.Pixels = v(844, 390)
+        f.Root.Pixels = v(844, 390)
         local tool = f.Tool("WWWWWWWWWWWWWWWWWWWW's Head", "Apple", 1)
         local stop = Controller.Start(f.Player, f.PlayerGui)
         flush()
@@ -842,7 +1149,7 @@ if testCase == "all" or testCase == "docking" then
             bounds.Y <= text.AbsoluteSize.Y and text.Position.Y.Scale + text.Size.Y.Scale / 2 <= 1,
             "long label fits inside slot"
         )
-        f.Desktop.Pixels = v(1920, 1080)
+        f.Root.Pixels = v(1920, 1080)
         tool.Name = "Apple"
         flush()
         near(icon.Size.Y.Scale, 0.625, "authored icon size restored when room returns")
@@ -861,7 +1168,7 @@ if testCase == "aspect" then
     local ratios = {}
     for _, width in { 320, 768, 1280, 1920 } do
         local f = fixture(true)
-        f.Desktop.Pixels = v(width, 1080)
+        f.Root.Pixels = v(width, 1080)
         f.Tool("Apple", "Apple", 1)
         local stop = Controller.Start(f.Player, f.PlayerGui)
         flush()
@@ -945,6 +1252,7 @@ do
         end
     end
     check(slots == 9 and Gui.Resolve(f.PlayerGui) ~= nil, "actual newest export resolves nine authored buttons")
+    local content = actualBar.Parent
     local stop = Controller.Start(f.Player, f.PlayerGui)
     flush()
     if core.Enabled then
@@ -954,7 +1262,6 @@ do
         not core.Enabled and cas.Actions.HotbarSelect ~= nil and not actualBar.Visible,
         "actual export hands off after empty render; unused bar hidden"
     )
-    local content = actualBar.Parent
     local generic = content
         :FindFirstChild("Upgrades")
         :FindFirstChild("UpgradeScroll")
@@ -1220,7 +1527,7 @@ do
 end
 do
     local f = fixture(true)
-    f.Desktop.Pixels = v(320, 600)
+    f.Root.Pixels = v(320, 600)
     uis.TouchEnabled = true
     for i = 1, 12 do
         f.Tool("Apple", "Missing", i)
@@ -1242,7 +1549,7 @@ end
 -- Actual glyph rasterization and safe insets remain Studio acceptance checks.
 for _, viewport in { v(320, 568), v(768, 1024), v(800, 600), v(1920, 1080), v(1920, 1080) } do
     local f = fixture(true)
-    f.Desktop.Pixels = viewport
+    f.Root.Pixels = viewport
     local longestName = "WWWWWWWWWWWWWWWWWWWW's Head"
     for i = 1, 12 do
         f.Tool(if i == 1 then longestName else "Apple", "Apple", i)
@@ -1359,7 +1666,7 @@ do
     -- A non-square authored design proves the floor grows uniformly, rather
     -- than assuming all future exports are squares.
     local f = fixture(true)
-    f.Desktop.Pixels = v(320, 568)
+    f.Root.Pixels = v(320, 568)
     for _, button in f.Bar:GetChildren() do
         if button:IsA("GuiButton") then
             button.Size = UDim2.fromScale(0.206896558, 1)

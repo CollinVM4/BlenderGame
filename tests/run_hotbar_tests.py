@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(__doc__)
 parser.add_argument("--luau", default="luau")
-parser.add_argument("--case", choices=("all", "aspect", "template", "dock-portrait", "dock-landscape", "docking"), default="all")
+parser.add_argument("--case", choices=("all", "aspect", "template", "dock-portrait", "dock-landscape", "docking", "reparent"), default="all")
 args = parser.parse_args()
 paths = {
     "UIRegistry": "src/client/UI/UIRegistry.luau",

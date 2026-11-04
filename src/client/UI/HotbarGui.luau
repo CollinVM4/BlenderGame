@@ -174,21 +174,61 @@ function Gui.Find(playerGui: PlayerGui): (ScreenGui?, GuiObject?)
     end
     local content = Registry.Content(desktop)
     local bar = Registry.Child(content, "Hotbar", { "Hotbar" }, "GuiObject")
-    return root, bar :: GuiObject?
+    local hasAuthoredBar = bar ~= nil
+    if content and not bar then
+        for _, child in content:GetChildren() do
+            if Registry.Matches(child, "Hotbar", { "Hotbar" }) then
+                hasAuthoredBar = true
+            end
+        end
+    end
+    local reparented: GuiObject? = nil
+    for _, host in root:GetChildren() do
+        if host.Name == "HotbarHost" and host:IsA("GuiObject") then
+            for _, child in host:GetChildren() do
+                if
+                    child.Name == "Hotbar"
+                    and child:IsA("GuiObject")
+                    and child:GetAttribute("HotbarReparented") == true
+                then
+                    if hasAuthoredBar or reparented then
+                        issue(root, "ambiguous hotbar; native Backpack retained")
+                        return nil, nil
+                    end
+                    reparented = child
+                end
+            end
+        end
+    end
+    return root, reparented or bar :: GuiObject?
 end
 function Gui.Resolve(playerGui: PlayerGui): View?
     local root, bar = Gui.Find(playerGui)
     if not root or not bar then
         return nil
     end
-    local desktop = bar.Parent
+    local desktop: Instance? = nil
+    for _, candidate in Registry.Desktops(playerGui) do
+        if Registry.ActiveRoot(candidate, playerGui) == root then
+            desktop = Registry.Content(candidate)
+            break
+        end
+    end
     if not desktop then
         return nil
     end
     local slots: { Slot } = {}
-    for sibling, child in bar:GetChildren() do
+    -- During controller ownership the same authored buttons live in its scroll.
+    local slotParent = bar:FindFirstChild("HotbarScroll")
+    local children = bar:GetChildren()
+    if slotParent and slotParent:IsA("ScrollingFrame") then
+        for _, child in slotParent:GetChildren() do
+            table.insert(children, child)
+        end
+    end
+    for sibling, child in children do
         if Registry.Matches(child, "Slot1", { "Slot1", "Slot1_button", "Slot1_button_smooth" }) then
-            local slot = Gui.Slot(child, " (direct child #" .. tostring(sibling) .. ")")
+            local slot = Gui.Slot(child, " (slot child #" .. tostring(sibling) .. ")")
             if slot then
                 table.insert(slots, slot)
             end

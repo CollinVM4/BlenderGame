@@ -144,6 +144,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local pristine: GuiButton? = nil
     local host: ScrollingFrame? = nil
     local ownedHost = false
+    -- Separate from host, the ScrollingFrame inside the bar.
+    local screenHost: Frame? = nil
+    local ownedScreenHost = false
+    local originalBarParent: GuiObject? = nil
     local layout: UIListLayout? = nil
     local ownedLayout = false
     local savedLayout: any = nil
@@ -242,12 +246,22 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             host:Destroy()
         end
         if view then
+            if originalBarParent and originalBarParent.Parent and view.Bar.Parent ~= originalBarParent then
+                view.Bar.Parent = originalBarParent
+            end
+            view.Bar:SetAttribute("HotbarReparented", nil)
             if savedBar then
                 view.Bar.AnchorPoint, view.Bar.Position, view.Bar.Size =
                     savedBar.AnchorPoint, savedBar.Position, savedBar.Size
             end
             view.Bar.Visible = false
         end
+        -- Never destroy a host while the bar is still inside it (for example,
+        -- when its original UI was removed during teardown).
+        if ownedScreenHost and screenHost and (not view or not view.Bar:IsDescendantOf(screenHost)) then
+            screenHost:Destroy()
+        end
+        screenHost, originalBarParent, ownedScreenHost = nil, nil, false
         view, host, layout, savedBar, savedLayout = nil, nil, nil, nil, nil
         ownedHost, ownedLayout = false, false
         mutating = wasMutating
@@ -552,7 +566,73 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             slot.Button.Visible = false
         end
         pristine = nextView.Slots[1].Button:Clone()
-        savedBar = { AnchorPoint = bar.AnchorPoint, Position = bar.Position, Size = bar.Size }
+        local parent = bar.Parent
+        local alreadyOwned = ownedScreenHost and screenHost ~= nil and parent == screenHost
+        if not alreadyOwned then
+            savedBar = { AnchorPoint = bar.AnchorPoint, Position = bar.Position, Size = bar.Size }
+            if parent and parent:IsA("GuiObject") then
+                originalBarParent = parent
+            end
+            if parent and parent.Name == "HotbarHost" and bar:GetAttribute("HotbarReparented") == true then
+                -- Do not nest another host or take ownership of another instance's
+                -- host. Recovery still returns the bar to its desktop content.
+                originalBarParent = nil
+                for _, desktop in Registry.Desktops(playerGui) do
+                    if Registry.ActiveRoot(desktop, playerGui) == nextView.Root then
+                        local content = Registry.Content(desktop)
+                        if content and content:IsA("GuiObject") then
+                            originalBarParent = content
+                        end
+                        break
+                    end
+                end
+                local anchor = parent:GetAttribute("HotbarAuthoredAnchor")
+                local position = parent:GetAttribute("HotbarAuthoredPosition")
+                local size = parent:GetAttribute("HotbarAuthoredSize")
+                if typeof(anchor) == "Vector2" and typeof(position) == "UDim2" and typeof(size) == "UDim2" then
+                    savedBar = { AnchorPoint = anchor, Position = position, Size = size }
+                end
+            end
+        end
+        local moved, reason = pcall(function()
+            if alreadyOwned then
+                return true
+            end
+            assert(originalBarParent, "bar requires its original GuiObject parent")
+            assert(not bar:GetAttribute("HotbarReparented"), "bar already reparented by another instance")
+            assert(nextView.Root and nextView.Root:IsA("ScreenGui"), "missing ScreenGui root")
+            local created = Instance.new("Frame")
+            screenHost, ownedScreenHost = created, true
+            created.Name = "HotbarHost"
+            created.Size, created.Position, created.AnchorPoint =
+                UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Vector2.zero
+            created.BackgroundTransparency, created.BorderSizePixel = 1, 0
+            created.Active, created.ClipsDescendants, created.Visible = false, false, true
+            -- Retain authored geometry if a later setup encounters a stale host.
+            created:SetAttribute("HotbarAuthoredAnchor", savedBar.AnchorPoint)
+            created:SetAttribute("HotbarAuthoredPosition", savedBar.Position)
+            created:SetAttribute("HotbarAuthoredSize", savedBar.Size)
+            if nextView.Root.ZIndexBehavior == Enum.ZIndexBehavior.Sibling then
+                created.ZIndex = (originalBarParent :: GuiObject).ZIndex
+            end
+            created.Parent = nextView.Root
+            bar.Parent = created
+            bar:SetAttribute("HotbarReparented", true)
+            return true
+        end)
+        if not moved then
+            if ownedScreenHost and screenHost then
+                -- Roll back even when setting the marker failed after the move.
+                bar.Parent = originalBarParent
+                bar:SetAttribute("HotbarReparented", nil)
+                screenHost:Destroy()
+            end
+            screenHost, ownedScreenHost = nil, false
+            if parent and parent:IsA("Frame") and parent.Name == "HotbarHost" and bar.Parent == parent then
+                screenHost = parent
+            end
+            warning("reparent", "screen host unavailable; retaining existing hotbar placement: " .. tostring(reason))
+        end
         if bar:IsA("ScrollingFrame") then
             host = bar
         else
@@ -600,6 +680,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             bind(slot, false, metrics[index])
         end
         table.insert(uiConnections, scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
+        if screenHost then
+            table.insert(uiConnections, screenHost:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
+        end
         table.insert(
             uiConnections,
             list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
