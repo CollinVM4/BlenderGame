@@ -7,6 +7,7 @@ export type IngredientItem = {
     IngredientId: string,
     ItemId: string,
     Origin: IngredientOrigin,
+    MuncherGeneration: number?,
     RipenessStoredSeconds: number,
     RipenessStoredAt: number?,
     IsRipe: boolean,

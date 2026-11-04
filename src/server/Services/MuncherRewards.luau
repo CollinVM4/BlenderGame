@@ -56,9 +56,76 @@ function Rewards.Weights(tier: number, value: number): { { Id: string, Weight: n
     return effective
 end
 
+-- Generation is server item metadata, never supplied by the feed request.
+function Rewards.Generation(attribute: any, fallback: any): number
+    local generation = if attribute ~= nil then attribute else fallback
+    return if type(generation) == "number"
+            and generation >= 0
+            and generation < math.huge
+        then math.floor(generation)
+        else 0
+end
+
+function Rewards.ChainStacks(generation: number): number
+    return math.min(generation, Config.ChainNerfMaxStacks)
+end
+
+-- Clamp to available winning mass: exhausted wins become zero, never negative.
+function Rewards.ChainWeights(
+    pool: { { Id: string, Weight: number } },
+    value: number,
+    generation: number,
+    definition: (string) -> any
+): { { Id: string, Weight: number } }
+    local shiftable = 0
+    for _, entry in pool do
+        if entry.Id ~= "Dragon_Fruit" and definition(entry.Id).Value > value then
+            shiftable += entry.Weight
+        end
+    end
+    local moved = math.min(Rewards.ChainStacks(generation) * Config.ChainNerfBasisPoints, shiftable)
+    local effective = {}
+    for index, entry in pool do
+        local weight = entry.Weight
+        if shiftable > 0 and entry.Id ~= "Dragon_Fruit" and definition(entry.Id).Value > value then
+            weight *= 1 - moved / shiftable
+        end
+        if index == 1 then
+            weight += moved
+        end
+        table.insert(effective, { Id = entry.Id, Weight = weight })
+    end
+    return effective
+end
+
+local function weightedRoll(pool: { { Id: string, Weight: number } }, total: number, rng: any): string
+    local roll = rng:NextNumber() * total
+    local cumulative = 0
+    for _, entry in pool do
+        cumulative += entry.Weight
+        if entry.Weight > 0 and roll < cumulative then
+            return entry.Id
+        end
+    end
+    for index = #pool, 1, -1 do
+        if pool[index].Weight > 0 then
+            return pool[index].Id
+        end
+    end
+    error("Empty Muncher reward selection")
+end
+
 -- RNG and the unmodified catalog input value come only from the server.
-function Rewards.Roll(tier: number, rng: any, definition: (string) -> any, value: number?): string
-    local pool = Rewards.Weights(tier, value or Config.TierMinimums[tier])
+function Rewards.Roll(
+    tier: number,
+    rng: any,
+    definition: (string) -> any,
+    value: number?,
+    generation: number?,
+    pity: boolean?
+): string
+    local inputValue = value or Config.TierMinimums[tier]
+    local pool = Rewards.Weights(tier, inputValue)
     local total = 0
     for _, entry in pool do
         assert(entry.Id ~= "PlayerHead" and entry.Id ~= "Player_Head", "Player heads cannot be rewards")
@@ -66,14 +133,16 @@ function Rewards.Roll(tier: number, rng: any, definition: (string) -> any, value
         total += entry.Weight
     end
     assert(math.abs(total - 10000) < 0.000001, "Muncher pool must total 10000 basis points")
-    local roll = rng:NextNumber() * total
-    local cumulative = 0
-    for _, entry in pool do
-        cumulative += entry.Weight
-        if roll < cumulative then
-            return entry.Id
+    if pity then
+        local wins, winTotal = {}, 0
+        for _, entry in pool do
+            if definition(entry.Id).Value > inputValue then
+                table.insert(wins, entry)
+                winTotal += entry.Weight
+            end
         end
+        return if winTotal > 0 then weightedRoll(wins, winTotal, rng) else pool[#pool].Id
     end
-    return pool[#pool].Id
+    return weightedRoll(Rewards.ChainWeights(pool, inputValue, generation or 0, definition), total, rng)
 end
 return Rewards

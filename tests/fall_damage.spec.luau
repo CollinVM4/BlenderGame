@@ -59,6 +59,16 @@ local effective = math.max(0, normalJumpLandingSpeed - maxJumpPower)
 check(fallDamage.ComputeDamage(effective) == 0, "landing from one's own max-tier jump is always safe")
 
 fallDamage.Init({
+    WingsService = {
+        IsWingControlled = function(p)
+            return p.WingMode == "Powered" or p.WingMode == "Gliding"
+        end,
+        ResetFallEpisode = function() end,
+        ObserveFallLanding = function() end,
+        ConsumeGlideLandingProtection = function()
+            return false
+        end,
+    },
     MovementService = {
         IsInitialized = function()
             return true
@@ -86,6 +96,7 @@ local function subject(jumpPower)
     local character = instance("Model")
     character.Parent, p.Character = workspaceFake, character
     local h = instance("Humanoid")
+    h.Player = p
     h.Parent, h.Health = character, 1000
     h.Mode, h.FloorMaterial, h.PlatformStand = "Physics", "Air", true
     h.JumpPower, h.JumpHeight, h.UseJumpPower, h.HipHeight = jumpPower, 7.2, true, 2
@@ -118,7 +129,10 @@ local function subject(jumpPower)
     groundHeight = nil
     return p, h, root, torso
 end
-local function step(h, root, y, grounded, seconds)
+local function step(h, root, y, grounded, seconds, wingMode)
+    if wingMode ~= nil then
+        h.Player.WingMode = wingMode
+    end
     root.AssemblyLinearVelocity = vec(38, y, 0)
     h.FloorMaterial = if grounded then "Concrete" else "Air"
     groundNormal = if grounded then vec(0, 1, 0) else nil
@@ -160,6 +174,105 @@ end
 local function expected(peak, jumpPower)
     return fallDamage.ComputeDamage(math.max(0, peak - math.min(jumpPower, config.CompensationCap)))
 end
+-- Wing entry resets the measured drop, independently of velocity sign. The
+-- real wing eligibility/landing latch contracts live in wings_flight.spec.
+for _, mode in { "Powered", "Gliding" } do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, -220, false)
+    local slowed = if mode == "Powered" then -40 else -20
+    step(h, root, slowed, false, nil, mode)
+    local resets = events("reset")
+    check(
+        #resets == 1 and has(resets[1], "reason=wing-boost") and has(resets[1], "previousPeak=220"),
+        mode .. " negative-velocity entry emits exactly one reset of the lethal peak"
+    )
+    for _ = 1, 3 do
+        step(h, root, slowed, false)
+    end
+    check(#events("reset") == 1, mode .. " sustained control does not repeatedly reset the fresh peak")
+    step(h, root, -80, false, nil, "Falling")
+    land(h, root)
+    check(
+        #h.Damages == 0 and has(events("damage")[1], "peak=80"),
+        mode .. " release and short fall evaluates only the fresh safe peak"
+    )
+    fallDamage.RemovePlayer(p)
+end
+do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, -220, false)
+    step(h, root, -40, false, nil, "Powered")
+    step(h, root, -220, false, nil, "Falling")
+    land(h, root)
+    check(h.Damages[1] == config.LethalDamage, "boost then fresh lethal fall has no immunity or release grace")
+    fallDamage.RemovePlayer(p)
+end
+do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, -220, false)
+    step(h, root, -40, false, nil, "Powered")
+    step(h, root, -180, false, nil, "Falling")
+    step(h, root, -20, false, nil, "Gliding")
+    local resets = events("reset")
+    check(
+        #resets == 2 and has(resets[2], "reason=wing-boost") and has(resets[2], "previousPeak=180"),
+        "release and re-engage resets the fresh peak a second time"
+    )
+    step(h, root, -70, false, nil, "Falling")
+    land(h, root)
+    check(#h.Damages == 0 and has(events("damage")[1], "peak=70"), "second entry measures only the second fresh drop")
+    fallDamage.RemovePlayer(p)
+end
+for _, initialDown in { 0, 180 } do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, -initialDown, false, nil, "Powered")
+    step(h, root, -220, false)
+    check(#events("reset") == 0, "already-controlled episode start never counts as mid-fall entry")
+    step(h, root, 30, false)
+    local resets = events("reset")
+    check(
+        #resets == 1 and has(resets[1], "reason=wing-ascent") and has(resets[1], "previousPeak=220"),
+        "already-controlled upward reversal preserves the wing-ascent reset"
+    )
+    step(h, root, -70, false, nil, "Falling")
+    land(h, root)
+    check(#h.Damages == 0, "wing-ascent still discards the previous drop")
+    fallDamage.RemovePlayer(p)
+end
+do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, 0, false)
+    step(h, root, 0, false, nil, "Powered")
+    step(h, root, -220, false)
+    step(h, root, -220, false, nil, "Falling")
+    land(h, root)
+    check(
+        #events("reset") == 0 and h.Damages[1] == config.LethalDamage,
+        "zero-peak entry emits nothing and cannot reset later descent while held"
+    )
+    fallDamage.RemovePlayer(p)
+end
+-- Uncontrolled falls retain their full peak, including release without a boost.
+for _, released in { false, true } do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, -220, false)
+    if released then
+        step(h, root, -40, false, nil, "Falling")
+    end
+    land(h, root)
+    check(
+        h.Damages[1] == config.LethalDamage and #events("reset") == 0,
+        if released then "release without wing entry retains the lethal peak" else "no-wings fall retains lethal damage"
+    )
+    fallDamage.RemovePlayer(p)
+end
+
 -- Walk-off and jump-off from identical heights, repeated without a settling pause.
 for _, jumpPower in { 60, 85, 95, 116 } do
     local p, h, root = subject(jumpPower)

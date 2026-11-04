@@ -261,3 +261,146 @@ for _, child in model:GetDescendants() do
     check(child:GetAttribute("MuncherPrompt") == nil, "component never creates marked feed prompt")
 end
 cleanup()
+
+-- Session pity is settled only with a consumed input; generation belongs to the item.
+muncher.Reset(p)
+unlock()
+local oldPrint = env.print
+local committed = {}
+config.DebugLogging, config.LogLimit = true, 1000
+env.print = function(message)
+    if string.find(message, "result=Committed", 1, true) then
+        table.insert(committed, message)
+    end
+end
+local function loggedFeed(id, generation)
+    local object = thrown(id)
+    if generation then
+        object:SetAttribute("MuncherGeneration", generation)
+    end
+    setup(feed(object), "pity/generation feed")
+    local snapshot = muncher.GetSnapshot(p)
+    local diagnostic = committed[#committed]
+    finish()
+    return snapshot, diagnostic, spawned[#spawned]
+end
+roll = 0
+for loss = 1, 5 do
+    local snapshot, diagnostic = loggedFeed("Apple")
+    check(
+        snapshot.ResultKind == "Lose" and string.find(diagnostic, "ConsecutiveLosses=" .. loss, 1, true) ~= nil,
+        "consecutive committed losses increment session pity"
+    )
+end
+local pitySnapshot, pityDiagnostic, pityOutput = loggedFeed("Apple", 5)
+check(
+    pitySnapshot.ResultKind == "Win"
+        and string.find(pityDiagnostic, "PityApplied=true ConsecutiveLosses=0", 1, true) ~= nil,
+    "sixth feed guarantees win and resets losses despite chain"
+)
+check(pityOutput:GetAttribute("MuncherGeneration") == 6, "pity still increments generation")
+local _, lossDiagnostic = loggedFeed("Apple")
+check(string.find(lossDiagnostic, "ConsecutiveLosses=1", 1, true) ~= nil, "pity starts new streak")
+roll = 0.999999
+local winSnapshot, winDiagnostic = loggedFeed("Apple")
+check(
+    winSnapshot.ResultKind == "Win" and string.find(winDiagnostic, "ConsecutiveLosses=0", 1, true) ~= nil,
+    "normal win resets losing streak"
+)
+roll = 0
+loggedFeed("Apple")
+local pushSnapshot, pushDiagnostic = loggedFeed("Rock")
+check(
+    pushSnapshot.ResultKind == "Push" and string.find(pushDiagnostic, "ConsecutiveLosses=0", 1, true) ~= nil,
+    "push breaks losing streak"
+)
+-- Failed consumption cannot contribute a loss or spend pity.
+for _ = 1, 4 do
+    loggedFeed("Apple")
+end
+local consume = ingredients.Consume
+local rejected = thrown("Apple")
+ingredients.Consume = function()
+    return nil
+end
+check(not feed(rejected), "failed consumption cannot commit pity progress")
+ingredients.Consume = consume
+local fifthSnapshot, fifthDiagnostic = loggedFeed("Apple")
+check(
+    fifthSnapshot.ResultKind == "Lose"
+        and string.find(fifthDiagnostic, "PityApplied=false ConsecutiveLosses=5", 1, true) ~= nil,
+    "failed consume leaves loss counter unchanged"
+)
+local ceilingSnapshot, ceilingDiagnostic = loggedFeed("Dragon_Fruit", 8)
+check(
+    ceilingSnapshot.OutputId == "Dragon_Fruit"
+        and ceilingSnapshot.ResultKind == "Push"
+        and string.find(ceilingDiagnostic, "PityApplied=true ConsecutiveLosses=0", 1, true) ~= nil,
+    "ceiling pity returns highest output and resets"
+)
+-- Exercise commit's actual attribute-first and record-fallback paths.
+local fallback = originalSpawn(
+    "Apple",
+    frame(),
+    nil,
+    true,
+    { FeedingActor = p, FeedingSessionId = authority.GetSessionId(p), MuncherGeneration = 3 }
+)
+local fallbackRoot = cache.WorldUtil.Part(fallback)
+fallbackRoot.Position, fallbackRoot.CFrame = input.Position, frame(input.Position)
+fallbackRoot.GetConnectedParts = function()
+    return {}
+end
+fallback:SetAttribute("MuncherGeneration", nil)
+setup(feed(fallback), "record fallback feed")
+check(
+    string.find(committed[#committed], "InputGeneration=3 OutputGeneration=4 ChainStacks=3", 1, true) ~= nil,
+    "commit reads record when generation attribute absent"
+)
+finish()
+local attributeFirst = originalSpawn(
+    "Apple",
+    frame(),
+    nil,
+    true,
+    { FeedingActor = p, FeedingSessionId = authority.GetSessionId(p), MuncherGeneration = 3 }
+)
+local attributeRoot = cache.WorldUtil.Part(attributeFirst)
+attributeRoot.Position, attributeRoot.CFrame = input.Position, frame(input.Position)
+attributeRoot.GetConnectedParts = function()
+    return {}
+end
+attributeFirst:SetAttribute("MuncherGeneration", 1)
+setup(feed(attributeFirst), "attribute first feed")
+check(
+    string.find(committed[#committed], "InputGeneration=1 OutputGeneration=2 ChainStacks=1", 1, true) ~= nil,
+    "commit prefers attribute over record"
+)
+finish()
+local travelling = spawned[#spawned]
+local other = player(3)
+local otherModel = instance("Model")
+otherModel.Name, otherModel.Parent = "Muncher", authority.GetPlot(other)
+local otherInput, otherPad = part("InputZone", otherModel), part("PurchasePoint1", otherModel)
+otherInput.Position = input.Position
+muncher.Reset(other)
+authority.SetCash(other, config.PurchaseCost)
+setup(muncher.TryPurchase(other, otherPad, nil), "other player purchase")
+now += config.RevealSeconds
+setup(muncher.CompleteReveal(other, otherModel), "other player reveal")
+setup(inventory.CarryWorldItem(other, travelling), "other player acquires chained output")
+local otherThrown = inventory.ThrowHeld(other)
+local otherRoot = cache.WorldUtil.Part(otherThrown)
+otherRoot.Position, otherRoot.CFrame = otherInput.Position, frame(otherInput.Position)
+otherRoot.GetConnectedParts = function()
+    return {}
+end
+setup(muncher.TryStartConversion(other, otherInput, otherThrown, "WorldVacuum", nil), "other player refeeds output")
+check(
+    string.find(committed[#committed], "InputGeneration=2 OutputGeneration=3 ChainStacks=2", 1, true) ~= nil,
+    "chain follows item across players rather than their session"
+)
+finish()
+check(spawned[#spawned]:GetAttribute("MuncherGeneration") == 3, "new owner output continues original chain")
+config.DebugLogging = false
+env.print = oldPrint

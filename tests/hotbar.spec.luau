@@ -305,6 +305,9 @@ new = function(class, name, parent)
                     props.CanvasSize.Y.Scale * size.Y + props.CanvasSize.Y.Offset
                 )
             elseif key == "AbsolutePosition" then
+                if props.ScreenPosition then
+                    return props.ScreenPosition
+                end
                 if not props.Parent then
                     return v(0, 0)
                 end
@@ -379,13 +382,19 @@ end
 function cas:UnbindAction(name)
     self.Actions[name] = nil
 end
-function cas:GetButton()
-    return nil
+cas.Buttons = {}
+function cas:GetButton(action)
+    return self.Buttons[action]
 end
 local guiService = new("GuiService")
 guiService.MenuIsOpen = false
+guiService.BottomInset = 0
+function guiService:GetGuiInset()
+    return v(0, 36), v(0, self.BottomInset)
+end
 local uis = {
     TouchEnabled = false,
+    GamepadEnabled = false,
     Focus = nil,
     GetFocusedTextBox = function(self)
         return self.Focus
@@ -594,6 +603,257 @@ local function visible(f)
 end
 local function label(button)
     return button:GetChildren()[1].Text
+end
+
+-- Placement regressions exercise the real resize through render, not copied math.
+local function touchButton(f, name, x, y, width, height)
+    local touch = f.PlayerGui:FindFirstChild("TouchGui") or new("ScreenGui", "TouchGui", f.PlayerGui)
+    local button = new("ImageButton", name)
+    button.Pixels, button.ScreenPosition = v(width, height), v(x, y)
+    button.Parent = touch
+    return button
+end
+local function near(actual, expected, message)
+    check(
+        math.abs(actual - expected) < 0.001,
+        message .. ": " .. tostring(actual) .. " expected " .. tostring(expected)
+    )
+end
+if testCase == "all" or testCase == "docking" or testCase == "dock-portrait" or testCase == "dock-landscape" then
+    for _, size in { v(390, 844), v(844, 390) } do
+        if testCase == "dock-portrait" and size.X ~= 390 or testCase == "dock-landscape" and size.X ~= 844 then
+            continue
+        end
+        local f = fixture(true)
+        f.Desktop.Pixels = size
+        -- Narrow authored fake ensures the expanded right control has zero overlap.
+        f.Bar.Size = UDim2.fromScale(if size.X == 390 then 0.34 else 0.4, 0.088888891)
+        uis.TouchEnabled = true
+        touchButton(f, "JumpButton", size.X - 100, size.Y - 200, 100, 120)
+        touchButton(f, "Thumbstick", 0, size.Y - 120, 120, 120)
+        f.Tool("Apple", "Apple", 1)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        print("Dock regression", size.X, size.Y, "bottom", -f.Bar.Position.Y.Offset)
+        near(-f.Bar.Position.Y.Offset, 16, "non-overlapping right-edge control must not lift")
+        stop()
+        flush()
+        uis.TouchEnabled = false
+    end
+    if testCase == "dock-portrait" or testCase == "dock-landscape" then
+        return
+    end
+end
+
+if testCase == "all" or testCase == "docking" then
+    local viewports = {
+        { "phone portrait", 390, 844, "touch", 16, 93 },
+        { "phone landscape", 844, 390, "touch", 16, 64 },
+        { "small phone landscape", 740, 360, "touch", 16, 64 },
+        { "tablet portrait", 820, 1180, "touch", 16, 96 },
+        { "tablet landscape", 1180, 820, "touch", 16, 90 },
+        { "narrow desktop", 1024, 768, "desktop", 12, 84 },
+        { "desktop", 1920, 1080, "desktop", 12, 96 },
+        { "console 1080p", 1920, 1080, "gamepad", 54, 96 },
+        { "console 720p", 1280, 720, "gamepad", 36, 79 },
+    }
+    for _, viewport in viewports do
+        local name, width, height, input, bottom, target = table.unpack(viewport)
+        local f = fixture(true)
+        f.Desktop.Pixels = v(width, height)
+        uis.TouchEnabled, uis.GamepadEnabled = input == "touch", input == "gamepad"
+        for i = 1, 12 do
+            f.Tool("Apple", "Apple", i)
+        end
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(not core.Enabled, name .. " custom bar renders")
+        near(-f.Bar.Position.Y.Offset, bottom, name .. " safe bottom")
+        near(f.Bar.AbsoluteSize.Y, target, name .. " adaptive height")
+        near(f.Bar.AbsoluteSize.X, math.min(width * 0.483333319, width * 0.9, 960), name .. " authored width")
+        check(f.Bar.AnchorPoint.X == 0.5 and f.Bar.AnchorPoint.Y == 1, name .. " bottom anchor")
+        local buttons = visible(f)
+        check(#buttons == 12, name .. " overfill retained")
+        for _, button in buttons do
+            near(button.AbsoluteSize.X / button.AbsoluteSize.Y, 1, name .. " slot ratio")
+            check(button.AbsoluteSize.X >= 48 and button.AbsoluteSize.Y >= 48, name .. " hit floor")
+            check(button.Selectable, name .. " selectable")
+        end
+        check(
+            buttons[1].NextSelectionRight == buttons[2] and buttons[2].NextSelectionLeft == buttons[1],
+            name .. " navigation order"
+        )
+        buttons[12].Activated:Fire()
+        flush()
+        check(f.Bar:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.X > 0, name .. " selected overflow revealed")
+        print("PASS viewport", name, width, height, input, "bottom", bottom, "height", target)
+        stop()
+        flush()
+    end
+    uis.TouchEnabled, uis.GamepadEnabled = true, false
+    -- Widened authored bar shrinks before lifting; all slots still scroll.
+    for _, leftSide in { false, true } do
+        local f = fixture(true)
+        f.Desktop.Pixels = v(844, 390)
+        f.Desktop.ScreenPosition = v(37, 55)
+        f.Bar.Size = UDim2.fromScale(0.95, 0.1)
+        touchButton(f, "JumpButton", 37 + (if leftSide then 0 else 744), 55 + 270, if leftSide then 120 else 100, 120)
+        for i = 1, 12 do
+            f.Tool("Apple", "Apple", i)
+        end
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        near(
+            f.Bar.AbsoluteSize.X,
+            if leftSide then 588 else 628,
+            "shrink clears expanded control in absolute coordinates"
+        )
+        near(-f.Bar.Position.Y.Offset, 16, "shrink stays docked")
+        check(
+            #visible(f) == 12
+                and f.Bar:FindFirstChildOfClass("ScrollingFrame").AbsoluteCanvasSize.X > f.Bar.AbsoluteSize.X,
+            "shrunk overflow retained"
+        )
+        stop()
+        flush()
+    end
+    -- Only the overlapping control contributes to a necessary, permitted lift.
+    do
+        local f = fixture(true)
+        f.Desktop.Pixels = v(240, 500)
+        touchButton(f, "JumpButton", 150, 400, 90, 100)
+        cas.Buttons.ThrowHeld = touchButton(f, "Throw", 0, 200, 20, 300)
+        f.Tool("Apple", "Apple", 1)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        near(-f.Bar.Position.Y.Offset, 108, "lift includes overlapping Jump only")
+        near(f.Bar.AbsoluteSize.X, 240 * 0.483333319, "lift preserves candidate width")
+        stop()
+        flush()
+        cas.Buttons = {}
+    end
+    -- High and invisible action buttons cannot lift or shrink the bar.
+    do
+        local f = fixture(true)
+        f.Desktop.Pixels = v(844, 390)
+        cas.Buttons.SprintHeld = touchButton(f, "Sprint", 400, 130, 70, 70)
+        cas.Buttons.IceShotgunFire = touchButton(f, "Fire", 400, 270, 70, 120)
+        cas.Buttons.IceShotgunFire.Visible = false
+        f.Tool("Apple", "Apple", 1)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        near(-f.Bar.Position.Y.Offset, 16, "high/invisible controls ignored")
+        near(f.Bar.AbsoluteSize.X, 844 * 0.483333319, "high/invisible controls do not shrink")
+        stop()
+        flush()
+        cas.Buttons = {}
+    end
+    do
+        local f = fixture(true)
+        f.Desktop.Pixels = v(240, 390)
+        touchButton(f, "JumpButton", 145, 150, 95, 240)
+        local tool = f.Tool("Apple", "Apple", 1)
+        local before = #warnings
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        tool.Name = "Pear"
+        flush()
+        near(-f.Bar.Position.Y.Offset, 16, "excessive lift docks")
+        near(f.Bar.AbsoluteSize.X, 96 + (240 * 0.483333319) * 8 / 928, "cap uses two hit areas plus converted gap")
+        check(
+            #warnings == before + 1
+                and string.find(warnings[#warnings], "240x390", 1, true)
+                and string.find(warnings[#warnings], "JumpButton", 1, true),
+            "cap warns once per viewport with control name"
+        )
+        stop()
+        flush()
+    end
+    -- Late Jump/CAS additions and removals use the existing coalesced UI watch.
+    do
+        local f = fixture(true)
+        f.Desktop.Pixels = v(844, 390)
+        f.Bar.Size = UDim2.fromScale(0.9, 0.1)
+        local tool = f.Tool("Apple", "Apple", 1)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        local jump = touchButton(f, "JumpButton", 744, 270, 100, 120)
+        flush()
+        near(f.Bar.AbsoluteSize.X, 628, "late Jump triggers clearance")
+        jump:Destroy()
+        flush()
+        near(f.Bar.AbsoluteSize.X, 844 * 0.9, "removed Jump restores width")
+        local action = touchButton(f, "Throw", 744, 270, 100, 120)
+        cas.Buttons.ThrowHeld = action
+        flush()
+        near(f.Bar.AbsoluteSize.X, 628, "late CAS triggers clearance")
+        action.Visible = false
+        flush()
+        near(f.Bar.AbsoluteSize.X, 844 * 0.9, "observed visibility restores width")
+        guiService.BottomInset = 31
+        uis.GamepadEnabled = true
+        tool.Name = "Pear"
+        flush()
+        near(-f.Bar.Position.Y.Offset, 31, "touch wins hybrid and reads second inset Y")
+        uis.TouchEnabled = false
+        tool.Name = "Apple"
+        flush()
+        near(-f.Bar.Position.Y.Offset, 20, "gamepad reclassified each resize with ceil")
+        uis.GamepadEnabled = false
+        tool.Name = "Pear"
+        flush()
+        near(-f.Bar.Position.Y.Offset, 12, "desktop ignores touch controls")
+        stop()
+        flush()
+        cas.Buttons = {}
+        guiService.BottomInset = 0
+    end
+    for _, size in { v(390, 80), v(47, 500) } do
+        local f = fixture(true)
+        f.Desktop.Pixels = size
+        uis.TouchEnabled = true
+        f.Tool("Apple", "Apple", 1)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(
+            core.Enabled and cas.Actions.HotbarSelect == nil and not f.Bar.Visible,
+            "size guard restores native Backpack"
+        )
+        stop()
+        flush()
+    end
+    -- User-approved label accommodation at the new 64px minimum band.
+    do
+        local f = fixture(true)
+        f.Desktop.Pixels = v(844, 390)
+        local tool = f.Tool("WWWWWWWWWWWWWWWWWWWW's Head", "Apple", 1)
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        check(not core.Enabled and #visible(f) == 1, "long label remains in custom short bar")
+        local button = visible(f)[1]
+        local icon, text = button:FindFirstChild("SlotIcon"), button:FindFirstChild("Label")
+        local iconBottom = icon.Position.Y.Scale + icon.Size.Y.Scale * (1 - icon.AnchorPoint.Y)
+        local textTop = text.Position.Y.Scale - text.Size.Y.Scale / 2
+        check(iconBottom <= textTop, "reserved label band does not overlap icon")
+        near(icon.AbsoluteSize.X / icon.AbsoluteSize.Y, 1, "reduced icon keeps authored aspect")
+        check(icon.AbsoluteSize.Y >= 24, "short-band icon remains visible")
+        local bounds = measure(text.Text, 8, text.Font, text.AbsoluteSize)
+        check(
+            bounds.Y <= text.AbsoluteSize.Y and text.Position.Y.Scale + text.Size.Y.Scale / 2 <= 1,
+            "long label fits inside slot"
+        )
+        f.Desktop.Pixels = v(1920, 1080)
+        tool.Name = "Apple"
+        flush()
+        near(icon.Size.Y.Scale, 0.625, "authored icon size restored when room returns")
+        stop()
+        flush()
+    end
+    uis.TouchEnabled, uis.GamepadEnabled = false, false
+    print("Docking contracts passed")
+    if testCase == "docking" then
+        return
+    end
 end
 
 -- Stage A reproductions run independently against the pre-change production modules.
@@ -865,6 +1125,10 @@ do
     flush()
     check(smoothie1.Parent == f.Character, "menu ignores keyboard")
     guiService.MenuIsOpen = false
+    guiService.BottomInset = 0
+    function guiService:GetGuiInset()
+        return v(0, 36), v(0, self.BottomInset)
+    end
     f.Player.GameplayPaused = true
     callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
     flush()

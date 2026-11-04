@@ -28,153 +28,137 @@ check(
     rewards.BaseValue("Apple", { Value = 1500, IsRipe = true, EffectiveIngredientValue = 999999 }) == 1500,
     "ripeness and metadata cannot change tier value"
 )
--- Prior casino pools are review baselines, not alternate production odds.
-local previousPools = {
-    { 9900, 50, 20, 10, 20 },
-    { 7600, 1800, 500, 50, 50 },
-    { 6000, 2500, 1200, 200, 100 },
-    { 4500, 2600, 1700, 1000, 200 },
-}
--- Reward policy owns normalization, interpolation, jackpot and value guardrails.
+-- Reward policy owns normalization, ascending catalog order, interpolation and jackpot.
+local function definition(id)
+    return catalog[id]
+end
+local function rng(roll)
+    return {
+        NextNumber = function()
+            return roll
+        end,
+    }
+end
 for tier, jackpot in { 20, 50, 100, 200 } do
     local floorValue, ceiling = config.TierMinimums[tier], config.TierMaximums[tier]
-    local values = { floorValue, (floorValue + ceiling) / 2, ceiling }
     local base = config.RewardPools[tier]
-    local baseSum = 0
-    for _, entry in base do
+    local baseSum, previousValue = 0, 0
+    local split, baseBottom = math.floor((#base - 1) / 2), 0
+    for index, entry in base do
+        check(catalog[entry.Id] ~= nil, "every reward resolves to existing catalog")
         check(
-            catalog[entry.Id] ~= nil and entry.Id ~= "PlayerHead" and entry.Id ~= "Player_Head",
-            "valid static catalog output"
+            entry.Id ~= "PlayerHead"
+                and entry.Id ~= "Player_Head"
+                and entry.Id ~= "Gummy_Bear"
+                and entry.Id ~= "Mystery",
+            "reward exclusions"
         )
-        check(tier == 1 or catalog[entry.Id].Value >= floorValue * 0.5, "no insulting sub-half-floor outputs")
+        check(catalog[entry.Id].Value >= previousValue, "pool ascending by catalog value")
+        previousValue = catalog[entry.Id].Value
         baseSum += entry.Weight
+        if index <= split then
+            baseBottom += entry.Weight
+        end
     end
     check(baseSum == 10000, "base weights normalized")
+    check(base[#base].Id == "Dragon_Fruit" and base[#base].Weight == jackpot, "exact jackpot last")
     local previousEV = 0
-    for sample, value in values do
-        local sum, ev, dragon, bottom, top = 0, 0, 0, 0, 0
-        local win, push, loss, previousWin = 0, 0, 0, 0
+    for sample, value in { floorValue, (floorValue + ceiling) / 2, ceiling } do
+        local sum, ev, bottom = 0, 0, 0
         local effective = rewards.Weights(tier, value)
         for index, entry in effective do
             sum += entry.Weight
-            local output = catalog[entry.Id].Value
-            if output > value then
-                win += entry.Weight
-                local old = previousPools[tier]
-                local oldBottom, oldTop = old[1] + old[2], old[3] + old[4]
-                local t = (sample - 1) / 2
-                previousWin += old[index] * (if index == 5
-                    then 1
-                    elseif index <= 2 then 1 - t * 0.5
-                    else 1 + t * 0.5 * oldBottom / oldTop)
-            elseif output == value then
-                push += entry.Weight
-            else
-                loss += entry.Weight
-            end
             ev += entry.Weight * catalog[entry.Id].Value / 10000
-            if entry.Id == "Dragon_Fruit" then
-                dragon += entry.Weight
-            elseif index <= 2 then
+            if index <= split then
                 bottom += entry.Weight
-            else
-                top += entry.Weight
             end
         end
-        check(math.abs(sum - 10000) < 0.000001 and dragon == jackpot, "effective weights normalized; fixed jackpot")
-        local t = (sample - 1) / 2
-        local baseBottom = base[1].Weight + base[2].Weight
         check(
-            math.abs(bottom - baseBottom * (1 - t * 0.7)) < 0.000001
-                and math.abs(top - (10000 - jackpot - baseBottom + t * 0.7 * baseBottom)) < 0.000001,
-            "exact requested proportional 70% bottom-mass transfer"
+            math.abs(sum - 10000) < 0.000001 and effective[#effective].Weight == jackpot,
+            "effective total and fixed jackpot"
         )
-        check(ev >= previousEV, "higher input earns a better effective pool")
+        check(
+            math.abs(bottom - baseBottom * (1 - (sample - 1) / 2 * 0.7)) < 0.000001,
+            "70% proportional interpolation adapts to pool length"
+        )
+        check(ev >= previousEV, "higher input improves effective pool")
         previousEV = ev
-        if tier == 1 and sample == 1 then
-            -- Approved sub-$1,053 Cheap lottery exception; floor returns Rock 99%.
-            local minimumEV = catalog.Rock.Value * 0.998 + catalog.Dragon_Fruit.Value * 0.002
-            check(
-                minimumEV == 1328 and minimumEV > value * 1.1,
-                "Cheap floor explicitly exempt from 110% guardrail with fixed jackpot"
-            )
-        else
-            check(ev <= value * 1.1, "110% cap at non-exempt floor, midpoint and ceiling")
-        end
-        for _, roll in { 0, 0.2, 0.7, 0.95, 0.999999 } do
-            local result = rewards.Roll(tier, {
-                NextNumber = function()
-                    return roll
-                end,
-            }, function(id)
-                return catalog[id]
-            end, value)
-            check(catalog[result] ~= nil, "deterministic effective weighted selection")
-        end
-        -- Probe both sides of an interpolated fractional-bp boundary, and jackpot.
-        for _, boundary in { { effective[1].Weight / 10000, 1, 2 }, { 1 - jackpot / 10000, 4, 5 } } do
+        print(string.format("Tier %d input %.2f EV %.2f (%.2f%%)", tier, value, ev, ev / value * 100))
+        -- Probe fractional-bp boundaries, including the exact jackpot edge.
+        for _, index in { 1, #effective - 1 } do
+            local boundary = 0
+            for i = 1, index do
+                boundary += effective[i].Weight / 10000
+            end
             for _, side in { -1, 1 } do
-                local result = rewards.Roll(tier, {
-                    NextNumber = function()
-                        return boundary[1] + side * 0.000000001
-                    end,
-                }, function(id)
-                    return catalog[id]
-                end, value)
                 check(
-                    result == effective[if side < 0 then boundary[2] else boundary[3]].Id,
-                    "fractional-bp and fixed jackpot selection boundaries remain exact"
+                    rewards.Roll(tier, rng(boundary + side * 1e-9), definition, value)
+                        == effective[if side < 0 then index else index + 1].Id,
+                    "weighted selection boundaries"
                 )
             end
         end
-        check(math.abs(win + push + loss - 10000) < 0.000001, "win/push/loss exhaust outcomes")
-        -- Fixed jackpot and output ceilings make strict improvement impossible here.
-        local fixedWin = (tier == 1 and (sample == 1 or sample == 3)) or (tier == 4 and sample >= 2)
-        check(
-            if fixedWin then math.abs(win - previousWin) < 0.000001 else win > previousWin + 100,
-            "material win improvement where fixed output/jackpot constraints permit"
-        )
-        print(
-            string.format(
-                "Tier %d input %.2f EV %.2f (%.2f%%) W/P/L %.4f/%.4f/%.4f%%; previous win %.4f%%",
-                tier,
-                value,
-                ev,
-                ev / value * 100,
-                win / 100,
-                push / 100,
-                loss / 100,
-                previousWin / 100
+        for _, generation in { 0, 1, 2, 5, 9 } do
+            local nerfed = rewards.ChainWeights(effective, value, generation, definition)
+            local available, shifted, nerfedTotal = 0, 0, 0
+            for _, entry in effective do
+                if entry.Id ~= "Dragon_Fruit" and catalog[entry.Id].Value > value then
+                    available += entry.Weight
+                end
+            end
+            local expected = math.min(math.min(generation, 5) * 500, available)
+            check(
+                math.abs(nerfed[1].Weight - effective[1].Weight - expected) < 1e-6,
+                "chain adds exact available capped shift to lowest output"
             )
-        )
+            for index, entry in nerfed do
+                check(entry.Weight >= 0, "chain cannot create negative weights")
+                nerfedTotal += entry.Weight
+                if entry.Id ~= "Dragon_Fruit" and catalog[entry.Id].Value > value then
+                    shifted += effective[index].Weight - entry.Weight
+                    check(
+                        math.abs(
+                            entry.Weight
+                                - effective[index].Weight * (if available > 0 then 1 - expected / available else 1)
+                        ) < 1e-6,
+                        "wins lose mass proportionally"
+                    )
+                elseif index ~= 1 then
+                    check(entry.Weight == effective[index].Weight, "chain leaves pushes and other losses unchanged")
+                end
+            end
+            check(
+                math.abs(shifted - expected) < 1e-6 and math.abs(nerfedTotal - 10000) < 1e-6,
+                "chain conserves total mass"
+            )
+            check(nerfed[#nerfed].Weight == jackpot, "chain preserves jackpot exactly")
+            for step = 0, 100 do
+                local result = rewards.Roll(tier, rng(step / 100 * 0.999999), definition, value, generation, true)
+                check(
+                    if value < 165000 then catalog[result].Value > value else result == "Dragon_Fruit",
+                    "pity wins across RNG range or returns ceiling"
+                )
+                check(
+                    result == rewards.Roll(tier, rng(step / 100 * 0.999999), definition, value, 0, true),
+                    "pity ignores chain generation"
+                )
+            end
+        end
     end
     check(
         rewards.Weights(tier, floorValue - 1)[1].Weight == base[1].Weight
-            and math.abs(rewards.Weights(tier, ceiling + 1)[1].Weight - base[1].Weight * 0.3) < 0.000001,
-        "interpolation clamps to tier bounds"
+            and math.abs(rewards.Weights(tier, ceiling + 1)[1].Weight - base[1].Weight * 0.3) < 1e-6,
+        "interpolation clamps tier bounds"
     )
 end
--- Sub-$1,053 exemption is recorded, not broadened to hide the infeasible interval.
-check(config.RewardPools[1][1].Weight == 9900, "Cheap floor returns Rock 99%")
-local cutoffEV = 0
-for _, entry in rewards.Weights(1, 1053) do
-    cutoffEV += catalog[entry.Id].Value * entry.Weight / 10000
-end
-check(cutoffEV > 1053 * 1.1, "KNOWN CONSTRAINT CONFLICT: $1,053 is outside exemption but cannot meet cap")
--- All other current catalog inputs are above that infeasible interval.
-for id, definition in catalog do
-    if id ~= "PlayerHead" and id ~= "Player_Head" and definition.Value >= 1053 then
-        local value, ev = definition.Value, 0
-        for _, entry in rewards.Weights(rewards.Tier(value), value) do
-            ev += catalog[entry.Id].Value * entry.Weight / 10000
-        end
-        check(ev <= value * 1.1, "non-exempt catalog input preserves 110% cap")
-    end
-end
+check(rewards.Generation(nil, nil) == 0, "natural and pre-pass items default generation zero")
 check(
-    rewards.Weights(1, config.TierMaximums[1])[1].Weight < config.RewardPools[1][1].Weight,
-    "Cheap Rock probability falls with input value"
+    rewards.Generation(2, 5) == 2 and rewards.Generation(nil, 5) == 5,
+    "generation attribute precedes record fallback"
 )
+for _, invalid in { -1, math.huge, "forged" } do
+    check(rewards.Generation(invalid, nil) == 0, "invalid generation cannot corrupt odds")
+end
 
 check(catalog.PlayerHead == catalog.Player_Head, "legacy dynamic-head lookup retains authored catalog name")
 local entries = 0

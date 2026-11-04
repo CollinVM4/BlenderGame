@@ -19,6 +19,7 @@ type Record = {
     FeedingActor: Player?,
     FeedingSessionId: string?,
     MuncherImmune: boolean,
+    MuncherGeneration: number?,
     Reserved: boolean?,
 }
 local records: { [Instance]: Record } = {}
@@ -44,6 +45,7 @@ function IngredientService.Spawn(
         FeedingActor: Player?,
         FeedingSessionId: string?,
         MuncherImmune: boolean?,
+        MuncherGeneration: number?,
         PrepareSpawn: ((Instance, CFrame) -> CFrame?)?,
         BeforePublish: ((Instance) -> ())?,
     }?
@@ -54,6 +56,9 @@ function IngredientService.Spawn(
         else Item.New(id, HttpService:GenerateGUID(false), if options then options.Origin else nil)
     if id == "PlayerHead" and options and options.VisualTemplate then
         item.VisualKey = Geometry.CapturePlayerHead(options.VisualTemplate)
+    end
+    if options and options.MuncherGeneration ~= nil then
+        item.MuncherGeneration = options.MuncherGeneration
     end
     local object = IngredientService.CreateVisual(id, item)
     if not object then
@@ -70,6 +75,8 @@ function IngredientService.Spawn(
     object.Name = id
     object:SetAttribute("IngredientId", id)
     object:SetAttribute("WorldItemId", item.ItemId)
+    -- Throws/drops rebuild catalog geometry; restore item-side generation explicitly.
+    object:SetAttribute("MuncherGeneration", item.MuncherGeneration)
     Item.ApplySourceMetadata(object, item)
     object:SetAttribute("EffectiveIngredientValue", Item.GetIngredientValue(item, workspace:GetServerTimeNow()))
     object:SetAttribute("IsRipe", item.IsRipe)
@@ -102,6 +109,7 @@ function IngredientService.Spawn(
         FeedingActor = if options then options.FeedingActor else nil,
         FeedingSessionId = if options then options.FeedingSessionId else nil,
         MuncherImmune = options ~= nil and options.MuncherImmune == true,
+        MuncherGeneration = item.MuncherGeneration,
         Claimable = claimable ~= false,
         Item = item,
         -- Server lifecycle state, deliberately separate from presentation/item metadata.

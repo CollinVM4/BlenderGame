@@ -38,6 +38,8 @@ type Binding = {
     OriginalParent: Instance?,
     Clone: boolean,
     Metrics: Gui.Metrics,
+    IconSize: UDim2,
+    IconPosition: UDim2,
 }
 local function disconnect(list: { RBXScriptConnection })
     for _, c in list do
@@ -213,6 +215,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         table.clear(controls)
         for _, binding in pool do
             clearBinding(binding)
+            binding.Slot.Icon.Size, binding.Slot.Icon.Position = binding.IconSize, binding.IconPosition
             binding.Connection:Disconnect()
             if binding.Clone then
                 binding.Slot.Button:Destroy()
@@ -285,6 +288,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             OriginalParent = slot.Button.Parent,
             Clone = clone,
             Metrics = metrics,
+            IconSize = slot.Icon.Size,
+            IconPosition = slot.Icon.Position,
             Connection = slot.Button.Activated:Connect(function()
                 selectTool(binding.Tool)
             end),
@@ -337,13 +342,25 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             return false
         end
         local pixels = parent.AbsoluteSize
-        if pixels.X < MIN_SLOT_WIDTH or pixels.Y < BAR_HEIGHT + 24 then
+        -- Reclassify each resize: hybrid devices use touch clearance.
+        local touch = UIS.TouchEnabled
+        local bottom = 12
+        if touch then
+            local _, bottomRightInset = GuiService:GetGuiInset()
+            bottom = math.max(16, bottomRightInset.Y)
+        elseif UIS.GamepadEnabled then
+            bottom = math.ceil(pixels.Y * 0.05)
+        end
+        local targetHeight = math.clamp(math.floor(pixels.Y * 0.11 + 0.5), 64, BAR_HEIGHT)
+        if pixels.X < MIN_SLOT_WIDTH or pixels.Y < targetHeight + bottom + 12 then
             return false
         end
-        -- The export uses relative dimensions (0.483333 x 0.088889).
-        -- Cap the authored desktop width; keep a fixed target band on phones.
-        local bottom = 12
-        if UIS.TouchEnabled then
+        local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
+        local barWidth = pixels.X * math.min(0.9, MAX_WIDTH / pixels.X, desiredWidth / pixels.X)
+        local origin = parent.AbsolutePosition
+        local center = origin.X + pixels.X / 2
+        local left, right = center - barWidth / 2, center + barWidth / 2
+        if touch then
             local buttons: { GuiButton } = {}
             for _, action in { "SprintHeld", "ThrowHeld", "IceShotgunFire" } do
                 local button = CAS:GetButton(action)
@@ -359,6 +376,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                     end
                 end
             end
+            local overlapping: { GuiButton } = {}
             for _, button in buttons do
                 if not controls[button] then
                     controls[button] = true
@@ -366,20 +384,56 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                         table.insert(uiConnections, button:GetPropertyChangedSignal(property):Connect(schedule))
                     end
                 end
-                if button.Visible then
-                    bottom = math.max(bottom, parent.AbsolutePosition.Y + pixels.Y - button.AbsolutePosition.Y + 8)
+                local position, size = button.AbsolutePosition, button.AbsoluteSize
+                if
+                    button.Visible
+                    and position.Y + size.Y >= origin.Y + pixels.Y * 0.6
+                    and position.X - 8 < right
+                    and position.X + size.X + 8 > left
+                then
+                    table.insert(overlapping, button)
+                end
+            end
+            if #overlapping > 0 then
+                local allowedWidth = barWidth
+                local lift = bottom
+                local highest = overlapping[1]
+                for _, button in overlapping do
+                    local position, size = button.AbsolutePosition, button.AbsoluteSize
+                    local allowed = if position.X + size.X / 2 >= center
+                        then 2 * (position.X - 8 - center)
+                        else 2 * (center - position.X - size.X - 8)
+                    allowedWidth = math.min(allowedWidth, allowed)
+                    local clearance = origin.Y + pixels.Y - position.Y + 8
+                    if clearance > lift then
+                        lift, highest = clearance, button
+                    end
+                end
+                -- The host fills the bar. Convert the saved layout gap just as
+                -- the slot loop does; the outer frame never grows for overflow.
+                local gap = layout.Padding.Scale * barWidth + layout.Padding.Offset
+                local minimumWidth = 2 * MIN_SLOT_WIDTH + gap
+                if allowedWidth >= minimumWidth then
+                    barWidth = allowedWidth
+                elseif lift <= pixels.Y * 0.35 then
+                    bottom = lift
+                else
+                    barWidth = minimumWidth
+                    warning(
+                        "lift:" .. tostring(pixels.X) .. "x" .. tostring(pixels.Y),
+                        string.format(
+                            "touch clearance exceeds 35%% at %gx%g (%s); docking minimum-width hotbar",
+                            pixels.X,
+                            pixels.Y,
+                            highest.Name
+                        )
+                    )
                 end
             end
         end
-        if pixels.Y < bottom + BAR_HEIGHT + 12 then
-            return false
-        end
         current.Bar.AnchorPoint = Vector2.new(0.5, 1)
         current.Bar.Position = UDim2.new(0.5, 0, 1, -bottom)
-        -- The floor affects the canvas only, never the outer bar width.
-        local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
-        current.Bar.Size =
-            UDim2.fromScale(math.min(0.9, MAX_WIDTH / pixels.X, desiredWidth / pixels.X), BAR_HEIGHT / pixels.Y)
+        current.Bar.Size = UDim2.fromScale(barWidth / pixels.X, targetHeight / pixels.Y)
         local padding = scroll:FindFirstChildOfClass("UIPadding")
         local width = scroll.AbsoluteWindowSize.X
         local horizontalPadding = if padding
@@ -394,6 +448,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         for _, binding in pool do
             local slot, metrics = binding.Slot, binding.Metrics
             local label = slot.Label :: TextLabel
+            slot.Icon.Size, slot.Icon.Position = binding.IconSize, binding.IconPosition
             -- Uniform growth meets BOTH floors before constraints run. Neither
             -- constraint resolution order nor overflow can stretch one axis.
             local slotWidth =
@@ -419,6 +474,26 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 )
             end
             local height = slotWidth / metrics.Ratio
+            -- Short bands can need more label room at the authored minimum
+            -- font size. Reserve that room by reducing the icon uniformly,
+            -- keeping its top edge and ratio; never overlap text and artwork.
+            if bounds.Y + 1 > height * available then
+                local iconHeight = slot.Icon.Size.Y.Scale
+                local iconTop = slot.Icon.Position.Y.Scale - iconHeight * slot.Icon.AnchorPoint.Y
+                local room = 0.98 - (bounds.Y + 1) / height - 0.01 - iconTop
+                if room > 0 and room * height >= 24 and iconHeight > 0 then
+                    local factor = math.min(1, room / iconHeight)
+                    slot.Icon.Size = UDim2.fromScale(binding.IconSize.X.Scale * factor, iconHeight * factor)
+                    slot.Icon.Position = UDim2.new(
+                        binding.IconPosition.X.Scale,
+                        binding.IconPosition.X.Offset,
+                        iconTop + iconHeight * factor * slot.Icon.AnchorPoint.Y,
+                        binding.IconPosition.Y.Offset
+                    )
+                    iconBottom = iconTop + iconHeight * factor
+                    available = math.max(0.1, 0.98 - iconBottom)
+                end
+            end
             if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
                 return false
             end

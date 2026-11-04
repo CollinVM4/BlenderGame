@@ -221,7 +221,7 @@ do
     check(expectedDamage >= 100, "recorded peak is lethal without wing protection")
     for _, mode in { "Powered", "Gliding" } do
         local p, h, root = lethalFall(true, mode)
-        tick(p, h, root, 0.025, 0, true)
+        tick(p, h, root, 0.1, 0, true)
         check(h.Health == 100, mode .. " held through lethal-peak landing prevents all damage")
         check(
             string.find(damageRecord(), "reason=glide-protected", 1, true) ~= nil,
@@ -237,8 +237,9 @@ do
         local p, h, root = lethalFall(true, mode)
         wings.SetJumpHeld(p, false)
         check(state(p) == "Falling", "releasing " .. mode .. " immediately revokes the engaged state")
+        tick(p, h, root, 0.025, -220, false)
         tick(p, h, root, 0.025, 0, true)
-        check(h.Health == 100 - expectedDamage, "release before touchdown gets full peak damage without grace")
+        check(h.Health == 100 - expectedDamage, "fresh lethal fall after release gets full peak damage without grace")
     end
     local unowned, uh, ur = lethalFall(false, nil)
     wings.SetJumpHeld(unowned, true)
@@ -279,15 +280,49 @@ do
             "upward wing burst discards the old peak; subsequent descent is evaluated fresh"
         )
     end
-    for _, insufficientRecovery in { 0, -5 } do
+    for _, insufficientRecovery in { 0, -5, -40 } do
         local falling, fallingHumanoid, fallingRoot = lethalFall(true, "Powered")
         tick(falling, fallingHumanoid, fallingRoot, 0.025, insufficientRecovery, false)
         wings.SetJumpHeld(falling, false)
-        tick(falling, fallingHumanoid, fallingRoot, 0.025, 0, true)
+        tick(falling, fallingHumanoid, fallingRoot, 0.1, 0, true)
         check(
-            fallingHumanoid.Health == 100 - expectedDamage,
-            "slowing or stopping descent without upward recovery retains the old peak after release"
+            fallingHumanoid.Health == 100,
+            "wing entry while slowing or stopping descent discards the old peak before release"
         )
+    end
+    for _, mode in { "Powered", "Gliding" } do
+        local boosted, bh, br = subject(true)
+        if mode == "Gliding" then
+            wings.SetJumpHeld(boosted, true)
+            fly(boosted, bh, br, 1.8)
+            wings.SetJumpHeld(boosted, false)
+        end
+        table.clear(records)
+        setup(fall.EnableDiagnostics(boosted), "partial boost diagnostics enabled")
+        tick(boosted, bh, br, 0.025, -220, false)
+        wings.SetJumpHeld(boosted, true)
+        local slowed = if mode == "Powered" then -40 else -20
+        -- First tick publishes wing control; the next samples that entry.
+        tick(boosted, bh, br, 0.025, slowed, false)
+        tick(boosted, bh, br, 0.025, slowed, false)
+        check(state(boosted) == mode, mode .. " slowdown uses the real server wing state")
+        local boosts = 0
+        for _, record in records do
+            if string.find(record, "reason=wing-boost", 1, true) then
+                boosts += 1
+                check(string.find(record, "previousPeak=220", 1, true) ~= nil, mode .. " resets the lethal peak")
+            end
+        end
+        check(boosts == 1, mode .. " negative-velocity entry emits one wing-boost reset")
+        wings.SetJumpHeld(boosted, false)
+        tick(boosted, bh, br, 0.025, -70, false)
+        tick(boosted, bh, br, 0.025, 0, true)
+        check(
+            bh.Health == 1000 and string.find(damageRecord(), "peak=70", 1, true) ~= nil,
+            mode .. " partial boost then release lands using only the fresh peak"
+        )
+        fall.RemovePlayer(boosted)
+        wings.RemovePlayer(boosted)
     end
     local inactive, inactiveHumanoid, inactiveRoot = lethalFall(true, nil)
     tick(inactive, inactiveHumanoid, inactiveRoot, 0.025, 30, false)

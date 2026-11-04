@@ -18,6 +18,7 @@ type State = {
     Airborne: boolean,
     Peak: number,
     SoftTime: number,
+    WasWingControlled: boolean,
     LastPosition: Vector3,
     LastVelocity: Vector3,
     Connections: { RBXScriptConnection },
@@ -40,6 +41,7 @@ local function reset(player: Player, state: State)
     state.Airborne = false
     state.Peak = 0
     state.SoftTime = 0
+    state.WasWingControlled = false
     state.LastPosition = state.Root.Position
     state.LastVelocity = state.Root.AssemblyLinearVelocity
 end
@@ -247,6 +249,7 @@ local function evaluateLanding(player: Player, state: State, cause: string)
     end
     -- Consume before TakeDamage, which can synchronously trigger death/reset.
     state.Airborne, state.Peak, state.SoftTime = false, 0, 0
+    state.WasWingControlled = false
     local before = humanoid.Health
     if damage > 0 then
         humanoid:TakeDamage(damage)
@@ -302,6 +305,7 @@ function FallDamageService.ApplyCharacter(player: Player, character: Model)
         Airborne = false,
         Peak = 0,
         SoftTime = 0,
+        WasWingControlled = false,
         LastPosition = root.Position,
         LastVelocity = root.AssemblyLinearVelocity,
         Connections = {},
@@ -390,11 +394,13 @@ function FallDamageService.Init(dependencies)
                 continue
             end
             state.LastPosition, state.LastVelocity = root.Position, velocity
+            local wingControlled = WingsService ~= nil and WingsService.IsWingControlled(player) == true
             local down = math.max(0, -velocity.Y)
             local support = supported(state, mode)
             if not state.Airborne then
                 if not support then
                     state.Airborne, state.Peak, state.SoftTime = true, down, 0
+                    state.WasWingControlled = wingControlled
                     if WingsService then
                         WingsService.ResetFallEpisode(player, state.Character, true)
                     end
@@ -402,13 +408,14 @@ function FallDamageService.Init(dependencies)
                 end
                 continue
             end
-            if
-                not support
-                and state.Peak > 0
-                and velocity.Y > 0
-                and WingsService
-                and WingsService.IsWingControlled(player)
-            then
+            if state.Peak > 0 and wingControlled and not state.WasWingControlled then
+                -- Engaging wings starts a fresh drop even while still descending.
+                emit(state, "reset", { reason = "wing-boost", previousPeak = state.Peak })
+                state.Peak, state.SoftTime = 0, 0
+                WingsService.ResetFallEpisode(player, state.Character, true)
+            end
+            state.WasWingControlled = wingControlled
+            if not support and state.Peak > 0 and velocity.Y > 0 and wingControlled then
                 -- A wing-powered upward recovery ends the previous drop. Release
                 -- afterward cannot restore that peak; a later descent is fresh.
                 emit(state, "reset", { reason = "wing-ascent", previousPeak = state.Peak })

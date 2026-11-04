@@ -114,6 +114,10 @@ update(0.1)
 check(model:GetAttribute("BusyUntil") == busyUntil, "stationary rejected item does not repeatedly flash")
 finish()
 local reward = outputs[1]
+check(
+    reward:GetAttribute("MuncherGeneration") == 1 and ingredients.GetRecord(reward).MuncherGeneration == 1,
+    "natural input output publishes generation one on attribute and record"
+)
 physical(reward, vec(1, 4, 0))
 local actor, reason = eligibility.Eligible(dependency, input, reward)
 check(actor == nil and reason == "OutputImmune", "fresh output has authoritative spawn immunity")
@@ -131,6 +135,10 @@ check(ingredients.GetRecord(reward) == nil, "successful pickup retires immune sp
 local rethrown = inventory.ThrowHeld(owner)
 physical(rethrown, vec(0.5, 4, 0))
 check(
+    rethrown:GetAttribute("MuncherGeneration") == 1 and ingredients.GetRecord(rethrown).MuncherGeneration == 1,
+    "generation survives real pickup and fresh throw geometry"
+)
+check(
     not ingredients.GetRecord(rethrown).MuncherImmune and eligibility.Eligible(dependency, input, rethrown) == owner,
     "pickup and real throw create normal eligible attributed world item"
 )
@@ -139,11 +147,23 @@ update(0.1)
 check(ingredients.GetRecord(rethrown) == nil and rolls == 2, "deliberate re-gamble succeeds once")
 finish()
 
+check(
+    outputs[2]:GetAttribute("MuncherGeneration") == 2 and ingredients.GetRecord(outputs[2]).MuncherGeneration == 2,
+    "refeeding generation one produces generation two"
+)
+setup(inventory.CarryWorldItem(owner, outputs[2]), "pick up gen two")
+local chained = inventory.ThrowHeld(owner)
+physical(chained, vec(0.5, 4, 0))
+candidates = { chained }
+update(0.1)
+finish()
+check(outputs[3]:GetAttribute("MuncherGeneration") == 3, "second deliberate refeed continues generation chain")
+
 -- Integrate the real vacuum's velocity under gravity at engine-step boundaries.
 -- The conservative sphere threshold must capture even without an overlap hit.
 do
     check(
-        config.Vacuum.Radius == 10
+        config.Vacuum.Radius == 15
             and config.Vacuum.PullStrength == 30
             and config.Vacuum.CenteringStrength == 12
             and config.Vacuum.MaxSpeed == 40

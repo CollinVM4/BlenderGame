@@ -20,7 +20,7 @@ local function log(transaction: any, result: string)
     logCount += 1
     print(
         string.format(
-            "[Muncher] time=%.2f plot=%s input=%s value=%g tier=%d output=%s value=%g rarity=%s result=%s",
+            "[Muncher] time=%.2f plot=%s input=%s value=%g tier=%d output=%s value=%g rarity=%s result=%s InputGeneration=%d OutputGeneration=%d ChainStacks=%d PityApplied=%s ConsecutiveLosses=%d",
             workspace:GetServerTimeNow(),
             transaction.SessionId,
             transaction.Input,
@@ -29,7 +29,12 @@ local function log(transaction: any, result: string)
             transaction.Reward,
             transaction.OutputValue,
             transaction.Rarity,
-            result
+            result,
+            transaction.InputGeneration,
+            transaction.OutputGeneration,
+            transaction.ChainStacks,
+            tostring(transaction.PityApplied),
+            transaction.ConsecutiveLosses
         )
     )
 end
@@ -73,7 +78,15 @@ function Service.Reset(player: Player)
     local id = deps.TycoonService.GetSessionId(player)
     if id then
         -- Detached committed transactions remain in the recovery queue at their captured location.
-        states[id] = { Purchased = false, Revealed = false, ReadyAt = 0, Phase = "Idle", AvailableAt = 0, Sequence = 0 }
+        states[id] = {
+            Purchased = false,
+            Revealed = false,
+            ReadyAt = 0,
+            Phase = "Idle",
+            AvailableAt = 0,
+            Sequence = 0,
+            ConsecutiveLosses = 0,
+        }
     end
 end
 function Service.CleanupSession(id: string)
@@ -275,8 +288,12 @@ function Service.TryStartConversion(
     -- Prepare every fallible decision before removing ownership. No yield under lifecycle lock.
     local ok, transaction = pcall(function()
         local tier = Rewards.Tier(value)
-        local reward = Rewards.Roll(tier, random, deps.IngredientService.GetDefinition, value)
+        local record = deps.IngredientService.GetRecord(object)
+        local generation = Rewards.Generation(object:GetAttribute("MuncherGeneration"), record.MuncherGeneration)
+        local pity = state.ConsecutiveLosses >= Config.PityLosses
+        local reward = Rewards.Roll(tier, random, deps.IngredientService.GetDefinition, value, generation, pity)
         local definition = deps.IngredientService.GetDefinition(reward)
+        local resultKind = Rewards.ResultKind(value, definition.Value)
         return {
             SessionId = id,
             Source = source,
@@ -289,7 +306,12 @@ function Service.TryStartConversion(
             Tier = tier,
             Reward = reward,
             OutputValue = definition.Value,
-            ResultKind = Rewards.ResultKind(value, definition.Value),
+            ResultKind = resultKind,
+            InputGeneration = generation,
+            OutputGeneration = generation + 1,
+            ChainStacks = Rewards.ChainStacks(generation),
+            PityApplied = pity,
+            ConsecutiveLosses = if not pity and resultKind == "Lose" then state.ConsecutiveLosses + 1 else 0,
             Rarity = definition.Rarity or "Common",
             StartedAt = workspace:GetServerTimeNow(),
             NextAt = workspace:GetServerTimeNow() + Config.ChewSeconds,
@@ -310,6 +332,7 @@ function Service.TryStartConversion(
         deps.IngredientService.ReleaseReservation(object, reservation)
     end
     if consumed then
+        state.ConsecutiveLosses = transaction.ConsecutiveLosses
         state.Transaction = transaction
         state.Sequence += 1
         pending[transaction] = true
