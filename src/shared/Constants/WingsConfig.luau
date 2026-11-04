@@ -10,6 +10,7 @@ return table.freeze({
     PoweredEngageBurstVelocity = 30,
     GlideDescentVelocity = 20,
     GroundedConfirmSeconds = 0.2,
+    GraceSeconds = 1.5, -- Post-release landing protection window, not flight duration.
     ClimbToleranceStuds = 15, -- Diagnostic only; external impulses are legitimate.
     PoweredTimeToleranceSeconds = 0.25,
     GlideOverspeedTolerance = 5,

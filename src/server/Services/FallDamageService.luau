@@ -186,6 +186,7 @@ function FallDamageService.EnableDiagnostics(player: Player, seconds: number?, m
             velocityY = root.AssemblyLinearVelocity.Y,
             peak = state.Peak,
             airborne = state.Airborne,
+            graceActive = WingsService and WingsService.IsGraceActive(player) == true,
             softTime = state.SoftTime,
             platformStand = h.PlatformStand,
             anchored = root.Anchored,
@@ -243,6 +244,7 @@ local function evaluateLanding(player: Player, state: State, cause: string)
     local compensated = compensation(player)
     local effective = math.max(0, peak - compensated)
     local damage = FallDamageService.ComputeDamage(effective)
+    local graceActive = WingsService and WingsService.IsGraceActive(player) == true
     local glideProtected = WingsService and WingsService.ConsumeGlideLandingProtection(player, state.Character)
     if glideProtected then
         damage = 0
@@ -266,7 +268,7 @@ local function evaluateLanding(player: Player, state: State, cause: string)
         healthBefore = before,
         healthAfter = humanoid.Health,
         reason = if glideProtected
-            then "glide-protected"
+            then (if graceActive then "grace-protected" else "glide-protected")
             elseif damage <= 0 then "safe-effective-speed"
             elseif applied > 0 then "applied"
             elseif state.Character:FindFirstChildOfClass("ForceField") then "forcefield-protected"

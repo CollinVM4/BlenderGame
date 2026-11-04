@@ -27,6 +27,7 @@ type Flight = {
     -- candidate is captured there before either service can publish Grounded.
     FallEpisode: boolean,
     LandingCandidate: boolean?,
+    GraceUntil: number,
 }
 type State = {
     Owned: boolean?,
@@ -69,6 +70,7 @@ local function clearCharacter(player: Player, state: State)
     if not flight then
         return
     end
+    flight.GraceUntil = 0
     for _, connection in flight.Connections do
         connection:Disconnect()
     end
@@ -267,10 +269,19 @@ function Service.SetJumpHeld(player: Player, held: any)
     if typeof(held) ~= "boolean" or not flight or not eligible(player, flight) or held == flight.JumpHeld then
         return
     end
+    local wasWingControlled = Service.IsWingControlled(player)
+    local wasFallEpisode = flight.FallEpisode
     flight.JumpHeld = held
     if not held then
-        flight.LandingCandidate = false
+        if wasWingControlled and wasFallEpisode then
+            flight.GraceUntil = os.clock() + Config.GraceSeconds
+        else
+            flight.GraceUntil = 0
+            flight.LandingCandidate = false
+        end
         publish(player, flight, if flight.State == "Grounded" then "Grounded" else "Falling")
+    else
+        flight.GraceUntil = 0
     end
 end
 function Service.IsWingControlled(player: Player): boolean
@@ -281,6 +292,14 @@ function Service.IsWingControlled(player: Player): boolean
         and flight.JumpHeld
         and eligible(player, flight)
 end
+function Service.IsGraceActive(player: Player): boolean
+    local state = states[player]
+    local flight = state and state.Flight
+    return flight ~= nil
+        and player.Character == flight.Character
+        and flight.FallEpisode
+        and os.clock() <= flight.GraceUntil
+end
 -- Explicit coordination with fall damage avoids timers and Heartbeat ordering.
 -- Every fall start/reset invalidates evidence, even if wings have not recharged.
 function Service.ResetFallEpisode(player: Player, character: Model, airborne: boolean?)
@@ -288,6 +307,7 @@ function Service.ResetFallEpisode(player: Player, character: Model, airborne: bo
     local flight = state and state.Flight
     if flight and flight.Character == character then
         flight.FallEpisode, flight.LandingCandidate = airborne == true, nil
+        flight.GraceUntil = 0
     end
 end
 function Service.ObserveFallLanding(player: Player, character: Model, candidate: boolean)
@@ -296,12 +316,13 @@ function Service.ObserveFallLanding(player: Player, character: Model, candidate:
     if not flight or flight.Character ~= character or not flight.FallEpisode then
         return
     end
+    local graceActive = Service.IsGraceActive(player)
     if not candidate then
         flight.LandingCandidate = nil
     elseif flight.LandingCandidate == nil then
-        flight.LandingCandidate = Service.IsWingControlled(player)
+        flight.LandingCandidate = Service.IsWingControlled(player) or graceActive
     end
-    if not flight.JumpHeld or not movementAllowed(player, flight) then
+    if (not flight.JumpHeld and not graceActive) or not movementAllowed(player, flight) then
         flight.LandingCandidate = false
     end
 end
@@ -311,11 +332,13 @@ function Service.ConsumeGlideLandingProtection(player: Player, character: Model)
     if not flight or flight.Character ~= character or player.Character ~= character then
         return false
     end
+    local graceActive = Service.IsGraceActive(player)
     local protect = flight.FallEpisode
         and flight.LandingCandidate == true
-        and flight.JumpHeld
+        and (flight.JumpHeld or graceActive)
         and movementAllowed(player, flight)
     flight.FallEpisode, flight.LandingCandidate = false, nil
+    flight.GraceUntil = 0
     return protect
 end
 function Service.AddPlayer(player: Player)
@@ -362,6 +385,7 @@ function Service.ApplyCharacter(player: Player, character: Model)
         State = "", -- First publish must initialize the replicated state.
         FallEpisode = false,
         LandingCandidate = nil,
+        GraceUntil = 0,
     }
     state.Flight = flight
     publish(player, flight, if groundEvidence(flight) then "Grounded" else "Airborne")

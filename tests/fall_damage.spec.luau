@@ -60,13 +60,18 @@ check(fallDamage.ComputeDamage(effective) == 0, "landing from one's own max-tier
 
 fallDamage.Init({
     WingsService = {
+        IsGraceActive = function(p)
+            return p.GraceActive == true
+        end,
         IsWingControlled = function(p)
             return p.WingMode == "Powered" or p.WingMode == "Gliding"
         end,
         ResetFallEpisode = function() end,
         ObserveFallLanding = function() end,
-        ConsumeGlideLandingProtection = function()
-            return false
+        ConsumeGlideLandingProtection = function(p)
+            local protected = p.LandingProtected == true
+            p.GraceActive, p.LandingProtected = false, false
+            return protected
         end,
     },
     MovementService = {
@@ -174,6 +179,24 @@ end
 local function expected(peak, jumpPower)
     return fallDamage.ComputeDamage(math.max(0, peak - math.min(jumpPower, config.CompensationCap)))
 end
+-- Damage reason must snapshot grace before the one-shot Consume clears it.
+for _, scenario in { "grace", "held", "expired", "blocked" } do
+    local p, h, root = subject(60)
+    trace(p)
+    step(h, root, -220, false)
+    p.GraceActive = scenario == "grace" or scenario == "blocked"
+    p.LandingProtected = scenario == "grace" or scenario == "held"
+    land(h, root)
+    local protected = scenario == "grace" or scenario == "held"
+    local reason = if scenario == "grace"
+        then "grace-protected"
+        elseif scenario == "held" then "glide-protected"
+        else "applied"
+    check(#h.Damages == (if protected then 0 else 1), scenario .. " landing honors the wing protection decision")
+    check(has(events("damage")[1], "reason=" .. reason), scenario .. " landing has the correct damage reason")
+    check(not p.GraceActive, "evaluation consumes the grace snapshot")
+    fallDamage.RemovePlayer(p)
+end
 -- Wing entry resets the measured drop, independently of velocity sign. The
 -- real wing eligibility/landing latch contracts live in wings_flight.spec.
 for _, mode in { "Powered", "Gliding" } do
@@ -206,7 +229,7 @@ do
     step(h, root, -40, false, nil, "Powered")
     step(h, root, -220, false, nil, "Falling")
     land(h, root)
-    check(h.Damages[1] == config.LethalDamage, "boost then fresh lethal fall has no immunity or release grace")
+    check(h.Damages[1] == config.LethalDamage, "boost then fresh lethal fall without armed grace has no immunity")
     fallDamage.RemovePlayer(p)
 end
 do

@@ -109,6 +109,126 @@ local function fastGlide()
     fly(f, fh, fr, 1.8)
     return f, fh, fr
 end
+-- Public grace contracts use the existing server clock mock (now), not sleeps.
+do
+    local function armed(candidate)
+        local p, h, root = fastGlide()
+        if candidate ~= nil then
+            wings.ObserveFallLanding(p, p.Character, candidate)
+        end
+        wings.SetJumpHeld(p, false)
+        check(wings.IsGraceActive(p) and state(p) == "Falling", "controlled release arms grace without retaining lift")
+        return p, h, root
+    end
+    for _, captured in { false, true } do
+        local p = armed(captured)
+        wings.ObserveFallLanding(p, p.Character, true)
+        check(wings.ConsumeGlideLandingProtection(p, p.Character), "grace preserves or captures landing evidence")
+        check(not wings.IsGraceActive(p), "landing consumes grace")
+        check(not wings.ConsumeGlideLandingProtection(p, p.Character), "grace cannot protect a second landing")
+    end
+    local boundary = armed()
+    now += 0.5
+    check(wings.IsGraceActive(boundary), "grace includes the exact 0.5 second deadline")
+    wings.SetJumpHeld(boundary, false)
+    now += 0.001
+    check(not wings.IsGraceActive(boundary), "duplicate release cannot extend grace past 0.5 seconds")
+    wings.ObserveFallLanding(boundary, boundary.Character, true)
+    check(
+        not wings.ConsumeGlideLandingProtection(boundary, boundary.Character),
+        "expired grace cannot capture protection"
+    )
+    local stale = armed(true)
+    now += 0.501
+    check(
+        not wings.ConsumeGlideLandingProtection(stale, stale.Character),
+        "expired grace rejects stale true evidence without Observe"
+    )
+    for _, reset in { false, true } do
+        local p = armed()
+        wings.ResetFallEpisode(p, p.Character, reset)
+        check(not wings.IsGraceActive(p), "every episode reset clears grace")
+        wings.ObserveFallLanding(p, p.Character, true)
+        check(not wings.ConsumeGlideLandingProtection(p, p.Character), "reset grace cannot carry into an episode")
+    end
+    local reheld = armed()
+    wings.SetJumpHeld(reheld, true)
+    check(not wings.IsGraceActive(reheld), "re-engage clears grace immediately")
+    local denied, deniedHumanoid = fastGlide()
+    deniedHumanoid.PlatformStand = true
+    wings.ObserveFallLanding(denied, denied.Character, true)
+    deniedHumanoid.PlatformStand = false
+    wings.SetJumpHeld(denied, false)
+    wings.ObserveFallLanding(denied, denied.Character, true)
+    check(
+        not wings.ConsumeGlideLandingProtection(denied, denied.Character),
+        "grace cannot override previously rejected evidence"
+    )
+    local groundedPlayer, groundedHumanoid, groundedRoot = subject(true)
+    tick(groundedPlayer, groundedHumanoid, groundedRoot, 0.25, 0, true)
+    wings.SetJumpHeld(groundedPlayer, true)
+    wings.SetJumpHeld(groundedPlayer, false)
+    check(not wings.IsGraceActive(groundedPlayer), "ground release with no episode never arms grace")
+    tick(groundedPlayer, groundedHumanoid, groundedRoot, 0.025, -220, false)
+    local groundHealth = groundedHumanoid.Health
+    tick(groundedPlayer, groundedHumanoid, groundedRoot, 0.025, 0, true)
+    check(
+        groundedHumanoid.Health == groundHealth - fall.ComputeDamage(160),
+        "ground release cannot protect a later ledge fall"
+    )
+    for _, blocked in { "locked", "anchored", "PlatformStand", "dead", "Swimming" } do
+        local p, h, root = armed()
+        if blocked == "locked" then
+            p.Locked = true
+        elseif blocked == "anchored" then
+            root.Anchored = true
+        elseif blocked == "PlatformStand" then
+            h.PlatformStand = true
+        elseif blocked == "dead" then
+            h.Health = 0
+        else
+            h.Mode = blocked
+        end
+        check(wings.IsGraceActive(p), "grace query leaves movement eligibility to landing callers")
+        wings.ObserveFallLanding(p, p.Character, true)
+        check(not wings.ConsumeGlideLandingProtection(p, p.Character), blocked .. " prevents grace landing protection")
+        check(not wings.IsGraceActive(p), "rejected landing consumes grace too")
+    end
+    for _, cleanup in { "death", "character-removal", "player-removal", "replacement" } do
+        local p, h = armed()
+        if cleanup == "death" then
+            h.Died:Fire()
+        elseif cleanup == "character-removal" then
+            p.CharacterRemoving:Fire(p.Character)
+        elseif cleanup == "player-removal" then
+            wings.RemovePlayer(p)
+        else
+            p.Character = instance("Model")
+        end
+        check(not wings.IsGraceActive(p), cleanup .. " invalidates grace")
+    end
+    for _, situation in { "unowned", "uncontrolled", "no-episode", "dead", "anchored", "PlatformStand", "Swimming" } do
+        local p, h, root = subject(situation ~= "unowned")
+        wings.SetJumpHeld(p, true)
+        tick(p, h, root, 0.025, -180, false)
+        if situation == "uncontrolled" then
+            wings.SetJumpHeld(p, false)
+            now += 0.501
+        elseif situation == "no-episode" then
+            wings.ResetFallEpisode(p, p.Character, false)
+        elseif situation == "dead" then
+            h.Health = 0
+        elseif situation == "anchored" then
+            root.Anchored = true
+        elseif situation == "PlatformStand" then
+            h.PlatformStand = true
+        elseif situation == "Swimming" then
+            h.Mode = situation
+        end
+        wings.SetJumpHeld(p, false)
+        check(not wings.IsGraceActive(p), situation .. " release cannot arm grace")
+    end
+end
 local f, fh, fr = fastGlide()
 local before = fh.Health
 tick(f, fh, fr, 0.025, 0, true)
@@ -124,8 +244,8 @@ for _, gap in { 0.025, 1 } do
     local health = ah.Health
     tick(a, ah, ar, 0.025, 0, true)
     check(
-        ah.Health == health - fall.ComputeDamage(120),
-        "release before touchdown uses full peak even on last prelanding tick"
+        ah.Health == health - (if gap < 0.5 then 0 else fall.ComputeDamage(120)),
+        "release protects a near landing but an expired window uses the rebuilt peak"
     )
 end
 -- Either Heartbeat order: wings can confirm Grounded before fall evaluates.
@@ -219,6 +339,60 @@ do
     end
     local expectedDamage = fall.ComputeDamage(220 - 60)
     check(expectedDamage >= 100, "recorded peak is lethal without wing protection")
+    for _, scenario in { "re-engage", "blocked" } do
+        local p, h, root = lethalFall(true, "Gliding")
+        wings.SetJumpHeld(p, false)
+        if scenario == "re-engage" then
+            wings.SetJumpHeld(p, true)
+            tick(p, h, root, 0.025, -20, false)
+        else
+            h.PlatformStand = true
+            tick(p, h, root, 0.025, -220, false)
+        end
+        tick(p, h, root, 0.1, 0, true)
+        local reason = if scenario == "re-engage" then "glide-protected" else "applied"
+        check(
+            h.Health == (if scenario == "re-engage" then 100 else 100 - expectedDamage),
+            scenario .. " has the expected landing damage"
+        )
+        check(
+            string.find(damageRecord(), "reason=" .. reason, 1, true) ~= nil,
+            scenario .. " has the expected landing reason"
+        )
+        fall.RemovePlayer(p)
+        wings.RemovePlayer(p)
+    end
+    for _, mode in { "Powered", "Gliding" } do
+        for _, alreadyControlled in { false, true } do
+            local p, h, root
+            if alreadyControlled then
+                p, h, root = subject(true)
+                wings.SetJumpHeld(p, true)
+                fly(p, h, root, if mode == "Gliding" then 1.8 else 0.025)
+                -- Restart while already controlled: no wing-boost transition.
+                fall.ApplyCharacter(p, p.Character)
+                table.clear(records)
+                setup(fall.EnableDiagnostics(p), "already-controlled grace diagnostics enabled")
+                h.Health = 100
+                tick(p, h, root, 0.025, -220, false)
+            else
+                p, h, root = lethalFall(true, mode)
+            end
+            wings.SetJumpHeld(p, false)
+            tick(p, h, root, 0.1, 0, true)
+            check(h.Health == 100, mode .. " near-ground release protects with or without a peak reset")
+            check(
+                string.find(damageRecord(), "reason=grace-protected", 1, true) ~= nil,
+                "released landing reports grace-protected"
+            )
+            check(not wings.IsGraceActive(p), "real landing consumes grace")
+            if alreadyControlled then
+                check(string.find(damageRecord(), "peak=220", 1, true) ~= nil, "grace protects the unreset lethal peak")
+            end
+            fall.RemovePlayer(p)
+            wings.RemovePlayer(p)
+        end
+    end
     for _, mode in { "Powered", "Gliding" } do
         local p, h, root = lethalFall(true, mode)
         tick(p, h, root, 0.1, 0, true)
@@ -237,9 +411,10 @@ do
         local p, h, root = lethalFall(true, mode)
         wings.SetJumpHeld(p, false)
         check(state(p) == "Falling", "releasing " .. mode .. " immediately revokes the engaged state")
-        tick(p, h, root, 0.025, -220, false)
+        tick(p, h, root, 0.501, -220, false)
         tick(p, h, root, 0.025, 0, true)
-        check(h.Health == 100 - expectedDamage, "fresh lethal fall after release gets full peak damage without grace")
+        check(h.Health == 100 - expectedDamage, "fresh lethal fall after grace expiry gets full peak damage")
+        check(string.find(damageRecord(), "reason=applied", 1, true) ~= nil, "expired grace reports applied damage")
     end
     local unowned, uh, ur = lethalFall(false, nil)
     wings.SetJumpHeld(unowned, true)
@@ -257,8 +432,8 @@ do
     released:SetAttribute("WingState", "Powered")
     tick(released, rh, rr, 0.025, 0, true)
     check(
-        rh.Health == 100 - expectedDamage,
-        "Powered display with server JumpHeld false cannot preserve a captured exemption"
+        rh.Health == 100 and string.find(damageRecord(), "reason=grace-protected", 1, true) ~= nil,
+        "release preserves captured protection inside server grace regardless of display attributes"
     )
     -- Wings-first grounding must retain Powered evidence just as Glide did.
     local reverse, vh, vr = lethalFall(true, "Powered")
@@ -273,6 +448,7 @@ do
         local saved, savedHumanoid, savedRoot = lethalFall(true, "Powered")
         tick(saved, savedHumanoid, savedRoot, 0.025, 30, false)
         wings.SetJumpHeld(saved, false)
+        now += 0.501
         tick(saved, savedHumanoid, savedRoot, 0.025, -laterDown, false)
         tick(saved, savedHumanoid, savedRoot, 0.1, 0, true)
         check(
