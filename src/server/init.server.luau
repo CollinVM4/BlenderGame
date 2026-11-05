@@ -14,6 +14,7 @@ local services: { [string]: any } = {
     UnstuckService = require(script.Services.UnstuckService),
     FallDamageService = require(script.Services.FallDamageService),
     WingsService = require(script.Services.WingsService),
+    CashBoostService = require(script.Services.CashBoostService),
     HealthRegenService = require(script.Services.HealthRegenService),
     CharacterPhysicsService = require(script.Services.CharacterPhysicsService),
     SprintService = require(script.Services.SprintService),
@@ -138,6 +139,7 @@ do
     services[name].Init(services)
 end
 services.WingsService.Init(services)
+services.CashBoostService.Init(services)
 services.FreezeStatusService.Init(services)
 services.IceGunProjectileService.Init(services)
 services.IceGunService.Init(services)

@@ -9,6 +9,9 @@ function PlayerDataService.BindRuntimeAuthority(authority: any)
 end
 local entitlements: { [Player]: { [string]: boolean } } = {}
 
+-- Session-only until persistence stores DoubleCashExpiresAt; leaving loses remaining time.
+local DoubleCashExpiresAt: { [Player]: number } = {}
+
 local function data(player: Player): Types.PersonalPlayerData
     assert(records[player], "PlayerDataService: player is not initialized")
     return records[player]
@@ -24,6 +27,8 @@ function PlayerDataService.AddPlayer(player: Player)
         Stats = { CustomersServed = 0, SmoothiesMade = 0, PlayersSlapped = 0, IngredientsStolen = 0 },
     }
     entitlements[player] = { VIPStorage = false, DoubleCash = false }
+    DoubleCashExpiresAt[player] = 0
+    player:SetAttribute("DoubleCashExpiresAt", 0)
     player:SetAttribute("playerCash", 0)
     player:SetAttribute("HasSmoothie", false)
     player:SetAttribute("CarryCapacity", Upgrades.CarryCapacity[1].Value)
@@ -126,6 +131,22 @@ function PlayerDataService.SetEntitlement(player: Player, id: string, enabled: b
     assert(id == "VIPStorage" or id == "DoubleCash", "Unknown entitlement")
     entitlements[player][id] = enabled
 end
+-- Server-only receipt grant boundary. Reads expire naturally without a cleanup timer.
+function PlayerDataService.IsDoubleCashActive(player: Player): boolean
+    return (DoubleCashExpiresAt[player] or 0) > workspace:GetServerTimeNow()
+end
+function PlayerDataService.GetDoubleCashRemainingSeconds(player: Player): number
+    return math.max(0, (DoubleCashExpiresAt[player] or 0) - workspace:GetServerTimeNow())
+end
+function PlayerDataService.GrantDoubleCash(player: Player, durationSeconds: number): number
+    assert(durationSeconds == 600 or durationSeconds == 1800, "Invalid DoubleCash duration")
+    assert(records[player] and entitlements[player], "PlayerDataService: player is not initialized")
+    local expiry = math.max(DoubleCashExpiresAt[player] or 0, workspace:GetServerTimeNow()) + durationSeconds
+    player:SetAttribute("DoubleCashExpiresAt", expiry)
+    DoubleCashExpiresAt[player] = expiry
+    entitlements[player].DoubleCash = true
+    return expiry
+end
 function PlayerDataService.RecordDiscovery(player: Player, id: string)
     data(player).Discoveries[id] = true
 end
@@ -138,5 +159,6 @@ function PlayerDataService.RemovePlayer(player: Player)
     -- TODO: persist a snapshot before releasing state; no DataStore writes in this skeleton.
     records[player] = nil
     entitlements[player] = nil
+    DoubleCashExpiresAt[player] = nil
 end
 return require(script.Parent.StudioServices).Wrap("PlayerDataService", PlayerDataService)

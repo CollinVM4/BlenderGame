@@ -6,6 +6,7 @@ function viewer:GetAttributeChangedSignal()
 end
 local gui = instance("PlayerGui")
 gui.Name, gui.Parent = "PlayerGui", viewer
+gui.DescendantAdded = signal()
 function viewer:WaitForChild(name)
     return self:FindFirstChild(name)
 end
@@ -34,6 +35,7 @@ services.MarketplaceService.GetProductInfoAsync = function()
     prices += 1
     return { PriceInRobux = 137, IsForSale = true }
 end
+cache.MenuNotifications = { OnOpened = function() end }
 local adapter = loadModule("IceGunShopAdapter")
 adapter.Init()
 flush()
@@ -126,8 +128,15 @@ prompt.KeyboardKeyCode, prompt.GamepadKeyCode = { Name = "E" }, { Name = "Button
 prompt:SetAttribute("IceGunPurchase", true)
 shown:Fire(prompt, "Keyboard")
 check(
-    billboard.Parent == gui and billboard.Adornee == attachment and billboard.MaxDistance == math.huge,
-    "live custom renderer is parented and cannot be culled by a third-person camera beyond eight studs"
+    billboard.Parent == gui
+        and billboard.Adornee == attachment
+        and billboard.MaxDistance == 128
+        and billboard.Enabled == true
+        and billboard.Size.X.Scale == 8.4
+        and billboard.Size.Y.Scale == 1.7
+        and billboard.Size.X.Offset == 0
+        and billboard.Size.Y.Offset == 0,
+    "live custom renderer keeps finite camera range and default stud size without failing closed"
 )
 check(
     label.Text == "ICE GUN\nOWNED\n[E] EQUIP" and label.Font == "FredokaOne",

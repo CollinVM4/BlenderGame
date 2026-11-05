@@ -12,7 +12,7 @@ Adapter.Changed = changed.Event
 local started = false
 local price: number? = nil
 local forSale: boolean? = nil
-local fetching, fetched = false, false
+local fetching = false
 local nextPriceAt = 0
 
 function Adapter.GetSnapshot()
@@ -35,7 +35,7 @@ local function fetchPrice()
         local ok, info = pcall(function()
             return Marketplace:GetProductInfoAsync(Config.WingsGamePassId, Enum.InfoType.GamePass)
         end)
-        fetching, fetched = false, true
+        fetching = false
         price = if ok
                 and typeof(info) == "table"
                 and typeof(info.PriceInRobux) == "number"
@@ -62,18 +62,16 @@ function Adapter.RequestPurchase()
 end
 -- Every bound child is resolved through the importer's tagged-child contract,
 -- scoped to this authored card. No descendant-wide Buy/RobuxCost guessing.
-function Adapter.Resolve(panel: Instance): { Buy: GuiButton, Label: TextLabel, Cost: TextLabel }?
-    local scroll = Registry.Child(panel, "Wings:Scroll", { "ShopScroll", "ShopScroll_scroll" }, "GuiObject")
-    local list = Registry.Child(scroll, "Wings:List", { "ShopList", "ShopList_list" }, "GuiObject")
-    local card = Registry.Child(list, "Wings:Card", { "Angel Wings" }, "CanvasGroup")
-    local buy = Registry.Child(card, "Wings:Buy", { "Buy", "Buy_pulse" }, "GuiButton")
-    local label = Registry.Child(buy, "Wings:BuyLabel", { "BuyLabel" }, "TextLabel")
-    local robux = Registry.Child(card, "Wings:Robux", { "Robux" }, "GuiObject")
-    local cost = Registry.Child(robux, "Wings:Cost", { "RobuxCost" }, "TextLabel")
-    if not buy or not label or not cost then
+function Adapter.Resolve(panel: Instance): { Buy: GuiButton }?
+    local scroll = Registry.Child(panel, "Wings:Scroll", { "ShopScroll" }, "GuiObject")
+    local list = Registry.Child(scroll, "Wings:List", { "ShopList" }, "GuiObject")
+    local card = Registry.Child(list, "Wings:Card", { "Angel Wings" }, "Frame")
+    local content = Registry.Child(card, "Wings:Content", { "Angel WingsContent" }, "CanvasGroup")
+    local buy = Registry.Child(content, "Wings:Buy", { "Buy" }, "GuiButton")
+    if not buy then
         return nil
     end
-    return { Buy = buy :: GuiButton, Label = label :: TextLabel, Cost = cost :: TextLabel }
+    return { Buy = buy :: GuiButton }
 end
 function Adapter.Init()
     if started then
@@ -97,10 +95,6 @@ function Adapter.Init()
         local function render()
             local snapshot = Adapter.GetSnapshot()
             view.Buy.Active, view.Buy.Selectable = snapshot.CanBuy, snapshot.CanBuy
-            view.Label.Text = if snapshot.Owned then "Owned" else "Buy"
-            if fetched then
-                view.Cost.Text = snapshot.PriceText
-            end
         end
         local list: { RBXScriptConnection } = {}
         bound[panel] = list

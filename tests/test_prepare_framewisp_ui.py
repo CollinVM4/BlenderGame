@@ -43,7 +43,7 @@ class PreparationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = self.root / "new export.rbxmx"
-        self.source.write_bytes((ROOT / "newestExport.rbxmx").read_bytes())
+        self.source.write_bytes((ROOT / "newestExport11426.rbxmx").read_bytes())
         self.tree = ET.parse(self.source)
         actions = next(i for i in self.tree.iter("Item") if prep.item_name(i) == "FramewispActions")
         source = actions.find("./Properties/ProtectedString[@name='Source']")
@@ -227,8 +227,8 @@ class CLITests(unittest.TestCase):
         self.script = self.root / "tools/prepare_framewisp_ui.py"
         shutil.copyfile(ROOT / "tools/prepare_framewisp_ui.py", self.script)
         self.default = self.root / "Framewisp_Hotbar.prepared.rbxmx"
-        shutil.copyfile(ROOT / "newestExport.rbxmx", self.root / "newestExport.rbxmx")
-        shutil.copyfile(ROOT / "newestExport.rbxmx", self.default)
+        shutil.copyfile(ROOT / "newestExport11426.rbxmx", self.root / "newestExport11426.rbxmx")
+        shutil.copyfile(ROOT / "newestExport11426.rbxmx", self.default)
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.root,
@@ -287,7 +287,7 @@ class CLITests(unittest.TestCase):
 
 class ExternalMenuTests(unittest.TestCase):
     def test_new_export_preserves_scripts_and_artwork(self):
-        source = ROOT / "newestExport.rbxmx"
+        source = ROOT / "newestExport11426.rbxmx"
         original = source.read_bytes()
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "prepared.rbxmx"

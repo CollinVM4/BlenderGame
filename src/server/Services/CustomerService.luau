@@ -781,7 +781,7 @@ function CustomerService.SelectReaction(): string
 end
 function CustomerService.CalculatePayout(player: Player, grade: Types.Grade): number
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
-    local shopFactor = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    local shopFactor = if deps.PlayerDataService.IsDoubleCashActive(player) then 2 else 1
     local luckyFactor = if deps.LuckyBlockService then deps.LuckyBlockService.GetCashMultiplier(player) else 1
     local cashFactor = math.max(shopFactor, luckyFactor)
     local muncher = if deps.MuncherService then deps.MuncherService.GetCashMultiplier(player) else 1
@@ -800,7 +800,7 @@ function CustomerService.CalculateOrderPayout(
 ): (number, number)
     local evaluated = evaluation or OrderEvaluation.Evaluate(result, request)
     local upgrade = Upgrades.Payout[deps.TycoonService.GetUpgrade(player, "Payout")].Value
-    local shopFactor = if deps.PlayerDataService.HasEntitlement(player, "DoubleCash") then 2 else 1
+    local shopFactor = if deps.PlayerDataService.IsDoubleCashActive(player) then 2 else 1
     local gradeMultiplier = if evaluated.IsWildcard then 1 else Economy.GradeMultiplier[evaluated.Grade :: Types.Grade]
     local luckyFactor = if deps.LuckyBlockService then deps.LuckyBlockService.GetCashMultiplier(player) else 1
     local cashFactor = math.max(shopFactor, luckyFactor)

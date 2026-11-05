@@ -133,7 +133,7 @@ end
 data.SetCash(owner, 750000)
 setup(buyTestUpgrade(data, owner, "Payout"), "first payout upgrade")
 setup(buyTestUpgrade(data, owner, "Payout"), "second payout upgrade")
-data.SetEntitlement(owner, "DoubleCash", true)
+data.GrantDoubleCash(owner, 600)
 muncher = 2
 local premium = cup({ "Melon", "Cherries", "Strawberry" }, { "Market", "Farm", "Farm" })
 local amount = customer.CalculateOrderPayout(owner, premium, sweet)
@@ -146,7 +146,10 @@ check(
 print("PASS: economy payout contracts")
 
 for _, shop in { false, true } do
-    data.SetEntitlement(owner, "DoubleCash", shop)
+    now += data.GetDoubleCashRemainingSeconds(owner) + 1
+    if shop then
+        data.GrantDoubleCash(owner, 600)
+    end
     luckyFactor = 1
     local plain = customer.CalculatePayout(owner, "A")
     luckyFactor = 1.5
@@ -167,7 +170,7 @@ setup(
     "join serving teammate"
 )
 expectedServer = teammate
-data.SetEntitlement(owner, "DoubleCash", true)
+data.GrantDoubleCash(owner, 600)
 data.SetEntitlement(teammate, "DoubleCash", false)
 luckyFactor = 1.5
 check(
@@ -178,4 +181,22 @@ local flat = customer.CalculatePayout(teammate, "A")
 check(
     flat == math.round(economy.BasePayout * economy.CashScale * economy.GradeMultiplier.A * 1.7 * 1.5 * muncher),
     "flat payout uses serving teammate entitlement"
+)
+
+-- Expired timer wins over the retained backward-compatible entitlement flag.
+now += data.GetDoubleCashRemainingSeconds(owner) + 1
+expectedServer = owner
+luckyFactor = 1
+check(
+    data.HasEntitlement(owner, "DoubleCash") and not data.IsDoubleCashActive(owner),
+    "boolean does not keep expired boost alive"
+)
+check(
+    customer.CalculatePayout(owner, "A")
+        == math.round(economy.BasePayout * economy.CashScale * economy.GradeMultiplier.A * 1.7 * muncher),
+    "expired flat payout returns to unboosted factor"
+)
+check(
+    customer.CalculateOrderPayout(owner, premium, sweet) == math.round((49000 + 250) * 1.5 * 1.25 * 1.7 * muncher),
+    "expired order payout returns to unboosted factor"
 )

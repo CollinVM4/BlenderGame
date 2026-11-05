@@ -38,6 +38,7 @@ args = parser.parse_args()
 # Each entry gets a fresh Luau process. The legacy monolith is explicitly integration,
 # because it still contains presentation and Studio-adapter checks (see README.md).
 SUITES = {
+    "cash-boost": ("state", ("cash_boost.spec.luau",)),
     "protection": ("state", ("protection.spec.luau",)),
     "protection-gameplay": ("integration", ("fixtures/smoothie.luau", "fixtures/bat_combat.luau", "protection_gameplay.spec.luau")),
     "protection-ice": ("integration", ("fixtures/icegun.luau", "protection_ice.spec.luau")),

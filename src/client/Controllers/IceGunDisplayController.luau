@@ -164,11 +164,9 @@ function Controller.Init()
         hide(prompt)
         local cleanup, gui = Presentation.Create(prompt, prompt.Parent, playerGui, inputType, {
             FormatText = format,
-            Width = 230,
-            Height = 100,
             TextSize = 24,
             -- PromptShown/Hidden controls character proximity. Billboard distance is camera-based.
-            MaxDistance = math.huge,
+            MaxDistance = Config.MaximumCameraDistance,
             Available = function()
                 return Players.LocalPlayer:GetAttribute("Stunned") ~= true
             end,

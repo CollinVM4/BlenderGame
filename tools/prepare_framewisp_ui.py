@@ -1,6 +1,6 @@
 """Apply the menu policy to a Framewisp export without rewriting its artwork XML.
 
-Run before Rojo sync/build. The default command reads newestExport.rbxmx
+Run before Rojo sync/build. The default command reads newestExport11426.rbxmx
 and writes Framewisp_Hotbar.prepared.rbxmx; --input also preserves its source. Fail on an
 unknown generated wiring contract rather than installing competing handlers.
 """
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BEGIN = "-- BEGIN BLENDER MAIN MENUS"
 END = "-- END BLENDER MAIN MENUS"
 
-DEFAULT_INPUT = ROOT / "newestExport.rbxmx"
+DEFAULT_INPUT = ROOT / "newestExport11426.rbxmx"
 DEFAULT_OUTPUT = ROOT / "Framewisp_Hotbar.prepared.rbxmx"
 PANELS = ("Index", "Settings", "Shop", "Upgrades", "Cosmetics")
 PERSISTENT = ("TOP", "Hotbar", "LeftMenu", "RightMenu", "CashDisplay", "Cash", "{Coins}")

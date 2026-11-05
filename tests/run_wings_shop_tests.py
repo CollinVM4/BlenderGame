@@ -1,4 +1,4 @@
-"""Exercise the actual WingsShopAdapter resolver against source and prepared exports."""
+"""Exercise all Shop adapters against the authoritative local and prepared exports."""
 import argparse
 import json
 from pathlib import Path
@@ -14,12 +14,16 @@ paths = {
     'WingsShopAdapter': 'src/client/Controllers/WingsShopAdapter.luau',
     'UIRegistry': 'src/client/UI/UIRegistry.luau',
     'WingsConfig': 'src/shared/Constants/WingsConfig.luau',
+    'IceGunConfig': 'src/shared/Constants/IceGunConfig.luau',
+    'ShopProducts': 'src/shared/Constants/ShopProducts.luau',
+    'IceGunShopAdapter': 'src/client/Controllers/IceGunShopAdapter.luau',
+    'CashBoostShopAdapter': 'src/client/Controllers/CashBoostShopAdapter.luau',
 }
-for export in ('newestExport.rbxmx', 'Framewisp_Hotbar.prepared.rbxmx'):
+for export in ('newestExport11426.rbxmx', 'Framewisp_Hotbar.prepared.rbxmx'):
     nodes = []
     def visit(item, parent):
         index = len(nodes) + 1
-        nodes.append([index, parent, item.attrib['class'], item.findtext("Properties/string[@name='Name']")])
+        nodes.append([index, parent, item.attrib['class'], item.findtext("Properties/string[@name='Name']"), item.findtext("Properties/string[@name='Text']", "")])
         for child in item.findall('Item'):
             visit(child, index)
     for item in ET.parse(ROOT / export).getroot().findall('Item'):

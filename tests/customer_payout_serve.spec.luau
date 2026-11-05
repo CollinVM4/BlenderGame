@@ -78,7 +78,10 @@ end
 config.RegularWildcardChance = 1
 for _, shop in { false, true } do
     luckyFactors[owner] = 1.5
-    data.SetEntitlement(owner, "DoubleCash", shop)
+    now += data.GetDoubleCashRemainingSeconds(owner) + 1
+    if shop then
+        data.GrantDoubleCash(owner, 600)
+    end
     customer.ActivateForPlayer(owner)
     local model = customer.SpawnForPlayer(owner)
     flush()
