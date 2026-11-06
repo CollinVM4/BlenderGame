@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import struct
 import tempfile
-import xml.etree.ElementTree as ET
+from framewisp_export import load_prepared_export
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(__doc__)
@@ -54,9 +54,7 @@ def add(item, parent):
         add(child, index)
 
 
-project = json.loads((ROOT / "default.project.json").read_text())
-export = ROOT / project["tree"]["StarterGui"]["Framewisp_CCVVMF"]["$path"]
-for item in ET.parse(export).getroot().findall("Item"):
+for item in load_prepared_export("Hotbar").getroot().findall("Item"):
     add(item, 0)
 def luau(value):
     if isinstance(value, dict):

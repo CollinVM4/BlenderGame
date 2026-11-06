@@ -388,6 +388,42 @@ for _, timer in table.clone(timers) do
 end
 view = assert(gui.Resolve(playerGui), "actual exported hierarchy resolves")
 
+for _, id in { "Jump", "Bat", "MovementSpeed", "CarryCapacity", "SprintStamina" } do
+    check(
+        view.Rows[id] ~= nil and view.Rows[id].Purchase.Parent.Name == id .. "CardContent",
+        "all shipped wrapped rows bind"
+    )
+end
+-- Older direct-card exports retain the same row contract.
+do
+    local content = view.Rows.Jump.Purchase.Parent
+    local card = content.Parent
+    local controls = table.clone(content.children)
+    for _, control in controls do
+        control.Parent = card
+        table.insert(card.children, control)
+    end
+    content.children = {}
+    for index, child in card.children do
+        if child == content then
+            table.remove(card.children, index)
+            break
+        end
+    end
+    check(gui.Resolve(playerGui).Rows.Jump ~= nil, "unwrapped legacy card still resolves")
+    for _, control in controls do
+        for index, child in card.children do
+            if child == control then
+                table.remove(card.children, index)
+                break
+            end
+        end
+        control.Parent = content
+        table.insert(content.children, control)
+    end
+    table.insert(card.children, content)
+end
+
 check(view.Cash.Text == "$425", "initial authoritative cash")
 check(
     tickerBinding == view.Cash and tickerBalance == 425 and tickerTarget == nil,
@@ -708,7 +744,8 @@ local function taggedImport(asScreenGui)
     local imported = import()
     imported.Name = "Framewisp_NEW_REFERENCE"
     local desktop = imported:FindFirstChild("Be a Blender! Desktop")
-    local content = desktop:FindFirstChild("Be a Blender! DesktopContent")
+    local content = desktop:FindFirstChild("Be a Blender! DesktopContent") or desktop
+    local children = table.clone(content:GetChildren())
     local destination = if asScreenGui then imported else desktop
     if asScreenGui then
         imported.Name = "Be a Blender! Desktop"
@@ -717,11 +754,13 @@ local function taggedImport(asScreenGui)
     else
         desktop.children = {}
     end
-    for _, c in content:GetChildren() do
+    for _, c in children do
         c.Parent = destination
         table.insert(destination.children, c)
     end
-    content.Parent = nil
+    if content ~= destination then
+        content.Parent = nil
+    end
     local panel = destination:FindFirstChild("Upgrades")
     panel.Name = "Upgrades_panel"
     local scroll = panel:FindFirstChild("UpgradeScroll")
@@ -729,7 +768,8 @@ local function taggedImport(asScreenGui)
     local list = scroll:FindFirstChild("UpgradeList")
     list.Name = "UpgradeList_list"
     for _, card in list:GetChildren() do
-        local button = card:FindFirstChild("Buy")
+        local cardContent = card:FindFirstChild(card.Name .. "Content") or card
+        local button = cardContent:FindFirstChild("Buy")
         if button then
             button.Name = "Buy_button_smooth"
         end
@@ -866,6 +906,15 @@ root.Parent = nil
 root = import()
 local semanticDesktop = root:FindFirstChild("Be a Blender! Desktop")
 local content = semanticDesktop:FindFirstChild("Be a Blender! DesktopContent")
+if not content then
+    local children = table.clone(semanticDesktop.children)
+    semanticDesktop.children = {}
+    content = instance("Frame", "Be a Blender! DesktopContent", semanticDesktop)
+    for _, child in children do
+        child.Parent = content
+        table.insert(content.children, child)
+    end
+end
 semanticDesktop.attributes.BlenderUI = "Desktop"
 semanticDesktop.Name = "New Design"
 content.attributes.BlenderUI = "Content"
@@ -884,8 +933,11 @@ for _, track in display.Tracks do
     card.attributes.BlenderUI = "Upgrade:" .. track.Id
     card.Name = "Card " .. track.Id
     card.ClassName = "Frame" -- Both prior Frames and current CanvasGroups work.
-    local level = card:FindFirstChild("LevelContainer")
-    for _, parent in { card, level, card:FindFirstChild("Buy") } do
+    local cardContent = card:FindFirstChild(track.Id .. "CardContent")
+    cardContent.attributes.BlenderUI = "Upgrade:" .. track.Id .. "Content"
+    cardContent.Name = "Custom content"
+    local level = cardContent:FindFirstChild("LevelContainer")
+    for _, parent in { cardContent, level, cardContent:FindFirstChild("Buy") } do
         for _, control in parent:GetChildren() do
             control.attributes.BlenderUI = control.Name
             control.Name = "Custom " .. control.Name

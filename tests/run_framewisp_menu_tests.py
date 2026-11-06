@@ -4,13 +4,13 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-import xml.etree.ElementTree as ET
+from framewisp_export import load_prepared_export
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
-tree = ET.parse(root / "Framewisp_CCWMF.rbxmx").getroot()
+tree = load_prepared_export().getroot()
 actions = next(i for i in tree.iter("Item") if i.attrib["class"] == "LocalScript"
                and i.findtext("./Properties/string[@name='Name']") == "FramewispActions")
 source = actions.findtext("./Properties/ProtectedString[@name='Source']")

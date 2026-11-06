@@ -194,15 +194,62 @@ local root = import()
 local gui = load("SettingsGui")
 local view = assert(gui.Resolve(playerGui))
 check(
-    view.Modes.Open.Name == "Open" and view.Modes.FriendsOnly.Name == "Friends" and view.Modes.Closed.Name == "Closed",
+    view.Modes.Open.Name == "Open" and view.Modes.FriendsOnly.Name == "Friends" and view.Modes.Closed.Name == "Locked",
     "verified export sanitizes all three mode names"
 )
 check(view.Rename.Name == "Rename" and view.Kick.Name == "Kick", "verified export rename and kick names")
+check(view.Track.Name == "Slider" and view.Thumb == nil and view.Fill == nil, "shipped slider has no knob or fill")
+check(view.Status == nil, "duplicate Title remains ambiguous")
+table.sort(view.Issues)
+check(table.concat(view.Issues, ",") == "Knob,ProgressBar,Title", "only shipped missing/ambiguous controls reported")
 check(
-    view.Track.Name == "Slider" and view.Thumb.Name == "Knob" and view.Fill.Name == "ProgressBar",
-    "verified slider hierarchy"
+    view.Modes.Open.Parent.Name == "PLOTContent" and view.MusicOn.Parent.Name == "MUSICContent",
+    "shipped wrappers bind"
 )
-check(#view.Issues == 0, "complete export has no PLOT/MUSIC issues and no declined labels")
+local stopShipped = gui.Observe(playerGui, function() end, function(mode)
+    check(mode == "Closed", "Locked emits canonical Closed mode")
+end, music.SetEnabled, music.SetVolume)
+local beforeVolume = music.GetVolume()
+view.Track.InputBegan:Fire({ UserInputType = "Touch", Position = { X = 100 } })
+check(music.GetVolume() == beforeVolume, "shipped incomplete slider is inert")
+view.Modes.Closed.Activated:Fire()
+view.MusicOff.Activated:Fire()
+check(not music.IsEnabled(), "shipped MusicOff works with incomplete slider")
+view.MusicOn.Activated:Fire()
+check(music.IsEnabled(), "shipped MusicOn works with incomplete slider")
+stopShipped()
+load("SettingsController").Init()
+view.Modes.Closed.Activated:Fire()
+check(sent[#sent][1] == "SetJoinMode" and sent[#sent][3] == "Closed", "shipped Locked reaches controller as Closed")
+remote.OnClientEvent:Fire("PlotRequestResult", { success = false })
+check(gui.Resolve(playerGui).Status == nil, "controller handles feedback without ambiguous Status")
+for _, fn in delays do
+    fn()
+end
+-- Complete synthetic controls retain the independent slider geometry contracts.
+local plotContent = view.Modes.Open.Parent
+for _, label in plotContent:GetChildren() do
+    if label.Name == "Title" then
+        label.Name = "Authored heading"
+    end
+end
+instance("TextLabel", "Title", plotContent).Text = "PLOT"
+local function geometry(object)
+    object.Position = { X = { Scale = 0, Offset = 0 }, Y = { Scale = 0.5, Offset = 0 } }
+    object.Size = { X = { Scale = 0.1, Offset = 0 }, Y = { Scale = 1, Offset = 0 } }
+    object.AnchorPoint = { X = 0.5, Y = 0.5 }
+    return object
+end
+geometry(instance("ImageLabel", "Knob", view.Track))
+geometry(instance("Frame", "ProgressBar", view.Track))
+geometry(instance("Frame", "OuterSlider", view.Track))
+geometry(instance("Frame", "InnerSlider", view.Track))
+for _, button in view.Modes do
+    instance("Frame", "BuyBackground", button)
+end
+playerGui.DescendantAdded:Fire(view.Track)
+flush()
+view = assert(gui.Resolve(playerGui))
 local plotFrame = view.Modes.Open.Parent
 local rename, kick, closed = view.Rename, view.Kick, view.Modes.Closed
 local track, thumb, fill = view.Track, view.Thumb, view.Fill

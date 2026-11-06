@@ -29,7 +29,17 @@ def hotbar_text_bounds(text, tree):
     for bar in tree.iter("Item"):
         if item_name(bar) != "Hotbar":
             continue
-        for slot in bar.findall("Item"):
+        candidates = list(bar.findall("Item"))
+        for wrapper_name in ("Items", "HotbarScroll"):
+            for wrapper in bar.findall("Item"):
+                if item_name(wrapper) == wrapper_name:
+                    candidates.extend(wrapper.findall("Item"))
+        seen = set()
+        for slot in candidates:
+            referent = slot.attrib["referent"]
+            if referent in seen:
+                continue
+            seen.add(referent)
             if item_name(slot) not in ("Slot1", "Slot1_button", "Slot1_button_smooth"):
                 continue
             for label in slot.findall("Item"):

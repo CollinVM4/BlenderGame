@@ -41,6 +41,7 @@ local remote: RemoteEvent
 local nearbyRemote: RemoteEvent
 local pickupId = 0
 local started = false
+local held = false
 local assetWarning = false
 local rewardWarnings: { [string]: boolean } = {}
 
@@ -54,6 +55,9 @@ function Service.GetCashMultiplier(player: Player): number
 end
 
 local function respawn(slot: Slot)
+    if held then
+        return
+    end
     local seconds = Config.Respawn.MinRespawnSeconds
         + math.random() * (Config.Respawn.MaxRespawnSeconds - Config.Respawn.MinRespawnSeconds)
     if slot.Level ~= "Level0" or not Config.Spawn.Level0Sync then
@@ -61,6 +65,9 @@ local function respawn(slot: Slot)
     elseif not level0Waiting then
         level0Waiting = true
         task.delay(seconds, function()
+            if held then
+                return
+            end
             level0Waiting = false
             for _, candidate in slots do
                 if candidate.Level == "Level0" and not candidate.Model and not populate(candidate) then
@@ -82,6 +89,9 @@ local function retire(model: Model, alreadyDestroying: boolean?)
         connection:Disconnect()
     end
     record.Slot.Model = nil
+    if held then
+        return
+    end
     respawn(record.Slot)
     if not alreadyDestroying then
         model:Destroy()
@@ -89,6 +99,9 @@ local function retire(model: Model, alreadyDestroying: boolean?)
 end
 
 function Service.TryClaim(player: Player, model: Model): boolean
+    if held then
+        return false
+    end
     local record = records[model]
     local now = os.clock()
     if not record or player.Parent ~= Players or not model:IsDescendantOf(folder) then
@@ -175,6 +188,9 @@ function Service.TryClaim(player: Player, model: Model): boolean
         end
     end)
     task.delay(Presentation.RevealSeconds + Presentation.HoldSeconds + Presentation.FadeSeconds, function()
+        if held then
+            return
+        end
         pickup.ExpiresAt = workspace:GetServerTimeNow() + 60
         container:SetAttribute("ExpiresAt", pickup.ExpiresAt)
         pickups[pickup.PickupId] = pickup
@@ -184,6 +200,9 @@ function Service.TryClaim(player: Player, model: Model): boolean
 end
 
 local function spawnAt(marker: BasePart, slot: Slot): boolean
+    if held then
+        return false
+    end
     local templates = ServerStorage:FindFirstChild(Config.TemplateFolderName)
     local template = templates and templates:FindFirstChild(Config.ModelName)
     if not template or not template:IsA("Model") or not template.PrimaryPart or not template.Archivable then
@@ -257,6 +276,9 @@ local function clearPickupAppearance(pickup: Pickup)
 end
 
 spawnPickup = function(pickup: Pickup)
+    if held then
+        return
+    end
     local model = pickup.Model
     if not model or workspace:GetServerTimeNow() >= pickup.ExpiresAt then
         return
@@ -345,6 +367,9 @@ local function prepareReward(player: Player, rewardId: string): (() -> boolean)?
 end
 
 function Service.TryClaimPickup(player: Player, model: Model): boolean
+    if held then
+        return false
+    end
     local id = model:GetAttribute("PickupId")
     local pickup = if typeof(id) == "number" then pickups[id] else nil
     local now = workspace:GetServerTimeNow()
@@ -379,6 +404,9 @@ function Service.TryClaimPickup(player: Player, model: Model): boolean
     -- Keep only replicated terminal identity until original expiry. A client that
     -- receives the claim before the art can still dispose its local reveal.
     task.delay(math.max(0, pickup.ExpiresAt - workspace:GetServerTimeNow()), function()
+        if held then
+            return
+        end
         model:Destroy()
     end)
     return true
@@ -426,6 +454,9 @@ local function markerLevel(marker: BasePart): string?
 end
 
 populate = function(slot: Slot): boolean
+    if held then
+        return false
+    end
     if slot.Model then
         return true
     end
@@ -473,11 +504,17 @@ populate = function(slot: Slot): boolean
 end
 
 schedule = function(slot: Slot, seconds: number)
+    if held then
+        return
+    end
     if slot.Waiting or slot.Model then
         return
     end
     slot.Waiting = true
     task.delay(seconds, function()
+        if held then
+            return
+        end
         slot.Waiting = false
         if not populate(slot) then
             schedule(slot, Config.Spawn.RetrySeconds)
@@ -486,6 +523,9 @@ schedule = function(slot: Slot, seconds: number)
 end
 
 local function tick()
+    if held then
+        return
+    end
     for id, pickup in pickups do
         if workspace:GetServerTimeNow() >= pickup.ExpiresAt then
             pickups[id] = nil
@@ -527,10 +567,36 @@ function Service.RemovePlayer(player: Player)
     end
 end
 
+local function cleanupHeld()
+    for model in records do
+        model:Destroy()
+    end
+    for _, pickup in pickups do
+        if pickup.LabelAnchor then
+            pickup.LabelAnchor:Destroy()
+        end
+        if pickup.Model then
+            pickup.Model:Destroy()
+        end
+    end
+    table.clear(pickups)
+    for _, player in Players:GetPlayers() do
+        buffs[player] = nil
+        for _, reward in Config.Rewards do
+            player:SetAttribute("LuckyBuff" .. reward.Id .. "ExpiresAt", nil)
+            player:SetAttribute("LuckyInstant" .. reward.Id .. "Until", nil)
+        end
+    end
+    level0Waiting = false
+    table.clear(lastClaim)
+    table.clear(pickupClaim)
+end
+
 function Service.Init(services: any)
     if started then
         return
     end
+    held = not Config.Enabled
     started = true
     deps = services
     local existing = workspace:FindFirstChild(Config.WorldFolderName)
@@ -548,6 +614,10 @@ function Service.Init(services: any)
     nearbyRemote = if nearby then nearby :: RemoteEvent else Instance.new("RemoteEvent")
     nearbyRemote.Name = Presentation.NearbyEventName
     nearbyRemote.Parent = Shared.Events
+    if held then
+        cleanupHeld()
+        return
+    end
     -- Output only: there is deliberately no OnServerEvent pickup endpoint.
     WorldUtil.BindTag(Config.MarkerTag, function(object: Instance): (() -> ())?
         if not object:IsA("BasePart") then

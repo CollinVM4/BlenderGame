@@ -6,7 +6,7 @@ export type Slot = {
     Button: GuiButton,
     Label: TextLabel | TextButton | TextBox,
     Icon: ImageLabel,
-    Selected: GuiObject,
+    Selected: GuiObject?,
     Background: GuiObject,
 }
 export type Metrics = {
@@ -104,7 +104,15 @@ function Gui.Text(label: TextLabel | TextButton | TextBox, minimum: number, maxi
     constraint.MinTextSize, constraint.MaxTextSize = minimum, maximum
 end
 local function imported(parent: Instance?, role: string, suffix: string, class: string): Instance?
-    return Registry.Child(parent, role, { role, role .. suffix }, class)
+    local names = { role, role .. suffix }
+    if role == "SlotBackground" then
+        table.insert(names, "Slot1Background")
+        table.insert(names, "Slot1Background_image")
+    elseif role == "SlotSelected" then
+        table.insert(names, "Slot1Selected")
+        table.insert(names, "Slot1Selected_image")
+    end
+    return Registry.Child(parent, role, names, class)
 end
 function Gui.Slot(instance: Instance, context: string?): Slot?
     local label = imported(instance, "Label", "_text", "GuiObject")
@@ -122,21 +130,22 @@ function Gui.Slot(instance: Instance, context: string?): Slot?
         not label
         or not (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox"))
         or not icon
-        or not selected
         or not background
     then
         issue(
             instance,
-            "requires compatible Label, SlotIcon (ImageLabel), SlotSelected and SlotBackground children"
-                .. (context or "")
+            "requires compatible Label, SlotIcon (ImageLabel) and SlotBackground children" .. (context or "")
         )
         return nil
+    end
+    if not selected then
+        issue(instance, "SlotSelected missing; selection highlight unavailable")
     end
     return {
         Button = instance,
         Label = label :: TextLabel | TextButton | TextBox,
         Icon = icon :: ImageLabel,
-        Selected = selected :: GuiObject,
+        Selected = selected :: GuiObject?,
         Background = background :: GuiObject,
     }
 end
@@ -152,8 +161,14 @@ local function fallback(content: Instance, ice: boolean): string?
     local card = if ice
         then Registry.Child(list, "Ice Gun", { "Ice Gun" }, "GuiObject")
         else Registry.Child(list, "Upgrade:Bat", { "BatCard" }, "GuiObject")
+    local cardContent = Registry.Child(
+        card,
+        if ice then "IceGun:Content" else "Upgrade:BatContent",
+        if ice then { "Ice GunContent" } else { "BatCardContent" },
+        "GuiObject"
+    ) or card
     local image =
-        imported(card, if ice then "IceGunImage" else "Isolated Wooden Baseball Bat 1", "_image", "ImageLabel")
+        imported(cardContent, if ice then "IceGunImage" else "Isolated Wooden Baseball Bat 1", "_image", "ImageLabel")
     return if image and (image :: ImageLabel).Image ~= "" then (image :: ImageLabel).Image else nil
 end
 function Gui.Find(playerGui: PlayerGui): (ScreenGui?, GuiObject?)
@@ -219,11 +234,21 @@ function Gui.Resolve(playerGui: PlayerGui): View?
     end
     local slots: { Slot } = {}
     -- During controller ownership the same authored buttons live in its scroll.
-    local slotParent = bar:FindFirstChild("HotbarScroll")
-    local children = bar:GetChildren()
-    if slotParent and slotParent:IsA("ScrollingFrame") then
-        for _, child in slotParent:GetChildren() do
-            table.insert(children, child)
+    local children: { Instance } = {}
+    local seen: { [Instance]: boolean } = {}
+    local function collect(parent: Instance)
+        for _, child in parent:GetChildren() do
+            if not seen[child] then
+                seen[child] = true
+                table.insert(children, child)
+            end
+        end
+    end
+    collect(bar)
+    for _, name in { "Items", "HotbarScroll" } do
+        local parent = bar:FindFirstChild(name)
+        if parent then
+            collect(parent)
         end
     end
     for sibling, child in children do
@@ -242,7 +267,13 @@ function Gui.Resolve(playerGui: PlayerGui): View?
     local scroll = imported(upgrades, "UpgradeScroll", "_scroll", "ScrollingFrame")
     local list = imported(scroll, "UpgradeList", "_list", "GuiObject")
     local card = Registry.Child(list, "Upgrade:CarryCapacity", { "CarryCapacityCard" }, "GuiObject")
-    local generic = imported(card, "Glossy Fruit Trio Sticker 1", "_image", "ImageLabel") :: ImageLabel?
+    local cardContent = Registry.Child(
+        card,
+        "Upgrade:CarryCapacityContent",
+        { "CarryCapacityCardContent" },
+        "GuiObject"
+    ) or card
+    local generic = imported(cardContent, "Glossy Fruit Trio Sticker 1", "_image", "ImageLabel") :: ImageLabel?
     if not generic or generic.Image == "" then
         issue(bar, "missing intentional item fallback (CarryCapacityCard/Glossy Fruit Trio Sticker 1)")
         return nil

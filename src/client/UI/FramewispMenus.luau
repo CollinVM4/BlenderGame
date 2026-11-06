@@ -22,6 +22,24 @@ function Menus.Attach(gui: Instance, player: Player)
     local stopped = false
     local playerGui = player:FindFirstChild("PlayerGui")
 
+    local function mainContent(): Instance?
+        if not playerGui then
+            return nil
+        end
+        local selected: Instance? = nil
+        for _, desktop in Registry.Desktops(playerGui) do
+            if Registry.ActiveRoot(desktop, playerGui) then
+                if selected then
+                    return nil
+                end
+                selected = desktop
+            end
+        end
+        return if selected then Registry.Content(selected) else nil
+    end
+    local function isCard3DRoot(instance: Instance): boolean
+        return instance:IsA("ScreenGui") and instance.Name:sub(1, #"FramewispCard3D_") == "FramewispCard3D_"
+    end
     local function initialize(instance: Instance)
         if stopped then
             return
@@ -53,6 +71,18 @@ function Menus.Attach(gui: Instance, player: Player)
             return false
         end
         local content = contentOf(button)
+        if not content then
+            local ancestor = button.Parent
+            while ancestor do
+                if ancestor:IsA("ScreenGui") then
+                    if isCard3DRoot(ancestor) then
+                        content = mainContent()
+                    end
+                    break
+                end
+                ancestor = ancestor.Parent
+            end
+        end
         if not content then
             return false
         end
@@ -101,7 +131,7 @@ function Menus.Attach(gui: Instance, player: Player)
             badges[button] = Notifications.Attach(id, button)
         end
         buttons[button] = button.Activated:Connect(function()
-            if not button:IsDescendantOf(gui) then
+            if not button:IsDescendantOf(gui) and not (playerGui and button:IsDescendantOf(playerGui)) then
                 return
             end
             if isClose and close then
@@ -137,43 +167,61 @@ function Menus.Attach(gui: Instance, player: Player)
         if stopped then
             return
         end
-        initialize(instance)
+        if instance:IsDescendantOf(gui) then
+            initialize(instance)
+        end
         wire(instance)
         -- Also handles a complete subtree inserted in one operation.
         for _, descendant in instance:GetDescendants() do
-            initialize(descendant)
+            if descendant:IsDescendantOf(gui) then
+                initialize(descendant)
+            end
             wire(descendant)
         end
     end
     table.insert(connections, gui.DescendantAdded:Connect(added))
-    table.insert(
-        connections,
-        gui.DescendantRemoving:Connect(function(instance)
-            for panel, handle in panels do
-                if panel == instance or panel:IsDescendantOf(instance) then
-                    handle.Destroy()
-                    panels[panel] = nil
+    local function removing(instance: Instance)
+        for panel, handle in panels do
+            if panel == instance or panel:IsDescendantOf(instance) then
+                handle.Destroy()
+                panels[panel] = nil
+            end
+        end
+        for button, connection in buttons do
+            if button == instance or button:IsDescendantOf(instance) then
+                connection:Disconnect()
+                buttons[button] = nil
+                wired[button] = nil
+                local detach = badges[button]
+                if detach then
+                    badges[button] = nil
+                    detach()
                 end
             end
-            for button, connection in buttons do
-                if button == instance or button:IsDescendantOf(instance) then
-                    connection:Disconnect()
-                    buttons[button] = nil
-                    wired[button] = nil
-                    local detach = badges[button]
-                    if detach then
-                        badges[button] = nil
-                        detach()
-                    end
-                end
-            end
-        end)
-    )
+        end
+    end
+    table.insert(connections, gui.DescendantRemoving:Connect(removing))
     for _, descendant in gui:GetDescendants() do
         initialize(descendant)
     end
     for _, descendant in gui:GetDescendants() do
         wire(descendant)
+    end
+    if playerGui then
+        local observed: { [Instance]: boolean } = {}
+        local function observeCard3D(root: Instance)
+            if not isCard3DRoot(root) or observed[root] then
+                return
+            end
+            observed[root] = true
+            table.insert(connections, root.DescendantAdded:Connect(added))
+            table.insert(connections, root.DescendantRemoving:Connect(removing))
+            added(root)
+        end
+        table.insert(connections, playerGui.ChildAdded:Connect(observeCard3D))
+        for _, root in playerGui:GetChildren() do
+            observeCard3D(root)
+        end
     end
     table.insert(
         connections,

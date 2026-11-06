@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-import xml.etree.ElementTree as ET
+from framewisp_export import load_prepared_export
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -38,7 +38,7 @@ def add(item, parent):
     items.append((index, parent, item.attrib["class"], item.findtext("./Properties/string[@name='Name']")))
     for child in item.findall("Item"):
         add(child, index)
-for item in ET.parse(root / "Framewisp_CCWMF.rbxmx").getroot().findall("Item"):
+for item in load_prepared_export().getroot().findall("Item"):
     add(item, 0)
 tree = "local exportNodes = " + json.dumps(items).replace("[", "{").replace("]", "}") + "\n"
 bundle = tree + "local sources = {\n" + "\n".join(

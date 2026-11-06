@@ -43,7 +43,7 @@ class PreparationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = self.root / "new export.rbxmx"
-        self.source.write_bytes((ROOT / "newestExport11426.rbxmx").read_bytes())
+        self.source.write_bytes((ROOT / "export116.rbxmx").read_bytes())
         self.tree = ET.parse(self.source)
         actions = next(i for i in self.tree.iter("Item") if prep.item_name(i) == "FramewispActions")
         source = actions.find("./Properties/ProtectedString[@name='Source']")
@@ -110,6 +110,32 @@ class PreparationTests(unittest.TestCase):
                 return struct.unpack_from("<d", data, data.index(token) + len(token))[0]
             self.assertEqual(number("HotbarTextMin"), float(label.findtext("./Properties/float[@name='TextSize']")))
             self.assertEqual(number("HotbarTextMax"), number("FigmaFontSize"))
+
+    def test_hotbar_text_bounds_in_supported_wrappers(self):
+        for wrapper_name in (None, "Items", "HotbarScroll"):
+            with self.subTest(wrapper=wrapper_name):
+                tree = ET.parse(ROOT / "export116.rbxmx")
+                bar = next(i for i in tree.iter("Item") if prep.item_name(i) == "Hotbar")
+                slots = [i for i in bar.findall("Item") if prep.item_name(i) == "Slot1"]
+                self.assertEqual(len(slots), 9)
+                if wrapper_name:
+                    wrapper = ET.SubElement(bar, "Item", {"class": "Frame" if wrapper_name == "Items" else "ScrollingFrame", "referent": "SLOT_WRAPPER"})
+                    props = ET.SubElement(wrapper, "Properties")
+                    ET.SubElement(props, "string", name="Name").text = wrapper_name
+                    for slot in slots:
+                        bar.remove(slot)
+                        wrapper.append(slot)
+                stamped = ET.fromstring(prep.hotbar_text_bounds(ET.tostring(tree.getroot(), encoding="unicode"), tree))
+                labels = [i for i in stamped.iter("Item") if prep.item_name(i) in ("Label", "Number")
+                          and i.attrib["referent"] in {label.attrib["referent"] for slot in slots for label in slot.findall("Item")}]
+                self.assertEqual(len(labels), 18)
+                for label in labels:
+                    data = base64.b64decode(label.findtext("./Properties/BinaryString[@name='AttributesSerialize']"))
+                    def number(key):
+                        token = struct.pack("<I", len(key)) + key.encode() + b"\x06"
+                        return struct.unpack_from("<d", data, data.index(token) + len(token))[0]
+                    self.assertEqual(number("HotbarTextMin"), float(label.findtext("./Properties/float[@name='TextSize']")))
+                    self.assertEqual(number("HotbarTextMax"), number("FigmaFontSize"))
 
     def test_canvasgroup_and_renamed_semantic_wrappers(self):
         attribute(self.desktop, "Desktop")
@@ -227,8 +253,8 @@ class CLITests(unittest.TestCase):
         self.script = self.root / "tools/prepare_framewisp_ui.py"
         shutil.copyfile(ROOT / "tools/prepare_framewisp_ui.py", self.script)
         self.default = self.root / "Framewisp_Hotbar.prepared.rbxmx"
-        shutil.copyfile(ROOT / "newestExport11426.rbxmx", self.root / "newestExport11426.rbxmx")
-        shutil.copyfile(ROOT / "newestExport11426.rbxmx", self.default)
+        shutil.copyfile(ROOT / "export116.rbxmx", self.root / "newestExport11426.rbxmx")
+        shutil.copyfile(ROOT / "export116.rbxmx", self.default)
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.root,
@@ -287,7 +313,7 @@ class CLITests(unittest.TestCase):
 
 class ExternalMenuTests(unittest.TestCase):
     def test_new_export_preserves_scripts_and_artwork(self):
-        source = ROOT / "newestExport11426.rbxmx"
+        source = ROOT / "export116.rbxmx"
         original = source.read_bytes()
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "prepared.rbxmx"

@@ -58,16 +58,20 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
     end
     local rows: { [string]: Row } = {}
     local cardById: { [string]: GuiObject? } = {}
+    local contentById: { [string]: Instance? } = {}
     for id, name in cards do
         local card = Registry.Child(list, "Upgrade:" .. id, { name }, "GuiObject")
         cardById[id] = card :: GuiObject?
-        local level = child(card, "LevelContainer", "GuiObject")
+        local cardContent = Registry.Child(card, "Upgrade:" .. id .. "Content", { name .. "Content" }, "GuiObject")
+            or card
+        contentById[id] = cardContent
+        local level = child(cardContent, "LevelContainer", "GuiObject")
         local current = child(level, "CurrentValue", "TextLabel")
         local nextValue = child(level, "NextValue", "TextLabel")
-        local price = child(card, "PurchasePrice", "TextLabel")
-        local purchase = importedChild(card, "Buy_button_smooth", "Buy", "GuiButton")
+        local price = child(cardContent, "PurchasePrice", "TextLabel")
+        local purchase = importedChild(cardContent, "Buy_button_smooth", "Buy", "GuiButton")
         local label = child(purchase, "BuyLabel", "TextLabel")
-        local title = child(card, "UpgradeTitle", "TextLabel")
+        local title = child(cardContent, "UpgradeTitle", "TextLabel")
         if not current or not nextValue or not price or not purchase or not label or not title then
             continue
         end
@@ -90,6 +94,12 @@ local function resolveDesktop(root: ScreenGui, desktop: Instance): View?
     local panelArrows: { [string]: GuiObject } = {}
     for name, card in arrowCards do
         local arrow = importedChild(card, name .. "_pulse", name, "GuiObject")
+            or importedChild(
+                contentById[if name == "Jump1Alert" then "Jump" else "Bat"],
+                name .. "_pulse",
+                name,
+                "GuiObject"
+            )
         if arrow then
             panelArrows[name] = arrow :: GuiObject
         end

@@ -203,7 +203,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 child:Destroy()
             end
         end
-        binding.Slot.Selected.Visible = false
+        if binding.Slot.Selected then
+            binding.Slot.Selected.Visible = false
+        end
         binding.Slot.Button.Visible = false
         binding.Slot.Button.NextSelectionLeft = binding.Slot.Button
         binding.Slot.Button.NextSelectionRight = binding.Slot.Button
@@ -321,7 +323,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         table.insert(
             uiConnections,
             slot.Button:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
-                if enabled and (slot.Selected.Visible or GuiService.SelectedObject == slot.Button) then
+                if
+                    enabled and ((slot.Selected and slot.Selected.Visible) or GuiService.SelectedObject == slot.Button)
+                then
                     schedule()
                 end
             end)
@@ -549,7 +553,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
             if
                 binding.Slot.Button.Visible
-                and (binding.Slot.Selected.Visible or GuiService.SelectedObject == binding.Slot.Button)
+                and (
+                    (binding.Slot.Selected and binding.Slot.Selected.Visible)
+                    or GuiService.SelectedObject == binding.Slot.Button
+                )
             then
                 reveal(binding.Slot.Button)
             end
@@ -913,7 +920,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 number.Text = if index <= 9 then tostring(index) elseif index == 10 then "0" else ""
             end
             slot.Button.LayoutOrder = index
-            slot.Selected.Visible, slot.Button.Visible = item.Tool.Parent == character, true
+            if slot.Selected then
+                slot.Selected.Visible = item.Tool.Parent == character
+            end
+            slot.Button.Visible = true
             ordered[index] = target
         end
         for index, binding in ordered do

@@ -2,6 +2,14 @@
 
 LuckyBlockService owns weighted rolls, public claim pickups, spawn clocks and buffs in server memory. Rolling reveals a prize; collecting the later pickup awards it to that collector, who may differ from the roller. There is no client pickup endpoint or acknowledgment.
 
+## Startup hold
+
+`LuckyBlockConfig.Enabled = false` holds the system at server start. While held, no blocks spawn, no markers are bound, no pickups spawn or grant, and no buffs start. Deleting markers or the template produces no Lucky Block warnings or respawns. `IsBuffActive` returns false and `GetCashMultiplier` returns 1, so combat, sprint and payout code is unaffected; shop 2x Cash still pays 2x.
+
+Re-enable with `Enabled = true` **and** restore any deleted Studio objects: `Workspace.LuckyBlockSpawns` (Level0 through Level3 groups and tagged markers), `ServerStorage.LuckyBlockTemplates.LuckyBlock`, and `ReplicatedStorage.LuckyBlockVisuals`. The flag alone cannot restore missing assets.
+
+Before deleting anything, sync this change and start a fresh Play Solo session. Check that `Workspace.LuckyBlocks` stays empty, Output has zero `[LuckyBlock]` warnings after 60 seconds, walking through former spawn positions does nothing, and bat, ice, sprint and a served order behave normally. Stop Play Solo before optionally deleting the authored markers and template (and visuals if desired), save the place, then repeat those checks in another fresh session. Keep the runtime folder, remotes and scripts. A running session retains its startup setting; restart it to apply changes. Keeping the authored objects and relying on the hold is also safe.
+
 | Reward | Weight | Duration at claim | Effect |
 |---|---:|---:|---|
 | CashBoost | 15 | 90 seconds | 1.5x cash; max with shop DoubleCash, then existing Muncher factor |

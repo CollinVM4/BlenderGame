@@ -50,30 +50,32 @@ function Gui.Resolve(playerGui: PlayerGui): View?
     end
     local plot = child(panel, "PLOT", { "PLOT" }, "GuiObject")
     local music = child(panel, "MUSIC", { "MUSIC" }, "GuiObject")
+    local plotContent = Registry.Child(plot, "PLOTContent", { "PLOTContent" }, "GuiObject") or plot
+    local musicContent = Registry.Child(music, "MUSICContent", { "MUSICContent" }, "GuiObject") or music
     local modes: { [string]: GuiButton } = {}
     local names: { [string]: { string } } = {
         FriendsOnly = { "Friends", "Friends_button_smooth" },
         Open = { "Open", "Open_button_smooth", "All", "All_button_smooth" },
-        Closed = { "Closed", "Closed_button_smooth" },
+        Closed = { "Locked", "Locked_button_smooth", "Closed", "Closed_button_smooth" },
     }
     for mode, fallbacks in names do
-        local row = child(plot, mode, fallbacks, "GuiButton")
+        local row = child(plotContent, mode, fallbacks, "GuiButton")
         if row then
             modes[mode] = row :: GuiButton
         end
     end
-    local track = child(music, "Slider", { "Slider" }, "GuiObject")
+    local track = child(musicContent, "Slider", { "Slider" }, "GuiObject")
     local thumb = child(track, "Knob", { "Knob" }, "GuiObject")
     local fill = child(track, "ProgressBar", { "ProgressBar" }, "GuiObject")
     return {
         Root = root,
         Panel = panel :: GuiObject,
         Modes = modes,
-        MusicOn = child(music, "MusicOn", { "MusicOn", "MusicOn_button_smooth" }, "GuiButton") :: GuiButton?,
-        MusicOff = child(music, "MusicOff", { "MusicOff", "MusicOff_button_smooth" }, "GuiButton") :: GuiButton?,
-        Status = child(plot, "Title", { "Title" }, "TextLabel") :: TextLabel?,
-        Rename = child(plot, "Rename", { "Rename", "Rename_button_smooth" }, "GuiButton") :: GuiButton?,
-        Kick = child(plot, "Kick", { "Kick", "Kick_button_smooth" }, "GuiButton") :: GuiButton?,
+        MusicOn = child(musicContent, "MusicOn", { "MusicOn", "MusicOn_button_smooth" }, "GuiButton") :: GuiButton?,
+        MusicOff = child(musicContent, "MusicOff", { "MusicOff", "MusicOff_button_smooth" }, "GuiButton") :: GuiButton?,
+        Status = child(plotContent, "Title", { "Title" }, "TextLabel") :: TextLabel?,
+        Rename = child(plotContent, "Rename", { "Rename", "Rename_button_smooth" }, "GuiButton") :: GuiButton?,
+        Kick = child(plotContent, "Kick", { "Kick", "Kick_button_smooth" }, "GuiButton") :: GuiButton?,
         Track = track :: GuiObject?,
         Thumb = thumb :: GuiObject?,
         Fill = fill :: GuiObject?,

@@ -9,6 +9,7 @@ local rewards: { { Id: string, Weight: number, DurationSeconds: number? } } = {
     { Id = "MysteryBox", Weight = 8 },
 }
 return {
+    Enabled = false,
     ModelName = "LuckyBlock", -- Direct child of ServerStorage.LuckyBlockTemplates.
     TemplateFolderName = "LuckyBlockTemplates",
     MarkerTag = "LuckyBlockSpawn",

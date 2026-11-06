@@ -136,7 +136,96 @@ end
 local selectedIds, grantedTo, failure = nil, nil, false
 local tier = 0
 local expectedClaimer = nil
-local service = loadModule("LuckyBlockService")
+-- Test-only source seam: retain a real service instance's state across a synthetic
+-- server start so queued callbacks can wake while held. No production toggle/API.
+local serviceSource = sources.LuckyBlockService
+local function fixtureService()
+    sources.LuckyBlockService = string.gsub(
+        serviceSource,
+        "return Service",
+        [[
+Service.Fixture = {
+    Restart = function() started = false end,
+    Buffs = buffs,
+    Slots = slots,
+    Records = records,
+    Schedule = schedule,
+    Respawn = respawn,
+    Populate = populate,
+    SpawnAt = spawnAt,
+    SpawnPickup = spawnPickup,
+    Tick = tick,
+}
+return Service
+]]
+    )
+    cache.LuckyBlockService = nil
+    local result = loadModule("LuckyBlockService")
+    sources.LuckyBlockService = serviceSource
+    return result
+end
+check(config.Enabled == false, "repository defaults Lucky Blocks to held")
+local heldService = fixtureService()
+local stalePlayer = instance("Player")
+stalePlayer.Parent = services.Players
+table.insert(players, stalePlayer)
+heldService.RemovePlayer(stalePlayer) -- Safe before any Init.
+heldService.Fixture.Buffs[stalePlayer] = {}
+for _, reward in config.Rewards do
+    heldService.Fixture.Buffs[stalePlayer][reward.Id] = now + 100
+    stalePlayer:SetAttribute("LuckyBuff" .. reward.Id .. "ExpiresAt", now + 100)
+    stalePlayer:SetAttribute("LuckyInstant" .. reward.Id .. "Until", now + 100)
+end
+stalePlayer:SetAttribute("Unrelated", 42)
+local heldDelayCount, heldWarningCount = #scheduledDelays, #warnings
+heldService.Init({})
+local heldWorld = workspaceFake:FindFirstChild(config.WorldFolderName)
+check(heldWorld and #heldWorld:GetChildren() == 0, "held Init creates empty runtime folder")
+for _, name in { config.RewardEventName, presentationConfig.NearbyEventName } do
+    check(shared.Events:FindFirstChild(name):IsA("RemoteEvent"), "held Init creates output remote " .. name)
+end
+check(added[config.MarkerTag] == nil, "held Init never binds marker tag")
+check(#heldService.Fixture.Slots == 0 and #scheduledDelays == heldDelayCount, "held Init creates no slots or timers")
+for _, reward in config.Rewards do
+    check(not heldService.IsBuffActive(stalePlayer, reward.Id), "held Init clears seeded buff " .. reward.Id)
+    check(
+        stalePlayer:GetAttribute("LuckyBuff" .. reward.Id .. "ExpiresAt") == nil
+            and stalePlayer:GetAttribute("LuckyInstant" .. reward.Id .. "Until") == nil,
+        "held Init clears Lucky attributes"
+    )
+end
+check(
+    heldService.GetCashMultiplier(stalePlayer) == 1 and stalePlayer:GetAttribute("Unrelated") == 42,
+    "held cash factor is neutral and unrelated attributes survive"
+)
+local invalidModel = instance("Model")
+check(
+    not heldService.TryClaim(stalePlayer, invalidModel) and not heldService.TryClaimPickup(stalePlayer, invalidModel),
+    "held claims fail before reading gameplay state"
+)
+-- Later config writes cannot enable an already held server, including repeated Init.
+config.Enabled = true
+heldService.Init({})
+heldService.Fixture.Tick()
+-- Simulate absent authored Studio assets without affecting the enabled fixture.
+container.Parent = nil
+template.Parent = nil
+local findReplicated = services.ReplicatedStorage.FindFirstChild
+services.ReplicatedStorage.FindFirstChild = function()
+    return nil
+end
+step(6)
+step(241)
+check(
+    #heldWorld:GetChildren() == 0 and #scheduledDelays == heldDelayCount and #warnings == heldWarningCount,
+    "hold is latched; no polling, retry, spawn or warnings"
+)
+container.Parent = workspaceFake
+template.Parent = templates
+services.ReplicatedStorage.FindFirstChild = findReplicated
+heldService.RemovePlayer(stalePlayer)
+table.clear(players)
+local service = fixtureService()
 service.Init({
     TycoonService = {
         GetJumpTier = function(player)
@@ -228,7 +317,10 @@ check(
     "public collectible resolves authored presentation Visual mapping"
 )
 check(not services.CollectionService:HasTag(pickup, config.WorldTag), "reward never enters unopened block animation")
-check(services.CollectionService:HasTag(pickup, presentationConfig.PickupTag), "public reward registers its own handoff identity")
+check(
+    services.CollectionService:HasTag(pickup, presentationConfig.PickupTag),
+    "public reward registers its own handoff identity"
+)
 local visualPose = loadModule("LuckyBlockRewardVisual").Pose(pickup:GetAttribute("PickupPosition"))
 check((rewardArt:GetPivot().Position - visualPose.Position).Magnitude < 0.001, "public prize uses settled reveal pose")
 for _, part in rewardArt:GetDescendants() do
@@ -484,3 +576,76 @@ check(namedWarning, "missing asset warning names exact authored visual")
 claimRoot.Position = labelOnly:GetAttribute("PickupPosition")
 check(service.TryClaimPickup(claimer, labelOnly), "label-only prize preserves server proximity collection")
 missingSource.Parent = rewardFolder
+
+-- Seed real live lifecycle work, then simulate a held server start via the fixture.
+step(240)
+local buffId = roll(blocks("Level2")[1], 0)
+step(reveal)
+claimRoot.Position = prize(buffId):GetAttribute("PickupPosition")
+check(service.TryClaimPickup(claimer, prize(buffId)), "prepare active buff and pending expiry callback")
+step(1)
+local availableId = roll(blocks("Level0")[1], 0.15)
+step(reveal)
+local availablePickup = prize(availableId)
+local pendingId = roll(blocks("Level1")[1], 0)
+local pendingPickup
+for _, model in world:GetChildren() do
+    if model:GetAttribute("PickupId") == pendingId then
+        pendingPickup = model
+    end
+end
+local retrySlot = { Level = "Level3", Model = nil, Previous = nil, Waiting = false }
+service.Fixture.Schedule(retrySlot, 5)
+local liveBlock = blocks("Level0")[1]
+check(liveBlock ~= nil and availablePickup ~= nil and pendingPickup ~= nil, "prepare live block and both pickup phases")
+table.insert(players, claimer)
+config.Enabled = false
+local beforeHoldDelays, beforeHoldWarnings = #scheduledDelays, #warnings
+service.Fixture.Restart()
+service.Init({})
+check(
+    liveBlock.Parent == nil and next(service.Fixture.Records) == nil,
+    "held cleanup destroys live blocks through retirement callbacks"
+)
+check(
+    availablePickup.Parent == nil and #workspaceFake.Terrain:GetChildren() == 0,
+    "held cleanup removes pickup and Terrain label"
+)
+check(
+    not service.IsBuffActive(claimer, "CashBoost") and claimer:GetAttribute("LuckyBuffCashBoostExpiresAt") == nil,
+    "held cleanup clears real claimed buff"
+)
+check(
+    not service.TryClaim(roller, liveBlock) and not service.TryClaimPickup(claimer, availablePickup),
+    "held real claims are rejected"
+)
+local guardSlot = { Level = "Level0", Model = nil, Previous = nil, Waiting = false }
+service.Fixture.Schedule(guardSlot, 5)
+service.Fixture.Respawn(guardSlot)
+check(
+    not service.Fixture.Populate(guardSlot) and not service.Fixture.SpawnAt(authored[1], guardSlot),
+    "held spawn entry points return false"
+)
+service.Fixture.SpawnPickup({}) -- Must return before accessing pickup identity/art.
+service.Fixture.Tick()
+local childrenAfterHold = #world:GetChildren()
+step(reveal)
+check(pendingPickup:GetAttribute("PickupState") == "Pending", "pending reveal callback cannot spawn pickup while held")
+step(6)
+step(241)
+check(
+    #world:GetChildren() == childrenAfterHold and #blocks("Level0") == 0 and #blocks("Level1") == 0,
+    "held retirement and pending retries never replace blocks beyond maximum respawn deadline"
+)
+check(
+    #scheduledDelays == beforeHoldDelays and #warnings == beforeHoldWarnings,
+    "pending retry, synchronized respawn, reveal and tick schedule no further work or warnings"
+)
+for _, reward in config.Rewards do
+    check(
+        not service.IsBuffActive(claimer, reward.Id) and service.GetCashMultiplier(claimer) == 1,
+        "held queries stay neutral for " .. reward.Id
+    )
+end
+service.RemovePlayer(claimer)
+print("PASS: Lucky startup hold and queued callback guards")

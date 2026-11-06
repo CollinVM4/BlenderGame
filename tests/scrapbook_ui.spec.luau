@@ -1,3 +1,5 @@
+-- FramewispMenus observes sibling Card3D roots through PlayerGui.ChildAdded.
+playerGui.ChildAdded = signal()
 local presentation, controller, catalog, artwork =
     load("ScrapbookPresentation"), load("ScrapbookController"), load("DiscoveryCatalog"), load("ScrapbookArtwork")
 local entries = catalog.GetIngredients()
@@ -224,6 +226,29 @@ for _, tier in { "Common", "Uncommon", "Rare", "Mystery" } do
             and not card:FindFirstChild("FruitImage").Visible,
         "all tiers hide identity"
     )
+end
+-- Resolve authored title wrappers one level at a time, retaining old exports.
+for _, layout in { "wrapped", "direct", "empty-wrapper" } do
+    playerGui.children = {}
+    local root = import()
+    local title = assert(descend(root, "INDEX"))
+    local header = title.Parent.Parent
+    check(title.Parent.Name == "HeaderContent", "prepared export authors INDEX in HeaderContent")
+    if layout ~= "wrapped" then
+        local wrapper = title.Parent
+        table.remove(wrapper.children, table.find(wrapper.children, title))
+        title.Parent = header
+        if layout == "direct" then
+            wrapper:Destroy()
+        end
+    end
+    local binding = assert(presentation.Resolve(playerGui))
+    check(binding.Title == title, layout .. " title resolves")
+    local view = presentation.Create(binding, { Ingredients = { Apple = true }, SpecialCustomers = {} })
+    check(title.Text == "INDEX 1/" .. #entries, layout .. " counter uses authored title")
+    view.Destroy()
+    flush()
+    root:Destroy()
 end
 for _, uiFirst in { true, false } do
     playerGui.children = {}

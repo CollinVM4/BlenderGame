@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-import xml.etree.ElementTree as ET
+from framewisp_export import load_prepared_export
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -33,7 +33,7 @@ def visit(item, parent):
         visit(child, index)
 
 
-for item in ET.parse(root / "Framewisp_CCWMF.rbxmx").getroot().findall("Item"):
+for item in load_prepared_export("Settings").getroot().findall("Item"):
     visit(item, 0)
 def lua(value):
     if isinstance(value, list):

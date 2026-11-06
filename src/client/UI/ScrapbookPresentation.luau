@@ -50,7 +50,9 @@ function Presentation.Resolve(playerGui: PlayerGui): Binding?
     local scroll =
         Registry.Child(panel, "CardsViewport", { "CardsViewport", "CardsViewport_scroll_grid" }, "ScrollingFrame")
     local template = child(scroll, "IndexCardTemplate", "Frame")
-    local title = child(child(panel, "Header", "GuiObject"), "INDEX", "TextLabel")
+    local header = child(panel, "Header", "GuiObject")
+    local headerContent = Registry.Child(header, "HeaderContent", { "HeaderContent" }, "GuiObject")
+    local title = child(headerContent, "INDEX", "TextLabel") or child(header, "INDEX", "TextLabel")
     if not panel or not scroll or not template or not title then
         return nil
     end

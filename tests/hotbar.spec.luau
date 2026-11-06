@@ -583,8 +583,7 @@ local function fixture(valid)
             icon.Image = templateImage
             icon.Size = UDim2.fromScale(0.625, 0.625)
             icon.Position = UDim2.fromScale(0.5, 0.364583343)
-            new("ImageLabel", "SlotSelected", slot)
-            new("ImageLabel", "SlotBackground", slot)
+            new("ImageLabel", "Slot1Background", slot)
         end
     end
     local function tool(name, id, key)
@@ -836,7 +835,16 @@ if testCase == "all" or testCase == "reparent" then
     end
     do
         local f = screenFixture(390, 844)
-        local countBefore = #warnings
+        local function hostWarnings()
+            local count = 0
+            for _, message in warnings do
+                if string.find(message, "forced host creation failure", 1, true) then
+                    count += 1
+                end
+            end
+            return count
+        end
+        local countBefore = hostWarnings()
         failHostCreation = true
         local stop = Controller.Start(f.Player, f.PlayerGui)
         flush()
@@ -845,13 +853,10 @@ if testCase == "all" or testCase == "reparent" then
             "host creation failure retains original viewport logic and custom Backpack handoff"
         )
         near(f.Bar.AbsoluteSize.Y, 64, "failure measures letterboxed content")
-        check(
-            #warnings == countBefore + 1 and string.find(warnings[#warnings], "forced host creation failure", 1, true),
-            "reparent failure reports reason once"
-        )
+        check(hostWarnings() == countBefore + 1, "reparent failure reports reason once")
         f.Backpack:GetChildren()[1].Name = "Apple renamed"
         flush()
-        check(#warnings == countBefore + 1, "reparent failure does not warn again on render")
+        check(hostWarnings() == countBefore + 1, "reparent failure does not warn again on render")
         check(f.Root:FindFirstChild("HotbarHost") == nil, "failed creation leaves no host")
         stop()
         flush()
@@ -991,6 +996,7 @@ if testCase == "all" or testCase == "docking" then
             name .. " navigation order"
         )
         buttons[12].Activated:Fire()
+        guiService.SelectedObject = buttons[12]
         flush()
         check(f.Bar:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.X > 0, name .. " selected overflow revealed")
         print("PASS viewport", name, width, height, input, "bottom", bottom, "height", target)
@@ -1060,6 +1066,7 @@ if testCase == "all" or testCase == "docking" then
         f.Root.Pixels = v(240, 390)
         touchButton(f, "JumpButton", 145, 150, 95, 240)
         local tool = f.Tool("Apple", "Apple", 1)
+        Gui.Resolve(f.PlayerGui)
         local before = #warnings
         local stop = Controller.Start(f.Player, f.PlayerGui)
         flush()
@@ -1204,6 +1211,54 @@ elseif testCase == "template" then
     return
 end
 
+-- Required slot content stays required even when Selected is optional.
+do
+    for _, name in { "Label", "SlotIcon", "Slot1Background" } do
+        local f = fixture(true)
+        local button = assert(Gui.Resolve(f.PlayerGui)).Slots[1].Button
+        button:FindFirstChild(name):Destroy()
+        check(Gui.Slot(button) == nil, "slot rejects missing required " .. name)
+        f.Root:Destroy()
+    end
+end
+
+-- Supported authored slot locations and optional authored highlight.
+do
+    for _, wrapper in { "direct", "Items", "HotbarScroll" } do
+        local f = fixture(true)
+        local view = assert(Gui.Resolve(f.PlayerGui))
+        check(#view.Slots == 9 and view.Slots[1].Selected == nil, "shipped background works without Selected")
+        local button = view.Slots[1].Button
+        local selected = new("ImageLabel", "SlotSelected", button)
+        check(assert(Gui.Slot(button)).Selected == selected, "authored Selected still binds")
+        selected:Destroy()
+        if wrapper ~= "direct" then
+            local parent = new(if wrapper == "Items" then "Frame" else "ScrollingFrame", wrapper, view.Bar)
+            for _, slot in view.Slots do
+                slot.Button.Parent = parent
+            end
+        end
+        check(#assert(Gui.Resolve(f.PlayerGui)).Slots == 9, "supported slot location: " .. wrapper)
+        f.Root:Destroy()
+    end
+end
+
+do
+    local f = fixture(true)
+    local view = assert(Gui.Resolve(f.PlayerGui))
+    local highlight = new("ImageLabel", "SlotSelected", view.Slots[1].Button)
+    local tool = f.Tool("Apple", "Apple", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    check(not highlight.Visible, "authored selection starts unequipped")
+    visible(f)[1].Activated:Fire()
+    flush()
+    check(tool.Parent == f.Character and highlight.Visible, "authored highlight still follows equipped Tool")
+    stop()
+    flush()
+    check(not highlight.Visible, "authored highlight clears on release")
+end
+
 -- Resolve and render the actual currently mounted export, not a fabricated hierarchy.
 do
     local f = fixture(false)
@@ -1267,18 +1322,21 @@ do
         :FindFirstChild("UpgradeScroll")
         :FindFirstChild("UpgradeList")
         :FindFirstChild("CarryCapacityCard")
+        :FindFirstChild("CarryCapacityCardContent")
         :FindFirstChild("Glossy Fruit Trio Sticker 1").Image
     local batImage = content
         :FindFirstChild("Upgrades")
         :FindFirstChild("UpgradeScroll")
         :FindFirstChild("UpgradeList")
         :FindFirstChild("BatCard")
+        :FindFirstChild("BatCardContent")
         :FindFirstChild("Isolated Wooden Baseball Bat 1").Image
     local iceImage = content
         :FindFirstChild("Shop")
         :FindFirstChild("ShopScroll")
         :FindFirstChild("ShopList")
         :FindFirstChild("Ice Gun")
+        :FindFirstChild("Ice GunContent")
         :FindFirstChild("IceGunImage").Image
     f.Tool("Apple", "Apple", 1)
     f.Tool("Missing", "Missing", 2)
@@ -1415,7 +1473,10 @@ do
     ingredients[1]:Destroy()
     flush()
     buttons = visible(f)
-    check(#buttons == 11 and buttons[10]:GetChildren()[3].Visible, "selection follows Tool after index shift")
+    check(
+        #buttons == 11 and smoothie1.Parent == f.Character and label(buttons[10]) == "Smoothie",
+        "selection follows Tool after index shift"
+    )
     local scroll = f.Bar:FindFirstChildOfClass("ScrollingFrame")
     check(scroll.AbsoluteCanvasSize.X >= 11 * 48, "spacing-aware overflow canvas")
     check(buttons[1].AbsoluteSize.X >= 48, "named minimum target width")
@@ -1537,6 +1598,7 @@ do
     local buttons = visible(f)
     check(#buttons == 12 and buttons[1].AbsoluteSize.X >= 48, "phone targets keep 48px floor with scrolling")
     buttons[12].Activated:Fire()
+    guiService.SelectedObject = buttons[12]
     flush()
     local scroll = f.Bar:FindFirstChildOfClass("ScrollingFrame")
     check(scroll.CanvasPosition.X > 0, "selected last slot scrolls fully into view")
@@ -1551,8 +1613,9 @@ for _, viewport in { v(320, 568), v(768, 1024), v(800, 600), v(1920, 1080), v(19
     local f = fixture(true)
     f.Root.Pixels = viewport
     local longestName = "WWWWWWWWWWWWWWWWWWWW's Head"
+    local tools = {}
     for i = 1, 12 do
-        f.Tool(if i == 1 then longestName else "Apple", "Apple", i)
+        tools[i] = f.Tool(if i == 1 then longestName else "Apple", "Apple", i)
     end
     local before = cas.Binds
     local stop = Controller.Start(f.Player, f.PlayerGui)
@@ -1633,9 +1696,10 @@ for _, viewport in { v(320, 568), v(768, 1024), v(800, 600), v(1920, 1080), v(19
     do
         callback("", Enum.UserInputState.Begin, { KeyCode = key })
         flush()
-        check(buttons[index]:FindFirstChild("SlotSelected").Visible, "1-9 and overflow 0 map to current visible order")
+        check(tools[index].Parent == f.Character, "1-9 and overflow 0 equip current visible tool without Selected")
     end
     buttons[12].Activated:Fire()
+    guiService.SelectedObject = buttons[12]
     flush()
     check(scroll.CanvasPosition.X > 0, "selected overflow slot scrolls into view")
     callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
@@ -1742,7 +1806,7 @@ end
 do
     local f = fixture(true)
     local missing1 = f.Tool("Missing item", "Missing", 1)
-    f.Tool("Missing again", "Missing", 2)
+    local missing2 = f.Tool("Missing again", "Missing", 2)
     local bat = f.Tool("bat")
     bat:SetAttribute("BatLevel", 1)
     local beforeWarnings = #warnings
@@ -1766,7 +1830,10 @@ do
     for index, key in { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three } do
         callback("", Enum.UserInputState.Begin, { KeyCode = key })
         flush()
-        check(visible(f)[index]:FindFirstChild("SlotSelected").Visible, "key selects Nth current visible Tool")
+        check(
+            ({ bat, missing1, missing2 })[index].Parent == f.Character,
+            "key equips Nth current visible Tool without Selected"
+        )
     end
     local eq, uneq = f.Counts()
     callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Nine })
