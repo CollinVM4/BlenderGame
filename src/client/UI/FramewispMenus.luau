@@ -38,7 +38,8 @@ function Menus.Attach(gui: Instance, player: Player)
         return if selected then Registry.Content(selected) else nil
     end
     local function isCard3DRoot(instance: Instance): boolean
-        return instance:IsA("ScreenGui") and instance.Name:sub(1, #"FramewispCard3D_") == "FramewispCard3D_"
+        return (instance:IsA("ScreenGui") or instance:IsA("SurfaceGui"))
+            and instance.Name:sub(1, #"FramewispCard3D_") == "FramewispCard3D_"
     end
     local function initialize(instance: Instance)
         if stopped then
@@ -74,7 +75,7 @@ function Menus.Attach(gui: Instance, player: Player)
         if not content then
             local ancestor = button.Parent
             while ancestor do
-                if ancestor:IsA("ScreenGui") then
+                if ancestor:IsA("ScreenGui") or ancestor:IsA("SurfaceGui") then
                     if isCard3DRoot(ancestor) then
                         content = mainContent()
                     end

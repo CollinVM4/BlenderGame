@@ -441,80 +441,82 @@ local function reparent(object, parent)
         table.insert(parent.children, object)
     end
 end
-for _, order in { "existing", "late", "moved" } do
-    playerGui.children = {}
-    local gui = instance("ScreenGui", "Framewisp", playerGui)
-    local desktop = instance("CanvasGroup", "Be a Blender! Desktop", gui)
-    local panels, buttons = {}, {}
-    local nav = instance("CanvasGroup", "LeftMenu", desktop)
-    local right = instance("CanvasGroup", "RightMenu", desktop)
-    for _, id in { "Upgrades", "Index", "Shop", "Settings" } do
-        panels[id] = instance("Frame", id, desktop)
-        buttons[id] = instance(
-            "TextButton",
-            id,
-            if id == "Shop" or id == "Settings" then right else nav,
-            { FigmaAction = "open", FigmaActionParam = id }
-        )
-    end
-    local root = instance("ScreenGui", "FramewispCard3D_LeftMenu", if order == "existing" then playerGui else nil)
-    if order == "existing" then
-        reparent(nav, root)
-    end
-    local binding = loadModule("FramewispMenus").Attach(gui, player)
-    if order ~= "existing" then
-        reparent(root, playerGui)
-        playerGui.ChildAdded:Fire(root)
-        gui.DescendantRemoving:Fire(nav)
+for _, rootClass in { "SurfaceGui", "ScreenGui" } do
+    for _, order in { "existing", "late", "moved" } do
+        playerGui.children = {}
+        local gui = instance("ScreenGui", "Framewisp", playerGui)
+        local desktop = instance("CanvasGroup", "Be a Blender! Desktop", gui)
+        local panels, buttons = {}, {}
+        local nav = instance("CanvasGroup", "LeftMenu", desktop)
+        local right = instance("CanvasGroup", "RightMenu", desktop)
+        for _, id in { "Upgrades", "Index", "Shop", "Settings" } do
+            panels[id] = instance("Frame", id, desktop)
+            buttons[id] = instance(
+                "TextButton",
+                id,
+                if id == "Shop" or id == "Settings" then right else nav,
+                { FigmaAction = "open", FigmaActionParam = id }
+            )
+        end
+        local root = instance(rootClass, "FramewispCard3D_LeftMenu", if order == "existing" then playerGui else nil)
+        if order == "existing" then
+            reparent(nav, root)
+        end
+        local binding = loadModule("FramewispMenus").Attach(gui, player)
+        if order ~= "existing" then
+            reparent(root, playerGui)
+            playerGui.ChildAdded:Fire(root)
+            gui.DescendantRemoving:Fire(nav)
+            reparent(nav, root)
+            root.DescendantAdded:Fire(nav)
+        end
+        for _, id in { "Upgrades", "Index", "Shop", "Settings" } do
+            check(binding.Wire(buttons[id]), rootClass .. " " .. order .. " navigation claimed: " .. id)
+            buttons[id].Activated:Fire()
+            check(panels[id].Visible, order .. " opens " .. id)
+            buttons[id].Activated:Fire()
+            check(not panels[id].Visible, order .. " closes " .. id)
+        end
+        -- No navigation ancestor: the walk must terminate beyond the Card3D root.
+        local nonNav = instance("TextButton", "Index", root)
+        root.DescendantAdded:Fire(nonNav)
+        check(not binding.Wire(nonNav), "Card3D fallback still requires navigation or semantic action")
+        for _, name in { "Unrelated", "OtherFramewispCard3D_LeftMenu" } do
+            local unrelated = instance(rootClass, name, playerGui)
+            local otherNav = instance("CanvasGroup", "LeftMenu", unrelated)
+            local button = instance("TextButton", "Index", otherNav, { BlenderUI = "Toggle:Index" })
+            playerGui.ChildAdded:Fire(unrelated)
+            check(not binding.Wire(button), "unrelated " .. rootClass .. " is not claimed")
+            button.Activated:Fire()
+            check(not panels.Index.Visible, "unrelated button cannot open panel")
+        end
+        local later = instance("TextButton", "Index", nav)
+        root.DescendantAdded:Fire(later)
+        later.Activated:Fire()
+        check(panels.Index.Visible, "late Card3D descendant opens panel")
+        manager.CloseAll()
+        root.DescendantRemoving:Fire(later)
+        reparent(later, nil)
+        later.Activated:Fire()
+        check(not panels.Index.Visible, "removed Card3D descendant does nothing")
+        root.DescendantRemoving:Fire(nav)
+        reparent(nav, nil)
+        buttons.Upgrades.Activated:Fire()
+        check(not panels.Upgrades.Visible, "removed Card3D subtree does nothing")
         reparent(nav, root)
         root.DescendantAdded:Fire(nav)
+        buttons.Index.Activated:Fire()
+        check(panels.Index.Visible, "returning Card3D subtree rewires")
+        player.CharacterAdded:Fire()
+        check(not panels.Index.Visible, "respawn closes Card3D-opened panel")
+        -- Guard retained callbacks even if the host leaves PlayerGui as a whole.
+        reparent(root, nil)
+        buttons.Index.Activated:Fire()
+        check(not panels.Index.Visible, "detached Card3D host cannot activate")
+        reparent(root, playerGui)
+        gui.Destroying:Fire()
+        buttons.Index.Activated:Fire()
+        check(not panels.Index.Visible, "stopped binding disconnects Card3D actions")
     end
-    for _, id in { "Upgrades", "Index", "Shop", "Settings" } do
-        check(binding.Wire(buttons[id]), order .. " navigation claimed: " .. id)
-        buttons[id].Activated:Fire()
-        check(panels[id].Visible, order .. " opens " .. id)
-        buttons[id].Activated:Fire()
-        check(not panels[id].Visible, order .. " closes " .. id)
-    end
-    -- No navigation ancestor: the walk must terminate beyond the Card3D root.
-    local nonNav = instance("TextButton", "Index", root)
-    root.DescendantAdded:Fire(nonNav)
-    check(not binding.Wire(nonNav), "Card3D fallback still requires navigation or semantic action")
-    for _, name in { "Unrelated", "OtherFramewispCard3D_LeftMenu" } do
-        local unrelated = instance("ScreenGui", name, playerGui)
-        local otherNav = instance("CanvasGroup", "LeftMenu", unrelated)
-        local button = instance("TextButton", "Index", otherNav, { BlenderUI = "Toggle:Index" })
-        playerGui.ChildAdded:Fire(unrelated)
-        check(not binding.Wire(button), "unrelated ScreenGui is not claimed")
-        button.Activated:Fire()
-        check(not panels.Index.Visible, "unrelated button cannot open panel")
-    end
-    local later = instance("TextButton", "Index", nav)
-    root.DescendantAdded:Fire(later)
-    later.Activated:Fire()
-    check(panels.Index.Visible, "late Card3D descendant opens panel")
-    manager.CloseAll()
-    root.DescendantRemoving:Fire(later)
-    reparent(later, nil)
-    later.Activated:Fire()
-    check(not panels.Index.Visible, "removed Card3D descendant does nothing")
-    root.DescendantRemoving:Fire(nav)
-    reparent(nav, nil)
-    buttons.Upgrades.Activated:Fire()
-    check(not panels.Upgrades.Visible, "removed Card3D subtree does nothing")
-    reparent(nav, root)
-    root.DescendantAdded:Fire(nav)
-    buttons.Index.Activated:Fire()
-    check(panels.Index.Visible, "returning Card3D subtree rewires")
-    player.CharacterAdded:Fire()
-    check(not panels.Index.Visible, "respawn closes Card3D-opened panel")
-    -- Guard retained callbacks even if the host leaves PlayerGui as a whole.
-    reparent(root, nil)
-    buttons.Index.Activated:Fire()
-    check(not panels.Index.Visible, "detached Card3D host cannot activate")
-    reparent(root, playerGui)
-    gui.Destroying:Fire()
-    buttons.Index.Activated:Fire()
-    check(not panels.Index.Visible, "stopped binding disconnects Card3D actions")
 end
 print("Framewisp menus: " .. count .. " checks passed")
