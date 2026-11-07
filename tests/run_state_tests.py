@@ -72,6 +72,7 @@ SUITES = {
     "blender-vacuum": ("integration", ("blender_vacuum.spec.luau",)),
     "muncher": ("integration", ("fixtures/smoothie.luau", "muncher.spec.luau")),
     "muncher-presentation": ("presentation", ("muncher_presentation.spec.luau",)),
+    "muncher-artwork-coverage": ("presentation", ("muncher_artwork_coverage.spec.luau",)),
     "ingredient-cleanup": ("integration", ("fixtures/smoothie.luau", "ingredient_cleanup.spec.luau")),
     "jacked-noob": ("state", ("jacked_noob.spec.luau",)),
     "jacked-noob-inventory": ("integration", ("fixtures/smoothie.luau", "jacked_noob_inventory.spec.luau")),
@@ -85,7 +86,8 @@ SUITES = {
     "discovery-customers": ("integration", ("fixtures/customer_requests.luau", "discovery_customers.spec.luau")),
     "gameplay-sfx": ("integration", ("fixtures/smoothie.luau", "gameplay_sfx.spec.luau")),
     "stash-expansion": ("integration", ("fixtures/smoothie.luau", "stash_expansion.spec.luau")),
-    "farm": ("integration", ("fixtures/smoothie.luau", "farm.spec.luau")),
+    "farm-boost": ("integration", ("fixtures/smoothie.luau", "fixtures/farm.luau", "farm_boost.spec.luau")),
+    "farm": ("integration", ("fixtures/smoothie.luau", "fixtures/farm.luau", "farm.spec.luau")),
     "upgrade-sync": ("integration", ("fixtures/smoothie.luau", "upgrade_sync.spec.luau")),
     "npc-combat": ("integration", ("npc_combat.spec.luau",)),
     "jacked-noob-hit-presentation": ("presentation", ("jacked_noob_hit_presentation.spec.luau",)),
@@ -231,6 +233,7 @@ sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_te
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
 sources["IngredientPickupPromptStyle"] = (ROOT / "src/client/UI/IngredientPickupPromptStyle.luau").read_text(encoding="utf-8")
 sources["MuncherPreviewCache"] = (ROOT / "src/client/UI/MuncherPreviewCache.luau").read_text(encoding="utf-8")
+sources["MuncherImagePreloader"] = (ROOT / "src/client/UI/MuncherImagePreloader.luau").read_text(encoding="utf-8")
 sources["MuncherEffects"] = (ROOT / "src/client/UI/MuncherEffects.luau").read_text(encoding="utf-8")
 sources["MuncherPresentation"] = (ROOT / "src/server/Components/MuncherPresentation.luau").read_text(encoding="utf-8")
 sources["MuncherReveal"] = (ROOT / "src/server/Components/MuncherReveal.luau").read_text(encoding="utf-8")

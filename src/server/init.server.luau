@@ -95,6 +95,7 @@ services.TycoonService.Init({
         return true
     end,
     MemberChanged = function(player)
+        services.FarmService.RefreshMembership()
         services.LockBaseService.RefreshMembership()
         services.InventoryService.BindPlayer(player)
         services.InitialSpawnService.ClearReservation(player)
@@ -105,6 +106,7 @@ services.TycoonService.Init({
         services.CustomerService.BindPlayer(player)
     end,
     MemberRemoved = function(player)
+        services.FarmService.RefreshMembership()
         services.LockBaseService.RefreshMembership()
         services.TutorialService.MembershipChanged(player)
         services.MovementService.RefreshPlayer(player)

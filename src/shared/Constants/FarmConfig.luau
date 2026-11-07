@@ -1,5 +1,8 @@
 --!strict
 return {
+    SpeedPassId = 2075211794,
+    SpeedMultiplier = 2,
+    OwnershipRetrySeconds = 15,
     RowPrices = { 20000, 100000, 350000 },
     PlantDistance = 10,
     RevealSeconds = 0.8,

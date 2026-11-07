@@ -305,37 +305,61 @@ cache.GameplayAudioController = {
         end
     end,
 }
--- IngredientViewport's geometry/framing contracts live in the scrapbook suite.
-local previewCreations, previewCleanups = 0, 0
-local unavailablePreview: string? = nil
-local previewAttempts = 0
+-- Any geometry preparation or attachment in the image path is a failure.
+local previewCreations = 0
 cache.IngredientViewport = {
-    Prepare = function(id)
-        previewAttempts += 1
-        if id == unavailablePreview then
-            return nil
-        end
+    Prepare = function()
         previewCreations += 1
-        local viewport = instance("ViewportFrame")
-        viewport.Active = false
-        viewport.Name = "IngredientPreview"
-        viewport:SetAttribute("PreviewId", id)
-        local cleaned = false
-        return {
-            Attach = function(image)
-                check(viewport.Parent == nil, "preview has one owner")
-                viewport.Parent = image.Parent
-            end,
-            Release = function()
-                viewport.Parent = nil
-            end,
-            Destroy = function()
-                check(not cleaned, "each stored preview cleanup runs exactly once")
-                cleaned = true
-                previewCleanups += 1
-                viewport:Destroy()
-            end,
-        }
+        error("Muncher image path attempted viewport preparation")
+    end,
+    Create = function()
+        error("Muncher image path attempted viewport attachment")
+    end,
+}
+local artworkConfig = loadModule("MuncherArtwork")
+local rewardIds = artworkConfig.RewardIds()
+check(#rewardIds == 39, "current reward union is 39 canonical IDs")
+artworkConfig.Enabled = false
+artworkConfig.Images = {}
+check(
+    #artworkConfig.Missing() == #rewardIds and not artworkConfig.IsReady(),
+    "incomplete artwork fixture blocks release"
+)
+artworkConfig.Enabled = true
+check(not artworkConfig.IsReady(), "enabling alone cannot bypass incomplete coverage")
+for index, id in rewardIds do
+    artworkConfig.Images[id] = "rbxassetid://" .. (100000 + index)
+end
+artworkConfig.Images.Apple = "rbxassetid://0"
+check(table.find(artworkConfig.Missing(), "Apple") ~= nil, "coverage names an invalid image URI")
+artworkConfig.Images.Apple = "rbxassetid://100001"
+check(artworkConfig.IsReady(), "complete fixture coverage permits the image path")
+local oldInstanceNew = env.Instance.new
+env.Instance.new = function(class)
+    local object = oldInstanceNew(class)
+    if class == "ImageLabel" then
+        object.IsLoaded = true
+    end
+    return object
+end
+local preloadJobs, preloadCalls = {}, {}
+local oldTask = env.task
+env.task = {
+    defer = function(fn)
+        table.insert(preloadJobs, fn)
+    end,
+    spawn = function(fn)
+        table.insert(preloadJobs, fn)
+    end,
+    wait = function() end,
+}
+services.ContentProvider = {
+    PreloadAsync = function(_, batch)
+        check(#batch <= 4, "preload batches contain at most four images")
+        table.insert(preloadCalls, batch)
+        if #preloadCalls == 1 then
+            error("unavailable art")
+        end
     end,
 }
 env.Enum.ScaleType = { Fit = "Fit" }
@@ -499,10 +523,13 @@ for tier, pool in config.RewardPools do
                         for _, choice in pool do
                             candidate = candidate or choice.Id == symbol.Name
                         end
-                        local preview = symbol:FindFirstChildOfClass("ViewportFrame")
+                        local icon = symbol:FindFirstChild("IngredientIcon")
                         check(
-                            candidate and (not preview or preview:GetAttribute("PreviewId") == symbol.Name),
-                            "spinning symbols render the tier output pool through IngredientViewport"
+                            candidate
+                                and icon.Image == artworkConfig.GetMuncherIngredient(symbol.Name)
+                                and icon.Visible
+                                and not symbol:FindFirstChildOfClass("ViewportFrame"),
+                            "every spinning reward displays its own flat image"
                         )
                     end
                 end
@@ -511,7 +538,7 @@ for tier, pool in config.RewardPools do
             update(now + effects.ReelStop(3) - 0.001)
             check(not spinStopped, "loop continues until final lock")
             update(now + effects.ReelStop(3))
-            -- A skipped-frame catch-up still respects the two-preview budget.
+            -- A skipped-frame catch-up preserves the settled exact result.
             update(now + effects.ReelStop(3))
             check(spinStopped, "loop stops at final lock")
             check(
@@ -527,7 +554,12 @@ for tier, pool in config.RewardPools do
                     if symbol:IsA("Frame") and symbol.Visible then
                         visible += 1
                         check(
-                            symbol.Name == entry.Id and symbol.Position.Y.Scale == 0,
+                            symbol.Name == entry.Id
+                                and symbol.Position.Y.Scale == 0
+                                and symbol:FindFirstChild("IngredientIcon").Image == artworkConfig.GetMuncherIngredient(
+                                    entry.Id
+                                )
+                                and symbol:FindFirstChild("IngredientIcon").Visible,
                             "locked symbol equals predetermined output"
                         )
                         local icon = symbol:FindFirstChild("IngredientIcon")
@@ -561,29 +593,6 @@ for _, phase in { "Idle", "Spitting" } do
     check(spinStopped and #cues == before, "interruption cancels loop without stale result")
     cleanup()
 end
-
--- Authored PNGs take precedence over prefab previews without changing the symbol ID.
-local artworkConfig = loadModule("ScrapbookArtwork")
-artworkConfig.Ingredients.Apple = "fixture-authored-icon"
-effectModel:SetAttribute("Phase", "Processing")
-effectModel:SetAttribute("InputTier", 1)
-effectModel:SetAttribute("OutputId", "Apple")
-effectModel:SetAttribute("ResultKind", "Push")
-effectModel:SetAttribute("StartedAt", now)
-local updateBitmap, cleanupBitmap = effects.Bind(effectModel, guiRoot)
-updateBitmap(now)
-updateBitmap(now + effects.ReelStop(3))
-for _, reel in guiRoot:FindFirstChildOfClass("SurfaceGui"):GetChildren() do
-    local symbol = reel:FindFirstChild("Apple")
-    check(
-        symbol.Visible
-            and symbol:FindFirstChild("IngredientIcon").Image == "fixture-authored-icon"
-            and not symbol:FindFirstChildOfClass("ViewportFrame"),
-        "locked symbol reuses authored artwork when available"
-    )
-end
-cleanupBitmap()
-artworkConfig.Ingredients.Apple = nil
 
 -- Binding after final lock shows the true result without replaying stale sounds.
 effectModel:SetAttribute("StartedAt", now - effects.ReelStop(3) - 0.001)
@@ -634,185 +643,89 @@ for _, poolSize in { 1, 2, 4, 11, 12, 16, 18 } do
     end
 end
 
--- Client cache: cold/warm exact stops, reuse, global caps, idle-only work.
-do
-    local previewCache = loadModule("MuncherPreviewCache")
-    effectModel:SetAttribute("Phase", "Idle")
-    effectModel:SetAttribute("InputTier", 1)
-    effectModel:SetAttribute("OutputId", "Dragon_Fruit")
-    local update, cleanup = effects.Bind(effectModel, guiRoot)
-    local gui = guiRoot:FindFirstChildOfClass("SurfaceGui")
-    effects.SetNearby(effectModel, true)
-    local clock = 0
-    effects.SetNearby(effectModel, false)
-    local cold = previewCreations
-    effects.Warm(clock)
-    check(previewCreations == cold, "no startup/catalog warm without a nearby eligible view")
-    effects.SetNearby(effectModel, true)
-    local function warm()
-        clock += 0.11
-        effects.Warm(clock)
+-- Preload happens once outside updates; failed batches cannot interrupt rolls.
+check(#preloadCalls == 0 and #preloadJobs == 1, "binding schedules one client preload without blocking any roll")
+while #preloadJobs > 0 do
+    table.remove(preloadJobs, 1)()
+end
+local preloaded = {}
+for _, batch in preloadCalls do
+    for _, uri in batch do
+        check(not preloaded[uri], "each image is preloaded once")
+        preloaded[uri] = true
     end
-    local function roll(sequence, tier, output)
-        effectModel:SetAttribute("Sequence", sequence)
-        effectModel:SetAttribute("InputTier", tier)
-        effectModel:SetAttribute("OutputId", output)
-        effectModel:SetAttribute("StartedAt", now)
-        effectModel:SetAttribute("Phase", "Processing")
-        local builds, destroys = previewCreations, previewCleanups
-        for frame = 0, 100 do
-            local age = frame * config.ChewSeconds / 100
-            update(now + age)
-            warm()
-            check(
-                previewCreations == builds and previewCleanups == destroys,
-                "active reels and attempted warming perform zero preview builds/destroys"
-            )
-            for index, window in gui:GetChildren() do
-                local visible = 0
-                for _, symbol in window:GetChildren() do
-                    if symbol:IsA("Frame") and symbol.Visible then
-                        visible += 1
-                        local preview = symbol:FindFirstChildOfClass("ViewportFrame")
-                        local label = symbol:FindFirstChild("IngredientName")
-                        check(
-                            preview ~= nil or label.Visible or symbol:FindFirstChild("IngredientIcon").Visible,
-                            "cold and warm spin symbols remain readable"
-                        )
-                        if age >= effects.ReelStop(index) then
-                            check(
-                                symbol.Name == output and symbol.Position.Y.Scale == 0,
-                                "true output is immediate at the original staggered stop"
-                            )
-                            if not preview then
-                                check(
-                                    label.Visible and label.Text == catalog[output].DisplayName,
-                                    "cold result uses the catalog name"
-                                )
-                            end
-                        end
-                    end
-                end
-                check(visible >= 1 and visible <= 2, "spin never blanks; windows remain bounded")
-            end
-        end
-        effectModel:SetAttribute("Phase", "Idle")
-        update(now + config.ChewSeconds)
-        check(previewCache.Snapshot().Leased == 0, "reset returns every lease")
-        check(previewCreations == builds and previewCleanups == destroys, "reset keeps prepared previews")
-    end
-    roll(1000, 1, "Dragon_Fruit") -- Fully cold.
-    for _ = 1, 90 do
-        warm()
-    end
-    check(previewCache.Snapshot().Count == 24, "one bounded client-wide working set")
-    local warmed = previewCreations
-    local hits = previewCache.Snapshot().Hits
-    roll(1001, 1, "Dragon_Fruit")
-    check(previewCreations == warmed and previewCache.Snapshot().Hits > hits, "wraps reuse warm previews")
-    roll(1002, 1, "Dragon_Fruit")
-    roll(1003, 3, config.RewardPools[3][1].Id)
-    for _ = 1, 90 do
-        warm()
-    end
-    check(previewCache.Snapshot().Count <= 24, "tier warming evicts only within cap")
-    -- A tier replacement in the same sequence clears the previous tier's slots.
-    effectModel:SetAttribute("Sequence", 1004)
-    effectModel:SetAttribute("Phase", "Processing")
-    effectModel:SetAttribute("InputTier", 1)
-    update(now)
-    effectModel:SetAttribute("InputTier", 3)
-    update(now + 0.1)
-    for _, window in gui:GetChildren() do
-        for _, symbol in window:GetChildren() do
-            if symbol:IsA("Frame") then
-                local candidate = false
-                for _, entry in config.RewardPools[3] do
-                    candidate = candidate or symbol.Name == entry.Id
-                end
-                check(candidate, "tier replacement releases stale content before reassignment")
-            end
-        end
-    end
-    effectModel:SetAttribute("Phase", "Idle")
-    update(now + 0.2)
-    -- Two views share the same cache, including checked-out copies.
-    local other = instance("Model")
-    local screen = instance("Part")
-    screen.Name, screen.Parent = "DisplayScreen", other
-    local mouth = instance("Part")
-    mouth.Name, mouth.Parent = "MouthOrigin", other
-    other:SetAttribute("Phase", "Processing")
-    other:SetAttribute("StartedAt", now)
-    other:SetAttribute("OutputId", config.RewardPools[3][1].Id)
-    other:SetAttribute("InputTier", 3)
-    local updateOther, cleanupOther = effects.Bind(other, guiRoot)
-    local before = previewCreations
-    effectModel:SetAttribute("Phase", "Processing")
-    effectModel:SetAttribute("Sequence", 1004)
-    update(now)
-    updateOther(now)
-    update(now + effects.ReelStop(3))
-    updateOther(now + effects.ReelStop(3))
-    warm()
-    check(previewCreations == before and previewCache.Snapshot().Count <= 24, "multi-view spin shares budget")
-    local counts = {}
-    for _, viewport in allInstances do
-        if viewport:IsA("ViewportFrame") and not viewport.Destroyed then
-            local id = viewport:GetAttribute("PreviewId")
-            counts[id] = (counts[id] or 0) + 1
-            check(counts[id] <= 3, "at most three independent copies per ingredient")
-        end
-    end
-    cleanupOther()
-    cleanup()
-    check(previewCache.Snapshot().Count == 0 and previewCache.Snapshot().Leased == 0, "teardown disposes cache")
-    local after = previewCreations
-    warm()
-    check(previewCreations == after and previewCache.Snapshot().Pending == 0, "removal cancels warming")
-    check(previewCreations == previewCleanups, "each prepared preview disposed once")
+end
+for _, id in rewardIds do
+    check(preloaded[artworkConfig.GetMuncherIngredient(id)], "preload covers " .. id)
 end
 
--- Idle scheduler caps jobs, retries missing assets later, and never evicts a lease.
+-- Slow/failed art, slot reuse and sequence interruption keep exact readable IDs.
 do
-    local previewCache = loadModule("MuncherPreviewCache")
-    unavailablePreview = "Apple"
-    local attempts = previewAttempts
-    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 0)
-    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 1)
-    check(
-        previewAttempts == attempts + 1 and previewCache.Snapshot().Count == 0,
-        "missing asset settles on fallback without immediate rebuild attempts"
-    )
-    unavailablePreview = nil
-    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 6)
-    check(previewCache.Snapshot().Count == 1, "later warm attempt recovers a replicated asset")
-    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 6)
-    check(previewCache.Snapshot().Count == 1, "same-time work shares a single job budget")
-    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 100)
-    check(previewCache.Snapshot().Count == 2, "late tick never catches up multiple builds")
-    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 101)
-    local owner, slot = {}, instance("Frame")
-    local image = instance("ImageLabel")
-    image.Parent = slot
-    check(previewCache.Lease(owner, image, "Apple"), "prepared instance can be checked out")
-    local leased = slot:FindFirstChildOfClass("ViewportFrame")
-    local requests = {}
-    for index = 1, 8 do
-        table.insert(requests, { Id = "replacement-" .. index, Priority = index })
+    effectModel:SetAttribute("Phase", "Processing")
+    effectModel:SetAttribute("StartedAt", now)
+    effectModel:SetAttribute("InputTier", 1)
+    effectModel:SetAttribute("OutputId", "Apple")
+    local update, cleanup = effects.Bind(effectModel, guiRoot)
+    local gui = guiRoot:FindFirstChildOfClass("SurfaceGui")
+    for _, object in gui:GetDescendants() do
+        if object:IsA("ImageLabel") then
+            object.IsLoaded = false
+        end
     end
-    for tick = 1, 60 do
-        previewCache.Warm(requests, false, 102 + tick)
+    update(now)
+    update(now + effects.ReelStop(3))
+    for _, window in gui:GetChildren() do
+        local symbol = window:FindFirstChild("Apple")
+        local icon, label = symbol:FindFirstChild("IngredientIcon"), symbol:FindFirstChild("IngredientName")
         check(
-            leased.Parent == slot and not leased.Destroyed and previewCache.Snapshot().Count <= 24,
-            "idle eviction preserves checked-out ownership inside global cap"
+            symbol.Visible
+                and icon.Image == artworkConfig.GetMuncherIngredient("Apple")
+                and icon.Visible
+                and not icon.IsLoaded
+                and label.Visible
+                and label.Text == catalog.Apple.DisplayName,
+            "assigned image can render before loading while the catalog name remains visible"
+        )
+        icon.IsLoaded = true
+    end
+    update(now + effects.ReelStop(3))
+    for _, window in gui:GetChildren() do
+        local symbol = window:FindFirstChild("Apple")
+        check(
+            symbol:FindFirstChild("IngredientIcon").Visible and not symbol:FindFirstChild("IngredientName").Visible,
+            "ready art replaces the name on the current result"
         )
     end
-    previewCache.Release(owner)
-    check(leased.Parent == nil, "release detaches the reusable preview")
-    previewCache.Dispose()
-    slot:Destroy()
-    check(previewCreations == previewCleanups, "eviction and final teardown each dispose once")
+    -- Same frames are reused; the old image becoming ready cannot change content.
+    effectModel:SetAttribute("Sequence", 2400)
+    effectModel:SetAttribute("OutputId", "Dragon_Fruit")
+    for _, object in gui:GetDescendants() do
+        if object:IsA("ImageLabel") then
+            object.IsLoaded = false
+        end
+    end
+    update(now)
+    update(now + effects.ReelStop(3))
+    for _, window in gui:GetChildren() do
+        local symbol = window:FindFirstChild("Dragon_Fruit")
+        check(
+            symbol.Visible
+                and symbol:FindFirstChild("IngredientName").Text == catalog.Dragon_Fruit.DisplayName
+                and symbol:FindFirstChild("IngredientIcon").Image
+                    == artworkConfig.GetMuncherIngredient("Dragon_Fruit"),
+            "reused slot holds new ID and sequence while earlier image loads"
+        )
+    end
+    effects.Cancel(effectModel)
+    for _, object in gui:GetDescendants() do
+        if object:IsA("ImageLabel") then
+            object.IsLoaded = true
+        end
+    end
+    update(now + effects.ReelStop(3))
+    check(not gui.Enabled, "late image readiness cannot resurrect a cancelled roll")
+    cleanup()
+    check(#preloadJobs == 0, "multiple bindings never restart client preloading")
 end
 
 -- Timing is opt-in and emits one summary, including interrupted rolls.
@@ -845,7 +758,10 @@ do
     check(
         #summaries == 1
             and string.find(summaries[1], "builds=0 destroys=0", 1, true)
-            and string.find(summaries[1], "worstFrame=30.00ms", 1, true),
+            and string.find(summaries[1], "worstFrame=30.00ms", 1, true)
+            and string.find(summaries[1], "worstUpdate=", 1, true)
+            and string.find(summaries[1], "iconFallbacks=", 1, true)
+            and string.find(summaries[1], "path=images", 1, true),
         "one roll summary reports preview churn and worst render delta"
     )
     effectModel:SetAttribute("Sequence", 2501)
@@ -860,7 +776,29 @@ do
     env.print, services.RunService.IsStudio = oldPrint, oldStudio
 end
 
--- A malformed replicated output warns once per view and keeps a real icon.
+-- Even an output outside the visual pool/catalog locks exactly, with readable fallback.
+do
+    effectModel:SetAttribute("Sequence", 2999)
+    effectModel:SetAttribute("InputTier", 4)
+    effectModel:SetAttribute("OutputId", "Apple")
+    effectModel:SetAttribute("Phase", "Processing")
+    effectModel:SetAttribute("StartedAt", now)
+    local update, cleanup = effects.Bind(effectModel, guiRoot)
+    update(now)
+    update(now + effects.ReelStop(3))
+    for _, window in guiRoot:FindFirstChildOfClass("SurfaceGui"):GetChildren() do
+        local symbol = window:FindFirstChild("Apple")
+        check(
+            symbol
+                and symbol.Visible
+                and symbol:FindFirstChild("IngredientIcon").Visible
+                and symbol:FindFirstChild("IngredientIcon").Image == artworkConfig.GetMuncherIngredient("Apple"),
+            "output outside expected tier uses its own exact image on all three reels"
+        )
+    end
+    cleanup()
+end
+
 do
     local previousWarn, warnings = env.warn, {}
     env.warn = function(message)
@@ -882,17 +820,19 @@ do
             if symbol:IsA("Frame") and symbol.Visible then
                 visible += 1
                 check(
-                    symbol.Position.Y.Scale == 0 and symbol.Name ~= "missing-output",
-                    "invalid output keeps the centered real candidate"
+                    symbol.Position.Y.Scale == 0
+                        and symbol.Name == "missing-output"
+                        and symbol:FindFirstChild("IngredientIcon").Image == ""
+                        and not symbol:FindFirstChild("IngredientIcon").Visible
+                        and symbol:FindFirstChild("IngredientName").Visible
+                        and symbol:FindFirstChild("IngredientName").Text == "missing-output",
+                    "unknown replicated output locks exactly with name fallback"
                 )
             end
         end
         check(visible == 1, "invalid output never blanks a stopped reel")
     end
-    check(
-        #warnings == 1 and string.find(warnings[1], "missing-output", 1, true),
-        "missing output diagnostic is emitted once per Bind"
-    )
+    check(#warnings == 0, "unknown string result remains authoritative without pool substitution")
     cleanup()
     env.warn = previousWarn
 end
@@ -1207,16 +1147,7 @@ do
     tick()
     counts(2, 2)
     check(#warnings == warningCount, "setup recovery preserves warning suppression")
-    -- Real controller proximity gate and respawn lease lifecycle.
-    local root = instance("Part")
-    root.Name, root.Parent = "HumanoidRootPart", actor.Character
-    root.Position = vec(1000, 0, 0)
-    local builds = previewCreations
-    services.RunService.Heartbeat:Fire(0.1)
-    check(previewCreations == builds, "distant views never warm previews")
-    root.Position = vec(0, 0, 0)
-    services.RunService.Heartbeat:Fire(0.1)
-    check(previewCreations == builds + 1, "nearby eligible views share one Heartbeat build")
+    -- Real controller roll and respawn use no viewports or warming jobs.
     local mouth = instance("Part")
     mouth.Name, mouth.Parent = "MouthOrigin", good
     good:SetAttribute("Phase", "Processing")
@@ -1224,17 +1155,13 @@ do
     good:SetAttribute("InputTier", 1)
     good:SetAttribute("OutputId", "Rock")
     tick(0)
-    local snapshot = loadModule("MuncherPreviewCache").Snapshot()
-    check(snapshot.Leased > 0, "real controller roll leases warmed content")
-    services.RunService.Heartbeat:Fire(0.1)
-    check(previewCreations == builds + 1, "Heartbeat pauses builds while any view rolls")
+    check(previewCreations == 0, "real controller roll performs zero viewport builds")
     actor.CharacterRemoving:Fire(actor.Character)
     counts(0, 0)
-    check(loadModule("MuncherPreviewCache").Snapshot().Count == 0, "respawn returns leases before disposing views")
     actor.Character = nil
     tick()
     services.RunService.Heartbeat:Fire(0.1)
-    check(previewCreations == builds + 1, "respawn leaves no warming job")
+    check(#preloadJobs == 0, "respawn never schedules preview warming or repeat preload")
     actor.Character = instance("Model")
     good:SetAttribute("Phase", "Idle")
     ordered = {}
@@ -1272,3 +1199,9 @@ do
     effects.Bind, style.Apply, env.warn = originalBind, originalApply, oldWarn
     services.CollectionService.GetTagged = oldGetTagged
 end
+
+check(previewCreations == 0, "entire Muncher image presentation builds zero viewports")
+for _, object in allInstances do
+    check(not object:IsA("ViewportFrame"), "Muncher image path never builds or attaches a viewport")
+end
+env.task, env.Instance.new = oldTask, oldInstanceNew

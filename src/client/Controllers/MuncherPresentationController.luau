@@ -275,23 +275,26 @@ function Controller.Init()
             views[model] = nil
         end
     end)
-    -- Preparation shares one client budget and never runs in RenderStepped.
-    RunService.Heartbeat:Connect(function()
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        for model, view in views do
-            local nearby = root ~= nil
-                and root:IsA("BasePart")
-                and (not humanoid or humanoid.Health > 0)
-                and eligible(model, view.Plot)
-                and model:GetAttribute("Purchased") == true
-                and model:GetAttribute("Active") == true
-                and (root.Position - view.Screen.Position).Magnitude <= Config.MaxDistance
-            Effects.SetNearby(model, nearby)
-        end
-        Effects.Warm(os.clock())
-    end)
+    -- Legacy warming remains only until the verified artwork handoff.
+    if not Effects.UsesImages then
+        -- Preparation shares one client budget and never runs in RenderStepped.
+        RunService.Heartbeat:Connect(function()
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            for model, view in views do
+                local nearby = root ~= nil
+                    and root:IsA("BasePart")
+                    and (not humanoid or humanoid.Health > 0)
+                    and eligible(model, view.Plot)
+                    and model:GetAttribute("Purchased") == true
+                    and model:GetAttribute("Active") == true
+                    and (root.Position - view.Screen.Position).Magnitude <= Config.MaxDistance
+                Effects.SetNearby(model, nearby)
+            end
+            Effects.Warm(os.clock())
+        end)
+    end
     local previousCharacter = player.Character
     local elapsed = 0
     RunService.RenderStepped:Connect(function(dt)
