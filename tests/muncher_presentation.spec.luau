@@ -15,17 +15,26 @@ local function inactiveView(root)
     end
 end
 cache.MuncherEffects = {
+    ResolveScreen = function(model)
+        return model:FindFirstChild("DisplayScreen")
+    end,
+    Cancel = function() end,
+    SetNearby = function() end,
+    Warm = function() end,
     Bind = function()
         return function() end, function() end
     end,
 }
 cache.InteractionPromptPresentation = {}
+services.RunService.Heartbeat = signal()
 local controller = loadModule("MuncherPresentationController")
 local config = loadModule("Muncher")
 local actor = instance("Player")
 actor.Character = instance("Model")
 local plot = instance("Model")
 local model = instance("Model")
+local hintScreen = instance("Part")
+hintScreen.Name, hintScreen.Parent = "DisplayScreen", model
 local function feedback()
     return controller.Feedback(model, plot, actor)
 end
@@ -163,7 +172,7 @@ do
     model:SetAttribute("Phase", "Idle")
     render:Fire(0)
     check(label.Text == "FEED ME", "interruption without output never creates a banner")
-    for _, reason in { "visitor", "inactive", "locked", "death", "stream-away" } do
+    for _, reason in { "visitor", "inactive", "locked", "death" } do
         beginResult("Lose")
         completeResult()
         local humanoid = instance("Humanoid")
@@ -193,6 +202,20 @@ do
             reason .. " clears result without replay on eligibility recovery"
         )
     end
+    beginResult("Win")
+    completeResult()
+    plot.Parent = nil
+    render:Fire(0)
+    check(
+        hint.Parent == nil and playerGui:FindFirstChild("MuncherPurchase") == nil,
+        "stream-away immediately disposes the result/hint and purchase views"
+    )
+    plot.Parent = workspaceFake
+    now += config.SpitSeconds
+    render:Fire(config.ScanInterval)
+    hint = playerGui:FindFirstChild("MuncherHint")
+    label = hint:FindFirstChildOfClass("TextLabel")
+    check(hint.Enabled and label.Text == "FEED ME", "stream recovery binds a fresh view without replaying result")
     actor:SetAttribute("PlotSessionId", "other")
     beginResult("Win")
     completeResult()
@@ -284,20 +307,35 @@ cache.GameplayAudioController = {
 }
 -- IngredientViewport's geometry/framing contracts live in the scrapbook suite.
 local previewCreations, previewCleanups = 0, 0
+local unavailablePreview: string? = nil
+local previewAttempts = 0
 cache.IngredientViewport = {
-    Create = function(image, id)
+    Prepare = function(id)
+        previewAttempts += 1
+        if id == unavailablePreview then
+            return nil
+        end
         previewCreations += 1
         local viewport = instance("ViewportFrame")
         viewport.Active = false
-        viewport.Name, viewport.Parent = "IngredientPreview", image.Parent
+        viewport.Name = "IngredientPreview"
         viewport:SetAttribute("PreviewId", id)
         local cleaned = false
-        return function()
-            check(not cleaned, "each stored preview cleanup runs exactly once")
-            cleaned = true
-            previewCleanups += 1
-            viewport:Destroy()
-        end
+        return {
+            Attach = function(image)
+                check(viewport.Parent == nil, "preview has one owner")
+                viewport.Parent = image.Parent
+            end,
+            Release = function()
+                viewport.Parent = nil
+            end,
+            Destroy = function()
+                check(not cleaned, "each stored preview cleanup runs exactly once")
+                cleaned = true
+                previewCleanups += 1
+                viewport:Destroy()
+            end,
+        }
     end,
 }
 env.Enum.ScaleType = { Fit = "Fit" }
@@ -492,9 +530,9 @@ for tier, pool in config.RewardPools do
                             symbol.Name == entry.Id and symbol.Position.Y.Scale == 0,
                             "locked symbol equals predetermined output"
                         )
-                        local icon = symbol:FindFirstChildOfClass("ViewportFrame")
+                        local icon = symbol:FindFirstChild("IngredientIcon")
                         check(
-                            (result == "Push" and icon.ImageColor3 == nil)
+                            (result == "Push" and icon.ImageColor3.R == 1)
                                 or (result == "Win" and icon.ImageColor3 == loadModule("DialogueTextStyle").Gold)
                                 or (result == "Lose" and icon.ImageColor3.R == 165 / 255),
                             "minimal result accent matches server label"
@@ -596,106 +634,230 @@ for _, poolSize in { 1, 2, 4, 11, 12, 16, 18 } do
     end
 end
 
--- Reuse one view across rolls and tiers, with a counted preview boundary.
+-- Client cache: cold/warm exact stops, reuse, global caps, idle-only work.
 do
+    local previewCache = loadModule("MuncherPreviewCache")
     effectModel:SetAttribute("Phase", "Idle")
-    local beforeBind = previewCreations
+    effectModel:SetAttribute("InputTier", 1)
+    effectModel:SetAttribute("OutputId", "Dragon_Fruit")
     local update, cleanup = effects.Bind(effectModel, guiRoot)
     local gui = guiRoot:FindFirstChildOfClass("SurfaceGui")
-    check(not gui.Enabled and previewCreations == beforeBind, "Bind creates no previews and hides cached reels")
-    local windows, frames, images = {}, {}, {}
+    effects.SetNearby(effectModel, true)
+    local clock = 0
+    effects.SetNearby(effectModel, false)
+    local cold = previewCreations
+    effects.Warm(clock)
+    check(previewCreations == cold, "no startup/catalog warm without a nearby eligible view")
+    effects.SetNearby(effectModel, true)
+    local function warm()
+        clock += 0.11
+        effects.Warm(clock)
+    end
+    local function roll(sequence, tier, output)
+        effectModel:SetAttribute("Sequence", sequence)
+        effectModel:SetAttribute("InputTier", tier)
+        effectModel:SetAttribute("OutputId", output)
+        effectModel:SetAttribute("StartedAt", now)
+        effectModel:SetAttribute("Phase", "Processing")
+        local builds, destroys = previewCreations, previewCleanups
+        for frame = 0, 100 do
+            local age = frame * config.ChewSeconds / 100
+            update(now + age)
+            warm()
+            check(
+                previewCreations == builds and previewCleanups == destroys,
+                "active reels and attempted warming perform zero preview builds/destroys"
+            )
+            for index, window in gui:GetChildren() do
+                local visible = 0
+                for _, symbol in window:GetChildren() do
+                    if symbol:IsA("Frame") and symbol.Visible then
+                        visible += 1
+                        local preview = symbol:FindFirstChildOfClass("ViewportFrame")
+                        local label = symbol:FindFirstChild("IngredientName")
+                        check(
+                            preview ~= nil or label.Visible or symbol:FindFirstChild("IngredientIcon").Visible,
+                            "cold and warm spin symbols remain readable"
+                        )
+                        if age >= effects.ReelStop(index) then
+                            check(
+                                symbol.Name == output and symbol.Position.Y.Scale == 0,
+                                "true output is immediate at the original staggered stop"
+                            )
+                            if not preview then
+                                check(
+                                    label.Visible and label.Text == catalog[output].DisplayName,
+                                    "cold result uses the catalog name"
+                                )
+                            end
+                        end
+                    end
+                end
+                check(visible >= 1 and visible <= 2, "spin never blanks; windows remain bounded")
+            end
+        end
+        effectModel:SetAttribute("Phase", "Idle")
+        update(now + config.ChewSeconds)
+        check(previewCache.Snapshot().Leased == 0, "reset returns every lease")
+        check(previewCreations == builds and previewCleanups == destroys, "reset keeps prepared previews")
+    end
+    roll(1000, 1, "Dragon_Fruit") -- Fully cold.
+    for _ = 1, 90 do
+        warm()
+    end
+    check(previewCache.Snapshot().Count == 24, "one bounded client-wide working set")
+    local warmed = previewCreations
+    local hits = previewCache.Snapshot().Hits
+    roll(1001, 1, "Dragon_Fruit")
+    check(previewCreations == warmed and previewCache.Snapshot().Hits > hits, "wraps reuse warm previews")
+    roll(1002, 1, "Dragon_Fruit")
+    roll(1003, 3, config.RewardPools[3][1].Id)
+    for _ = 1, 90 do
+        warm()
+    end
+    check(previewCache.Snapshot().Count <= 24, "tier warming evicts only within cap")
+    -- A tier replacement in the same sequence clears the previous tier's slots.
+    effectModel:SetAttribute("Sequence", 1004)
+    effectModel:SetAttribute("Phase", "Processing")
+    effectModel:SetAttribute("InputTier", 1)
+    update(now)
+    effectModel:SetAttribute("InputTier", 3)
+    update(now + 0.1)
     for _, window in gui:GetChildren() do
-        table.insert(windows, window)
         for _, symbol in window:GetChildren() do
             if symbol:IsA("Frame") then
-                table.insert(frames, symbol)
-                table.insert(images, symbol:FindFirstChild("IngredientIcon"))
-            end
-        end
-    end
-    check(
-        #windows == 3 and #frames == 15 and #images == 15,
-        "cached structure has three windows and fifteen slots/icons"
-    )
-    local function tick(age)
-        local before = previewCreations
-        update(now + age)
-        check(previewCreations - before <= 2, "every animation tick obeys the two-preview creation budget")
-        for _, window in windows do
-            local visible = 0
-            for _, symbol in window:GetChildren() do
-                if symbol:IsA("Frame") then
-                    local y = symbol.Position.Y.Scale
-                    local ready = symbol:FindFirstChildOfClass("ViewportFrame") ~= nil
-                    check(
-                        symbol.Visible == (ready and y > -1 and y < 1),
-                        "spin visibility is exactly ready content intersecting the window"
-                    )
-                    if symbol.Visible then
-                        visible += 1
-                    end
+                local candidate = false
+                for _, entry in config.RewardPools[3] do
+                    candidate = candidate or symbol.Name == entry.Id
                 end
-            end
-            check(visible <= 2, "each reel renders at most two previews during a spin")
-        end
-    end
-    for roll, tier in { 3, 1, 3, 4, 2 } do
-        effectModel:SetAttribute("Sequence", 1000 + roll)
-        effectModel:SetAttribute("Phase", "Processing")
-        effectModel:SetAttribute("InputTier", tier)
-        effectModel:SetAttribute("OutputId", config.RewardPools[tier][1].Id)
-        effectModel:SetAttribute("StartedAt", now)
-        local before = previewCreations
-        local beforeInstances = #allInstances
-        -- Hold time fixed to measure queue completion independently of wrapping.
-        for frameIndex = 1, 8 do
-            tick(0)
-            if frameIndex == 1 then
-                check(previewCreations - before == 2, "roll-start tick creates only two previews")
-                check(
-                    #allInstances - beforeInstances == 4,
-                    "roll start creates only carrier/light plus two stub previews"
-                )
-                for _, symbol in frames do
-                    if symbol:FindFirstChildOfClass("ViewportFrame") then
-                        check(symbol.Position.Y.Scale == 0, "initial visible/entering slots have queue priority")
-                    end
-                end
+                check(candidate, "tier replacement releases stale content before reassignment")
             end
         end
-        check(previewCreations - before == 15, "all fifteen initial contents complete within eight ticks")
-        check(
-            gui == guiRoot:FindFirstChildOfClass("SurfaceGui") and #gui:GetChildren() == 3,
-            "roll/tier changes reuse the same SurfaceGui and windows"
-        )
-        for _, symbol in frames do
-            check(symbol.Parent and symbol.Parent.Parent == gui, "roll/tier changes preserve every slot Frame")
-        end
-        for frameIndex = 1, 30 do
-            tick(frameIndex / 60)
-        end
-        effectModel:SetAttribute("Phase", "Spitting")
-        update(now + 0.6)
-        check(
-            not gui.Enabled and gui.Parent == guiRoot,
-            "per-roll reset disables rendering without destroying the cache"
-        )
-        for _, object in gui:GetDescendants() do
-            check(not object:IsA("ViewportFrame"), "per-roll reset destroys every preview")
-        end
-        check(previewCreations == previewCleanups, "ended rolls have no outstanding preview ownership")
     end
-    -- External cleanup while work is still queued must cancel it permanently.
-    effectModel:SetAttribute("Sequence", 2000)
+    effectModel:SetAttribute("Phase", "Idle")
+    update(now + 0.2)
+    -- Two views share the same cache, including checked-out copies.
+    local other = instance("Model")
+    local screen = instance("Part")
+    screen.Name, screen.Parent = "DisplayScreen", other
+    local mouth = instance("Part")
+    mouth.Name, mouth.Parent = "MouthOrigin", other
+    other:SetAttribute("Phase", "Processing")
+    other:SetAttribute("StartedAt", now)
+    other:SetAttribute("OutputId", config.RewardPools[3][1].Id)
+    other:SetAttribute("InputTier", 3)
+    local updateOther, cleanupOther = effects.Bind(other, guiRoot)
+    local before = previewCreations
     effectModel:SetAttribute("Phase", "Processing")
+    effectModel:SetAttribute("Sequence", 1004)
     update(now)
+    updateOther(now)
+    update(now + effects.ReelStop(3))
+    updateOther(now + effects.ReelStop(3))
+    warm()
+    check(previewCreations == before and previewCache.Snapshot().Count <= 24, "multi-view spin shares budget")
+    local counts = {}
+    for _, viewport in allInstances do
+        if viewport:IsA("ViewportFrame") and not viewport.Destroyed then
+            local id = viewport:GetAttribute("PreviewId")
+            counts[id] = (counts[id] or 0) + 1
+            check(counts[id] <= 3, "at most three independent copies per ingredient")
+        end
+    end
+    cleanupOther()
     cleanup()
+    check(previewCache.Snapshot().Count == 0 and previewCache.Snapshot().Leased == 0, "teardown disposes cache")
+    local after = previewCreations
+    warm()
+    check(previewCreations == after and previewCache.Snapshot().Pending == 0, "removal cancels warming")
+    check(previewCreations == previewCleanups, "each prepared preview disposed once")
+end
+
+-- Idle scheduler caps jobs, retries missing assets later, and never evicts a lease.
+do
+    local previewCache = loadModule("MuncherPreviewCache")
+    unavailablePreview = "Apple"
+    local attempts = previewAttempts
+    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 0)
+    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 1)
+    check(
+        previewAttempts == attempts + 1 and previewCache.Snapshot().Count == 0,
+        "missing asset settles on fallback without immediate rebuild attempts"
+    )
+    unavailablePreview = nil
+    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 6)
+    check(previewCache.Snapshot().Count == 1, "later warm attempt recovers a replicated asset")
+    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 6)
+    check(previewCache.Snapshot().Count == 1, "same-time work shares a single job budget")
+    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 100)
+    check(previewCache.Snapshot().Count == 2, "late tick never catches up multiple builds")
+    previewCache.Warm({ { Id = "Apple", Priority = 1 } }, false, 101)
+    local owner, slot = {}, instance("Frame")
+    local image = instance("ImageLabel")
+    image.Parent = slot
+    check(previewCache.Lease(owner, image, "Apple"), "prepared instance can be checked out")
+    local leased = slot:FindFirstChildOfClass("ViewportFrame")
+    local requests = {}
+    for index = 1, 8 do
+        table.insert(requests, { Id = "replacement-" .. index, Priority = index })
+    end
+    for tick = 1, 60 do
+        previewCache.Warm(requests, false, 102 + tick)
+        check(
+            leased.Parent == slot and not leased.Destroyed and previewCache.Snapshot().Count <= 24,
+            "idle eviction preserves checked-out ownership inside global cap"
+        )
+    end
+    previewCache.Release(owner)
+    check(leased.Parent == nil, "release detaches the reusable preview")
+    previewCache.Dispose()
+    slot:Destroy()
+    check(previewCreations == previewCleanups, "eviction and final teardown each dispose once")
+end
+
+-- Timing is opt-in and emits one summary, including interrupted rolls.
+do
+    local oldPrint, oldStudio = env.print, services.RunService.IsStudio
+    local summaries = {}
+    env.print = function(message)
+        table.insert(summaries, message)
+    end
+    services.RunService.IsStudio = function()
+        return true
+    end
+    effectModel:SetAttribute("Phase", "Processing")
+    effectModel:SetAttribute("StartedAt", now)
+    effectModel:SetAttribute("InputTier", 1)
+    effectModel:SetAttribute("OutputId", "Apple")
+    local update, cleanup = effects.Bind(effectModel, guiRoot)
+    update(now, 0.02)
+    effectModel:SetAttribute("Phase", "Idle")
+    update(now + 0.1, 0.02)
+    check(#summaries == 0, "timing is disabled by default")
+    workspaceFake:SetAttribute("MuncherPresentationTiming", true)
+    effectModel:SetAttribute("Sequence", 2500)
+    effectModel:SetAttribute("Phase", "Processing")
+    update(now, 0.02)
+    update(now + effects.ReelStop(3), 0.03)
+    effectModel:SetAttribute("Phase", "Idle")
+    update(now + config.ChewSeconds, 0.02)
+    update(now + config.ChewSeconds, 0.02)
+    check(
+        #summaries == 1
+            and string.find(summaries[1], "builds=0 destroys=0", 1, true)
+            and string.find(summaries[1], "worstFrame=30.00ms", 1, true),
+        "one roll summary reports preview churn and worst render delta"
+    )
+    effectModel:SetAttribute("Sequence", 2501)
+    effectModel:SetAttribute("Phase", "Processing")
+    update(now, 0.01)
+    effectModel:SetAttribute("Phase", "Idle")
+    update(now + 0.1, 0.01)
+    check(#summaries == 2, "interruption also emits exactly one summary")
     cleanup()
-    local afterCleanup = previewCreations
-    update(now + 0.1)
-    check(previewCreations == afterCleanup, "removed views never process stale queued content")
-    check(#guiRoot:GetChildren() == 0 and gui.Parent == nil, "external cleanup leaves no SurfaceGui or orphan preview")
-    check(previewCreations == previewCleanups, "external cleanup disposes every created preview exactly once")
+    check(#summaries == 2, "cleanup never repeats a roll summary")
+    workspaceFake:SetAttribute("MuncherPresentationTiming", nil)
+    env.print, services.RunService.IsStudio = oldPrint, oldStudio
 end
 
 -- A malformed replicated output warns once per view and keeps a real icon.
@@ -755,4 +917,358 @@ for _, invalid in { "missing", "wrong class" } do
         "invalid display stops without creating roll or glow"
     )
     wrong:Destroy()
+end
+
+-- Name AND class resolution, with deterministic insertion order in the fake tree.
+do
+    local root, gui = instance("Model"), instance("PlayerGui")
+    local function child(class, parent)
+        local object = instance(class)
+        object.Name, object.Parent = "DisplayScreen", parent
+        return object
+    end
+    local function bindsTo(expected, message)
+        local _, cleanup = effects.Bind(root, gui)
+        check(gui:FindFirstChild("MuncherReels").Adornee == expected, message)
+        cleanup()
+    end
+    for _, wrongFirst in { true, false } do
+        local wrong, valid
+        if wrongFirst then
+            wrong, valid = child("Folder", root), child("Part", root)
+        else
+            valid, wrong = child("Part", root), child("Folder", root)
+        end
+        child("Folder", wrong)
+        bindsTo(valid, "unique direct Part wins over wrong-class namesakes in either insertion order")
+        wrong:Destroy()
+        valid:Destroy()
+    end
+    local nested = instance("Model")
+    nested.Parent = root
+    local first = child("Part", nested)
+    bindsTo(first, "unique nested Part remains supported")
+    local second = child("Part", nested)
+    local function fails(reason)
+        local before = #allInstances
+        local ok, problem = pcall(effects.Bind, root, gui)
+        check(
+            not ok
+                and string.find(tostring(problem), "authored BasePart named DisplayScreen (Front face)", 1, true)
+                and string.find(tostring(problem), reason, 1, true),
+            "explicit failure: " .. reason
+        )
+        check(#allInstances == before and #gui:GetChildren() == 0, "invalid authoring allocates no effects")
+    end
+    fails("multiple nested")
+    local direct = child("Part", root)
+    bindsTo(direct, "unique direct Part wins even over multiple nested Parts")
+    local duplicate = child("Part", root)
+    fails("multiple direct")
+    direct:Destroy()
+    duplicate:Destroy()
+    nested:Destroy()
+    fails("missing")
+    child("Folder", root)
+    fails("wrong-class-only")
+end
+
+-- Bind itself rolls back a reel GUI when setup throws before returning cleanup.
+do
+    local originalNew = env.Instance.new
+    env.Instance.new = function(class)
+        if class == "Frame" then
+            error("injected reel setup failure")
+        end
+        return originalNew(class)
+    end
+    display.Parent = effectModel
+    local ok, problem = pcall(effects.Bind, effectModel, guiRoot)
+    env.Instance.new = originalNew
+    check(
+        not ok and string.find(tostring(problem), "injected reel setup failure", 1, true),
+        "Bind preserves unexpected setup error"
+    )
+    check(#guiRoot:GetChildren() == 0, "Bind rolls back partially constructed reels")
+end
+
+-- Real controller + real effects. Explicit plot order makes scan-abort regressions deterministic.
+do
+    local playerGui, render = instance("PlayerGui"), signal()
+    actor.WaitForChild = function()
+        return playerGui
+    end
+    services.RunService.RenderStepped = render
+    local oldGetTagged = services.CollectionService.GetTagged
+    local ordered = {}
+    services.CollectionService.GetTagged = function(_, tag)
+        if tag == "PlayerPlot" then
+            return ordered
+        end
+        return oldGetTagged(services.CollectionService, tag)
+    end
+    local function plotFixture(name, withScreen)
+        local plot, model = instance("Model"), instance("Model")
+        plot.Name, plot.Parent = name, workspaceFake
+        model.Name, model.Parent = "Muncher", plot
+        plot:SetAttribute("PlotSessionId", "session")
+        model:SetAttribute("Purchased", true)
+        model:SetAttribute("Active", true)
+        model:SetAttribute("Phase", "Idle")
+        services.CollectionService:AddTag(plot, "PlayerPlot")
+        if withScreen then
+            local screen = instance("Part")
+            screen.Name, screen.Parent = "DisplayScreen", model
+        end
+        return plot, model
+    end
+    local badPlot, bad = plotFixture("Plot4", false)
+    local goodPlot, good = plotFixture("Healthy", true)
+    ordered = { badPlot, goodPlot }
+    local warnings, oldWarn = {}, env.warn
+    env.warn = function(message)
+        table.insert(warnings, message)
+    end
+    cache.MuncherPresentationController = nil
+    cache.MuncherEffects = effects
+    local controller = loadModule("MuncherPresentationController")
+    local originalBind, binds, cleanups = effects.Bind, {}, {}
+    local failBind, failStyle = false, false
+    effects.Bind = function(model, gui)
+        binds[model] = (binds[model] or 0) + 1
+        if failBind and model == bad then
+            error("injected unexpected Bind error")
+        end
+        local animate, cleanup = originalBind(model, gui)
+        return animate,
+            function()
+                cleanups[model] = (cleanups[model] or 0) + 1
+                cleanup()
+            end
+    end
+    local style = loadModule("DialogueTextStyle")
+    local originalApply = style.Apply
+    style.Apply = function(label, size, gui)
+        originalApply(label, size, gui)
+        if failStyle and gui and gui.Name == "MuncherHint" then
+            error("injected hint setup failure")
+        end
+    end
+    local function tick(dt)
+        render:Fire(if dt == nil then config.ScanInterval else dt)
+    end
+    local function counts(hints, reels)
+        local h, r = 0, 0
+        for _, child in playerGui:GetChildren() do
+            h += if child.Name == "MuncherHint" then 1 else 0
+            r += if child.Name == "MuncherReels" then 1 else 0
+        end
+        check(h == hints and r == reels, "exact live hint/reel counts: " .. hints .. "/" .. reels)
+    end
+    -- Verify that this harness cannot swallow callback errors.
+    local propagation = signal()
+    propagation:Connect(function()
+        error("signal propagation probe")
+    end)
+    check(not pcall(function()
+        propagation:Fire()
+    end), "fake signals propagate callback failures")
+    controller.Init()
+    tick()
+    counts(1, 1)
+    check(binds[good] == 1 and binds[bad] == nil, "missing first plot does not block healthy binding in the same scan")
+    local warning = warnings[1]
+    for _, fragment in
+        {
+            "model#1=Model",
+            "Plot4.Muncher",
+            "originalLookup=nil",
+            "missing",
+            "Muncher siblings=1",
+            "DisplayScreen matches=0",
+            "StreamingEnabled=",
+            "ModelStreamingMode=",
+            "InWorkspace=true",
+        }
+    do
+        check(string.find(warning, fragment, 1, true), "failure captures " .. fragment)
+    end
+    for _ = 1, 5 do
+        tick()
+    end
+    check(#warnings == 1 and binds[good] == 1, "retries warn once and stable views are reused")
+    counts(1, 1)
+    goodPlot.Parent = nil
+    tick()
+    counts(0, 0)
+    check(cleanups[good] == 1, "stale healthy views clean despite earlier failed plot")
+    local screen = instance("Part")
+    screen.Name, screen.Parent = "DisplayScreen", bad
+    tick()
+    counts(1, 1)
+    check(binds[bad] == 1, "adding a screen recovers without restarting")
+    local oldReels = playerGui:FindFirstChild("MuncherReels")
+    screen.Parent = nil
+    tick(0)
+    counts(0, 0)
+    check(oldReels.Parent == nil and cleanups[bad] == 1, "screen removal stops effects before the next scan")
+    tick()
+    check(#warnings == 1, "screen disappearance does not reset warning suppression")
+    screen.Parent = bad
+    tick()
+    counts(1, 1)
+    local replacement = instance("Part")
+    replacement.Name, replacement.Parent = "DisplayScreen", bad
+    screen.Parent = nil
+    tick()
+    counts(1, 1)
+    check(
+        binds[bad] == 3 and cleanups[bad] == 2 and playerGui:FindFirstChild("MuncherReels").Adornee == replacement,
+        "replacement rebinds exactly once"
+    )
+    tick()
+    check(binds[bad] == 3, "stable replacement keeps its view")
+    replacement.Name = "RenamedScreen"
+    tick(0)
+    counts(0, 0)
+    replacement.Name = "DisplayScreen"
+    tick()
+    counts(1, 1)
+    services.CollectionService:RemoveTag(badPlot, "PlayerPlot")
+    ordered = {}
+    tick(0)
+    counts(0, 0)
+    tick() -- prune failed-model state separately from views
+
+    -- Never-bound instance is removed and rediscovered: pruning permits a fresh diagnostic.
+    local neverPlot, never = plotFixture("Never", false)
+    ordered = { neverPlot }
+    tick()
+    local firstNever = warnings[#warnings]
+    never.Parent = nil
+    tick()
+    never.Parent = neverPlot
+    tick()
+    check(#warnings == 3 and warnings[3] == firstNever, "never-bound model bookkeeping is pruned when undiscovered")
+    local samePath = never:GetFullName()
+    never:Destroy()
+    local fresh = instance("Model")
+    fresh.Name, fresh.Parent = "Muncher", neverPlot
+    tick()
+    check(
+        fresh:GetFullName() == samePath and #warnings == 4 and warnings[4] ~= warnings[3],
+        "new instance at the same path gets independent identity and diagnostic"
+    )
+    local freshScreen = instance("Part")
+    freshScreen.Name, freshScreen.Parent = "DisplayScreen", fresh
+    tick()
+    counts(1, 1)
+    check(binds[fresh] == 1, "new instance at the same path can bind")
+    -- A new preferred direct screen replaces a still-valid nested binding during scans.
+    local nested = instance("Folder")
+    nested.Parent = fresh
+    freshScreen.Parent = nested
+    tick()
+    check(binds[fresh] == 1, "same screen moved deeper preserves the view")
+    local direct = instance("Part")
+    direct.Name, direct.Parent = "DisplayScreen", fresh
+    tick()
+    check(
+        binds[fresh] == 2 and cleanups[fresh] == 1 and playerGui:FindFirstChild("MuncherReels").Adornee == direct,
+        "scan rebinds when direct preference changes while old screen remains a descendant"
+    )
+    counts(1, 1)
+    ordered = {}
+    tick()
+    counts(0, 0)
+
+    -- Bind exceptions and post-Bind setup failures must both isolate the first plot.
+    services.CollectionService:AddTag(badPlot, "PlayerPlot")
+    goodPlot.Parent = workspaceFake
+    ordered = { badPlot, goodPlot }
+    failBind = true
+    tick()
+    counts(1, 1)
+    check(
+        string.find(warnings[#warnings], "injected unexpected Bind error", 1, true),
+        "unexpected Bind error text is preserved"
+    )
+    local warningCount = #warnings
+    for _ = 1, 3 do
+        tick()
+    end
+    check(#warnings == warningCount, "unexpected exceptions also warn once")
+    failBind, failStyle = false, true
+    local beforeClean = cleanups[bad]
+    tick()
+    counts(1, 1)
+    check(cleanups[bad] == beforeClean + 1, "post-Bind hint setup failure invokes acquired effects cleanup")
+    failStyle = false
+    tick()
+    counts(2, 2)
+    check(#warnings == warningCount, "setup recovery preserves warning suppression")
+    -- Real controller proximity gate and respawn lease lifecycle.
+    local root = instance("Part")
+    root.Name, root.Parent = "HumanoidRootPart", actor.Character
+    root.Position = vec(1000, 0, 0)
+    local builds = previewCreations
+    services.RunService.Heartbeat:Fire(0.1)
+    check(previewCreations == builds, "distant views never warm previews")
+    root.Position = vec(0, 0, 0)
+    services.RunService.Heartbeat:Fire(0.1)
+    check(previewCreations == builds + 1, "nearby eligible views share one Heartbeat build")
+    local mouth = instance("Part")
+    mouth.Name, mouth.Parent = "MouthOrigin", good
+    good:SetAttribute("Phase", "Processing")
+    good:SetAttribute("StartedAt", now)
+    good:SetAttribute("InputTier", 1)
+    good:SetAttribute("OutputId", "Rock")
+    tick(0)
+    local snapshot = loadModule("MuncherPreviewCache").Snapshot()
+    check(snapshot.Leased > 0, "real controller roll leases warmed content")
+    services.RunService.Heartbeat:Fire(0.1)
+    check(previewCreations == builds + 1, "Heartbeat pauses builds while any view rolls")
+    actor.CharacterRemoving:Fire(actor.Character)
+    counts(0, 0)
+    check(loadModule("MuncherPreviewCache").Snapshot().Count == 0, "respawn returns leases before disposing views")
+    actor.Character = nil
+    tick()
+    services.RunService.Heartbeat:Fire(0.1)
+    check(previewCreations == builds + 1, "respawn leaves no warming job")
+    actor.Character = instance("Model")
+    good:SetAttribute("Phase", "Idle")
+    ordered = {}
+    tick()
+    counts(0, 0)
+    -- Record the actual old name-only lookup, and bound the hierarchy evidence.
+    local diagnosticPlot, diagnosticModel = plotFixture("Diagnostic", false)
+    local wrong = instance("Folder")
+    wrong.Name, wrong.Parent = "DisplayScreen", diagnosticModel
+    for _ = 1, 7 do
+        local namesake = instance("Folder")
+        namesake.Name, namesake.Parent = "DisplayScreen", wrong
+    end
+    local sibling = instance("Model")
+    sibling.Name, sibling.Parent = "Muncher", diagnosticPlot
+    ordered = { diagnosticPlot }
+    tick()
+    local detail = warnings[#warnings]
+    for _, fragment in
+        {
+            "originalLookup=Folder " .. wrong:GetFullName(),
+            "wrong-class-only",
+            "Muncher siblings=2",
+            "DisplayScreen matches=8",
+            "direct=true",
+            "direct=false",
+            "truncated",
+        }
+    do
+        check(string.find(detail, fragment, 1, true), "bounded first-failure evidence includes " .. fragment)
+    end
+    counts(0, 0)
+    ordered = {}
+    tick()
+    effects.Bind, style.Apply, env.warn = originalBind, originalApply, oldWarn
+    services.CollectionService.GetTagged = oldGetTagged
 end

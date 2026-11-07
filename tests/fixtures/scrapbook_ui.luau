@@ -99,6 +99,13 @@ local function instance(class, name, parent)
                     propertySignals[key]:Fire()
                 end
             elseif key == "Parent" then
+                local oldParent = properties.Parent
+                if oldParent then
+                    local index = table.find(oldParent.children, self)
+                    if index then
+                        table.remove(oldParent.children, index)
+                    end
+                end
                 properties.Parent = value
                 if value and not table.find(value.children, self) then
                     table.insert(value.children, self)

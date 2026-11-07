@@ -7,7 +7,59 @@ local Style = require(Shared.Constants.DialogueTextStyle)
 local Effects = {}
 local RarityStyle = require(script.Parent.IngredientPickupPromptStyle)
 local Artwork = require(Shared.Constants.ScrapbookArtwork)
-local Viewport = require(script.Parent.IngredientViewport)
+local Cache = require(script.Parent.MuncherPreviewCache)
+local Ingredients = require(Shared.Constants.Ingredients)
+local RunService = game:GetService("RunService")
+local bindings: { [any]: any } = {}
+local interestSerial = 0
+
+function Effects.Cancel(model: Instance)
+    for _, binding in bindings do
+        if binding.Model == model then
+            binding.Reset()
+            binding.Nearby = false
+        end
+    end
+end
+
+-- Heartbeat-only idle preparation, shared across every bound machine.
+function Effects.SetNearby(model: Instance, nearby: boolean)
+    for _, binding in bindings do
+        if binding.Model == model then
+            binding.Nearby = nearby
+        end
+    end
+end
+
+function Effects.Warm(now: number)
+    local requests = {}
+    local blocked = false
+    for _, binding in bindings do
+        local model = binding.Model
+        blocked = blocked or binding.Gui.Enabled or model:GetAttribute("Phase") == "Processing"
+        local tier = model:GetAttribute("InputTier") or binding.Tier or 1
+        local sequence = model:GetAttribute("Sequence")
+        if sequence ~= binding.Sequence then
+            binding.Sequence, binding.Output = sequence, nil
+        end
+        local output = model:GetAttribute("OutputId") or binding.Output
+        if tier ~= binding.Tier or output ~= binding.Output then
+            interestSerial += 1
+            binding.Tier, binding.Output, binding.Priority = tier, output, interestSerial
+        end
+        if binding.Nearby then
+            if type(output) == "string" and Artwork.GetIngredient(output) == "" then
+                table.insert(requests, { Id = output, Priority = binding.Priority * 100 + 99 })
+            end
+            for index, entry in Config.RewardPools[tier] or Config.RewardPools[1] do
+                if Artwork.GetIngredient(entry.Id) == "" then
+                    table.insert(requests, { Id = entry.Id, Priority = binding.Priority * 100 - index })
+                end
+            end
+        end
+    end
+    Cache.Warm(requests, blocked, now)
+end
 
 function Effects.Pop(object: Instance)
     local flash = Instance.new("Highlight")
@@ -41,7 +93,46 @@ function Effects.AdvancePoolIndex(oldIndex: number, wraps: number, poolSize: num
     return (oldIndex - 1 - 5 * wraps) % poolSize + 1
 end
 
-function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), () -> ())
+-- Non-yielding authored-screen policy shared with the presentation controller.
+function Effects.ResolveScreen(model: Instance): (BasePart?, string?)
+    local function candidates(objects: { Instance }): (BasePart?, number)
+        local chosen: BasePart? = nil
+        local count = 0
+        for _, object in objects do
+            if object.Name == "DisplayScreen" and object:IsA("BasePart") then
+                chosen = object
+                count += 1
+            end
+        end
+        return chosen, count
+    end
+    local direct, directCount = candidates(model:GetChildren())
+    if directCount == 1 then
+        return direct, nil
+    elseif directCount > 1 then
+        return nil, "ambiguous: multiple direct valid parts"
+    end
+    local descendants = model:GetDescendants()
+    local nested, nestedCount = candidates(descendants)
+    if nestedCount == 1 then
+        return nested, nil
+    elseif nestedCount > 1 then
+        return nil, "ambiguous: multiple nested valid parts"
+    end
+    for _, object in descendants do
+        if object.Name == "DisplayScreen" then
+            return nil, "wrong-class-only: no matching BasePart"
+        end
+    end
+    return nil, "missing: no DisplayScreen on this client"
+end
+
+local function bind(
+    model: Instance,
+    playerGui: PlayerGui,
+    display: BasePart,
+    acquire: (Instance) -> ()
+): ((number, number?) -> (), () -> ())
     local saved: { [BasePart]: CFrame } = {}
     local sequence = -1
     local insertedSequence = -1
@@ -50,27 +141,44 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
     local reels: { any } = {}
     local stopSpin: (() -> ())? = nil
     local Audio = require(script.Parent.Parent.Controllers.GameplayAudioController)
-    local queue: { [any]: boolean } = {}
     local pool = Config.RewardPools[1]
     local disposed = false
     local warnedOutput = false
-    local display = model:FindFirstChild("DisplayScreen", true)
-    assert(
-        display and display:IsA("BasePart"),
-        "Muncher roll requires an authored BasePart named DisplayScreen (Front face) in " .. model:GetFullName()
-    )
+    local reset = true
+    local timing: any = nil
+    local function finishTiming()
+        if timing then
+            local totals = Cache.Snapshot()
+            print(
+                string.format(
+                    "Muncher roll: builds=%d destroys=%d hits=%d misses=%d worstFrame=%.2fms worstUpdate=%.2fms warmBuildMax=%.2fms",
+                    totals.Builds - timing.Builds,
+                    totals.Destroys - timing.Destroys,
+                    totals.Hits - timing.Hits,
+                    totals.Misses - timing.Misses,
+                    timing.WorstFrameMs,
+                    timing.WorstUpdateMs,
+                    totals.WorstBuildMs
+                )
+            )
+            timing = nil
+        end
+    end
     local rollGui = Instance.new("SurfaceGui")
+    acquire(rollGui)
     rollGui.Name, rollGui.Adornee = "MuncherReels", display
     rollGui.Active = false
     rollGui.Face = Enum.NormalId.Front
     rollGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
     rollGui.PixelsPerStud = 100
     rollGui.AlwaysOnTop = false
-    rollGui.ResetOnSpawn = true
+    -- Controller owns respawn cleanup so leases return before the slot tree dies.
+    rollGui.ResetOnSpawn = false
     rollGui.Enabled = false
     rollGui.Parent = playerGui
     for index = 1, 3 do
         local window = Instance.new("Frame")
+        window.Parent = rollGui
         window.Active = false
         window.Name = "Reel" .. index
         window.BackgroundColor3 = Color3.fromRGB(35, 20, 45)
@@ -79,19 +187,19 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
         window.ClipsDescendants = true
         window.Size = UDim2.fromScale(0.29, 0.8)
         window.Position = UDim2.fromScale(0.025 + (index - 1) * 0.33, 0.1)
-        window.Parent = rollGui
         local outline = Instance.new("UIStroke")
-        outline.Thickness = 3
         outline.Parent = window
+        outline.Thickness = 3
         local slots = {}
         for row = 1, 5 do
             local symbol = Instance.new("Frame")
+            symbol.Parent = window
             symbol.Active = false
             symbol.BackgroundTransparency = 1
             symbol.Size = UDim2.fromScale(1, 1)
             symbol.Visible = false
-            symbol.Parent = window
             local image = Instance.new("ImageLabel")
+            image.Parent = symbol
             image.Active = false
             image.Name = "IngredientIcon"
             image.BackgroundTransparency = 1
@@ -99,36 +207,52 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
             image.Position = UDim2.fromScale(0.06, 0.06)
             image.ScaleType = Enum.ScaleType.Fit
             image.Image = ""
-            image.Parent = symbol
-            table.insert(slots, { Frame = symbol, Image = image, Y = row - 3, Ready = false })
+            local label = Instance.new("TextLabel")
+            label.Name, label.Parent = "IngredientName", symbol
+            label.Active, label.BackgroundTransparency = false, 1
+            label.Size, label.Position = image.Size, image.Position
+            Style.Apply(label, 24)
+            label.TextScaled, label.TextWrapped, label.Visible = true, true, false
+            label.Text = ""
+            table.insert(slots, { Frame = symbol, Image = image, Label = label, Y = row - 3, Ready = false })
         end
         table.insert(reels, { Slots = slots, Outline = outline, Stopped = false, Distance = 0 })
     end
     local function clearContent(slot: any)
-        queue[slot] = nil
-        if slot.Cleanup then
-            slot.Cleanup()
-            slot.Cleanup = nil
-        end
+        Cache.Release(slot)
         slot.Ready = false
         slot.Frame.Visible = false
+        slot.Image.Image, slot.Label.Text = "", ""
+        slot.Image.Visible, slot.Label.Visible = false, false
+        slot.PoolIndex = nil
+        slot.Frame.Name = ""
     end
-    local function assign(slot: any, poolIndex: number)
-        if slot.PoolIndex == poolIndex and (slot.Ready or queue[slot]) then
+    local function assign(slot: any, poolIndex: number?, exactId: string?)
+        local id = exactId or (if poolIndex then pool[poolIndex].Id else "")
+        if slot.Ready and slot.Frame.Name == id then
+            slot.PoolIndex = poolIndex
             return
         end
         clearContent(slot)
         slot.PoolIndex = poolIndex
-        slot.Frame.Name = pool[poolIndex].Id
+        slot.Frame.Name = id
         slot.Image.ImageColor3 = Color3.new(1, 1, 1)
-        slot.Image.Image = Artwork.GetIngredient(slot.Frame.Name)
-        if slot.Image.Image ~= "" then
-            slot.Ready = true
-        else
-            queue[slot] = true
+        slot.Label.TextColor3 = Style.White
+        slot.Image.Image = Artwork.GetIngredient(id)
+        slot.Image.Visible = slot.Image.Image ~= ""
+        if not slot.Image.Visible and not Cache.Lease(slot, slot.Image, id) then
+            local definition = Ingredients[id]
+            slot.Label.Text = if definition then definition.DisplayName else id
+            slot.Label.Visible = true
         end
+        slot.Ready = true
     end
     local function resetRoll()
+        if reset then
+            return
+        end
+        reset = true
+        finishTiming()
         for part, at in saved do
             if part.Parent then
                 part.CFrame = at
@@ -144,7 +268,6 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
             carrier:Destroy()
         end
         carrier, glow = nil, nil
-        table.clear(queue)
         for _, reel in reels do
             reel.Stopped, reel.Locked, reel.Distance = false, nil, 0
             for _, slot in reel.Slots do
@@ -159,9 +282,12 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
         end
         resetRoll()
         disposed = true
+        bindings[rollGui] = nil
+        if not next(bindings) then
+            Cache.Dispose()
+        end
         rollGui:Destroy()
         table.clear(reels)
-        table.clear(queue)
         sequence, insertedSequence = -1, -1
     end
     local function saveVisual()
@@ -189,7 +315,7 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
         end
         return nil
     end
-    return function(now: number)
+    local function animate(now: number)
         if disposed then
             return
         end
@@ -205,15 +331,24 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
         local busy = now < busyUntil and model:GetAttribute("Purchased") == true
         local palette = (RarityStyle.RarityStyles :: any)[tostring(model:GetAttribute("OutputRarity"))]
             or RarityStyle.RarityStyles.Common
-        if current ~= sequence or (processing and not carrier and age < Config.ChewSeconds) then
+        local tierAttribute = model:GetAttribute("InputTier")
+        local tier: number = if type(tierAttribute) == "number" then tierAttribute else 1
+        local currentPool = Config.RewardPools[tier] or Config.RewardPools[1]
+        if
+            current ~= sequence
+            or (processing and age < Config.ChewSeconds and (not carrier or currentPool ~= pool))
+        then
             resetRoll()
             sequence = if type(current) == "number" then current else 0
             local at = origin()
             if processing and at and age < Config.ChewSeconds then
+                reset = false
+                if workspace:GetAttribute("MuncherPresentationTiming") == true and RunService:IsStudio() then
+                    timing = Cache.Snapshot()
+                    timing.WorstFrameMs, timing.WorstUpdateMs = 0, 0
+                end
                 saveVisual()
-                local tierAttribute = model:GetAttribute("InputTier")
-                local tier: number = if type(tierAttribute) == "number" then tierAttribute else 1
-                pool = Config.RewardPools[tier] or Config.RewardPools[1]
+                pool = currentPool
                 local anchor = Instance.new("Part")
                 anchor.Name = "MuncherLocalGlow"
                 anchor.Size = Vector3.one * 0.1
@@ -242,7 +377,7 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
             end
         end
         if not processing then
-            if rollGui.Enabled or carrier or not busy then
+            if not reset then
                 resetRoll()
             end
             if not busy then
@@ -250,6 +385,7 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
             end
         end
         if busy then
+            reset = false
             saveVisual()
         end
         local offset = if processing then math.sin(age * 25) * 0.1 else 0
@@ -301,6 +437,8 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
                     end
                     if outputIndex then
                         assign(closest, outputIndex)
+                    elseif type(output) == "string" and Ingredients[output] then
+                        assign(closest, nil, output)
                     elseif not warnedOutput then
                         warnedOutput = true
                         warn("Muncher output missing from pool in " .. model:GetFullName() .. ": " .. tostring(output))
@@ -326,32 +464,6 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
             end
             reel.Outline.Color = palette.TextColor
         end
-        -- One deduplicated queue per view. Locked/visible content wins over hidden work.
-        local pending = {}
-        for slot in queue do
-            table.insert(pending, slot)
-        end
-        local function priority(slot: any): number
-            for _, reel in reels do
-                if reel.Locked == slot then
-                    return -3
-                end
-            end
-            if slot.Y > -1 and slot.Y < 1 then
-                return -2
-            end
-            return if slot.Y == -1 then -1 else 0
-        end
-        table.sort(pending, function(a, b)
-            local pa, pb = priority(a), priority(b)
-            return if pa == pb then a.Y < b.Y else pa < pb
-        end)
-        for index = 1, math.min(2, #pending) do
-            local slot = pending[index]
-            queue[slot] = nil
-            slot.Cleanup = Viewport.Create(slot.Image, slot.Frame.Name)
-            slot.Ready = slot.Cleanup ~= nil
-        end
         for _, reel in reels do
             for _, slot in reel.Slots do
                 slot.Frame.Position = UDim2.fromScale(0, slot.Y)
@@ -362,6 +474,9 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
                         if icon:IsA("ImageLabel") or icon:IsA("ViewportFrame") then
                             icon.ImageColor3 = if tintResult == "Win" then Style.Gold else Color3.fromRGB(165, 165, 165)
                             TweenService:Create(icon, TweenInfo.new(0.12), { ImageColor3 = Color3.new(1, 1, 1) }):Play()
+                        elseif icon:IsA("TextLabel") then
+                            icon.TextColor3 = if tintResult == "Win" then Style.Gold else Color3.fromRGB(165, 165, 165)
+                            TweenService:Create(icon, TweenInfo.new(0.12), { TextColor3 = Style.White }):Play()
                         end
                     end
                 end
@@ -372,7 +487,40 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number) -> (), (
             local lockAt = Effects.ReelStop(3)
             glow.Brightness = math.clamp((age - lockAt + 0.3) / 0.3, 0, 1) * 3
         end
+    end
+    bindings[rollGui] = { Model = model, Gui = rollGui, Nearby = false, Reset = resetRoll }
+    return function(now: number, dt: number?)
+        local started = if timing or workspace:GetAttribute("MuncherPresentationTiming") == true then os.clock() else 0
+        animate(now)
+        if timing then
+            timing.WorstUpdateMs = math.max(timing.WorstUpdateMs, (os.clock() - started) * 1000)
+            timing.WorstFrameMs = math.max(timing.WorstFrameMs, (dt or 0) * 1000)
+        end
     end,
         cleanup
 end
+-- Roll back setup allocations even when Bind cannot return its cleanup function.
+function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number, number?) -> (), () -> ())
+    local display, reason = Effects.ResolveScreen(model)
+    if not display then
+        error(
+            "Muncher roll requires an authored BasePart named DisplayScreen (Front face) in "
+                .. model:GetFullName()
+                .. ": "
+                .. tostring(reason)
+        )
+    end
+    local acquired: { Instance } = {}
+    local ok, animate, cleanup = pcall(bind, model, playerGui, display, function(object)
+        table.insert(acquired, object)
+    end)
+    if not ok then
+        for _, object in acquired do
+            object:Destroy()
+        end
+        error(tostring(animate), 0)
+    end
+    return animate, cleanup
+end
+
 return Effects

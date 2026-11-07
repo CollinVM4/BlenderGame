@@ -103,6 +103,27 @@ check(
     "missing or nonallowlisted preview falls back"
 )
 published:FindFirstChild("Apple"):FindFirstChild("Apple").Size = vec(1000, 20, 600)
+-- A prepared preview survives release and destruction of its previous slot.
+do
+    local prepared = assert(renderer.Prepare("Apple"))
+    local slot = instance("Frame", "ReelSlot")
+    local icon = instance("ImageLabel", "Icon", slot)
+    prepared.Attach(icon)
+    local preview = slot:FindFirstChild("IngredientPreview")
+    local camera = preview.CurrentCamera
+    prepared.Release()
+    slot:Destroy()
+    check(not camera.Destroyed and preview.Parent == nil, "released preview survives slot destruction")
+    prepared.Attach(image)
+    check(
+        host:FindFirstChild("IngredientPreview") == preview and preview.CurrentCamera == camera,
+        "reattach reuses the viewport and camera"
+    )
+    prepared.Release()
+    prepared.Destroy()
+    prepared.Destroy()
+    check(camera.Destroyed, "prepared cleanup is idempotent")
+end
 for _, id in { "Apple", "Grapes" } do
     local cleanup = assert(renderer.Create(image, id))
     local viewport = host:FindFirstChild("IngredientPreview")
