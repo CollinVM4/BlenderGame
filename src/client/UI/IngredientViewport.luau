@@ -4,7 +4,13 @@ local Geometry = require(Shared.IngredientPreviewGeometry)
 local Allowed = require(Shared.Constants.ScrapbookPreviews)
 local Renderer = {}
 
-function Renderer.Create(image: ImageLabel, id: string, silhouette: boolean?): (() -> ())?
+export type Prepared = {
+    Attach: (ImageLabel) -> (),
+    Release: () -> (),
+    Destroy: () -> (),
+}
+
+function Renderer.Prepare(id: string, silhouette: boolean?): Prepared?
     if not (Allowed :: { [string]: boolean })[id] then
         return nil
     end
@@ -43,11 +49,7 @@ function Renderer.Create(image: ImageLabel, id: string, silhouette: boolean?): (
     local viewport = Instance.new("ViewportFrame")
     viewport.Name = "IngredientPreview"
     viewport.BackgroundTransparency = 1
-    viewport.Size = image.Size
-    viewport.Position = image.Position
-    viewport.AnchorPoint = image.AnchorPoint
-    viewport.Rotation = image.Rotation
-    viewport.ZIndex = image.ZIndex
+    viewport.Active = false
     -- Ambient-only lighting keeps silhouettes flat; full-color lighting is unchanged.
     viewport.Ambient = if silhouette then Color3.new(1, 1, 1) else Color3.fromRGB(190, 190, 190)
     viewport.LightColor = if silhouette then Color3.new(0, 0, 0) else Color3.fromRGB(255, 255, 255)
@@ -72,7 +74,6 @@ function Renderer.Create(image: ImageLabel, id: string, silhouette: boolean?): (
         local distance = Geometry.Distance(size, aspect, camera.FieldOfView)
         camera.CFrame = CFrame.lookAt(Vector3.new(1, 0.65, 1).Unit * distance, Vector3.zero)
     end
-    viewport.Parent = image.Parent
     frame()
     local resized = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(frame)
     local disposed = false
@@ -89,7 +90,30 @@ function Renderer.Create(image: ImageLabel, id: string, silhouette: boolean?): (
         viewport:Destroy()
     end
     destroying = viewport.Destroying:Connect(cleanup)
-    return cleanup
+    return {
+        Attach = function(image: ImageLabel)
+            assert(not disposed, "Cannot attach a disposed preview")
+            viewport.Size, viewport.Position = image.Size, image.Position
+            viewport.AnchorPoint, viewport.Rotation, viewport.ZIndex = image.AnchorPoint, image.Rotation, image.ZIndex
+            viewport.ImageColor3 = Color3.new(1, 1, 1)
+            viewport.Parent = image.Parent
+            frame()
+        end,
+        Release = function()
+            viewport.Parent = nil
+        end,
+        Destroy = cleanup,
+    }
+end
+
+-- Existing UI owns a private preview until cleanup or destruction of its parent.
+function Renderer.Create(image: ImageLabel, id: string, silhouette: boolean?): (() -> ())?
+    local prepared = Renderer.Prepare(id, silhouette)
+    if not prepared then
+        return nil
+    end
+    prepared.Attach(image)
+    return prepared.Destroy
 end
 
 return Renderer

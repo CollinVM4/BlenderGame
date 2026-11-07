@@ -230,6 +230,7 @@ sources["BatController"] = (ROOT / "src/client/Controllers/BatController.luau").
 sources["UpgradeDisplay"] = (ROOT / "src/client/UI/UpgradeDisplay.luau").read_text(encoding="utf-8")
 sources["StashPresentation"] = (ROOT / "src/server/Components/StashPresentation.luau").read_text(encoding="utf-8")
 sources["IngredientPickupPromptStyle"] = (ROOT / "src/client/UI/IngredientPickupPromptStyle.luau").read_text(encoding="utf-8")
+sources["MuncherPreviewCache"] = (ROOT / "src/client/UI/MuncherPreviewCache.luau").read_text(encoding="utf-8")
 sources["MuncherEffects"] = (ROOT / "src/client/UI/MuncherEffects.luau").read_text(encoding="utf-8")
 sources["MuncherPresentation"] = (ROOT / "src/server/Components/MuncherPresentation.luau").read_text(encoding="utf-8")
 sources["MuncherReveal"] = (ROOT / "src/server/Components/MuncherReveal.luau").read_text(encoding="utf-8")
