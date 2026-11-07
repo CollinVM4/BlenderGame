@@ -1,6 +1,7 @@
 --!strict
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local Marketplace = game:GetService("MarketplaceService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
 local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local Eligibility = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmEligibility)
@@ -9,6 +10,9 @@ local GameplaySfx = require(script.Parent.GameplaySfxService)
 local FarmService = {}
 local deps: any
 local farms: { [Instance]: any } = {}
+local ownership: { [Player]: any } = {}
+local pending: { [Player]: any } = {}
+local refreshBoost: (any) -> ()
 
 local function live(farm: any, session: string?): boolean
     return session ~= nil
@@ -35,6 +39,18 @@ local function appearance(object: Instance): { any }
             table.insert(saved, { Decoration = item, Transparency = item.Transparency })
         elseif item:IsA("SurfaceGui") or item:IsA("BillboardGui") then
             table.insert(saved, { Gui = item, Enabled = item.Enabled })
+        elseif
+            item:IsA("ParticleEmitter")
+            or item:IsA("Beam")
+            or item:IsA("Trail")
+            or item:IsA("Light")
+            or item:IsA("Sparkles")
+            or item:IsA("Fire")
+            or item:IsA("Smoke")
+        then
+            table.insert(saved, { Effect = item, Enabled = item.Enabled })
+        elseif item:IsA("ProximityPrompt") then
+            table.insert(saved, { Prompt = item })
         end
     end
     return saved
@@ -49,6 +65,13 @@ local function show(saved: { any }, visible: boolean)
             item.Part.CanQuery = visible and item.Query
         elseif item.Decoration then
             item.Decoration.Transparency = if visible then item.Transparency else 1
+        elseif item.Effect then
+            item.Effect.Enabled = visible and item.Enabled
+            if not visible and item.Effect:IsA("ParticleEmitter") then
+                item.Effect:Clear()
+            end
+        elseif item.Prompt then
+            item.Prompt.Enabled = false -- Only the explicitly managed prompt may interact.
         else
             item.Gui.Enabled = visible and item.Enabled
         end
@@ -70,6 +93,7 @@ local function refreshPads(farm: any)
         show(row.PadAppearance, available)
         row.Pad.CanTouch = available
     end
+    refreshBoost(farm)
 end
 
 local function stopReveal(row: any)
@@ -204,6 +228,123 @@ local function grow(farm: any, row: any, session: string, generation: number, id
     end
 end
 
+local function scheduleGrowth(farm: any, row: any, duration: number)
+    row.Generation += 1 -- Invalidate every previous completion, including rescheduled ones.
+    row.Object:SetAttribute("FarmGrowEnd", workspace:GetServerTimeNow() + duration)
+    local session, generation, id = farm.Session, row.Generation, row.IngredientId
+    task.delay(duration, function()
+        grow(farm, row, session, generation, id)
+    end)
+end
+
+local function releasePrompt(player: Player)
+    local request = pending[player]
+    if request then
+        if request.Farm.Pending == player then
+            request.Farm.Pending = nil
+        end
+        pending[player] = nil
+    end
+end
+
+local function refreshPlayerPlot(player: Player)
+    local plot = deps.TycoonService.GetPlot(player)
+    local farm = plot and farms[plot]
+    if farm then
+        refreshBoost(farm)
+    end
+end
+
+local function checkOwnership(player: Player)
+    if ownership[player] or player.Parent ~= Players then
+        return
+    end
+    local state: any = { Checking = true }
+    ownership[player] = state
+    task.spawn(function()
+        local ok, owns = pcall(function()
+            return Marketplace:UserOwnsGamePassAsync(player.UserId, Config.SpeedPassId)
+        end)
+        if ownership[player] ~= state or player.Parent ~= Players then
+            return
+        end
+        state.Checking = false
+        -- A matching purchase event may have confirmed ownership while this call yielded.
+        if state.Owned ~= true then
+            state.Owned = if ok and typeof(owns) == "boolean" then owns else nil
+        end
+        refreshPlayerPlot(player) -- Resolve current membership, never a captured plot.
+        if state.Owned == nil then
+            task.delay(Config.OwnershipRetrySeconds, function()
+                if ownership[player] == state and state.Owned == nil then
+                    ownership[player] = nil
+                    refreshPlayerPlot(player)
+                end
+            end)
+        end
+    end)
+end
+
+refreshBoost = function(farm: any)
+    local active = live(farm, farm.Session)
+    if farm.Pending and (not active or not authorized(farm, farm.Pending)) then
+        releasePrompt(farm.Pending)
+    end
+    local boosted, confirmed = false, active
+    if active then
+        for _, member in deps.TycoonService.GetMembers(farm.Session) do
+            checkOwnership(member)
+            local state = ownership[member]
+            boosted = boosted or (state ~= nil and state.Owned == true)
+            confirmed = confirmed and state ~= nil and state.Owned == false and not state.Checking
+        end
+    end
+    local multiplier = if boosted then Config.SpeedMultiplier else 1
+    local oldMultiplier = farm.Multiplier or 1
+    farm.Multiplier = multiplier
+    if multiplier ~= oldMultiplier then
+        for _, row in farm.Rows do
+            if row.State == "GROWING" then
+                local remaining = math.max(0, row.Object:GetAttribute("FarmGrowEnd") - workspace:GetServerTimeNow())
+                scheduleGrowth(farm, row, remaining * oldMultiplier / multiplier)
+            end
+        end
+    end
+    local owner = if active then deps.TycoonService.GetSessionOwner(farm.Session) else nil
+    farm.BoostAvailable = confirmed
+        and not boosted
+        and owner ~= nil
+        and deps.TycoonService.GetUpgrade(owner, "FarmRows") >= 2
+    if farm.SpeedPad then
+        show(farm.SpeedAppearance, farm.BoostAvailable)
+        farm.SpeedPrompt.Enabled = farm.BoostAvailable and farm.Pending == nil
+    end
+end
+
+local function purchaseBoost(farm: any, player: Player)
+    refreshBoost(farm)
+    if
+        not authorized(farm, player)
+        or not farm.BoostAvailable
+        or farm.Pending
+        or pending[player]
+        or not farm.SpeedPad:IsDescendantOf(farm.Plot)
+        or not WorldUtil.Near(player, farm.SpeedPad, Config.PlantDistance)
+    then
+        return
+    end
+    local request = { Farm = farm, Session = farm.Session }
+    pending[player], farm.Pending = request, player
+    refreshBoost(farm)
+    local ok = pcall(function()
+        Marketplace:PromptGamePassPurchase(player, Config.SpeedPassId)
+    end)
+    if not ok and pending[player] == request then
+        releasePrompt(player)
+        refreshBoost(farm)
+    end
+end
+
 local function plant(farm: any, row: any, player: Player)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if
@@ -222,22 +363,17 @@ local function plant(farm: any, row: any, player: Player)
     if not id or not definition or not Eligibility.CanPlant(definition) then
         return
     end
-    local duration = Economy.RefillSeconds[definition.JumpLocation] * #row.Grow
+    local duration = Economy.RefillSeconds[definition.JumpLocation] * #row.Grow / farm.Multiplier
     local token = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
     if not token then
         return
     end
     row.Busy = true
     if deps.InventoryService.ConsumeHeldIngredient(player, id) then
-        row.Generation += 1
         row.IngredientId = id
-        row.Object:SetAttribute("FarmGrowEnd", workspace:GetServerTimeNow() + duration)
         setState(row, "GROWING")
         GameplaySfx.Emit("IngredientPlant", row.Plant.WorldPosition)
-        local generation = row.Generation
-        task.delay(duration, function()
-            grow(farm, row, token, generation, id)
-        end)
+        scheduleGrowth(farm, row, duration)
     end
     row.Busy = false
     deps.TycoonService.EndTransaction(token)
@@ -265,6 +401,9 @@ local function resetRow(row: any)
 end
 
 local function reset(farm: any)
+    if farm.Pending then
+        releasePrompt(farm.Pending)
+    end
     farm.Session = nil -- invalidate before destruction signals or tween cancellation
     for _, row in farm.Rows do
         resetRow(row)
@@ -275,6 +414,7 @@ end
 local function activate(farm: any, player: Player)
     local session = deps.TycoonService.GetSessionId(player)
     if farm.Session == session then
+        refreshBoost(farm)
         return
     end
     reset(farm)
@@ -340,6 +480,38 @@ local function bind(plot: Instance): (() -> ())?
         })
     end
     farms[plot] = farm
+    -- The optional monetization assembly cannot invalidate otherwise valid rows.
+    local speedPad = folder:FindFirstChild("FarmSpeedRobux")
+    if speedPad then
+        farm.SpeedAppearance = appearance(speedPad)
+        show(farm.SpeedAppearance, false)
+        if speedPad:IsA("BasePart") then
+            farm.SpeedPad = speedPad
+            speedPad.Anchored = true
+            local sign = speedPad:FindFirstChild("Sign")
+            if sign then
+                for _, label in sign:GetDescendants() do
+                    if label:IsA("TextLabel") then
+                        label.Text = "2× FASTER FARM"
+                    end
+                end
+            end
+            local prompt = Instance.new("ProximityPrompt")
+            prompt.Name, prompt.ActionText, prompt.ObjectText = "FarmSpeedPrompt", "Buy Farm Boost", "2× FASTER FARM"
+            prompt.MaxActivationDistance, prompt.RequiresLineOfSight = Config.PlantDistance, false
+            prompt.Enabled = false
+            prompt.Parent = speedPad
+            farm.SpeedPrompt = prompt
+            table.insert(
+                farm.Connections,
+                prompt.Triggered:Connect(function(player)
+                    purchaseBoost(farm, player)
+                end)
+            )
+        else
+            warn("[FarmService] FarmSpeedRobux must be a BasePart in " .. plot:GetFullName())
+        end
+    end
     for index, row in farm.Rows do
         table.insert(
             farm.Connections,
@@ -403,6 +575,9 @@ local function bind(plot: Instance): (() -> ())?
         for _, row in farm.Rows do
             row.Prompt:Destroy()
         end
+        if farm.SpeedPrompt then
+            farm.SpeedPrompt:Destroy()
+        end
     end
 end
 
@@ -441,7 +616,37 @@ end
 
 function FarmService.Init(services: any)
     deps = services
+    Marketplace.PromptGamePassPurchaseFinished:Connect(function(player, id, purchased)
+        local request = pending[player]
+        if
+            id ~= Config.SpeedPassId
+            or not request
+            or player.Parent ~= Players
+            or request.Farm.Pending ~= player
+            or not live(request.Farm, request.Session)
+        then
+            return
+        end
+        releasePrompt(player)
+        if purchased == true then
+            local state = ownership[player] or {}
+            ownership[player] = state
+            state.Owned, state.Checking = true, false
+        end
+        refreshBoost(request.Farm)
+        refreshPlayerPlot(player)
+    end)
+    Players.PlayerRemoving:Connect(function(player)
+        releasePrompt(player)
+        ownership[player] = nil
+    end)
     WorldUtil.BindTag("PlayerPlot", bind)
+end
+
+function FarmService.RefreshMembership()
+    for _, farm in farms do
+        refreshBoost(farm)
+    end
 end
 
 return FarmService

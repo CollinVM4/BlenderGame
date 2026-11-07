@@ -1,5 +1,8 @@
 # Test suite boundaries
 
+Farm speed pass: `--suite farm --suite farm-boost` covers ordinary farming and
+the separate shared pass contracts. See [setup and Studio checks](../docs/FARM_SPEED_PASS.md).
+
 World billboard sizing: `python tests/run_billboard_tests.py --luau <luau.exe>`
 owns the shared stud-size/culling/text contracts and repository-wide direct-size
 lint. This is an independent presentation check, not a prerequisite for gameplay

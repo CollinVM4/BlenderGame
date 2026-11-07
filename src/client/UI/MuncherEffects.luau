@@ -7,7 +7,12 @@ local Style = require(Shared.Constants.DialogueTextStyle)
 local Effects = {}
 local RarityStyle = require(script.Parent.IngredientPickupPromptStyle)
 local Artwork = require(Shared.Constants.ScrapbookArtwork)
-local Cache = require(script.Parent.MuncherPreviewCache)
+local MuncherArtwork = require(Shared.Constants.MuncherArtwork)
+local useImages = MuncherArtwork.IsReady()
+-- Retained only while the asset handoff blocks the production switch.
+local Cache = if useImages then nil else require(script.Parent.MuncherPreviewCache)
+local Preloader = require(script.Parent.MuncherImagePreloader)
+Effects.UsesImages = useImages
 local Ingredients = require(Shared.Constants.Ingredients)
 local RunService = game:GetService("RunService")
 local bindings: { [any]: any } = {}
@@ -17,6 +22,9 @@ function Effects.Cancel(model: Instance)
     for _, binding in bindings do
         if binding.Model == model then
             binding.Reset()
+            if useImages then
+                binding.CancelledSequence = model:GetAttribute("Sequence")
+            end
             binding.Nearby = false
         end
     end
@@ -24,6 +32,9 @@ end
 
 -- Heartbeat-only idle preparation, shared across every bound machine.
 function Effects.SetNearby(model: Instance, nearby: boolean)
+    if useImages then
+        return
+    end
     for _, binding in bindings do
         if binding.Model == model then
             binding.Nearby = nearby
@@ -32,6 +43,9 @@ function Effects.SetNearby(model: Instance, nearby: boolean)
 end
 
 function Effects.Warm(now: number)
+    if not Cache then
+        return
+    end
     local requests = {}
     local blocked = false
     for _, binding in bindings do
@@ -148,17 +162,21 @@ local function bind(
     local timing: any = nil
     local function finishTiming()
         if timing then
-            local totals = Cache.Snapshot()
+            local totals = if Cache
+                then Cache.Snapshot()
+                else { Builds = 0, Destroys = 0, Hits = 0, Misses = 0, WorstBuildMs = 0 }
             print(
                 string.format(
-                    "Muncher roll: builds=%d destroys=%d hits=%d misses=%d worstFrame=%.2fms worstUpdate=%.2fms warmBuildMax=%.2fms",
+                    "Muncher roll: builds=%d destroys=%d hits=%d misses=%d worstFrame=%.2fms worstUpdate=%.2fms warmBuildMax=%.2fms iconFallbacks=%d path=%s",
                     totals.Builds - timing.Builds,
                     totals.Destroys - timing.Destroys,
                     totals.Hits - timing.Hits,
                     totals.Misses - timing.Misses,
                     timing.WorstFrameMs,
                     timing.WorstUpdateMs,
-                    totals.WorstBuildMs
+                    totals.WorstBuildMs,
+                    timing.IconFallbacks,
+                    if useImages then "images" else "viewports"
                 )
             )
             timing = nil
@@ -172,7 +190,7 @@ local function bind(
     rollGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
     rollGui.PixelsPerStud = 100
     rollGui.AlwaysOnTop = false
-    -- Controller owns respawn cleanup so leases return before the slot tree dies.
+    -- Controller owns respawn cleanup and cancels all slot content.
     rollGui.ResetOnSpawn = false
     rollGui.Enabled = false
     rollGui.Parent = playerGui
@@ -219,7 +237,11 @@ local function bind(
         table.insert(reels, { Slots = slots, Outline = outline, Stopped = false, Distance = 0 })
     end
     local function clearContent(slot: any)
-        Cache.Release(slot)
+        if Cache then
+            Cache.Release(slot)
+        end
+        slot.ContentSequence = nil
+        slot.FallbackCounted = false
         slot.Ready = false
         slot.Frame.Visible = false
         slot.Image.Image, slot.Label.Text = "", ""
@@ -238,9 +260,10 @@ local function bind(
         slot.Frame.Name = id
         slot.Image.ImageColor3 = Color3.new(1, 1, 1)
         slot.Label.TextColor3 = Style.White
-        slot.Image.Image = Artwork.GetIngredient(id)
+        slot.ContentSequence = sequence
+        slot.Image.Image = if useImages then MuncherArtwork.GetMuncherIngredient(id) else Artwork.GetIngredient(id)
         slot.Image.Visible = slot.Image.Image ~= ""
-        if not slot.Image.Visible and not Cache.Lease(slot, slot.Image, id) then
+        if useImages or (not slot.Image.Visible and Cache and not Cache.Lease(slot, slot.Image, id)) then
             local definition = Ingredients[id]
             slot.Label.Text = if definition then definition.DisplayName else id
             slot.Label.Visible = true
@@ -283,7 +306,7 @@ local function bind(
         resetRoll()
         disposed = true
         bindings[rollGui] = nil
-        if not next(bindings) then
+        if Cache and not next(bindings) then
             Cache.Dispose()
         end
         rollGui:Destroy()
@@ -320,6 +343,13 @@ local function bind(
             return
         end
         local current = model:GetAttribute("Sequence")
+        local binding = bindings[rollGui]
+        if useImages and binding and binding.CancelledSequence ~= nil then
+            if binding.CancelledSequence == current then
+                return
+            end
+            binding.CancelledSequence = nil
+        end
         local processing = model:GetAttribute("Phase") == "Processing"
         local start = model:GetAttribute("StartedAt")
         local age: number = Config.ChewSeconds
@@ -344,8 +374,8 @@ local function bind(
             if processing and at and age < Config.ChewSeconds then
                 reset = false
                 if workspace:GetAttribute("MuncherPresentationTiming") == true and RunService:IsStudio() then
-                    timing = Cache.Snapshot()
-                    timing.WorstFrameMs, timing.WorstUpdateMs = 0, 0
+                    timing = if Cache then Cache.Snapshot() else { Builds = 0, Destroys = 0, Hits = 0, Misses = 0 }
+                    timing.WorstFrameMs, timing.WorstUpdateMs, timing.IconFallbacks = 0, 0, 0
                 end
                 saveVisual()
                 pool = currentPool
@@ -437,7 +467,7 @@ local function bind(
                     end
                     if outputIndex then
                         assign(closest, outputIndex)
-                    elseif type(output) == "string" and Ingredients[output] then
+                    elseif type(output) == "string" and (useImages or Ingredients[output]) then
                         assign(closest, nil, output)
                     elseif not warnedOutput then
                         warnedOutput = true
@@ -466,9 +496,20 @@ local function bind(
         end
         for _, reel in reels do
             for _, slot in reel.Slots do
+                -- Readiness is polled on the reusable label, with no asynchronous
+                -- slot mutation. A previous ID/sequence cannot reveal stale art.
+                if useImages and slot.ContentSequence == sequence and slot.Ready then
+                    local hasImage = slot.Image.Image ~= ""
+                    slot.Image.Visible = hasImage
+                    slot.Label.Visible = not (hasImage and slot.Image.IsLoaded)
+                end
                 slot.Frame.Position = UDim2.fromScale(0, slot.Y)
                 slot.Frame.Visible = slot.Ready
                     and (if reel.Stopped then reel.Locked == slot else slot.Y > -1 and slot.Y < 1)
+                if useImages and timing and slot.Frame.Visible and slot.Label.Visible and not slot.FallbackCounted then
+                    slot.FallbackCounted = true
+                    timing.IconFallbacks += 1
+                end
                 if tintResult then
                     for _, icon in slot.Frame:GetChildren() do
                         if icon:IsA("ImageLabel") or icon:IsA("ViewportFrame") then
@@ -509,6 +550,9 @@ function Effects.Bind(model: Instance, playerGui: PlayerGui): ((number, number?)
                 .. ": "
                 .. tostring(reason)
         )
+    end
+    if useImages then
+        Preloader.Start()
     end
     local acquired: { Instance } = {}
     local ok, animate, cleanup = pcall(bind, model, playerGui, display, function(object)
