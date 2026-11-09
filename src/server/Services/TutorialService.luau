@@ -2,14 +2,11 @@
 local RunService = game:GetService("RunService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Orders = require(Shared.Constants.TutorialOrders)
-local Upgrades = require(Shared.Constants.Upgrades)
 local Requests = require(Shared.Constants.CustomerRequests)
 local Evaluation = require(script.Parent.CustomerOrderEvaluation)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local Targets = require(Shared.TutorialTargets)
 local FarmConfig = require(Shared.Constants.FarmConfig)
-local MARKET_REACH_RADIUS = 125
-local MARKET_JUMP_REACH_RADIUS = 12
 local Tutorial = {}
 local deps: any
 type State = {
@@ -24,6 +21,9 @@ type State = {
     FarmStep: number,
     NextCustomer: Instance?,
     RowPurchasedAt: number?,
+    GuidanceStartedAt: number?,
+    MarketStartedAt: number?,
+    JumpStartedAt: number?,
 }
 local states: { [Player]: State } = {}
 local function climbedOwnLadder(player: Player, plot: Instance?): boolean
@@ -60,21 +60,19 @@ local function climbedOwnLadder(player: Player, plot: Instance?): boolean
     return false
 end
 local function currentTarget(player: Player, state: State, plot: Instance): (string, number?, number?)
+    local progress = deps.PlayerDataService.GetTutorialState(player)
+    if progress and progress.Complete then
+        return "Complete", nil, nil
+    end
     local orders = deps.CustomerService.GetTutorialSnapshot(player)
     if not orders then
         return "Complete", nil, nil
     end
-    local jumpOwned = (player:GetAttribute("JumpPurchasedLevel") or 0) >= 1
-    local batOwned = (player:GetAttribute("BatPurchasedLevel") or 0) >= 1
-    local cash = deps.TycoonService.GetCash(player)
-    if orders[1] and orders[1].Served and not jumpOwned and cash >= Upgrades.Jump[2].Cost then
-        return "BuyJump", 2, Orders[2].Slot
-    end
-    if orders[2] and orders[2].Served and not batOwned and cash >= Upgrades.Bat[2].Cost then
-        return "BuyBat", 3, Orders[3].Slot
-    end
     for index, order in orders do
-        if order.Served then
+        if index > 1 then
+            break
+        end
+        if order.Served or (progress and progress.FirstServeRewarded) then
             continue
         end
         local slot = Orders[index].Slot
@@ -164,15 +162,15 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
                 and (not batch or batch.AcceptedIngredientCount == 0)
                 and #Targets.Resolve(plot, "Ladder") > 0
             then
-                local carried: { [string]: number } = {}
-                for _, id in deps.InventoryService.GetCarriedIngredientIds(player) do
-                    carried[id] = (carried[id] or 0) + 1
-                end
-                for _, id in Orders[index].Ingredients do
-                    if (carried[id] or 0) == 0 then
-                        return "Stash", index, slot
-                    end
-                    carried[id] -= 1
+                local carried = deps.InventoryService.GetCarriedIngredientIds(player)
+                local prepared = if request
+                    then Evaluation.Evaluate(
+                        SmoothieItem.Result({ BlendId = "tutorial-carry", Ingredients = carried }),
+                        request
+                    )
+                    else nil
+                if not prepared or not prepared.IsValid or not prepared.IsFulfilled then
+                    return "Stash", index, slot
                 end
                 return "Ladder", index, slot
             end
@@ -180,50 +178,21 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         end
         return "Stash", index, slot
     end
-    if not state.Milestones.NextOrderTaken then
-        local queue = deps.CustomerService.GetQueueSnapshot(player)
-        for _, customer in queue do
-            if customer.Model == state.NextCustomer and customer.OrderTaken then
-                state.Milestones.NextOrderTaken = true
-                break
-            end
-        end
-        if not state.Milestones.NextOrderTaken then
-            state.NextCustomer = nil
-            for _, customer in queue do
-                if not customer.TutorialIndex and not customer.OrderTaken then
-                    state.NextCustomer = customer.Model
-                    break
-                end
-            end
-            return "NextCustomer", nil, nil
-        end
-        state.NextCustomer = nil
+    -- Brief recommendations advance with time even if the player keeps serving.
+    state.GuidanceStartedAt = state.GuidanceStartedAt or os.clock()
+    local elapsed = os.clock() - (state.GuidanceStartedAt :: number)
+    local jumpOwned = (player:GetAttribute("JumpPurchasedLevel") or 0) >= 1
+    local batOwned = (player:GetAttribute("BatPurchasedLevel") or 0) >= 1
+    if elapsed < 8 and not (jumpOwned and batOwned) then
+        return "Upgrades", nil, nil
     end
-    if not state.Milestones.ReachedMarket then
-        local market = Targets.Resolve(plot, "Market")[1]
-        local root = if player.Character then player.Character:FindFirstChild("HumanoidRootPart") else nil
-        if not market then
-            state.Milestones.ReachedMarket = true -- Missing scenery must never block progress.
-        elseif market:IsA("BasePart") and root and root:IsA("BasePart") then
-            state.Milestones.ReachedMarket = (root.Position - market.Position).Magnitude <= MARKET_REACH_RADIUS
-        end
-        if not state.Milestones.ReachedMarket then
-            return "Market", nil, nil
-        end
+    state.MarketStartedAt = state.MarketStartedAt or os.clock()
+    if os.clock() - (state.MarketStartedAt :: number) < 7 then
+        return "Market", nil, nil
     end
-    if not state.Milestones.ReachedJumpHighlight then
-        local highlight = Targets.Resolve(plot, "MarketJump")[1]
-        local root = if player.Character then player.Character:FindFirstChild("HumanoidRootPart") else nil
-        if not highlight then
-            state.Milestones.ReachedJumpHighlight = true
-        elseif highlight:IsA("BasePart") and root and root:IsA("BasePart") then
-            state.Milestones.ReachedJumpHighlight = (root.Position - highlight.Position).Magnitude
-                <= MARKET_JUMP_REACH_RADIUS
-        end
-        if not state.Milestones.ReachedJumpHighlight then
-            return "MarketJump", nil, nil
-        end
+    state.JumpStartedAt = state.JumpStartedAt or os.clock()
+    if os.clock() - (state.JumpStartedAt :: number) < 7 then
+        return "MarketJump", nil, nil
     end
     return "Complete", nil, nil
 end
@@ -289,6 +258,7 @@ local function refresh(player: Player, state: State)
     if state.SessionId ~= sessionId then
         state.Milestones = {}
         state.BatchOrders = {}
+        state.GuidanceStartedAt, state.MarketStartedAt, state.JumpStartedAt = nil, nil, nil
         state.NextCustomer = nil
         state.FarmStep, state.RowPurchasedAt = 0, nil
         state.SessionId = sessionId
@@ -297,11 +267,19 @@ local function refresh(player: Player, state: State)
     local stage: string = "ClaimPlot"
     local order: number? = nil
     local slot: number? = nil
-    if plot then
+    local progress = deps.PlayerDataService.GetTutorialState(player)
+    if progress and progress.Complete then
+        stage = "Complete"
+    elseif plot then
         if state.Stage == "Ladder" and climbedOwnLadder(player, plot) then
             state.Milestones.UsedLadder = true
         end
         stage, order, slot = currentTarget(player, state, plot)
+    end
+    if stage == "Complete" and plot then
+        if progress then
+            progress.Complete = true
+        end
     end
     refreshFarm(player, state, plot, stage)
     player:SetAttribute("TutorialOrderIndex", order)
@@ -363,7 +341,8 @@ function Tutorial.AddPlayer(player: Player)
     }
     player:SetAttribute("FarmTutorialStage", "")
     player:SetAttribute("TutorialActive", false)
-    player:SetAttribute("TutorialStage", "ClaimPlot")
+    local progress = deps.PlayerDataService.GetTutorialState(player)
+    player:SetAttribute("TutorialStage", if progress and progress.Complete then "Complete" else "ClaimPlot")
     player:SetAttribute("TutorialTookStashItem", false)
     player:SetAttribute("TutorialHintReady", false)
 end

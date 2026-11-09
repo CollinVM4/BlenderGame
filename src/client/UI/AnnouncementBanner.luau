@@ -5,6 +5,7 @@ export type Surface = {
     Gui: ScreenGui,
     Label: TextLabel,
     Show: (string) -> (),
+    LayoutTutorial: (boolean) -> (),
     Exit: () -> (),
     Hide: () -> (),
     Destroy: () -> (),
@@ -65,6 +66,21 @@ function Banner.Create(playerGui: PlayerGui, name: string): Surface
     return {
         Gui = gui,
         Label = label,
+        LayoutTutorial = function(touch: boolean)
+            local camera = workspace.CurrentCamera
+            local viewport = if camera then camera.ViewportSize else Vector2.new(1280, 720)
+            local landscape = touch and viewport.X > viewport.Y
+            local nextResting = UDim2.new(0.5, 0, 0.12, 0)
+            if resting ~= nextResting then
+                resting = nextResting
+                label.Position = resting
+            end
+            -- Safe-inset upper-center space leaves the bottom hotbar, thumbstick,
+            -- jump and CAS touch controls clear, including short landscape screens.
+            label.Size = UDim2.new(if landscape then 0.64 else 0.9, 0, 0, if touch then 76 else 104)
+            width.MaxSize = Vector2.new(if touch then 600 else 780, if touch then 76 else 104)
+            textSize.MinTextSize, textSize.MaxTextSize = 18, if touch then 26 else 32
+        end,
         Show = function(text: string)
             cancel()
             label.Text = text

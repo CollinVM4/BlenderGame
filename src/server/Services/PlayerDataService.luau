@@ -17,7 +17,11 @@ local function data(player: Player): Types.PersonalPlayerData
     return records[player]
 end
 function PlayerDataService.AddPlayer(player: Player)
+    if records[player] then
+        return
+    end
     records[player] = {
+        Tutorial = { FirstServeRewarded = false, Complete = false },
         Upgrades = {
             CarryCapacity = 1,
             StackSize = 1,
@@ -49,10 +53,20 @@ function PlayerDataService.GetDiscoveryState(player: Player): Types.DiscoverySta
     record.Discovery = discovery
     return discovery
 end
+-- Server-owned profile boundary for DataStore V1; currently memory-only.
+function PlayerDataService.GetTutorialState(player: Player): Types.TutorialState?
+    local record = records[player]
+    if not record then
+        return nil
+    end
+    record.Tutorial = record.Tutorial or { FirstServeRewarded = false, Complete = false }
+    return record.Tutorial
+end
 function PlayerDataService.GetSnapshot(player: Player): Types.PlayerData
     local source = data(player)
     local discovery = PlayerDataService.GetDiscoveryState(player) :: Types.DiscoveryState
     return {
+        Tutorial = table.clone(PlayerDataService.GetTutorialState(player) :: Types.TutorialState),
         Discovery = {
             Ingredients = table.clone(discovery.Ingredients),
             SpecialCustomers = table.clone(discovery.SpecialCustomers),

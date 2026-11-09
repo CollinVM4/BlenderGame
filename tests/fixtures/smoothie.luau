@@ -56,6 +56,8 @@ local dependency = {
             return if name == "CarryCapacity" then capacities[player] else 1
         end,
         IncrementStat = function() end,
+        GetTutorialState = dataService.GetTutorialState,
+        IsDoubleCashActive = dataService.IsDoubleCashActive,
         AddCash = dataService.AddCash,
         GetCash = dataService.GetCash,
     },

@@ -1,16 +1,19 @@
 --!strict
 local Text = {}
+local function keyword(word: string): string
+    return '<b><font color="#FFFFFF">' .. word .. "</font></b>"
+end
 local hints: { [string]: string } = {
     NextCustomer = "See what the next customer wants!",
-    MarketJump = "Jump higher for $ valuable ingredients!",
+    MarketJump = keyword("JUMP") .. " higher in the " .. keyword("MARKET") .. " for better ingredients!",
     Harvest = "Harvest your ingredients!",
-    Market = "Collect more from the Central Market!",
+    Market = "Find more ingredients at the " .. keyword("MARKET") .. "!",
     BuyRow = "Buy a farm row to grow ingredients!",
     Plant = "Plant an ingredient!",
     ClaimPlot = "Claim your smoothie stand!",
     Counter = "Head to your customer counter!",
     Order = "Take the customer's order!",
-    Stash = "Grab ingredients from the stash!",
+    Stash = "Take three " .. keyword("RED") .. " ingredients from Locked Slot 1!",
     Ladder = "Climb the ladder to your blender!",
     Turbine = "Drop down and Spin to blend smoothie!",
     Dispenser = "Dispense your smoothie!",
@@ -19,9 +22,18 @@ local hints: { [string]: string } = {
     Serve = "Serve customer and get MONEY!",
 }
 function Text.Get(stage: string, preferred: Enum.PreferredInput, button: string): string?
-    if stage == "BuyJump" or stage == "BuyBat" then
-        local action = if preferred == Enum.PreferredInput.Touch then "Tap" else "Click"
-        return action .. " Upgrades and buy " .. (if stage == "BuyJump" then "JUMP 1!" else "a Bat Weapon!")
+    if stage == "Upgrades" then
+        return "Open "
+            .. keyword("UPGRADES")
+            .. ": buy "
+            .. keyword("JUMP")
+            .. " 1 and "
+            .. keyword("BAT")
+            .. " 1 (optional)!"
+    elseif stage == "UpgradeJump" then
+        return "Try " .. keyword("JUMP") .. " 1 in " .. keyword("UPGRADES") .. " (optional)!"
+    elseif stage == "UpgradeBat" then
+        return "Try " .. keyword("BAT") .. " 1 in " .. keyword("UPGRADES") .. " (optional)!"
     end
     if stage == "Blender" then
         if preferred == Enum.PreferredInput.Touch then

@@ -45,7 +45,13 @@ local function resetOrders()
     }
 end
 resetOrders()
+local progressByPlayer = {}
+local function progress(p)
+    progressByPlayer[p] = progressByPlayer[p] or { FirstServeRewarded = false, Complete = false }
+    return progressByPlayer[p]
+end
 tutorial.Init({
+    PlayerDataService = { GetTutorialState = progress },
     TycoonService = authority,
     FarmService = {
         GetRowSnapshot = function()
@@ -132,8 +138,8 @@ check(p:GetAttribute("TutorialStage") == "Order", "spawn alone cannot accept ord
 orders[1].OrderTaken = true
 heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 3,
-    "accepted red order selects slot three"
+    p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 1,
+    "accepted red order selects Locked Slot 1"
 )
 ingredient = "Cherries"
 local ladder = instance("Model")
@@ -151,16 +157,14 @@ humanoid.GetState = function()
 end
 tutorial.Mark(p, "TookStashItem")
 heartbeat:Fire(0.1)
-for _, ids in
-    { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Strawberry" }, { "Cherries", "Strawberry", "Banana" } }
-do
+for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Strawberry" } } do
     carried = ids
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
 end
-carried = { "Strawberry", "Cherries", "Cherries" }
+carried = { "Apple", "Apple", "Apple" }
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Ladder", "full carried multiset targets owned ladder")
+check(p:GetAttribute("TutorialStage") == "Ladder", "any three red ingredients satisfy the ladder pickup objective")
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Ladder", "respawn retains unfinished ladder guidance")
@@ -216,244 +220,80 @@ check(p:GetAttribute("TutorialStage") == "Serve", "owned dispensed cup directs t
 cups[1].Slot = 1
 heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "Serve" and p:GetAttribute("TutorialStashSlot") == 3,
-    "early stored cup reconciles without redirecting ingredient gleams to protected slots"
+    p:GetAttribute("TutorialStage") == "Serve" and p:GetAttribute("TutorialStashSlot") == 1,
+    "early stored cup reconciles with the first-order slot contract"
 )
 tutorial.Mark(p, "ServedCustomer")
 tutorial.Mark(p, "ServedCustomer")
 check(p:GetAttribute("TutorialOrderIndex") == 1, "duplicate generic milestones cannot complete scripted order")
-orders[2].OrderTaken = true
 orders[1].Served = true
+progress(p).FirstServeRewarded = true
 cups = {}
 heartbeat:Fire(0.1)
-check(
-    p:GetAttribute("TutorialOrderIndex") == 2
-        and p:GetAttribute("TutorialStashSlot") == 4
-        and p:GetAttribute("TutorialStage") == "Stash",
-    "already accepted waiting cold order reconciles immediately"
-)
-tutorial.ApplyCharacter(p, p.Character)
-flush()
-check(p:GetAttribute("TutorialOrderIndex") == 2, "respawn preserves current order")
--- Upgrade guidance reads served flags, catalog prices and published purchased levels.
-local upgrades = loadModule("Upgrades")
-local function setGateCash(cash)
-    local jump, bat = p:GetAttribute("JumpPurchasedLevel"), p:GetAttribute("BatPurchasedLevel")
-    authority.SetCash(p, cash)
-    p:SetAttribute("JumpPurchasedLevel", jump)
-    p:SetAttribute("BatPurchasedLevel", bat)
-end
-for _, gate in
-    {
-        { Stage = "BuyJump", Track = "Jump", Served = 1, Next = 2 },
-        { Stage = "BuyBat", Track = "Bat", Served = 2, Next = 3 },
-    }
-do
-    orders[2].Served = gate.Served == 2
-    local attribute = gate.Track .. "PurchasedLevel"
-    local price = upgrades[gate.Track][2].Cost
-    p:SetAttribute(attribute, 0)
-    setGateCash(price - 1)
-    heartbeat:Fire(0.1)
-    check(p:GetAttribute("TutorialStage") ~= gate.Stage, "unaffordable " .. gate.Stage .. " proceeds normally")
-    for _, cash in { price, price + 1 } do
-        setGateCash(cash)
-        heartbeat:Fire(0.1)
-        check(
-            p:GetAttribute("TutorialStage") == gate.Stage
-                and p:GetAttribute("TutorialOrderIndex") == gate.Next
-                and p:GetAttribute("TutorialStashSlot") == loadModule("TutorialOrders")[gate.Next].Slot
-                and p:GetAttribute("TutorialActive")
-                and p:GetAttribute("TutorialHintReady"),
-            "affordable " .. gate.Stage .. " publishes active guidance for the next order"
-        )
-    end
-    p:SetAttribute(attribute, 1)
-    heartbeat:Fire(0.1)
-    check(
-        p:GetAttribute("TutorialStage") == (if gate.Next == 2 then "Stash" else "Order"),
-        "purchased " .. gate.Track .. " immediately resumes the next order"
-    )
-    p:SetAttribute(attribute, 0)
-    setGateCash(price)
-    orders[gate.Served].Served = false
-    heartbeat:Fire(0.1)
-    check(p:GetAttribute("TutorialStage") ~= gate.Stage, "cash alone cannot start " .. gate.Stage)
-    orders[gate.Served].Served = true
-    p:SetAttribute(attribute, 1)
-    heartbeat:Fire(0.1)
-    check(p:GetAttribute("TutorialStage") ~= gate.Stage, "pre-owned " .. gate.Track .. " skips guidance")
-end
-p:SetAttribute("JumpPurchasedLevel", 0)
-p:SetAttribute("BatPurchasedLevel", 0)
-setGateCash(upgrades.Jump[2].Cost + upgrades.Bat[2].Cost)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "BuyJump", "Jump guidance wins when both served gates qualify")
+check(p:GetAttribute("TutorialStage") == "Upgrades", "first serve offers both upgrades together")
+check(p:GetAttribute("TutorialOrderIndex") == nil, "guide retires first-order targets after serve")
 p:SetAttribute("JumpPurchasedLevel", 1)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "BuyBat", "Bat guidance follows the outstanding Jump purchase")
-p:SetAttribute("BatPurchasedLevel", 1)
-orders[2].Served = false
-setup(authority.PurchaseUpgrade(p, "Jump", 2, authority.GetRequestContext(p)), "own Jump for remaining tutorial")
-setup(authority.PurchaseUpgrade(p, "Bat", 2, authority.GetRequestContext(p)), "own Bat for remaining tutorial")
+check(p:GetAttribute("TutorialStage") == "Upgrades", "one purchase cannot strand combined hint")
+p:SetAttribute("JumpPurchasedLevel", 0)
 authority.SetCash(p, 0)
-batch = { BatchId = 2, AcceptedIngredientCount = 3, State = "READY", ProgressPercent = 0, ReadyToDispense = false }
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Turbine", "new batch belongs to current cold order")
-orders[2].Served = true
-heartbeat:Fire(0.1)
+advance(8)
+check(p:GetAttribute("TutorialStage") == "Market", "zero cash and no purchases never block market guidance")
+advance(7)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "market guidance advances without requiring travel")
+advance(7)
 check(
-    p:GetAttribute("TutorialOrderIndex") == 3 and p:GetAttribute("TutorialStage") == "Order",
-    "third order needs normal acceptance"
+    p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
+    "first serve and brief guidance complete tutorial"
 )
-orders[3].OrderTaken = true
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStashSlot") == 5, "yellow uses slot five")
-check(
-    p:GetAttribute("TutorialStage") == "FinishBatch",
-    "old batch count cannot complete the new order's loading objective"
-)
-batch.ReadyToDispense, batch.ProgressPercent = true, 100
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "DrainBatch", "stale full batches recover through actual dispensing")
-batch.Ingredients = { "Banana", "Banana", "Banana" }
-heartbeat:Fire(0.1)
-check(
-    p:GetAttribute("TutorialStage") == "Dispenser",
-    "a genuinely prepared next-order recipe reconciles early completion"
-)
-batch = { BatchId = 3, AcceptedIngredientCount = 0, State = "EMPTY", ReadyToDispense = false, ProgressPercent = 0 }
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Stash", "cleared previous batch resumes the current recipe")
-local market = instance("Model")
-market.Name, market.Parent = "Central Market", workspaceFake
-local marketBase = instance("Part")
-marketBase.Name, marketBase.Parent, marketBase.Position = "CentralMarketBase", market, vec(200, 0, 0)
-authority.SetCash(p, 20000)
-orders[3].Served = true
-heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "", "20K cannot start farm before opening completion")
-check(p:GetAttribute("TutorialStage") == "NextCustomer", "third serve waits for a regular customer")
-advance(1)
-check(
-    p:GetAttribute("TutorialStage") == "NextCustomer" and p:FindFirstChild("TutorialCustomerTarget").Value == nil,
-    "no waiting customer keeps text-only guidance"
-)
-local nextModel = instance("Model")
-nextModel.Parent = workspaceFake
-queue =
-    { { Model = instance("Model"), TutorialIndex = 3, OrderTaken = false }, { Model = nextModel, OrderTaken = false } }
-heartbeat:Fire(0.1)
-check(p:FindFirstChild("TutorialCustomerTarget").Value == nextModel, "regular customer is published")
-nextModel:Destroy()
-local replacement = instance("Model")
-replacement.Parent = workspaceFake
-queue = { { Model = replacement, OrderTaken = false } }
-heartbeat:Fire(0.1)
-check(p:FindFirstChild("TutorialCustomerTarget").Value == replacement, "departed untaken customer retargets")
-queue[1].OrderTaken = true
-heartbeat:Fire(0.1)
-authority.SetCash(p, 19999)
-check(
-    p:GetAttribute("TutorialStage") == "Market" and p:GetAttribute("TutorialActive"),
-    "taking next order sends player to the market"
-)
-root.Position = vec(70, 0, 0)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Market", "130 studs remains outside market radius")
-local jump = instance("Part")
-jump.Name, jump.Parent, jump.Position = "JUMP1HIGHLIGHT", market, vec(200, 100, 0)
-root.Position = vec(100, 0, 0)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "100 studs reaches market and starts jump guidance")
-root.Position = vec(200, 87, 0)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "jump requires proximity within 12 studs")
-root.Position = vec(200, 88, 0)
-heartbeat:Fire(0.1)
-check(
-    p:GetAttribute("TutorialStage") == "Complete"
-        and not p:GetAttribute("TutorialActive")
-        and not p:GetAttribute("TutorialHintReady"),
-    "reaching market completes opening guidance"
-)
-authority.SetCash(p, 19999)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "", "farm phase stays idle below 20K")
-authority.SetCash(p, 20000)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "BuyRow", "owner reaching 20K starts row guidance")
-authority.SetCash(p, 0)
-farmRow.State = "EMPTY"
-heartbeat:Fire(0.1)
-advance(0.79)
-check(p:GetAttribute("FarmTutorialStage") == "BuyRow", "purchase holds through row rise")
-advance(0.011)
-check(p:GetAttribute("FarmTutorialStage") == "Plant", "row rise completion advances planting guidance")
-farmRow.State, farmRow.IngredientId = "GROWING", "Banana"
-heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "", "growth has no premature harvest guidance")
-farmRow.State, farmRow.Products = "READY", { instance("Part"), instance("Part"), instance("Part") }
-heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "Harvest", "ready production starts harvest guidance")
-table.remove(farmRow.Products)
-heartbeat:Fire(0.1)
-check(p:GetAttribute("FarmTutorialStage") == "Harvest", "partial harvest stays active")
-farmRow.Products = {}
-farmRow.State, farmRow.IngredientId = "EMPTY", nil
-authority.SetCash(p, 50000)
-advance(1)
-check(p:GetAttribute("FarmTutorialStage") == "Done", "farm guidance never repeats within session")
+check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+check(p:GetAttribute("TutorialStage") == "Complete", "respawn retains completion")
 authority.RemovePlayer(p)
-check(p:GetAttribute("FarmTutorialStage") == "", "session loss clears farm phase")
-check(
-    p:GetAttribute("TutorialStage") == "ClaimPlot" and p:FindFirstChild("TutorialCustomerTarget").Value == nil,
-    "abandonment clears session target"
-)
+check(p:GetAttribute("TutorialStage") == "Complete", "completed tutorial never resets on session loss")
 resetOrders()
 assignTestSession(p)
-check(
-    p:GetAttribute("TutorialOrderIndex") == 1 and p:GetAttribute("TutorialStage") == "Counter",
-    "new session starts current orders without retaining old tutorial steps"
-)
-orders[1].OrderTaken = true
-ingredient, carried = "Cherries", { "Cherries" }
-tutorial.Mark(p, "TookStashItem")
-tutorial.Mark(p, "LoadedBlender")
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Blender", "partial carry after LoadedBlender still targets blender")
--- Missing scenery fallback, cash already held at completion, and owner-only gating.
-authority.SetCash(p, upgrades.Jump[2].Cost + upgrades.Bat[2].Cost)
-setup(authority.PurchaseUpgrade(p, "Jump", 2, authority.GetRequestContext(p)), "new session owns Jump before send-off")
-setup(authority.PurchaseUpgrade(p, "Bat", 2, authority.GetRequestContext(p)), "new session owns Bat before send-off")
-marketBase:Destroy()
-jump:Destroy()
-for _, order in orders do
-    order.Served = true
-end
-authority.SetCash(p, 20000)
-queue[1].OrderTaken = false
-heartbeat:Fire(0.1)
-queue[1].OrderTaken = true
-heartbeat:Fire(0.1)
-check(
-    p:GetAttribute("TutorialStage") == "Complete" and tutorial.GetMilestones(p).ReachedMarket,
-    "missing market scenery advances without blocking"
-)
-check(
-    p:GetAttribute("FarmTutorialStage") == "BuyRow",
-    "new session resets farm and starts immediately with cash held at completion"
-)
-local teammate = instance("Player")
-teammate.Name, teammate.UserId, teammate.Parent = "Teammate", 802, workspaceFake
-teammate.Character = p.Character
-tutorial.AddPlayer(teammate)
-setup(authority.JoinSession(teammate, p, authority.GetRequestContext(p)), "join tutorial session")
-tutorial.ApplyCharacter(teammate, teammate.Character)
-flush()
-heartbeat:Fire(0.1)
-check(teammate:GetAttribute("FarmTutorialStage") == "", "teammate with shared 20K never starts farm tutorial")
-tutorial.RemovePlayer(teammate)
+check(p:GetAttribute("TutorialStage") == "Complete", "new plot respects existing personal completion")
+-- A restored DataStore V1 profile will enter through the same server-owned state boundary.
 tutorial.RemovePlayer(p)
-p.Parent = nil
-advance(5)
+tutorial.AddPlayer(p)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+check(p:GetAttribute("TutorialStage") == "Complete", "reconstructed runtime respects completed profile")
+local upgrades = loadModule("Upgrades")
+check(upgrades.Jump[2].Cost + upgrades.Bat[2].Cost <= 30000, "guaranteed payout affords Jump 1 and Bat 1")
+-- Preowned recommendations retire immediately, and later purchases do not restart them.
+progress(p).Complete = false
+tutorial.RemovePlayer(p)
+tutorial.AddPlayer(p)
+p:SetAttribute("JumpPurchasedLevel", 1)
+p:SetAttribute("BatPurchasedLevel", 1)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+check(p:GetAttribute("TutorialStage") == "Market", "both preowned upgrades skip recommendation")
+advance(7)
+advance(7)
+check(progress(p).Complete, "preowned purchases also reach completion")
+-- Keep owner-only farm guidance independent of optional upgrade recommendations.
+authority.SetCash(p, 19999)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "", "farm stays idle below its own price")
+authority.SetCash(p, 20000)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "BuyRow", "farm still starts after opening completion")
+farmRow.State = "EMPTY"
+advance(0.1)
+advance(0.81)
+check(p:GetAttribute("FarmTutorialStage") == "Plant", "farm planting follows row reveal")
+farmRow.State, farmRow.IngredientId = "GROWING", "Banana"
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "", "growth never prematurely requests harvest")
+farmRow.State, farmRow.Products = "READY", { instance("Part") }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "Harvest", "ready production still guides harvest")
+farmRow.State, farmRow.Products, farmRow.IngredientId = "EMPTY", {}, nil
+heartbeat:Fire(0.1)
+check(p:GetAttribute("FarmTutorialStage") == "Done", "farm completes independently")
+tutorial.RemovePlayer(p)

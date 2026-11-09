@@ -5,9 +5,9 @@ local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
 local Customers = require(Shared.Constants.Customers)
 local CustomerRequests = require(Shared.Constants.CustomerRequests)
-local TutorialOrders = require(Shared.Constants.TutorialOrders)
+local IntroCustomers = require(Shared.Constants.IntroCustomers)
 local tutorialRequests: { [number]: CustomerRequests.Request } = {}
-for index, order in TutorialOrders do
+for index, order in IntroCustomers do
     for _, request in CustomerRequests.Definitions do
         if request.Id == order.RequestId then
             tutorialRequests[index] = request
@@ -262,7 +262,11 @@ end
 local function assignRequest(player: Player, record: any): boolean
     local selectedRequest = record.FixedRequest
     local forced = selectedRequest ~= nil
-    if selectedRequest and (deps.TycoonService.GetJumpTier(player)) < selectedRequest.MinJumpTier then
+    if
+        selectedRequest
+        and not record.TutorialIndex
+        and (deps.TycoonService.GetJumpTier(player)) < selectedRequest.MinJumpTier
+    then
         diagnostic("special became ineligible before assignment; removing customer owner=" .. player.Name)
         record.Model:Destroy()
         return false
@@ -359,7 +363,7 @@ type Candidate = {
     BadCustomerType: string?,
 }
 
-local function candidateFor(player: Player, template: Model): Candidate?
+local function candidateFor(player: Player, template: Model, introductory: boolean?): Candidate?
     local id = CustomerRequests.NormalizeCustomerId(template:GetAttribute("CustomerId"))
     local config = if id then CustomerRequests.NPCs[id] else nil
     -- Existing RequestId-only mappings remain special; an explicit Regular ignores overrides.
@@ -372,7 +376,7 @@ local function candidateFor(player: Player, template: Model): Candidate?
             rejectTemplate(template, reason)
             return nil
         end
-        if request and (deps.TycoonService.GetJumpTier(player)) < request.MinJumpTier then
+        if request and not introductory and (deps.TycoonService.GetJumpTier(player)) < request.MinJumpTier then
             diagnostic(
                 string.format(
                     "special ineligible customerId=%s request=%s requiredJumpTier=%d playerJumpTier=%s",
@@ -416,7 +420,7 @@ local function candidateFor(player: Player, template: Model): Candidate?
     }
 end
 
-local function cloneNPC(player: Player, customerId: string?, regularOnly: boolean?): (Model?, Candidate?)
+local function cloneNPC(player: Player, customerId: string?, introductory: boolean?): (Model?, Candidate?)
     local folder = ServerStorage:FindFirstChild("CustomerNPCs")
     if customerId then
         local id = CustomerRequests.NormalizeCustomerId(customerId)
@@ -427,7 +431,7 @@ local function cloneNPC(player: Player, customerId: string?, regularOnly: boolea
                     template:IsA("Model")
                     and CustomerRequests.NormalizeCustomerId(template:GetAttribute("CustomerId")) == id
                 then
-                    local candidate = candidateFor(player, template)
+                    local candidate = candidateFor(player, template, introductory)
                     if candidate and candidate.CustomerType == "Special" and template.Archivable then
                         local ok, clone = pcall(function()
                             return template:Clone()
@@ -483,7 +487,7 @@ local function cloneNPC(player: Player, customerId: string?, regularOnly: boolea
             end
         end
     end
-    local useSpecial = not regularOnly
+    local useSpecial = not introductory
         and #special > 0
         and (lastSpecialSpawn[key(player)] == nil or os.clock() - lastSpecialSpawn[key(player)] >= Economy.SpecialCustomerCooldownSeconds)
         and math.random() < CustomerRequests.SpecialCustomerChance
@@ -1276,7 +1280,7 @@ local function pendingTutorial(queue: any): (number?, boolean)
     if not queue.TutorialOrders then
         return nil, false
     end
-    for index, order in TutorialOrders do
+    for index, order in IntroCustomers do
         local record = queue.TutorialOrders[index]
         if record and record.TutorialFulfilled then
             continue
@@ -1591,7 +1595,7 @@ local function spawnForPlayer(player: Player, customerId: string?, tutorialIndex
     if tutorialIndex then
         queue.TutorialOrders[tutorialIndex] = record
         queue.TutorialInserted = math.max(queue.TutorialInserted, tutorialIndex)
-        if queue.TutorialInserted == #TutorialOrders then
+        if queue.TutorialInserted == #IntroCustomers then
             queue.NextNormalAt = os.clock()
                 + math.random(Economy.CustomerSpawnMinSeconds, Economy.CustomerSpawnMaxSeconds)
         end
@@ -1668,7 +1672,11 @@ function CustomerService.SpawnForPlayer(player: Player, customerId: string?): Mo
     if not token then
         return nil
     end
-    local model = spawnForPlayer(player, if tutorialIndex then nil else customerId, tutorialIndex)
+    local model = spawnForPlayer(
+        player,
+        if tutorialIndex then IntroCustomers[tutorialIndex].CustomerId else customerId,
+        tutorialIndex
+    )
     deps.TycoonService.EndTransaction(token)
     return model
 end
@@ -1837,9 +1845,24 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     else
         payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, evaluation)
         if record.TutorialIndex and success and evaluation.IsValid then
-            local floor = TutorialOrders[record.TutorialIndex].PayoutFloor
-            if floor then
+            local floor = IntroCustomers[record.TutorialIndex].PayoutFloor
+            local owner = deps.TycoonService.GetSessionOwner(transaction)
+            local progress = if owner then deps.PlayerDataService.GetTutorialState(owner) else nil
+            if
+                floor
+                and not queue.FirstServeRewarded
+                and progress
+                and not progress.FirstServeRewarded
+                and not progress.Complete
+            then
                 payout = math.max(payout, floor)
+                queue.FirstServeRewarded = true
+                for _, member in deps.TycoonService.GetMembers(transaction) do
+                    local memberProgress = deps.PlayerDataService.GetTutorialState(member)
+                    if memberProgress then
+                        memberProgress.FirstServeRewarded = true
+                    end
+                end
             end
         end
         deps.TycoonService.CreditTransaction(transaction, payout)
@@ -2012,7 +2035,7 @@ function CustomerService.GetTutorialSnapshot(player: Player): { any }?
         return nil
     end
     local snapshot = {}
-    for index, order in TutorialOrders do
+    for index, order in IntroCustomers do
         local record = queue.TutorialOrders[index]
         local present = record and table.find(queue.Customers, record) ~= nil and record.Model.Parent ~= nil
         snapshot[index] = {
