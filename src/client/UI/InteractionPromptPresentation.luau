@@ -1,10 +1,14 @@
 --!strict
 local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
 local Style = require(script.Parent.WorldBillboardStyle)
 local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local TouchTargets = require(script.Parent.MobilePromptTouchTargets)
 local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
 local Presentation = {}
+-- Largest existing order bubble radius (45 * 1.25). Only customer actions
+-- receive this draw budget; native PromptShown/Hidden still owns eligibility.
+local CUSTOMER_ORDER_DISTANCE = 56.25
 
 export type Settings = {
     ActionText: string?,
@@ -86,6 +90,17 @@ function Presentation.Create(
     gui.Parent = parent
 
     local connections: { RBXScriptConnection } = {}
+    if customer then
+        local player = Players.LocalPlayer
+        local function refreshDrawDistance()
+            -- Camera zoom is measured from its character focus, whereas billboard
+            -- culling is measured from the camera. The existing order radius
+            -- covers the nearby customer/rig offset without widening activation.
+            gui.MaxDistance = math.max(config.MaxDistance or 0, player.CameraMaxZoomDistance + CUSTOMER_ORDER_DISTANCE)
+        end
+        table.insert(connections, player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(refreshDrawDistance))
+        refreshDrawDistance()
+    end
     local holding = false
     local function refresh()
         local key = config.KeyText
