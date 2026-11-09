@@ -245,6 +245,7 @@ for name in ("AnnouncementBanner", "TutorialHintText", "TutorialBeamFlow"):
 sources["RareIngredientPresentationController"] = (ROOT / "src/client/Controllers/RareIngredientPresentationController.luau").read_text(encoding="utf-8")
 sources["TutorialPresentationState"] = (ROOT / "src/client/Controllers/TutorialPresentationState.luau").read_text(encoding="utf-8")
 sources["TutorialHintController"] = (ROOT / "src/client/Controllers/TutorialHintController.luau").read_text(encoding="utf-8")
+sources["TutorialObjectiveMarker"] = (ROOT / "src/client/UI/TutorialObjectiveMarker.luau").read_text(encoding="utf-8")
 sources["TutorialGleamController"] = (ROOT / "src/client/Controllers/TutorialGleamController.luau").read_text(encoding="utf-8")
 for name in ("WingsHoldSensor", "WingsController", "WingsShopAdapter", "IceGunShopAdapter", "IceGunController", "IceGunDisplayController"):
     sources[name] = (ROOT / f"src/client/Controllers/{name}.luau").read_text(encoding="utf-8")

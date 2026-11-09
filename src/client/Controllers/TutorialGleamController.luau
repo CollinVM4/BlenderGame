@@ -2,10 +2,15 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 local Targets = require(game:GetService("ReplicatedStorage").Shared.TutorialTargets)
 local Presentation = require(script.Parent.TutorialPresentationState)
 local Flow = require(script.Parent.Parent.UI.TutorialBeamFlow)
+local Marker = require(script.Parent.Parent.UI.TutorialObjectiveMarker)
+local marker: Marker.Surface? = nil
+local markerStage: string? = nil
+local markerStartedAt = 0
+local highlightStartedAt = 0
+local currentStage: string? = nil
 local beamFinish: Attachment? = nil
 local Controller = {}
 local DEBUG_TUTORIAL_GLEAM = false
@@ -18,7 +23,6 @@ local stopped = false
 local removingCharacter: Model? = nil
 local connections: { RBXScriptConnection } = {}
 local highlights: { Highlight } = {}
-local tweens: { Tween } = {}
 local current: { Instance } = {}
 local activeClaimHintPlot: Instance? = nil
 local activeClaimHintTargets: { Instance } = {}
@@ -38,7 +42,21 @@ local function claimAvailable(plot: Instance?): boolean
     return plot ~= nil and plot:IsDescendantOf(workspace) and plot:GetAttribute("PlotSessionId") == nil
 end
 local beamTarget: Instance? = nil
+local beamTargetConnections: { RBXScriptConnection } = {}
+local markerTarget: Instance? = nil
+local function clearMarker()
+    if marker then
+        marker.Destroy()
+        marker = nil
+    end
+    markerStage, markerTarget = nil, nil
+end
 local function clearBeam()
+    clearMarker()
+    for _, connection in beamTargetConnections do
+        connection:Disconnect()
+    end
+    table.clear(beamTargetConnections)
     beamFinish = nil
     if stashFlow then
         stashFlow:Destroy()
@@ -55,9 +73,6 @@ local function clearBeam()
     beamTarget = nil
 end
 local function clear()
-    for _, tween in tweens do
-        tween:Cancel()
-    end
     for _, highlight in highlights do
         highlight:Destroy()
     end
@@ -70,7 +85,7 @@ local function clear()
         glassProxy = nil
     end
     glassSource = nil
-    table.clear(tweens)
+    currentStage = nil
     table.clear(highlights)
     table.clear(current)
 end
@@ -234,21 +249,21 @@ local function createStashBeam(character: Model, target: BasePart | Attachment, 
     local beam = Instance.new("Beam")
     beam.Name = "TutorialStashBeam"
     beam.Attachment0, beam.Attachment1 = start, finish
-    beam.Color = ColorSequence.new(Color3.fromRGB(255, 224, 65))
-    beam.Transparency = NumberSequence.new(0.6)
-    beam.Width0, beam.Width1 = 0.26, 0.195
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 225, 0))
+    beam.Transparency = NumberSequence.new(0.72) -- Let the bright traveling energy stand out.
+    beam.Width0, beam.Width1 = 0.8, 0.6
     beam.CurveSize0, beam.CurveSize1 = 1.5, -1.5
     beam.Segments = 20
     beam.FaceCamera = true
-    beam.LightEmission = 0.35
+    beam.LightEmission, beam.LightInfluence = 0.35, 0
     beam.Enabled = true
     beam.Parent = root
     stashBeam = beam
     local flow = Instance.new("Beam")
     flow.Name = "TutorialStashFlow"
     flow.Attachment0, flow.Attachment1 = start, finish
-    flow.Color = ColorSequence.new(Color3.fromRGB(255, 250, 185))
-    flow.Width0, flow.Width1 = 0.11, 0.085
+    flow.Color = ColorSequence.new(Color3.fromRGB(255, 248, 130))
+    flow.Width0, flow.Width1 = 0.32, 0.24
     flow.CurveSize0, flow.CurveSize1 = beam.CurveSize0, beam.CurveSize1
     flow.Segments, flow.FaceCamera = 20, true
     flow.LightEmission, flow.LightInfluence = 1, 0
@@ -285,6 +300,10 @@ local function updateBeam(character: Model?, target: (BasePart | Attachment)?, s
                 table.remove(beamAttachments, table.find(beamAttachments, finish) :: number)
                 finish:Destroy()
             end
+            for _, connection in beamTargetConnections do
+                connection:Disconnect()
+            end
+            table.clear(beamTargetConnections)
             finish = beamEnd(target, stage)
             stashBeam.Attachment1, stashFlow.Attachment1 = finish, finish
             beamTarget, beamFinish = target, finish
@@ -292,6 +311,26 @@ local function updateBeam(character: Model?, target: (BasePart | Attachment)?, s
     end
     if not stashBeam then
         createStashBeam(character :: Model, target, stage)
+    end
+    if #beamTargetConnections == 0 and beamTarget then
+        local function hideInvalidEndpoint()
+            clearMarker()
+            if stashBeam then
+                stashBeam.Enabled = false
+            end
+            if stashFlow then
+                stashFlow.Enabled = false
+            end
+        end
+        table.insert(beamTargetConnections, beamTarget.Destroying:Connect(hideInvalidEndpoint))
+        table.insert(
+            beamTargetConnections,
+            beamTarget.AncestryChanged:Connect(function()
+                if beamTarget and not beamTarget:IsDescendantOf(workspace) then
+                    hideInvalidEndpoint()
+                end
+            end)
+        )
     end
     if stashBeam and stashFlow and beamFinish then
         stashBeam.Enabled, stashFlow.Enabled = true, true
@@ -306,7 +345,7 @@ local function refresh()
     if stopped then
         return
     end
-    local _, presentationReady, presentationStage, beamAllowed = Presentation.Read(player)
+    local _, presentationReady, presentationStage = Presentation.Read(player)
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
     local stage = presentationStage
@@ -355,7 +394,7 @@ local function refresh()
         end
     end
     diagnose(stage, plot, targets)
-    local same = #targets == #current
+    local same = #targets == #current and stage == currentStage
     for i, object in targets do
         if current[i] ~= object then
             same = false
@@ -369,16 +408,36 @@ local function refresh()
             glassProxy.CFrame, glassProxy.Size = glassSource.CFrame, glassSource.Size
         end
     end
-    local destination = if beamAllowed
-            and worldReady
-            and type(stage) == "string"
+    local destination = if worldReady and type(stage) == "string"
         then Targets.ResolveBeam(plot, stage, player:GetAttribute("TutorialStashSlot"), targets[1])
         else nil
     updateBeam(character, destination, stage)
+    if beamFinish and destination then
+        if not marker or markerStage ~= stage or markerTarget ~= (destination :: Instance) then
+            clearMarker()
+            marker = Marker.Create(beamFinish, stage)
+            markerStage, markerStartedAt, markerTarget = stage, os.clock(), destination
+        end
+        local activeMarker = marker :: Marker.Surface
+        activeMarker.Update(beamFinish, targets[1], os.clock() - markerStartedAt)
+        local camera = workspace.CurrentCamera
+        local distance = if camera then (camera.CFrame.Position - beamFinish.WorldPosition).Magnitude else 40
+        local scale = math.clamp(distance / 70, 1, 2.5)
+        if stashBeam and stashFlow then
+            stashBeam.Width0, stashBeam.Width1 = 0.8 * scale, 0.6 * scale
+            stashFlow.Width0, stashFlow.Width1 = 0.32 * scale, 0.24 * scale
+        end
+    end
     if same then
+        local age = os.clock() - highlightStartedAt
+        local fill = if age < 0.3 then 0.12 + 0.43 * age / 0.3 else 0.55 + 0.09 * math.sin(age * 3)
+        for _, highlight in highlights do
+            highlight.FillTransparency = fill
+        end
         return
     end
     clear()
+    currentStage, highlightStartedAt = stage, os.clock()
     for _, object in targets do
         local adornee = object
         if stage == "Blender" and object:IsA("UnionOperation") and Targets.GetRoots(plot, "Blender")[1] == object then
@@ -407,8 +466,8 @@ local function refresh()
         highlight.Name = "TutorialGleam"
         highlight.Adornee = adornee
         highlight.Enabled = true
-        highlight.FillColor = Color3.fromRGB(255, 224, 65)
-        highlight.OutlineColor = Color3.fromRGB(255, 250, 205)
+        highlight.FillColor = Color3.fromRGB(255, 225, 0)
+        highlight.OutlineColor = Color3.fromRGB(255, 245, 20)
         highlight.FillTransparency, highlight.OutlineTransparency = 0.70, 0.05
         highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         highlight.Parent = workspace -- created locally, never replicated by server
@@ -434,15 +493,9 @@ local function refresh()
                     .. tostring(highlight.OutlineTransparency)
             )
         end
-        local tween = TweenService:Create(
-            highlight,
-            TweenInfo.new(0.85, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { FillTransparency = 0.35, OutlineTransparency = 0.15 }
-        )
+        highlight.FillTransparency = 0.12 -- Brief activation flash, then a subtle opacity pulse.
         table.insert(highlights, highlight)
-        table.insert(tweens, tween)
         table.insert(current, object)
-        tween:Play()
     end
     if stage == "ClaimPlot" and #current > 0 then
         activeClaimHintPlot = plot
@@ -532,7 +585,18 @@ function Controller.Init()
         end)
     )
     -- Re-resolve streaming/recreated targets and death state without waiting for missing assets.
-    table.insert(connections, RunService.Heartbeat:Connect(refresh))
+    local elapsed = 0
+    table.insert(
+        connections,
+        RunService.Heartbeat:Connect(function(dt)
+            elapsed += dt
+            -- Active visuals update at 30 Hz; inactive streaming checks run only ten times a second.
+            if elapsed >= (if marker or #current > 0 then 1 / 30 else 0.1) then
+                elapsed = 0
+                refresh()
+            end
+        end)
+    )
     script.Destroying:Connect(function()
         stopped = true
         clearClaimPin()

@@ -24,8 +24,31 @@ type State = {
     GuidanceStartedAt: number?,
     MarketStartedAt: number?,
     JumpStartedAt: number?,
+    NextCustomerInteractedAt: number?,
 }
 local states: { [Player]: State } = {}
+local MARKET_ZONE_PADDING = 50
+local function reachedMarketTarget(player: Player, stage: string): boolean
+    local target = Targets.GetRoots(nil, stage)[1]
+    if not target or not target:IsA("BasePart") then
+        return true -- Missing scenery retains timed progression.
+    end
+    local character = player.Character
+    local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+    local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+    if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+        return false
+    end
+    -- Measure from the authored bounds, including rotated and elevated targets.
+    local point = target.CFrame:PointToObjectSpace(root.Position)
+    local half = target.Size * 0.5
+    local nearest = Vector3.new(
+        math.clamp(point.X, -half.X, half.X),
+        math.clamp(point.Y, -half.Y, half.Y),
+        math.clamp(point.Z, -half.Z, half.Z)
+    )
+    return (point - nearest).Magnitude <= MARKET_ZONE_PADDING
+end
 local function climbedOwnLadder(player: Player, plot: Instance?): boolean
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
@@ -188,12 +211,28 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
     if elapsed < 8 and not (jumpOwned and batOwned) then
         return "Upgrades", nil, nil
     end
+    local nextOrder = orders[2]
+    if not state.MarketStartedAt then
+        state.NextCustomer = if nextOrder then nextOrder.Model else nil
+        if not state.NextCustomerInteractedAt then
+            if not nextOrder or (not nextOrder.OrderTaken and not nextOrder.Served) then
+                return "NextCustomer", nil, nil
+            end
+            state.NextCustomerInteractedAt = os.clock()
+        end
+        if os.clock() - (state.NextCustomerInteractedAt :: number) < 2 then
+            return "NextCustomerRead", nil, nil
+        end
+    end
     state.MarketStartedAt = state.MarketStartedAt or os.clock()
-    if os.clock() - (state.MarketStartedAt :: number) < 7 then
+    if
+        not state.JumpStartedAt
+        and (os.clock() - (state.MarketStartedAt :: number) < 7 or not reachedMarketTarget(player, "Market"))
+    then
         return "Market", nil, nil
     end
     state.JumpStartedAt = state.JumpStartedAt or os.clock()
-    if os.clock() - (state.JumpStartedAt :: number) < 7 then
+    if os.clock() - (state.JumpStartedAt :: number) < 7 or not reachedMarketTarget(player, "MarketJump") then
         return "MarketJump", nil, nil
     end
     return "Complete", nil, nil
@@ -261,6 +300,7 @@ local function refresh(player: Player, state: State)
         state.Milestones = {}
         state.BatchOrders = {}
         state.GuidanceStartedAt, state.MarketStartedAt, state.JumpStartedAt = nil, nil, nil
+        state.NextCustomerInteractedAt = nil
         state.NextCustomer = nil
         state.FarmStep, state.RowPurchasedAt = 0, nil
         state.SessionId = sessionId

@@ -62,7 +62,7 @@ local function refresh()
         displayed, exitingUntil = nil, nil
         return
     end
-    local button = Carry.GetThrowButtonLabel():gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+    local button = Carry.GetThrowButtonLabel()
     local hintStage = stage :: string
     if stage == "Upgrades" then
         local jump = (player:GetAttribute("JumpPurchasedLevel") or 0) >= 1
@@ -78,9 +78,11 @@ local function refresh()
         clearSurface()
         return
     end
-    local text = '<font color="#FFE073">' .. hint .. "</font>"
+    local text = hint
     if not surface then
-        surface = Banner.Create(gui :: PlayerGui, "TutorialHint")
+        local created = Banner.Create(gui :: PlayerGui, "TutorialHint")
+        created.Label.TextColor3 = Text.BodyColor
+        surface = created
     end
     local banner = surface :: Banner.Surface
     banner.LayoutTutorial(Input.PreferredInput == Enum.PreferredInput.Touch)

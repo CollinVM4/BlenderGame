@@ -241,15 +241,53 @@ check(p:GetAttribute("TutorialStage") == "Upgrades", "one purchase cannot strand
 p:SetAttribute("JumpPurchasedLevel", 0)
 authority.SetCash(p, 0)
 advance(8)
+check(p:GetAttribute("TutorialStage") == "NextCustomer", "customer hint precedes both market hints without purchases")
+advance(60)
+check(
+    p:GetAttribute("TutorialStage") == "NextCustomer" and not progress(p).Complete,
+    "customer hint waits for actual interaction indefinitely"
+)
+orders[2].OrderTaken = true
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "NextCustomerRead", "taking the order starts a quiet reading pause")
+advance(1.9)
+check(p:GetAttribute("TutorialStage") == "NextCustomerRead", "Market waits a full two seconds after interaction")
+advance(0.1)
 check(p:GetAttribute("TutorialStage") == "Market", "zero cash and no purchases never block market guidance")
+local market = instance("Model")
+market.Name, market.Parent = "Central Market", workspaceFake
+local function marketTarget(name, position)
+    local target = instance("Part")
+    target.Name, target.Parent, target.Position, target.Size = name, market, position, vec(40, 4, 40)
+    target.CFrame.PointToObjectSpace = function(_, point)
+        return point - position
+    end
+    return target
+end
+marketTarget("CentralMarketBase", vec(200, 0, 0))
+marketTarget("JUMP1HIGHLIGHT", vec(400, 30, 0))
+root.Position = vec(0, 0, 0)
 advance(7)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "market guidance advances without requiring travel")
+check(p:GetAttribute("TutorialStage") == "Market", "elapsed time alone cannot complete a present market objective")
+root.Position = vec(129, 0, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Market", "market zone excludes positions beyond fifty studs from its bounds")
+root.Position = vec(130, 0, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "market activates fifty studs before the target edge")
 advance(7)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "jump guidance waits until its own large zone is reached")
+root.Position = vec(400, 83, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "jump zone also checks vertical distance")
+root.Position = vec(400, 82, 0)
+heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
     "first serve and brief guidance complete tutorial"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
+market:Destroy() -- Later scenarios retain coverage of the missing-scenery timer fallback.
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Complete", "respawn retains completion")
@@ -275,10 +313,29 @@ p:SetAttribute("JumpPurchasedLevel", 1)
 p:SetAttribute("BatPurchasedLevel", 1)
 tutorial.ApplyCharacter(p, p.Character)
 flush()
-check(p:GetAttribute("TutorialStage") == "Market", "both preowned upgrades skip recommendation")
+check(p:GetAttribute("TutorialStage") == "NextCustomer", "both preowned upgrades skip directly to customer guidance")
+orders[2].OrderTaken = true
+heartbeat:Fire(0.1)
+check(
+    p:GetAttribute("TutorialStage") == "NextCustomerRead",
+    "taking the next order retires customer guidance immediately"
+)
+advance(2)
+check(p:GetAttribute("TutorialStage") == "Market", "preowned upgrades retain the two-second reading pause")
 advance(7)
 advance(7)
 check(progress(p).Complete, "preowned purchases also reach completion")
+-- An order accepted before the closing step skips it entirely.
+progress(p).Complete = false
+tutorial.RemovePlayer(p)
+tutorial.AddPlayer(p)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+check(p:GetAttribute("TutorialStage") == "NextCustomerRead", "already-taken order skips customer hint")
+advance(2)
+advance(7)
+advance(7)
+check(progress(p).Complete, "an already-taken next order skips the closing hint")
 -- Keep owner-only farm guidance independent of optional upgrade recommendations.
 authority.SetCash(p, 19999)
 heartbeat:Fire(0.1)
