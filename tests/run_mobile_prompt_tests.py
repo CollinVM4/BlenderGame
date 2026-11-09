@@ -12,6 +12,7 @@ parser.add_argument("--prompt-only", action="store_true", help="Prompt contracts
 args = parser.parse_args()
 paths = list((root / "src/client/UI").glob("*Prompt*.luau"))
 paths += [root / path for path in (
+    "src/shared/Constants/Economy.luau",
     "src/shared/WorldBillboardStyle.luau",
     "src/shared/MobilePromptDebug.luau",
     "src/client/Controllers/IngredientPickupPromptController.luau",

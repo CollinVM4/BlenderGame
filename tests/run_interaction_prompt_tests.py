@@ -13,6 +13,7 @@ parser.add_argument("--view-only", action="store_true", help="Shared prompt inpu
 parser.add_argument("--input-only", action="store_true", help="Native input contracts without legacy text/gameplay expectations")
 args = parser.parse_args()
 paths = {
+    "Economy": "src/shared/Constants/Economy.luau",
     "MobilePromptDebug": "src/shared/MobilePromptDebug.luau",
     "MobilePromptTouchTargets": "src/client/UI/MobilePromptTouchTargets.luau",
     "DialogueTextStyle": "src/shared/Constants/DialogueTextStyle.luau",

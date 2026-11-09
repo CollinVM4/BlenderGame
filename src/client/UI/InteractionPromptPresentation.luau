@@ -6,8 +6,8 @@ local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.
 local TouchTargets = require(script.Parent.MobilePromptTouchTargets)
 local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
 local Presentation = {}
--- Largest existing order bubble radius (45 * 1.25). Only customer actions
--- receive this draw budget; native PromptShown/Hidden still owns eligibility.
+-- Largest existing order bubble radius (45 * 1.25). Customer actions and the
+-- dispenser use this budget; native PromptShown/Hidden still owns eligibility.
 local CUSTOMER_ORDER_DISTANCE = 56.25
 
 export type Settings = {
@@ -90,7 +90,7 @@ function Presentation.Create(
     gui.Parent = parent
 
     local connections: { RBXScriptConnection } = {}
-    if customer then
+    if customer or (origin.Name == "DispenserTextOrigin" and not stashPrompt) then
         local player = Players.LocalPlayer
         local function refreshDrawDistance()
             -- Camera zoom is measured from its character focus, whereas billboard

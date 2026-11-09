@@ -207,6 +207,9 @@ setfenv(
     setmetatable({
         script = { Parent = { Parent = { Services = { WorldUtil = "WorldUtil", AudioService = "AudioService" } } } },
         require = function(key)
+            if key == "Economy" then
+                return load("Economy")
+            end
             if key == "MobilePromptDebug" then
                 return load("MobilePromptDebug")
             end
@@ -260,6 +263,7 @@ dispenseChunk().Init({
     },
 })
 local dispenseDetach = dispenseAttach(part)
+check(dispense.MaxActivationDistance == load("Economy").InteractionDistance, "mobile dispense uses server legal range")
 local dispenses = 0
 function dispense:InputHoldBegin()
     dispenses += 1
@@ -268,6 +272,10 @@ function dispense:InputHoldEnd() end
 prompts.PromptShown:Fire(dispense, "Touch")
 local dg = playerGui:FindFirstChild("InteractionPromptDisplay")
 local dt = touchTarget(dg)
+check(
+    dg.MaxDistance >= 128 + 56.25 and dt.Parent.MaxDistance == dg.MaxDistance,
+    "mobile dispenser visual and touch target remain drawable at maximum normal zoom"
+)
 check(
     dg.Adornee == origin and dt.Size.X.Scale == 1 and dt.Size.Y.Scale == 1 and dt.Parent.Active,
     "dispenser uses dedicated active target at authored marker"

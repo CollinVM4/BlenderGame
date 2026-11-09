@@ -128,6 +128,7 @@ env.print = function(message)
     table.insert(logs, message)
 end
 services.Players.LocalPlayer = uiInstance("Player")
+services.Players.LocalPlayer.CameraMaxZoomDistance = 128
 services.Players.LocalPlayer.WaitForChild = function()
     return playerGui
 end
@@ -259,6 +260,23 @@ for _, kind in { "Keyboard", "Gamepad", "Touch" } do
         local mobile = kind == "Touch" and padded
         local action = inputGui:FindFirstChild("Action")
         local target = touchTarget(inputGui)
+        local deviceKey = if kind == "Touch" then "TAP" elseif kind == "Gamepad" then "ButtonX" else "E"
+        check(
+            action.Text == "[" .. deviceKey .. "] " .. prompt.ActionText,
+            "dispenser retains platform-specific controls at max zoom"
+        )
+        check(inputGui.MaxDistance >= 128 + 56.25, "dispenser stays drawable at maximum normal zoom on every device")
+        services.Players.LocalPlayer.CameraMaxZoomDistance = 200
+        services.Players.LocalPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Fire()
+        check(inputGui.MaxDistance >= 200 + 56.25, "dispenser draw budget follows live camera zoom configuration")
+        if mobile then
+            check(
+                target.Parent.MaxDistance == inputGui.MaxDistance,
+                "touch target shares the visible dispenser draw budget"
+            )
+        end
+        services.Players.LocalPlayer.CameraMaxZoomDistance = 128
+        services.Players.LocalPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Fire()
         check(inputGui.Active == not mobile, "only padded touch disables billboard input")
         check(action:IsA(if mobile then "TextLabel" else "TextButton"), "desktop and unpadded views keep button path")
         if mobile then
@@ -361,6 +379,7 @@ local attach, serverPrompt
 local owner = {}
 local dispenseCalls = 0
 local server = module("DispenseButton", {
+    Economy = loadModule("Economy"),
     MobilePromptDebug = debug,
     WorldUtil = {
         BindTag = function(tag, callback)
@@ -403,6 +422,10 @@ server.Init({
 })
 local detach = attach(button)
 check(serverPrompt.Style == "Custom", "actual dispense prompt hides default presentation")
+check(
+    serverPrompt.MaxActivationDistance == loadModule("Economy").InteractionDistance,
+    "dispenser uses server legal range"
+)
 check(serverPrompt:GetAttribute("InteractionOrigin") == origin.Name, "actual button config resolves authored marker")
 check(serverPrompt:GetAttribute("InteractionActionText") == "DISPENSE", "actual button config supplies action")
 serverPrompt.Triggered:Fire({})
@@ -411,6 +434,13 @@ serverPrompt.Triggered:Fire(owner)
 check(dispenseCalls == 1, "owner still reaches authoritative dispense")
 detach()
 check(serverPrompt.Destroyed, "original component cleanup retained")
+local otherDispenser = uiInstance("Part", "DispenseButton", uiInstance("Model", "OtherPlot", workspaceFake))
+local detachOther = attach(otherDispenser)
+check(
+    serverPrompt.MaxActivationDistance == loadModule("Economy").InteractionDistance,
+    "other plots receive the same dispense radius"
+)
+detachOther()
 -- Start Day uses the same controller/view with its authored sibling prompt.
 local dayRoot = uiInstance("Model", "Start Day", workspaceFake)
 local dayOrigin = uiInstance("Attachment", "StartDayTextOrigin", dayRoot)
