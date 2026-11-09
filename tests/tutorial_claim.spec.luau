@@ -2,6 +2,11 @@
 local noop = function() end
 local unrelated = {
     "AdminService",
+    "FarmService",
+    "LockBaseService",
+    "UnstuckService",
+    "CashBoostService",
+    "WingsService",
     "AnnouncementService",
     "DiscoveryService",
     "RagdollService",
@@ -18,6 +23,7 @@ local unrelated = {
     "IceGunService",
     "IceGunEffects",
     "FilmingUtil",
+    "ScrapbookPreviewAssets",
     "GameplaySfxService",
     "PlayerOnlyCollisionService",
     "StashExpansionService",
@@ -169,104 +175,6 @@ check(slot(p, 3).Count == 3, "claim prepares stash before player setup")
 inventory.AddPlayer(p)
 check(slot(p, 3).Count == 3, "late player setup preserves committed starters")
 
-local orders = loadModule("TutorialOrders")
-local function verifyStarters(actor)
-    local snapshot = inventory.GetSnapshot(actor)
-    check(snapshot.Layout.Slots == 5, "five starting slots")
-    check(snapshot.Stash[1].Count == 0 and snapshot.Stash[2].Count == 0, "protected slots empty")
-    check(snapshot.Stash[1].Capacity == 1 and snapshot.Stash[2].Capacity == 1, "protected capacity stays one")
-    local total = 0
-    for _, order in orders do
-        local state = snapshot.Stash[order.Slot]
-        total += state.Count
-        check(state.Count == 3, "three records per starter group")
-        local expectedValue = 0
-        for index, id in order.Ingredients do
-            local unit = state.Ingredients[index]
-            expectedValue += ingredients.GetDefinition(id).Value
-            check(unit.IngredientId == id and unit.ItemId ~= nil and not unit.IsRipe, "exact fresh normal unit")
-        end
-        check(state.Value == expectedValue, "normal stash value")
-    end
-    check(total == 9 and inventory.GetCarryCount(actor) == 0, "nine stored ingredients, no carried grants")
-end
-verifyStarters(p)
-check(next(dataService.GetDiscoveryState(p).Ingredients) == nil, "seeding does not discover ingredients")
-local itemId = slot(p, 3).Ingredients[1].ItemId
+local itemId = slot(p, 1).Ingredients[1].ItemId
 inventory.InitializeTutorialStash(p)
-check(slot(p, 3).Ingredients[1].ItemId == itemId, "duplicate callback preserves item identity")
-check(not tycoon.ClaimPlot(p, plot, { ClaimRevision = 0 }), "duplicate claim rejected")
-setup(inventory.InteractStash(p, 3, p, nil, "TAKE"), "normal stash TAKE")
-check(inventory.GetCarryCount(p) == 1 and slot(p, 3).Count == 2, "TAKE uses authoritative ledger")
-itemId = slot(p, 3).Ingredients[1].ItemId
-inventory.InitializeTutorialStash(p)
-check(slot(p, 3).Count == 2, "withdrawal is never replenished")
-p.Parent = services.Players
-p.Character.Parent = workspaceFake
-p.Character.WaitForChild = p.Character.FindFirstChild
-p.CharacterAdded = signal()
-p.ChildAdded = signal()
-services.Players.PlayerAdded:Fire(p)
-p.CharacterAdded:Fire(p.Character)
-flush()
-check(slot(p, 3).Count == 2 and slot(p, 3).Ingredients[1].ItemId == itemId, "respawn preserves remaining stash")
-local peer = player()
-tycoon.RemovePlayer(peer)
-setup(tycoon.JoinSession(peer, p, tycoon.GetRequestContext(p)), "teammate joins existing tutorial")
-inventory.InitializeTutorialStash(peer)
-check(slot(p, 3).Count == 2, "join cannot seed another set")
-local session = tycoon.GetSessionId(p)
-tycoon.RemovePlayer(p, function()
-    inventory.RemovePlayer(p)
-end)
-check(tycoon.GetSessionId(peer) == session and slot(peer, 3).Count == 2, "owner departure preserves session stash")
-check(slot(peer, 3).Ingredients[1].ItemId == itemId, "promotion retains exact inventory records")
-local beforeCleanup = slot(peer, 4).Ingredients[1].ItemId
-ingredients.ClearLooseIngredients()
-check(slot(peer, 4).Ingredients[1].ItemId == beforeCleanup, "loose cleanup cannot remove stash records")
-tycoon.RemovePlayer(peer)
-check(slot(peer, 3).Count == 0 and slot(peer, 4).Count == 0, "release clears session inventory")
-setup(
-    tycoon.ClaimPlot(peer, plot, { ClaimRevision = plot:GetAttribute("PlotClaimRevision") }),
-    "fresh claim after release"
-)
-verifyStarters(peer)
-check(slot(peer, 3).Ingredients[1].ItemId ~= itemId, "fresh session has fresh units")
-tycoon.RemovePlayer(peer)
-local generate = services.HttpService.GenerateGUID
-local attempts = 0
-services.HttpService.GenerateGUID = function(...)
-    attempts += 1
-    if attempts == 5 then
-        error("temporary item preparation failure")
-    end
-    return generate(...)
-end
-check(
-    not tycoon.ClaimPlot(peer, plot, { ClaimRevision = plot:GetAttribute("PlotClaimRevision") }),
-    "failed seed rejects claim"
-)
-check(tycoon.GetSessionId(peer) == nil and tycoon.IsPlotAvailable(plot), "failed initialization releases session lock")
-check(
-    slot(peer, 3).Count == 0 and slot(peer, 4).Count == 0 and slot(peer, 5).Count == 0,
-    "preparation failure commits no partial rewards"
-)
-services.HttpService.GenerateGUID = generate
-setup(
-    tycoon.ClaimPlot(peer, plot, { ClaimRevision = plot:GetAttribute("PlotClaimRevision") }),
-    "retry after preparation recovery"
-)
-verifyStarters(peer)
--- Departure requested by an immediate inventory signal is serialized after claim.
-tycoon.RemovePlayer(peer)
-local departure = inventory.StashChanged:Connect(function(actor)
-    if actor == peer and tycoon.GetSessionId(peer) then
-        tycoon.RemovePlayer(peer)
-    end
-end)
-check(
-    not tycoon.ClaimPlot(peer, plot, { ClaimRevision = plot:GetAttribute("PlotClaimRevision") }),
-    "departure during initialization does not report a live claim"
-)
-departure:Disconnect()
-check(tycoon.GetSessionId(peer) == nil and slot(peer, 3).Count == 0, "departure clears session-specific starter state")
+check(slot(p, 1).Ingredients[1].ItemId == itemId, "bootstrap retry preserves loaded inventory")

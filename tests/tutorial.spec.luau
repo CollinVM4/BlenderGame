@@ -132,8 +132,8 @@ check(p:GetAttribute("TutorialStage") == "Order", "spawn alone cannot accept ord
 orders[1].OrderTaken = true
 heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 3,
-    "accepted red order selects slot three"
+    p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 1,
+    "accepted red order selects red starter slot"
 )
 ingredient = "Cherries"
 local ladder = instance("Model")
@@ -158,7 +158,7 @@ do
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
 end
-carried = { "Strawberry", "Cherries", "Cherries" }
+carried = { "Strawberry", "Cherries", "Apple" }
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Ladder", "full carried multiset targets owned ladder")
 tutorial.ApplyCharacter(p, p.Character)
@@ -216,8 +216,8 @@ check(p:GetAttribute("TutorialStage") == "Serve", "owned dispensed cup directs t
 cups[1].Slot = 1
 heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "Serve" and p:GetAttribute("TutorialStashSlot") == 3,
-    "early stored cup reconciles without redirecting ingredient gleams to protected slots"
+    p:GetAttribute("TutorialStage") == "Serve" and p:GetAttribute("TutorialStashSlot") == 1,
+    "early stored cup preserves current ingredient slot guidance"
 )
 tutorial.Mark(p, "ServedCustomer")
 tutorial.Mark(p, "ServedCustomer")
@@ -228,7 +228,7 @@ cups = {}
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialOrderIndex") == 2
-        and p:GetAttribute("TutorialStashSlot") == 4
+        and p:GetAttribute("TutorialStashSlot") == 3
         and p:GetAttribute("TutorialStage") == "Stash",
     "already accepted waiting cold order reconciles immediately"
 )
@@ -308,7 +308,7 @@ check(
 )
 orders[3].OrderTaken = true
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStashSlot") == 5, "yellow uses slot five")
+check(p:GetAttribute("TutorialStashSlot") == 2, "yellow uses yellow starter slot")
 check(
     p:GetAttribute("TutorialStage") == "FinishBatch",
     "old batch count cannot complete the new order's loading objective"
