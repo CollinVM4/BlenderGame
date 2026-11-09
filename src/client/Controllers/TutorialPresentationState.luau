@@ -68,6 +68,10 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
     then
         marketReadPending = true
     end
+    if stage == "NextCustomerRead" then
+        -- The server owns the two-second pause after accepting the next order.
+        marketReadFinished, marketReadPending, marketDeadline = true, false, nil
+    end
     if stage ~= "Market" and marketReadPending then
         marketReadFinished, marketReadPending, marketDeadline = true, false, nil
     end

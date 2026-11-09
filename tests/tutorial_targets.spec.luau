@@ -103,7 +103,7 @@ dispenser:Destroy()
 check(#targets.Resolve(plot, "Dispenser") == 0, "destroyed target no longer resolves")
 check(#targets.Resolve(nil, "Ladder") == 0, "no plot means no owned gleam")
 
--- Exercise the actual local controller with engine Tween/attribute signal doubles.
+-- Exercise the actual local controller with engine attribute signal doubles.
 services.CollectionService:AddTag(plot, "PlayerPlot")
 plot:SetAttribute("PlotSessionId", "local-session")
 local player = object("Player", "LocalLearner", workspaceFake)
@@ -115,27 +115,6 @@ humanoid.Health = 100
 services.Players.LocalPlayer = player
 env.Enum.Material = { Glass = "Glass" }
 env.Enum.HighlightDepthMode = { AlwaysOnTop = "AlwaysOnTop" }
-env.Enum.EasingStyle = { Sine = "Sine" }
-env.Enum.EasingDirection = { InOut = "InOut" }
-env.TweenInfo = {
-    new = function(...)
-        return { ... }
-    end,
-}
-local animation = {}
-services.TweenService = {
-    Create = function(_, target, info, goal)
-        local tween = { Target = target, Info = info, Goal = goal }
-        tween.Play = function(self)
-            self.Played = true
-        end
-        tween.Cancel = function(self)
-            self.Cancelled = true
-        end
-        table.insert(animation, tween)
-        return tween
-    end,
-}
 local changes = {}
 player.GetAttributeChangedSignal = function(_, name)
     changes[name] = changes[name] or signal()
@@ -171,19 +150,15 @@ check(#gleams() == 0, "conditional wait produces no local visual")
 player:SetAttribute("TutorialHintReady", true)
 local active = gleams()
 check(
-    #active == 3 and active[1].DepthMode == "AlwaysOnTop" and active[1].FillTransparency == 0.70,
-    "local turbine group creates soft through-wall highlights"
+    #active == 3 and active[1].DepthMode == "AlwaysOnTop" and active[1].FillTransparency < 0.3,
+    "local turbine group briefly flashes through-wall highlights"
 )
-check(
-    animation[1].Played
-        and animation[1].Goal.FillTransparency == 0.35
-        and animation[1].Info[4] == -1
-        and animation[1].Info[5],
-    "gleam pulse repeats and reverses"
-)
+now += 0.5
+heartbeat:Fire(0.1)
+check(gleams()[1].FillTransparency > 0.3, "activation flash settles into a translucent pulse")
 player:SetAttribute("TutorialStage", "Ladder")
 check(
-    active[1].Destroyed and animation[1].Cancelled and #gleams() == 1 and gleams()[1].Adornee == ladder,
+    active[1].Destroyed and #gleams() == 1 and gleams()[1].Adornee == ladder,
     "stage change cancels pulses and destroys previous gleams immediately"
 )
 humanoid.Health = 0

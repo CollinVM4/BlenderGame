@@ -178,6 +178,17 @@ check(p:GetAttribute("TasksServeTotal") == 1, "first tutorial serve counts once 
 check(#inventory.GetSmoothieInventory(p) == 0, "successful serve consumes the actual dispensed cup")
 check(p:GetAttribute("TutorialStage") == "Upgrades", "first serve offers optional combined upgrades")
 advance(8)
+check(p:GetAttribute("TutorialStage") == "NextCustomer", "customer hint precedes Market without another serve")
+check(
+    p:FindFirstChild("TutorialCustomerTarget").Value == customer.GetQueueSnapshot(p)[1].Model,
+    "customer hint targets waiting Cold customer"
+)
+advance(4)
+check(p:GetAttribute("TutorialStage") == "NextCustomer", "time alone cannot advance customer guidance")
+setup(customer.TakeOrder(p, customer.GetQueueSnapshot(p)[1].Model), "interact with next customer")
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "NextCustomerRead", "real order acceptance starts reading pause")
+advance(2)
 check(p:GetAttribute("TutorialStage") == "Market", "no purchases needed for Market")
 queue = customer.GetQueueSnapshot(p)
 check(
@@ -198,7 +209,9 @@ check(queue[2].Model:FindFirstChild("Head") ~= nil, "CaseOh retains imported ava
 for index, ids in { { "Ice", "Ice", "Ice" }, { "Hamburger", "Chili_Pepper", "Hamburger" } } do
     local entry = queue[index]
     flush()
-    setup(customer.TakeOrder(p, entry.Model), "take waiting introductory order")
+    if not entry.OrderTaken then
+        setup(customer.TakeOrder(p, entry.Model), "take waiting introductory order")
+    end
     local cupData = { BlendId = "normal-intro-" .. index, Ingredients = ids }
     setup(inventory.GrantSmoothie(p, cupData), "grant prepared introductory cup")
     local request
@@ -336,6 +349,13 @@ setup(
     "teammate buys Bat first"
 )
 advance(8)
+check(
+    q:GetAttribute("TutorialStage") == "NextCustomer" and teammate:GetAttribute("TutorialStage") == "NextCustomer",
+    "both teammates see customer guidance first"
+)
+setup(customer.TakeOrder(teammate, customer.GetQueueSnapshot(q)[1].Model), "teammate interacts with next customer")
+heartbeat:Fire(0.1)
+advance(2)
 check(
     q:GetAttribute("TutorialStage") == "Market" and teammate:GetAttribute("TutorialStage") == "Market",
     "one purchase never blocks either teammate"
