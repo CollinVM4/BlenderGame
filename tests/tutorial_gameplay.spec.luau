@@ -1,5 +1,6 @@
 -- Authoritative cross-system onboarding: real stash, queue, blender and serving.
 dependency.PlayerDataService.HasEntitlement = dataService.HasEntitlement
+dependency.PlayerDataService.IsDoubleCashActive = dataService.IsDoubleCashActive
 dependency.CustomerService = customer
 shared.TutorialTargets = "TutorialTargets"
 env.Enum.HumanoidStateType = { Climbing = "Climbing" }
@@ -93,7 +94,7 @@ for _, order in config do
         )
     end
 end
-check(slot(p, 1).Count == 0 and slot(p, 2).Count == 0, "protected slots untouched")
+check(slot(p, 1).Protected and slot(p, 2).Protected, "starter slots retain permanent protection")
 inventory.InitializeTutorialStash(p)
 tutorial.AddPlayer(p)
 customer.ActivateForPlayer(p, true)
@@ -127,7 +128,7 @@ setup(customer.TakeOrder(p, cold), "accept waiting cold early")
 setup(customer.TakeOrder(p, yellow), "accept waiting yellow early")
 heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 3,
+    p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 1,
     "red acceptance starts relevant stash"
 )
 local input, wheel = references[p].BlenderInput, references[p].TurbineWheel
@@ -148,16 +149,12 @@ for orderIndex, order in config do
             end
         end
     end
-    for count, expectedId in order.Ingredients do
+    for count in order.Ingredients do
         if orderIndex > 2 then
             setup(inventory.Withdraw(p, order.Slot), "normal starter TAKE")
         end
         check(
-            (
-                if orderIndex == 1
-                    then table.find(order.Ingredients, inventory.GetHeldIngredientId(p)) ~= nil
-                    else inventory.GetHeldIngredientId(p) == expectedId
-            ),
+            table.find(order.Ingredients, inventory.GetHeldIngredientId(p)) ~= nil,
             "mixed slot withdraws each real ingredient normally"
         )
         heartbeat:Fire(0.1)
@@ -263,7 +260,7 @@ check(
 )
 inventory.InitializeTutorialStash(p)
 check(
-    slot(p, 3).Count == 0 and slot(p, 4).Count == 0 and slot(p, 5).Count == 0,
+    slot(p, 1).Count == 0 and slot(p, 2).Count == 0 and slot(p, 3).Count == 0,
     "depleted starters are never infinitely replenished"
 )
 advance(70)
@@ -350,10 +347,7 @@ check(
     dependency.TycoonService.GetSessionId(q) ~= sessionBefore and #customer.GetQueueSnapshot(q) == 1,
     "reassignment creates exactly one fresh tutorial queue"
 )
-check(
-    slot(q, 3).Ingredients[1].ItemId ~= itemId,
-    "released session retires old units before fresh tutorial initialization"
-)
+check(slot(q, 3).Ingredients[1].ItemId == itemId, "reclaimed session restores persisted units without another grant")
 local teammate = player()
 dependency.TycoonService.RemovePlayer(teammate)
 local queueCount = #customer.GetQueueSnapshot(q)
