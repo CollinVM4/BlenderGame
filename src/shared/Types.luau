@@ -45,7 +45,9 @@ export type DiscoveryState = {
     SpecialCustomers: { [string]: boolean },
 }
 export type DiscoveryEvent = { Kind: "Ingredient" | "SpecialCustomer", Id: string }
+export type TutorialState = { FirstServeRewarded: boolean, Complete: boolean }
 export type PersonalPlayerData = {
+    Tutorial: TutorialState?,
     Upgrades: { CarryCapacity: number, StackSize: number },
     Discoveries: { [string]: boolean },
     Discovery: DiscoveryState,
@@ -53,6 +55,7 @@ export type PersonalPlayerData = {
 }
 -- Compatibility snapshot: shared fields are projections, never a stored personal record.
 export type PlayerData = {
+    Tutorial: TutorialState?,
     Cash: number,
     Upgrades: {
         Bat: number,

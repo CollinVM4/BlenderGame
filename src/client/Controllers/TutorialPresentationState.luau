@@ -48,6 +48,9 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
         beamFinished = true
         textFinished = true -- Only a new plot session may re-enable instructions.
     end
+    if stage == "Upgrades" or stage == "Market" or stage == "MarketJump" then
+        beamFinished, textFinished = true, true
+    end
     if stage == "Complete" then
         beamFinished = true
     end
@@ -58,7 +61,11 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
     if stage ~= "Counter" then
         counterDeadline, counterReady = nil, false
     end
-    if previousStage == "NextCustomer" and stage == "Market" and not marketReadFinished then
+    if
+        (previousStage == "NextCustomer" or previousStage == "Upgrades")
+        and stage == "Market"
+        and not marketReadFinished
+    then
         marketReadPending = true
     end
     if stage ~= "Market" and marketReadPending then
@@ -136,7 +143,7 @@ function State.Read(player: Player): (boolean, boolean, string?, boolean)
         end
     end
     -- Follow-up guidance bypasses first-order instruction retirement.
-    if (stage == "BuyJump" or stage == "BuyBat") and player:GetAttribute("TutorialActive") == true then
+    if stage == "Upgrades" and player:GetAttribute("TutorialActive") == true then
         return true, ready, stage, false -- Alert pulses point to upgrades; there is no world target.
     end
     if

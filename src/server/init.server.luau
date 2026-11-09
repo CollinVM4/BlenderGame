@@ -91,7 +91,8 @@ services.TycoonService.Init({
             warn("[TutorialInit] Starter stash unavailable: " .. tostring(reason))
             return false
         end
-        services.CustomerService.ActivateForPlayer(player, true)
+        local progress = services.PlayerDataService.GetTutorialState(player)
+        services.CustomerService.ActivateForPlayer(player, not progress or not progress.Complete)
         services.TutorialService.MembershipChanged(player)
         return true
     end,
@@ -163,10 +164,10 @@ local function addPlayer(player: Player)
         return
     end
     initialized[player] = true
+    services.PlayerDataService.AddPlayer(player)
     services.TutorialService.AddPlayer(player)
     services.ProtectionService.AddPlayer(player)
     services.TasksService.AddPlayer(player)
-    services.PlayerDataService.AddPlayer(player)
     services.DiscoveryService.PlayerAdded(player)
     services.TycoonService.RefreshUpgradeAttributes(player)
     services.MovementService.RefreshPlayer(player)

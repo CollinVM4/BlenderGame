@@ -5,21 +5,22 @@ for index, definition in originalDefinitions do
     config.Definitions[index] = definition
 end
 config.RegularWildcardChance = 0
-local tutorialOrders = loadModule("TutorialOrders")
+local tutorialOrders = loadModule("IntroCustomers")
 local calculatePayout = customer.CalculateOrderPayout
 customer.CalculateOrderPayout = function()
     return 250, 100
 end
 for _, case in
     {
-        { Index = 1, Ingredients = tutorialOrders[1].Ingredients, Expected = 10000 },
-        { Index = 2, Ingredients = tutorialOrders[2].Ingredients, Expected = 20000 },
-        { Index = 3, Ingredients = tutorialOrders[3].Ingredients, Expected = 250 },
+        { Index = 1, Ingredients = { "Cherries", "Cherries", "Strawberry" }, Expected = 30000 },
+        { Index = 2, Ingredients = { "Ice", "Ice", "Ice" }, Expected = 250 },
+        { Index = 3, Ingredients = { "Hamburger", "Chili_Pepper", "Hamburger" }, Expected = 250 },
         { Index = 1, Ingredients = { "Banana", "Banana", "Banana" }, Expected = 250 },
         { Index = 1, Ingredients = { "Cherries" }, Expected = 250 },
-        { Index = 1, Ingredients = tutorialOrders[1].Ingredients, Expected = 250, Normal = true },
+        { Index = 1, Ingredients = { "Cherries", "Cherries", "Strawberry" }, Expected = 250, Normal = true },
     }
 do
+    data.GetTutorialState(owner).FirstServeRewarded = false
     customer.ActivateForPlayer(owner, not case.Normal)
     local model
     for index = 1, case.Index do
@@ -64,15 +65,52 @@ do
 end
 customer.CalculateOrderPayout = calculatePayout
 
+data.GetTutorialState(owner).FirstServeRewarded = false
 customer.ActivateForPlayer(owner, true)
 now += tutorialOrders[1].Arrival
 local model = customer.SpawnForPlayer(owner)
 flush()
 setup(model and customer.GetSnapshot(owner).Ready, "real-formula tutorial customer ready")
-cup = { Ingredients = table.clone(tutorialOrders[1].Ingredients), BlendId = "real-floor" }
+cup = { Ingredients = table.clone({ "Cherries", "Cherries", "Strawberry" }), BlendId = "real-floor" }
 local before = data.GetCash(owner)
 setup(customer.Serve(owner, model), "real-formula tutorial serve")
 check(
     data.GetCash(owner) - before == tutorialOrders[1].PayoutFloor,
     "new economy retains tutorial floor after calculation"
 )
+
+-- Reconstructing a queue cannot mint a second first-serve floor in this profile.
+customer.DeactivateForPlayer(owner)
+customer.ActivateForPlayer(owner, true)
+model = customer.SpawnForPlayer(owner)
+flush()
+customer.CalculateOrderPayout = function()
+    return 250, 100
+end
+cup = { Ingredients = { "Cherries", "Cherries", "Strawberry" }, BlendId = "reconstructed" }
+before = data.GetCash(owner)
+setup(customer.Serve(owner, model), "serve after queue reconstruction")
+check(data.GetCash(owner) - before == 250, "profile guard survives queue reconstruction")
+customer.DeactivateForPlayer(owner)
+data.GetTutorialState(owner).FirstServeRewarded = false
+data.GetTutorialState(owner).Complete = true
+customer.ActivateForPlayer(owner, true)
+model = customer.SpawnForPlayer(owner)
+flush()
+cup = { Ingredients = { "Cherries", "Cherries", "Strawberry" }, BlendId = "completed" }
+before = data.GetCash(owner)
+setup(customer.Serve(owner, model), "serve with completed profile")
+check(data.GetCash(owner) - before == 250, "completed profiles never receive tutorial floor")
+customer.DeactivateForPlayer(owner)
+data.GetTutorialState(owner).Complete = false
+customer.ActivateForPlayer(owner, true)
+model = customer.SpawnForPlayer(owner)
+flush()
+customer.CalculateOrderPayout = function()
+    return 45000, 100
+end
+cup = { Ingredients = { "Cherries", "Cherries", "Strawberry" }, BlendId = "above-floor" }
+before = data.GetCash(owner)
+setup(customer.Serve(owner, model), "serve above floor")
+check(data.GetCash(owner) - before == 45000, "floor never adds an unconditional extra 30000")
+customer.CalculateOrderPayout = calculatePayout

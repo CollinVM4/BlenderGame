@@ -39,11 +39,11 @@ local udim = {
         return a
     end,
 }
-env.UDim2.fromScale = function()
-    return setmetatable({}, udim)
+env.UDim2.fromScale = function(x, y)
+    return setmetatable({ X = { Scale = x, Offset = 0 }, Y = { Scale = y, Offset = 0 } }, udim)
 end
-env.UDim2.new = function()
-    return setmetatable({}, udim)
+env.UDim2.new = function(xs, xo, ys, yo)
+    return setmetatable({ X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } }, udim)
 end
 services.TweenService = {
     Create = function(_, target, _, goal)
@@ -128,7 +128,7 @@ local function label()
 end
 local function hintContains(text)
     local current = label()
-    return current and current.Visible and string.find(current.Text, text, 1, true) ~= nil
+    return current and current.Visible and string.find(current.Text:gsub("<[^>]+>", ""), text, 1, true) ~= nil
 end
 shared.TutorialTargets = "TutorialTargets"
 local plot = instance("Model")
@@ -275,7 +275,7 @@ advance(2.4)
 check(noHint() and #beams() == 0 and #highlights() == 0, "stash text, beam and gleam share the 2.5-second delay")
 advance(0.1)
 check(
-    hintContains("Grab ingredients") and #beams() == 1 and #highlights() == 2,
+    hintContains("Take three RED ingredients") and #beams() == 1 and #highlights() == 2,
     "stash instruction and world guidance appear together after 2.5 seconds"
 )
 local beam = beams()[1]
@@ -348,7 +348,7 @@ check(hintContains("Press RT"), "platform binding label can change while the obj
 p:SetAttribute("TutorialStage", "Stash")
 advance()
 check(
-    hintContains("Grab ingredients") and #beams() == 1,
+    hintContains("Take three RED ingredients") and #beams() == 1,
     "repeated one-item stash objective resumes text and beam without another dialogue delay"
 )
 p:SetAttribute("TutorialStage", "Blender")
@@ -586,84 +586,86 @@ check(
 p:SetAttribute("TutorialStage", "Serve")
 advance()
 check(
-    hintContains("Serve customer and get PAYED!")
+    hintContains("Serve customer and get MONEY!")
         and highlights()[1].Adornee == customer
         and beams()[1].Attachment1.Parent == customerRoot,
     "smoothie collection proceeds directly to serving, without relocating counter navigation"
 )
 advance(5)
 check(
-    hintContains("Serve customer and get PAYED!"),
+    hintContains("Serve customer and get MONEY!"),
     "failed serve without authoritative progression retains Serve guidance"
 )
-root.Position = vec(0, 0, 0)
-for _, stage in { "BuyJump", "BuyBat" } do
-    -- Stage replication can precede the new order index and its beam retirement latch.
-    p:SetAttribute("TutorialStage", stage)
-    check(
-        #beams() == 0 and #beams("TutorialStashFlow") == 0 and #highlights() == 0,
-        "entering " .. stage .. " clears the previous Serve beam and gleam before order-index replication"
-    )
-    p:SetAttribute("TutorialStage", "Serve")
+p:SetAttribute("TutorialStage", "Upgrades")
+p:SetAttribute("TutorialOrderIndex", nil)
+advance()
+check(
+    hintContains("Open UPGRADES: buy JUMP 1 and BAT 1 (optional)!"),
+    "combined recommendation appears after first serve"
+)
+check(#beams() == 0 and #highlights() == 0, "upgrade recommendation retires first-order world targets")
+p:SetAttribute("JumpPurchasedLevel", 1)
+advance()
+check(hintContains("Try BAT 1 in UPGRADES (optional)!"), "Jump purchase leaves only Bat recommendation")
+p:SetAttribute("JumpPurchasedLevel", 0)
+p:SetAttribute("BatPurchasedLevel", 1)
+advance()
+check(hintContains("Try JUMP 1 in UPGRADES (optional)!"), "Bat-first purchase leaves only Jump recommendation")
+p:SetAttribute("JumpPurchasedLevel", 1)
+advance()
+check(noHint(), "owning both retires recommendation before the next server stage update")
+p:SetAttribute("JumpPurchasedLevel", 0)
+p:SetAttribute("BatPurchasedLevel", 0)
+-- Safe-inset compact hints remain above the lower hotbar and touch-action region.
+for _, viewport in { vec(844, 390, 0), vec(390, 844, 0), vec(667, 375, 0) } do
+    workspaceFake.CurrentCamera = { ViewportSize = viewport }
+    services.UserInputService.PreferredInput = "Touch"
+    preferredChanged:Fire()
     advance()
-end
-local serveBeam = beams()[1]
-local serveStart, serveEnd = serveBeam.Attachment0, serveBeam.Attachment1
-for _, index in { 2, 3 } do
-    p:SetAttribute("TutorialOrderIndex", index)
+    local current = label()
+    check(current.Parent.ScreenInsets == "Safe", "tutorial uses Core UI safe insets")
     check(
-        #beams() == 0 and #beams("TutorialStashFlow") == 0 and serveStart.Destroyed and serveEnd.Destroyed,
-        "committed first serve immediately removes both beams and temporary endpoints"
+        current.Size.Y.Offset == 76 and current.Position.Y.Scale == 0.12,
+        "touch hint occupies compact upper-center region"
     )
-    p.CharacterRemoving:Fire(p.Character)
-    p.CharacterAdded:Fire(p.Character)
-    for _, stage in { "Order", "Stash", "Blender", "Turbine", "Dispenser", "Serve" } do
-        p:SetAttribute("TutorialStage", stage)
-        advance(20)
-        check(noHint() and #beams() == 0, "later tutorial customers never show text or stash beams, even on hesitation")
-        check(#highlights() > 0, "later customers retain yellow highlights for every objective")
-    end
+    check(current.Size.X.Scale == (if viewport.X > viewport.Y then 0.64 else 0.9), "hint width responds to orientation")
+    check(
+        current.Position.Y.Scale * viewport.Y + current.Size.Y.Offset < viewport.Y * 0.5,
+        "hint clears lower interaction controls"
+    )
 end
+services.UserInputService.PreferredInput = "Gamepad"
+workspaceFake.CurrentCamera = { ViewportSize = vec(1920, 1080, 0) }
+preferredChanged:Fire()
+advance()
+check(label().Size.Y.Offset == 104, "console retains the larger readable hint")
+local ordinary = loadModule("AnnouncementBanner").Create(gui, "UnrelatedBanner")
+check(
+    ordinary.Label.Size.X.Scale == 0.92 and ordinary.Label.Position.Y.Scale == 0.065,
+    "other banner layout stays unchanged"
+)
+ordinary.Destroy()
 local text = loadModule("TutorialHintText")
-for _, hint in
-    {
-        { Stage = "BuyJump", Order = 2, Ending = "JUMP 1!" },
-        { Stage = "BuyBat", Order = 3, Ending = "a Bat Weapon!" },
-    }
-do
-    for _, input in { "Touch", "KeyboardAndMouse", "Gamepad" } do
-        local action = if input == "Touch" then "Tap" else "Click"
-        check(
-            text.Get(hint.Stage, env.Enum.PreferredInput[input], "R2") == action .. " Upgrade and buy " .. hint.Ending,
-            hint.Stage .. " uses exact " .. input .. " wording"
-        )
-    end
-    p:SetAttribute("TutorialStage", "NextCustomer")
-    advance()
-    check(#beams() == 1 and #highlights() > 0, "serve guidance exists before entering " .. hint.Stage)
-    -- Stage can replicate before the next order index: cleanup must still be immediate.
-    p:SetAttribute("TutorialStage", hint.Stage)
-    p:SetAttribute("TutorialOrderIndex", hint.Order)
-    local allowed, ready, stage, beamAllowed = presentation.Read(p)
+for _, word in { "UPGRADES", "JUMP", "BAT" } do
     check(
-        allowed and ready and stage == hint.Stage and not beamAllowed and presentation.IsActive(p, stage),
-        hint.Stage .. " immediately bypasses retired text without allowing a beam"
+        string.find(
+            text.Get("Upgrades", env.Enum.PreferredInput.Gamepad, "R2"),
+            '<b><font color="#FFFFFF">' .. word,
+            1,
+            true
+        ) ~= nil,
+        "recommended keyword is highlighted: " .. word
     )
-    check(#beams() == 0 and #highlights() == 0, "Buy stages clear world guidance immediately")
-    advance(0.2) -- Existing banner exit animation; no order-dialogue read delay.
-    check(
-        hintContains("Click Upgrade and buy " .. hint.Ending)
-            and #beams() == 0
-            and #beams("TutorialStashFlow") == 0
-            and #highlights() == 0,
-        hint.Stage .. " clears previous guidance and shows the upgrade hint without a read delay"
-    )
-    p.CharacterRemoving:Fire(p.Character)
-    check(noHint(), "upgrade hint hides while the character is removed")
-    p.CharacterAdded:Fire(p.Character)
-    advance()
-    check(hintContains("Click Upgrade and buy " .. hint.Ending), "upgrade hint resumes after respawn")
 end
+check(
+    string.find(text.Get("Stash", env.Enum.PreferredInput.Touch, "R2"), '<b><font color="#FFFFFF">RED', 1, true) ~= nil,
+    "RED is highlighted"
+)
+p.CharacterRemoving:Fire(p.Character)
+check(noHint(), "combined hint hides during respawn")
+p.CharacterAdded:Fire(p.Character)
+advance()
+check(hintContains("Open UPGRADES"), "combined hint resumes after respawn")
 p:SetAttribute("TutorialOrderIndex", 1)
 p:SetAttribute("TutorialStage", "Stash")
 advance(20)
@@ -685,19 +687,19 @@ advance(2.49)
 check(noHint() and #beams() == 0, "market read hold lasts 2.5 seconds")
 advance(0.02)
 check(
-    hintContains("Collect more from the Central Market!") and beams()[1].Attachment1.Parent == marketBase,
+    hintContains("Find more ingredients at the MARKET!") and beams()[1].Attachment1.Parent == marketBase,
     "market text and beam bypass first-serve retirement"
 )
 local jump = part("JUMP1HIGHLIGHT", market)
 p:SetAttribute("TutorialStage", "MarketJump")
 advance()
 check(
-    hintContains("Jump higher for valuable ingredients!") and highlights()[1].Adornee == jump,
+    hintContains("JUMP higher in the MARKET for better ingredients!") and highlights()[1].Adornee == jump,
     "jump hint and gleam bypass retirement"
 )
 p:SetAttribute("TutorialStage", "Market")
 advance()
-check(hintContains("Collect more from the Central Market!"), "market read delay only fires once per session")
+check(hintContains("Find more ingredients at the MARKET!"), "market read delay only fires once per session")
 p:SetAttribute("TutorialStage", "Complete")
 p:SetAttribute("TutorialActive", false)
 check(label() == nil, "completion removes tutorial GUI")
@@ -714,7 +716,7 @@ p:SetAttribute("TutorialHintReady", false)
 p:SetAttribute("FarmTutorialStage", "BuyRow")
 advance()
 check(
-    hintContains("Buy a farm row!") and beams()[1].Attachment1.Parent == pad,
+    hintContains("Buy a farm row to grow ingredients!") and beams()[1].Attachment1.Parent == pad,
     "farm purchase hint and beam present after opening completion"
 )
 p:SetAttribute("FarmTutorialStage", "Plant")
@@ -770,7 +772,7 @@ advance(2.4)
 check(noHint() and #beams() == 0, "respawn cannot revive the removed avatar's old deadline")
 advance(0.1)
 check(
-    hintContains("Grab ingredients") and #beams() == 0,
+    hintContains("Take three RED ingredients") and #beams() == 0,
     "beam retirement persists across membership changes; text can resume the still-valid pickup objective with a fresh delay"
 )
 p:SetAttribute("TutorialStage", "Blender")
@@ -808,7 +810,10 @@ advance(5)
 check(hintContains("Take the customer's order!"), "early counter arrival cancels obsolete delayed navigation")
 p:SetAttribute("TutorialStage", "Stash")
 advance(2.5)
-check(hintContains("Grab ingredients from the stash!"), "early order acceptance keeps the correct stash objective")
+check(
+    hintContains("Take three RED ingredients from Locked Slot 1!"),
+    "early order acceptance keeps the correct stash objective"
+)
 root.Position = vec(0, 0, 0)
 p:SetAttribute("TutorialStage", "Order")
 p:SetAttribute("TutorialOrderIndex", 1)

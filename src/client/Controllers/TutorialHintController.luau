@@ -63,7 +63,17 @@ local function refresh()
         return
     end
     local button = Carry.GetThrowButtonLabel():gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
-    local hint = Text.Get(stage :: string, Input.PreferredInput, button)
+    local hintStage = stage :: string
+    if stage == "Upgrades" then
+        local jump = (player:GetAttribute("JumpPurchasedLevel") or 0) >= 1
+        local bat = (player:GetAttribute("BatPurchasedLevel") or 0) >= 1
+        if jump and bat then
+            clearSurface()
+            return
+        end
+        hintStage = if jump then "UpgradeBat" elseif bat then "UpgradeJump" else "Upgrades"
+    end
+    local hint = Text.Get(hintStage, Input.PreferredInput, button)
     if not hint then
         clearSurface()
         return
@@ -73,6 +83,7 @@ local function refresh()
         surface = Banner.Create(gui :: PlayerGui, "TutorialHint")
     end
     local banner = surface :: Banner.Surface
+    banner.LayoutTutorial(Input.PreferredInput == Enum.PreferredInput.Touch)
     if text == displayed and not exitingUntil then
         return
     end
@@ -124,6 +135,8 @@ function Controller.Init()
     )
     for _, attribute in
         {
+            "JumpPurchasedLevel",
+            "BatPurchasedLevel",
             "FarmTutorialStage",
             "TutorialStage",
             "TutorialOrderIndex",

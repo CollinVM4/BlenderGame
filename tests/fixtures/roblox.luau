@@ -155,6 +155,9 @@ local function instance(class)
     object.Size = vec(4, 1.2, 2) -- Roblox Part default, also used by character-root doubles.
     object.Position = vec(0, 0, 0)
     object.MoveToFinished = signal()
+    if class == "Humanoid" then
+        object.Died = signal()
+    end
     function object:MoveTo(position)
         self.WalkTarget = position
         self.MoveToFinished:Fire(true)
