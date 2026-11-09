@@ -87,6 +87,9 @@ local deps = {
         GetUpgrade = function()
             return 1
         end,
+        IsDoubleCashActive = function()
+            return false
+        end,
         HasEntitlement = function()
             return false
         end,

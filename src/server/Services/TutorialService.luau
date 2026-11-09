@@ -66,7 +66,9 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
     end
     local orders = deps.CustomerService.GetTutorialSnapshot(player)
     if not orders then
-        return "Complete", nil, nil
+        -- Membership publishes before the yielding starter restore and queue setup.
+        -- An absent queue cannot complete a profile or spend its first-serve guard.
+        return if deps.CustomerService.IsActiveForPlayer(player) then "Complete" else "ClaimPlot", nil, nil
     end
     for index, order in orders do
         if index > 1 then

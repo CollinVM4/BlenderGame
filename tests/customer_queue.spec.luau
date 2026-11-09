@@ -70,12 +70,14 @@ check(not customer.SpawnForPlayer(owner), "direct spawn cannot exceed capacity")
 advance(economy.CustomerSpawnMinSeconds)
 check(#customer.GetQueueSnapshot(owner) == 3, "full timer cannot create fourth customer")
 cup = { Ingredients = { "Strawberry", "Banana", "Ice" }, BlendId = "queue-1" }
+local result = loadModule("SmoothieItem").Result(cup)
+local expectedPayout = customer.CalculateOrderPayout(owner, result, requests.Definitions[1])
 check(not customer.Serve(foreign, queue[1].Model), "foreign player cannot serve queue")
 owner.Near = false
 check(not customer.Serve(owner) and consumed == 0, "distance rejects without consuming")
 owner.Near = true
 check(
-    customer.Serve(owner, queue[1].Model) and consumed == 1 and tycoon.GetCash(owner) == 1373,
+    customer.Serve(owner, queue[1].Model) and consumed == 1 and tycoon.GetCash(owner) == expectedPayout,
     "front consumes and pays once"
 )
 check(not customer.Serve(owner, queue[1].Model), "served record rejects replay")
@@ -101,7 +103,7 @@ for turn = 2, 5 do
     advance(economy.CustomerSpawnMinSeconds)
 end
 check(
-    days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and tycoon.GetCash(owner) == 6865,
+    days.GetSnapshot(owner).Served == 5 and days.IsServing(owner) and tycoon.GetCash(owner) == expectedPayout * 5,
     "serving and payouts continue beyond third customer"
 )
 -- Destroy an NPC while moving; old callbacks cannot re-enable or reinsert it.

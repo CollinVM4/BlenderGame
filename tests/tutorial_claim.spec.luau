@@ -152,6 +152,18 @@ local bootstrapEnv = setmetatable({
 setfenv(bootstrap, bootstrapEnv)
 bootstrap()
 setup(runtime, "bootstrap published services")
+p.Parent, p.Character.WaitForChild = workspaceFake, p.Character.FindFirstChild
+runtime.TutorialService.AddPlayer(p)
+runtime.TutorialService.ApplyCharacter(p, p.Character)
+flush()
+beforeStoreUpdate = function()
+    heartbeat:Fire(0.1)
+    check(
+        not runtime.PlayerDataService.GetTutorialState(p).Complete,
+        "yielding stash load cannot mark a newly claimed tutorial complete"
+    )
+    check(p:GetAttribute("TutorialStage") == "ClaimPlot", "guidance waits for authoritative queue setup")
+end
 setup(
     runtime.TycoonService.ClaimPlot(p, authoredPlot, { ClaimRevision = authoredPlot:GetAttribute("PlotClaimRevision") }),
     "claim after bootstrap"
@@ -178,3 +190,13 @@ check(slot(p, 3).Count == 3, "late player setup preserves committed starters")
 local itemId = slot(p, 1).Ingredients[1].ItemId
 inventory.InitializeTutorialStash(p)
 check(slot(p, 1).Ingredients[1].ItemId == itemId, "bootstrap retry preserves loaded inventory")
+
+flush()
+check(
+    not runtime.PlayerDataService.GetTutorialState(p).Complete,
+    "real bootstrap preserves unfinished tutorial through reclaim"
+)
+check(
+    runtime.CustomerService.GetTutorialSnapshot(p)[1].RequestId == "Red",
+    "real bootstrap still starts Red after reclaim"
+)

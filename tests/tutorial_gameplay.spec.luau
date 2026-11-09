@@ -95,9 +95,31 @@ check(
     p:GetAttribute("TutorialStage") == "Stash" and p:GetAttribute("TutorialStashSlot") == 1,
     "first order guides Locked Slot 1"
 )
-for count = 1, 3 do
-    setup(inventory.Withdraw(p, 1), "take real red ingredient")
+local starterIds = {}
+for _, unit in slot(p, 1).Ingredients do
+    starterIds[unit.ItemId] = unit.IngredientId
 end
+inventory.AddPlayer(p)
+setup(inventory.InitializeTutorialStash(p), "repeat starter initialization")
+setup(customer.ActivateForPlayer(p, true), "repeat queue initialization")
+check(
+    #customer.GetQueueSnapshot(p) == 1 and customer.GetQueueSnapshot(p)[1].Model == red,
+    "ordinary initialization preserves the current customer"
+)
+for count = 1, 3 do
+    setup(press(p, "TAKE", 1), "take real red ingredient through stash interaction")
+    heartbeat:Fire(0.1)
+    check(
+        slot(p, 1).Count == 3 - count and #inventory.GetCarriedIngredientIds(p) == count,
+        "TAKE moves one starter unit into actual inventory"
+    )
+    check(
+        p:GetAttribute("TutorialStage") == (if count == 3 then "Ladder" else "Stash"),
+        "ladder guidance waits for all three valid red ingredients"
+    )
+end
+inventory.InitializeTutorialStash(p)
+check(slot(p, 1).Count == 0, "initialization cannot replace withdrawn tutorial ingredients")
 movement = "Climbing"
 heartbeat:Fire(0.1)
 movement = "Running"
@@ -108,12 +130,32 @@ for count = 1, 3 do
     setup(thrown, "throw ingredient")
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Blender", "in-flight guidance stays on blender")
+    input.Overlaps = {}
+    check(
+        not blend.TryInput(p, thrown, input) and blend.GetSnapshot(p).AcceptedIngredientCount == count - 1,
+        "missed throw cannot advance authoritative batch"
+    )
+    local unit = ingredients.GetRecord(thrown)
+    check(starterIds[unit.Item.ItemId] == unit.Id, "thrown unit retains canonical starter identity")
     input.Overlaps = { thrown }
     setup(blend.TryInput(p, thrown, input), "real blender ingestion")
+    heartbeat:Fire(0.1)
+    check(blend.GetSnapshot(p).AcceptedIngredientCount == count, "each real ingestion advances batch once")
+    check(not blend.TryInput(p, thrown, input), "consumed world unit cannot enter batch twice")
+    check(
+        p:GetAttribute("TutorialStage") == (if count == 3 then "Turbine" else "Blender"),
+        "only three accepted units enable turbine"
+    )
 end
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Turbine", "three real ingredients enable turbine")
-setup(blend.AddProgress(p, wheel, loadModule("Economy").RequiredProgress), "complete blend")
+setup(blend.AddProgress(p, wheel, loadModule("Economy").RequiredProgress - 1), "partial blend")
+heartbeat:Fire(0.1)
+check(
+    p:GetAttribute("TutorialStage") == "Turbine" and not blend.GetSnapshot(p).ReadyToDispense,
+    "partial blending cannot unlock dispenser"
+)
+setup(blend.AddProgress(p, wheel, 1), "complete blend")
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Dispenser", "finished blend enables dispenser")
 setup(blend.Dispense(p, input), "dispense real cup")
@@ -127,7 +169,13 @@ check(
     dependency.TycoonService.GetCash(p) - before == 30000,
     "first successful red serve totals exactly floor at base economy"
 )
-check(not customer.Serve(p, red), "replayed serve cannot pay twice")
+local afterServe = dependency.TycoonService.GetCash(p)
+check(
+    not customer.Serve(p, red) and dependency.TycoonService.GetCash(p) == afterServe,
+    "replayed serve cannot pay twice"
+)
+check(p:GetAttribute("TasksServeTotal") == 1, "first tutorial serve counts once for serve task")
+check(#inventory.GetSmoothieInventory(p) == 0, "successful serve consumes the actual dispensed cup")
 check(p:GetAttribute("TutorialStage") == "Upgrades", "first serve offers optional combined upgrades")
 advance(8)
 check(p:GetAttribute("TutorialStage") == "Market", "no purchases needed for Market")
@@ -169,6 +217,10 @@ for index, ids in { { "Ice", "Ice", "Ice" }, { "Hamburger", "Chili_Pepper", "Ham
         "intro two and three retain computed payout and independent third-serve task reward"
     )
 end
+check(
+    p:GetAttribute("TasksServeTotal") == 3 and p:GetAttribute("TasksServeThreshold") == 10,
+    "three ordinary serves progress the task to 3/10 without gating tutorial completion"
+)
 advance(70)
 check(customer.GetQueueSnapshot(p)[1].TutorialIndex == nil, "fourth arrival returns to normal pool")
 -- A teammate may perform the first delivery; cash and the reward guard are shared.
@@ -185,7 +237,17 @@ check(
     replacement and replacement.Model ~= missing and replacement.RequestId == "Red",
     "destroyed tutorial customer replaced through normal queue"
 )
-check(not customer.GetTutorialSnapshot(q)[1].Served, "disappearance cannot complete tutorial")
+check(
+    not customer.GetTutorialSnapshot(q)[1].Served and not dataService.GetTutorialState(q).Complete,
+    "disappearance cannot complete tutorial"
+)
+local cashBeforeStale = dependency.TycoonService.GetCash(q)
+check(
+    not customer.TakeOrder(q, missing)
+        and not customer.Serve(q, missing)
+        and dependency.TycoonService.GetCash(q) == cashBeforeStale,
+    "disappeared customer rejects stale interactions without payout"
+)
 setup(customer.TakeOrder(q, replacement.Model), "accept replacement")
 inventory.GrantSmoothie(q, { BlendId = "bad-red", Ingredients = { "Banana", "Banana", "Banana" } })
 setup(customer.Serve(q, replacement.Model), "normal unfulfilled delivery")
@@ -196,6 +258,13 @@ check(
 )
 local sessionBefore = dependency.TycoonService.GetSessionId(q)
 local itemId = slot(q, 3).Ingredients[1].ItemId
+inventory.CleanupCharacter(q)
+local respawned = instance("Model")
+part("HumanoidRootPart", respawned)
+local respawnHumanoid = instance("Humanoid")
+respawnHumanoid.Parent, respawnHumanoid.Health = respawned, 100
+respawned.WaitForChild = respawned.FindFirstChild
+q.Character = respawned
 tutorial.ApplyCharacter(q, q.Character)
 customer.ActivateForPlayer(q, true)
 flush()
@@ -215,8 +284,14 @@ check(
     "reassignment creates exactly one fresh tutorial queue"
 )
 check(slot(q, 3).Ingredients[1].ItemId == itemId, "reclaimed session restores persisted units without another grant")
+check(
+    not dataService.GetTutorialState(q).Complete and not dataService.GetTutorialState(q).FirstServeRewarded,
+    "membership publication before queue setup cannot spend completion or first-serve state"
+)
 local teammate = player()
 dependency.TycoonService.RemovePlayer(teammate)
+local sharedCustomer = customer.GetQueueSnapshot(q)[1].Model
+local sharedItem = slot(q, 1).Ingredients[1].ItemId
 setup(
     dependency.TycoonService.JoinSession(teammate, q, dependency.TycoonService.GetRequestContext(q)),
     "join fresh tutorial stand"
@@ -225,6 +300,14 @@ teammate.Parent, teammate.Character.WaitForChild = workspaceFake, teammate.Chara
 tutorial.AddPlayer(teammate)
 tutorial.ApplyCharacter(teammate, teammate.Character)
 flush()
+check(not inventory.InitializeTutorialStash(teammate), "teammate cannot reseed owner stash")
+setup(customer.ActivateForPlayer(teammate, true), "teammate activation reuses queue")
+check(
+    #customer.GetQueueSnapshot(q) == 1
+        and customer.GetQueueSnapshot(q)[1].Model == sharedCustomer
+        and slot(q, 1).Ingredients[1].ItemId == sharedItem,
+    "teammate join preserves shared customer and starter units"
+)
 local first = customer.GetQueueSnapshot(q)[1].Model
 setup(customer.TakeOrder(teammate, first), "teammate takes first order")
 setup(
@@ -304,3 +387,23 @@ setup(inventory.GrantSmoothie(retry, { BlendId = "valid-retry", Ingredients = or
 before = dependency.TycoonService.GetCash(retry)
 setup(customer.Serve(retry, replacement.Model), "fulfill retry Red")
 check(dependency.TycoonService.GetCash(retry) - before == 30000, "first successful retry still receives floor once")
+
+-- Serving keeps working while optional recommendations are visible.
+advance(7)
+local waitingCold
+for _, entry in customer.GetQueueSnapshot(retry) do
+    if entry.RequestId == "Cold" then
+        waitingCold = entry.Model
+    end
+end
+setup(waitingCold and customer.TakeOrder(retry, waitingCold), "take Cold during optional recommendations")
+setup(
+    inventory.GrantSmoothie(retry, { BlendId = "optional-cold", Ingredients = { "Ice", "Ice", "Ice" } }),
+    "prepare Cold during recommendations"
+)
+check(retry:GetAttribute("TutorialStage") == "Upgrades", "recommendations remain visible before timeout")
+setup(customer.Serve(retry, waitingCold), "serve Cold through optional guidance")
+check(
+    retry:GetAttribute("TutorialStage") == "Upgrades" and #inventory.GetSmoothieInventory(retry) == 0,
+    "guidance never blocks serving or discards a prepared delivery"
+)

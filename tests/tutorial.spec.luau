@@ -59,6 +59,9 @@ tutorial.Init({
         end,
     },
     CustomerService = {
+        IsActiveForPlayer = function()
+            return true
+        end,
         GetQueueSnapshot = function()
             return queue
         end,

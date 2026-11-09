@@ -5,12 +5,31 @@ Use --group to select a boundary, or --list to inspect the manifest.
 These tests do not replace Studio physics/network playtests.
 """
 import argparse
+import ast
 import json
 from pathlib import Path
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def validate_suite_registrations(source):
+    """Reject registrations Python would otherwise silently overwrite."""
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Assign) or not any(
+            isinstance(target, ast.Name) and target.id == "SUITES" for target in node.targets
+        ):
+            continue
+        seen = set()
+        for key in node.value.keys:
+            name = ast.literal_eval(key)
+            if name in seen:
+                raise ValueError(f"Duplicate suite registration: {name}")
+            seen.add(name)
+
+
+validate_suite_registrations(Path(__file__).read_text(encoding="utf-8"))
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--luau", default="luau")
 selection = parser.add_mutually_exclusive_group()
@@ -61,10 +80,8 @@ SUITES = {
     "initial-spawn": ("integration", ("initial_spawn.spec.luau",)),
     "tutorial-hints": ("presentation", ("tutorial_hints.spec.luau",)),
     "tutorial-targets": ("presentation", ("tutorial_targets.spec.luau",)),
-    "tutorial-claim": ("integration", ("fixtures/smoothie.luau", "tutorial_claim.spec.luau")),
-    "tutorial-gameplay": ("integration", ("fixtures/smoothie.luau", "fixtures/intro_customers.luau", "tutorial_gameplay.spec.luau")),
     "tutorial-claim": ("integration", ("fixtures/smoothie.luau", "fixtures/stash_persistence.luau", "tutorial_claim.spec.luau")),
-    "tutorial-gameplay": ("integration", ("fixtures/smoothie.luau", "fixtures/stash_persistence.luau", "tutorial_gameplay.spec.luau")),
+    "tutorial-gameplay": ("integration", ("fixtures/smoothie.luau", "fixtures/stash_persistence.luau", "fixtures/intro_customers.luau", "tutorial_gameplay.spec.luau")),
     "admin": ("integration", ("admin.spec.luau",)),
     "admin-legacy": ("integration", ("admin_legacy.spec.luau", "admin.spec.luau")),
     "bad-customer-presentation": ("presentation", ("bad_customer_presentation.spec.luau",)),
@@ -186,6 +203,10 @@ SUITES = {
     "icegun-combat": ("integration", ("fixtures/icegun.luau", "icegun_combat.spec.luau")),
     "ice-ray-radial": ("integration", ("fixtures/icegun.luau", "ice_ray_radial.spec.luau")),
 }
+# Read the whole manifest, including unselected suites and the common prefix.
+for file in ("fixtures/roblox.luau", "fixtures/session.luau", *(file for _, files in SUITES.values() for file in files)):
+    (ROOT / "tests" / file).read_text(encoding="utf-8")
+
 focused = {
     "fall_damage_fix_contracts": ("fall-damage",),
     "vfx_only": ("vfx",),

@@ -106,3 +106,6 @@ queue reconstruction, completed memory profiles, computed payouts, optional
 purchases, safe-inset layout dimensions and input wording. No live device, native
 rendering or multiplayer networking session was run; CLI geometry checks cannot
 establish rendered legibility on every device.
+
+Post-merge registry repairs, restored regressions, bootstrap timing fix, and current
+validation: [integration repair](TUTORIAL_V2_INTEGRATION_REPAIR.md).

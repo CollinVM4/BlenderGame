@@ -133,6 +133,10 @@ Studio/network verification was not available in this CLI session:
 3. Drain or steal the stash; reset, reclaim, leave/rejoin, and restart the test
    server. Verify persisted empty slots remain empty and deposits keep identities.
 4. Accept tutorial Red: LockedSlot1/base gleams, the three fruits progress through
-   normal carry/blend/serve, and Cold/Yellow guidance selects slots 3/2.
+   normal carry/blend/serve, and optional upgrade/Market guidance follows the first
+   successful serve. Cold and canonical CaseOh remain ordinary queued customers.
 5. Exercise denied API access, overlapping server acquisition, delayed load/save,
    and shutdown. Claims must fail closed; unsupported records must remain intact.
+
+Post-merge Tutorial V2 behavior and current validation supersede the original
+Cold/Yellow walkthrough: see [integration repair](TUTORIAL_V2_INTEGRATION_REPAIR.md).

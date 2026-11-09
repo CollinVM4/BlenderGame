@@ -2029,6 +2029,10 @@ function CustomerService:RefreshOrder(model: Model)
     end
 end
 -- Snapshots expose presentation state, never mutable authoritative records.
+function CustomerService.IsActiveForPlayer(player: Player): boolean
+    local queue = queues[key(player)]
+    return queue ~= nil and current(player, queue)
+end
 function CustomerService.GetTutorialSnapshot(player: Player): { any }?
     local queue = queues[key(player)]
     if not queue or not queue.TutorialOrders then

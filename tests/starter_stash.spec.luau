@@ -8,6 +8,22 @@ tycoon.Init({
 local starter = loadModule("StarterStash")
 local persistence = loadModule("StashPersistence")
 local records = loadModule("StashRecords")
+-- Pin authored content independently of the seeding configuration.
+local expected = {
+    { "Apple", "Cherries", "Strawberry" },
+    { "Banana", "Lemon", "Pear" },
+    { "Ice", "Ice", "Ice" },
+    { "Cabbage", "Carrot", "Mushrooms" },
+    { "Milk", "Milk", "Milk" },
+}
+check(#starter == #expected, "exactly five starter groups")
+for index, ids in expected do
+    check(starter[index].Slot == index, "authored slot identity is stable")
+    check(
+        table.concat(starter[index].Ingredients, ",") == table.concat(ids, ","),
+        "authored ingredient recipe is stable"
+    )
+end
 local function verify(actor)
     local snapshot = inventory.GetSnapshot(actor)
     local identities = {}
@@ -32,6 +48,13 @@ local function verify(actor)
 end
 local owner, enemy = player(), player()
 local ownerIds, enemyIds = verify(owner), verify(enemy)
+inventory.AddPlayer(owner)
+setup(inventory.InitializeTutorialStash(owner), "repeat initialization succeeds without granting")
+for _, state in inventory.GetSnapshot(owner).Stash do
+    for _, unit in state.Ingredients do
+        check(ownerIds[unit.ItemId], "ordinary initialization preserves each original unit")
+    end
+end
 for id in ownerIds do
     check(not enemyIds[id], "separate fresh owners have independent inventory")
 end
@@ -55,6 +78,9 @@ for index = 1, 5 do
 end
 inventory.CleanupCharacter(owner)
 inventory.InitializeTutorialStash(owner)
+for index = 1, 5 do
+    check(slot(owner, index).Count == 0, "every depleted starter slot remains empty")
+end
 check(
     slot(owner, 1).Count == 0 and slot(owner, 5).Count == 0,
     "empty stash stays empty after reset/repeated initialization"
