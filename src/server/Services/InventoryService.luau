@@ -21,7 +21,17 @@ local stashChanged = Instance.new("BindableEvent")
 InventoryService.StashChanged = stashChanged.Event
 local releaseAt: { [Player]: number } = {}
 local starterSessions: { [string]: Player } = {}
-local TutorialOrders = require(Shared.Constants.TutorialOrders)
+local StarterStash = require(script.Parent.StarterStash)
+local StashPersistence = require(script.Parent.StashPersistence)
+local StashRecords = require(script.Parent.StashRecords)
+local stashProfiles: { [string]: any } = {}
+local restoring: { [Player]: boolean } = {}
+local persistenceConnection: RBXScriptConnection? = nil
+local function writable(owner: Player): boolean
+    local id = deps.TycoonService.GetSessionId(owner)
+    local profile = if id then stashProfiles[id] else nil
+    return not restoring[owner] and (not profile or StashPersistence.IsWritable(profile))
+end
 local thrownIngredients: { [Player]: { { Object: Instance, ObserveAfter: number, SessionId: string? } } } = {}
 local StashConfig = Economy.NormalStash
 local StashSlots = require(script.Parent.StashSlots)
@@ -790,6 +800,25 @@ end
 local ripenessConnection: RBXScriptConnection? = nil
 function InventoryService.Init(services)
     deps = services
+    if persistenceConnection then
+        persistenceConnection:Disconnect()
+    end
+    persistenceConnection = stashChanged.Event:Connect(function(owner)
+        local id = deps.TycoonService.GetSessionId(owner)
+        local profile = if id then stashProfiles[id] else nil
+        if profile and stashes[owner] then
+            StashPersistence.Stage(profile, StashRecords.Encode(stashes[owner]))
+            if not profile.Scheduled then
+                profile.Scheduled = true
+                task.delay(6, function()
+                    profile.Scheduled = false
+                    if stashProfiles[id] == profile and not profile.Closing then
+                        StashPersistence.Save(profile)
+                    end
+                end)
+            end
+        end
+    end)
     local events = Shared.Events
     if events and not events:FindFirstChild("StashAction") then
         local remote = Instance.new("RemoteFunction")
@@ -967,7 +996,7 @@ function InventoryService.HasIngredientInFlight(player: Player): boolean
     end
     return #pending > 0
 end
--- Called only for a newly created authoritative plot session, never from a client.
+-- Compatibility API: load once per progression, not once per plot claim.
 function InventoryService.InitializeTutorialStash(player: Player): (boolean, string?)
     local id = deps.TycoonService.GetSessionId(player)
     if not id or deps.TycoonService.GetSessionOwner(id) ~= player then
@@ -976,44 +1005,54 @@ function InventoryService.InitializeTutorialStash(player: Player): (boolean, str
     if starterSessions[id] then
         return true
     end
+    if restoring[player] then
+        return false, "StashLoading"
+    end
     ensureStash(player)
-    local stash = stashes[player]
-    -- Prepare everything before touching live slots or recording success. No yield
-    -- occurs here; a failed preparation leaves legitimate stash contents intact.
-    local prepared: { [number]: { Types.IngredientItem } } = {}
-    local now = workspace:GetServerTimeNow()
-    local ok, problem = pcall(function()
-        for _, order in TutorialOrders do
-            local slot = stash[order.Slot]
-            if not slot or slot.Count ~= 0 or #slot.Ingredients > 0 or slot.Smoothie then
-                error("StarterSlotUnavailable slot=" .. tostring(order.Slot))
-            end
-            if #order.Ingredients > ingredientSlotCapacity() then
-                error("StarterSlotCapacity slot=" .. tostring(order.Slot))
-            end
-            local units: { Types.IngredientItem } = {}
-            for _, ingredientId in order.Ingredients do
-                if not deps.IngredientService.GetDefinition(ingredientId) then
-                    error("InvalidIngredient id=" .. ingredientId)
-                end
-                local unit = Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false), "Unknown")
-                Item.EnterStash(unit, now)
-                table.insert(units, unit)
-            end
-            prepared[order.Slot] = units
+    local original = stashes[player]
+    -- Do not replace legitimate live contents, even if initialization was called late.
+    for _, slot in original do
+        if slot.Count ~= 0 or #slot.Ingredients > 0 or slot.Smoothie then
+            return false, "StashAlreadyPopulated"
         end
+    end
+    restoring[player] = true
+    local profile, reason = StashPersistence.Open(player.UserId, function()
+        local prepared = StashRecords.Decode({})
+        for _, group in StarterStash do
+            assert(#group.Ingredients <= ingredientSlotCapacity(), "StarterSlotCapacity")
+            local slot = prepared[group.Slot]
+            for _, ingredientId in group.Ingredients do
+                local definition = deps.IngredientService.GetDefinition(ingredientId)
+                assert(
+                    definition and table.find(definition.Tags, group.Tag),
+                    "InvalidStarterIngredient " .. ingredientId
+                )
+                table.insert(
+                    slot.Ingredients,
+                    Item.New(ingredientId, game:GetService("HttpService"):GenerateGUID(false), "Unknown")
+                )
+            end
+        end
+        return StashRecords.Encode(prepared)
     end)
+    restoring[player] = nil
+    if not profile then
+        return false, reason
+    end
+    -- DataStore yields. Only the exact still-live session may receive the restore.
+    if deps.TycoonService.GetSessionId(player) ~= id or stashes[player] ~= original then
+        StashPersistence.Close(profile)
+        return false, "StaleStashRestore"
+    end
+    local ok, restored = pcall(StashRecords.Decode, profile.Slots)
     if not ok then
-        warn("[TutorialInit] SeedFailed session=" .. id .. " reason=" .. tostring(problem))
-        return false, tostring(problem)
+        StashPersistence.Close(profile)
+        return false, tostring(restored)
     end
-    for index, units in prepared do
-        local slot = stash[index]
-        slot.Ingredients = units
-        slot.ItemType, slot.Count, slot.Capacity = "Ingredient", #units, ingredientSlotCapacity()
-        slot.IngredientId = units[#units].IngredientId
-    end
-    starterSessions[id] = player
+    stashes[player] = restored
+    starterSessions[id], stashProfiles[id] = player, profile
+    refreshStashMetadata(player)
     stashChanged:Fire(player)
     return true
 end
@@ -1058,7 +1097,15 @@ function InventoryService.GetStashRaidState(owner: Player)
 end
 function InventoryService.CleanupSession(sessionId: string)
     local owner = starterSessions[sessionId]
+    local profile = stashProfiles[sessionId]
+    stashProfiles[sessionId] = nil
     starterSessions[sessionId] = nil
+    if profile then
+        if owner and stashes[owner] then
+            StashPersistence.Stage(profile, StashRecords.Encode(stashes[owner]))
+        end
+        StashPersistence.Close(profile)
+    end
     if owner then
         stashes[owner] = nil
         ensureStash(owner)
@@ -1263,7 +1310,7 @@ local function getSlotPart(owner: Player, index: number): BasePart?
     return part
 end
 local function accessible(player: Player, owner: Player, index: number): boolean
-    if not MovementService.CanPerformGameplayAction(player) then
+    if not writable(owner) or not MovementService.CanPerformGameplayAction(player) then
         return false
     end
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -1277,7 +1324,7 @@ local function friendly(player: Player, owner: Player): boolean
 end
 function InventoryService.CanWithdraw(player: Player, owner: Player, index: number): boolean
     local slot = stashes[owner] and stashes[owner][index]
-    if not slot or not getSlotPart(owner, index) or not deps.TycoonService.GetPlot(player) then
+    if not writable(owner) or not slot or not getSlotPart(owner, index) or not deps.TycoonService.GetPlot(player) then
         return false
     end
     if friendly(player, owner) then
@@ -1309,7 +1356,8 @@ function InventoryService.RemoveThiefIngredient(
 ): Types.IngredientItem?
     local plot = deps.TycoonService.GetPlot(owner)
     if
-        not plot
+        not writable(owner)
+        or not plot
         or deps.TycoonService.GetOwner(plot) ~= owner
         or deps.TycoonService.GetSessionId(owner) ~= sessionId
         or InventoryService.GetStashRaidState(owner).State == "Protected"

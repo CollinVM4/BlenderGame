@@ -2,6 +2,7 @@
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local AudioService = require(script.Parent.Parent.Services.AudioService)
 local Debug = require(game:GetService("ReplicatedStorage").Shared.MobilePromptDebug)
+local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local DispenseButton = {}
 function DispenseButton.Init(services: any)
     WorldUtil.BindTag("DispenseButton", function(object)
@@ -11,6 +12,8 @@ function DispenseButton.Init(services: any)
             return nil
         end
         local prompt = WorldUtil.Prompt(part, "DispensePrompt", "Dispense smoothie")
+        -- Match the existing authoritative dispense radius, independent of camera zoom.
+        prompt.MaxActivationDistance = Economy.InteractionDistance
         prompt:SetAttribute("InteractionOrigin", "DispenserTextOrigin")
         prompt:SetAttribute("InteractionActionText", "DISPENSE")
         prompt.Style = Enum.ProximityPromptStyle.Custom

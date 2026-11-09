@@ -162,7 +162,7 @@ for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Straw
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
 end
-carried = { "Apple", "Apple", "Apple" }
+carried = { "Strawberry", "Cherries", "Apple" }
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "Ladder", "any three red ingredients satisfy the ladder pickup objective")
 tutorial.ApplyCharacter(p, p.Character)

@@ -30,6 +30,7 @@ local services: { [string]: any } = {
     FarmService = require(script.Services.FarmService),
     SmoothieWorldItemService = require(script.Services.SmoothieWorldItemService),
     InventoryService = require(script.Services.InventoryService),
+    StashPersistence = require(script.Services.StashPersistence),
     BlendService = require(script.Services.BlendService),
     MuncherService = require(script.Services.MuncherService),
     CustomerService = require(script.Services.CustomerService),
@@ -125,6 +126,7 @@ services.TycoonService.Init({
         services.MuncherService.CleanupSession(id)
     end,
 })
+services.StashPersistence.Init()
 services.ProtectionService.Init()
 services.TasksService.Init(services)
 for _, name in
@@ -279,4 +281,4 @@ for _, component in components do
     component.Init(services)
 end
 StudioServices.Publish(services)
-print("[Be a Blender!] MVP services initialized. Persistence is in-memory; see docs/MVP_ARCHITECTURE.md.")
+print("[Be a Blender!] MVP services initialized. Stashes persist; other progression remains in-memory.")

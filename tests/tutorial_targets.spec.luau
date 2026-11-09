@@ -56,6 +56,14 @@ for index = 1, 5 do
     stashBases[index] = object("Part", "base", stashSlots[index])
 end
 local stashBase = stashBases[3]
+for index = 1, 2 do
+    stashSlots[index].Name = "LockedSlot" .. index
+    local lockedTargets = targets.Resolve(plot, "Stash", index)
+    check(
+        lockedTargets[1] == stashSlots[index] and lockedTargets[2] == stashBases[index],
+        "starter guidance resolves authored locked slot and base"
+    )
+end
 local stashTargets = targets.Resolve(plot, "Stash", 3)
 check(
     #stashTargets == 2 and stashTargets[1] == stashSlots[3] and stashTargets[2] == stashBase,

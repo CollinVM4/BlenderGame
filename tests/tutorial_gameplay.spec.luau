@@ -1,5 +1,6 @@
 -- Authoritative cross-system onboarding: real stash, queue, blender and serving.
 dependency.PlayerDataService.HasEntitlement = dataService.HasEntitlement
+dependency.PlayerDataService.IsDoubleCashActive = dataService.IsDoubleCashActive
 dependency.CustomerService = customer
 shared.TutorialTargets = "TutorialTargets"
 env.Enum.HumanoidStateType = { Climbing = "Climbing" }
@@ -176,6 +177,44 @@ q.Parent, q.Character.WaitForChild = workspaceFake, q.Character.FindFirstChild
 tutorial.AddPlayer(q)
 tutorial.ApplyCharacter(q, q.Character)
 flush()
+local missing = customer.GetQueueSnapshot(q)[1].Model
+missing:Destroy()
+advance(0.5)
+local replacement = customer.GetQueueSnapshot(q)[1]
+check(
+    replacement and replacement.Model ~= missing and replacement.RequestId == "Red",
+    "destroyed tutorial customer replaced through normal queue"
+)
+check(not customer.GetTutorialSnapshot(q)[1].Served, "disappearance cannot complete tutorial")
+setup(customer.TakeOrder(q, replacement.Model), "accept replacement")
+inventory.GrantSmoothie(q, { BlendId = "bad-red", Ingredients = { "Banana", "Banana", "Banana" } })
+setup(customer.Serve(q, replacement.Model), "normal unfulfilled delivery")
+advance(0.5)
+check(
+    customer.GetQueueSnapshot(q)[1].RequestId == "Red" and not customer.GetTutorialSnapshot(q)[1].Served,
+    "unfulfilled serve recovers same request without advancing"
+)
+local sessionBefore = dependency.TycoonService.GetSessionId(q)
+local itemId = slot(q, 3).Ingredients[1].ItemId
+tutorial.ApplyCharacter(q, q.Character)
+customer.ActivateForPlayer(q, true)
+flush()
+check(
+    dependency.TycoonService.GetSessionId(q) == sessionBefore
+        and slot(q, 3).Ingredients[1].ItemId == itemId
+        and #customer.GetQueueSnapshot(q) == 1,
+    "respawn and reconstruction preserve session items and queue"
+)
+local ownPlot = dependency.TycoonService.GetPlot(q)
+dependency.TycoonService.RemovePlayer(q)
+check(p:GetAttribute("TutorialStage") == "Complete", "other plot progress remains independent")
+setup(dependency.TycoonService.AssignPlot(q, ownPlot), "reclaim plot")
+flush()
+check(
+    dependency.TycoonService.GetSessionId(q) ~= sessionBefore and #customer.GetQueueSnapshot(q) == 1,
+    "reassignment creates exactly one fresh tutorial queue"
+)
+check(slot(q, 3).Ingredients[1].ItemId == itemId, "reclaimed session restores persisted units without another grant")
 local teammate = player()
 dependency.TycoonService.RemovePlayer(teammate)
 setup(

@@ -78,7 +78,8 @@ function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): {
                 table.insert(slots, part)
             end
         end
-        local authoredSlot = stash:FindFirstChild("Slot" .. stashSlot)
+        local authoredSlot = if stashSlot <= 2 then stash:FindFirstChild("LockedSlot" .. stashSlot) else nil
+        authoredSlot = authoredSlot or stash:FindFirstChild("Slot" .. stashSlot)
         if
             #slots ~= 1
             or not authoredSlot

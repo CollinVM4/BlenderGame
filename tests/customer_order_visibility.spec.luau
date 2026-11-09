@@ -8,6 +8,7 @@ root.Size = env.Vector3.new(2, 2, 1)
 serveOrigin.Position = env.Vector3.new(0, 2.85, 0)
 local serve = uiInstance("ProximityPrompt", "ServePrompt", root)
 serve.Style, serve.Enabled = "Custom", true
+serve.MaxActivationDistance, serve.RequiresLineOfSight = 10, false
 serve.KeyboardKeyCode, serve.GamepadKeyCode = { Name = "E" }, { Name = "ButtonX" }
 serve:SetAttribute("InteractionOrigin", "ServePromptOrigin")
 serve:SetAttribute("InteractionActionText", "SERVE")
@@ -17,6 +18,7 @@ check(
     gui().Adornee == serveOrigin and gui():FindFirstChild("Action").Text == "[E] SERVE",
     "dynamic serve uses shared view"
 )
+check(gui().MaxDistance == 25, "untagged interactions retain their existing draw limit")
 serve.Enabled = false
 serve.Changed:Fire("Enabled")
 check(gui() == nil, "successful serve disables and removes view")
@@ -52,6 +54,7 @@ check(lateBubble.Enabled == true, "dynamically spawned order resolves owner")
 print("PASS: customer order ownership and streaming visibility")
 
 -- Both customer actions reuse actual input labels and owner-only presentation.
+services.Players.LocalPlayer.CameraMaxZoomDistance = 128
 serve:SetAttribute("InteractionCustomerAction", "Serve")
 serve:SetAttribute("PlotSessionId", 123)
 serve.KeyboardKeyCode = { Name = "F" }
@@ -63,6 +66,11 @@ for _, action in { "TakeOrder", "Serve" } do
     for _, kind in { "Keyboard", "Gamepad", "Touch" } do
         prompts.PromptShown:Fire(serve, kind)
         local display = gui()
+        check(display.MaxDistance >= 128 + 56.25, "customer draw budget covers maximum normal zoom and order radius")
+        check(
+            serve.MaxActivationDistance == 10 and not serve.RequiresLineOfSight,
+            "customer draw changes preserve native activation range and LOS policy"
+        )
         local text = display:FindFirstChild("Action")
         local key = if kind == "Keyboard" then "F" elseif kind == "Gamepad" then "ButtonY" else "TAP"
         check(
@@ -99,6 +107,17 @@ for _, action in { "TakeOrder", "Serve" } do
         prompts.PromptHidden:Fire(serve)
     end
 end
+prompts.PromptShown:Fire(serve, "Keyboard")
+local zoomDisplay = gui()
+services.Players.LocalPlayer.CameraMaxZoomDistance = 200
+services.Players.LocalPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Fire()
+check(
+    gui() == zoomDisplay and zoomDisplay.MaxDistance >= 200 + 56.25,
+    "live zoom limit change updates the existing view"
+)
+prompts.PromptHidden:Fire(serve)
+check(gui() == nil, "native eligibility still removes the customer view at any zoom")
+services.Players.LocalPlayer.CameraMaxZoomDistance = 128
 for _, scale in { 0.75, 1, 1.5 } do
     root.Size = env.Vector3.new(2, 2 * scale, 1)
     serveOrigin.Position = env.Vector3.new(0, 2.5 * scale + 0.35, 0)
