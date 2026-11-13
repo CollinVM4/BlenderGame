@@ -1255,16 +1255,6 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     for _, property in { "TouchEnabled", "GamepadEnabled" } do
         table.insert(connections, UIS:GetPropertyChangedSignal(property):Connect(schedule))
     end
-    table.insert(
-        connections,
-        StarterGui.CoreGuiChangedSignal:Connect(function(kind)
-            if kind == Enum.CoreGuiType.Backpack or kind == Enum.CoreGuiType.All then
-                if not mutating and not restoring then
-                    schedule()
-                end
-            end
-        end)
-    )
     cameraChanged()
     -- Synchronous clearing before the deferred first render/data collection.
     local _, initialBar = Gui.Find(playerGui)

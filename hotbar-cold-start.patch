@@ -1,0 +1,103 @@
+diff --git a/src/client/Controllers/HotbarController.luau b/src/client/Controllers/HotbarController.luau
+index 6a98c06..297ed9f 100644
+--- a/src/client/Controllers/HotbarController.luau
++++ b/src/client/Controllers/HotbarController.luau
+@@ -1255,16 +1255,6 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+     for _, property in { "TouchEnabled", "GamepadEnabled" } do
+         table.insert(connections, UIS:GetPropertyChangedSignal(property):Connect(schedule))
+     end
+-    table.insert(
+-        connections,
+-        StarterGui.CoreGuiChangedSignal:Connect(function(kind)
+-            if kind == Enum.CoreGuiType.Backpack or kind == Enum.CoreGuiType.All then
+-                if not mutating and not restoring then
+-                    schedule()
+-                end
+-            end
+-        end)
+-    )
+     cameraChanged()
+     -- Synchronous clearing before the deferred first render/data collection.
+     local _, initialBar = Gui.Find(playerGui)
+diff --git a/tests/hotbar.spec.luau b/tests/hotbar.spec.luau
+index 4f03ed1..3ec8efe 100644
+--- a/tests/hotbar.spec.luau
++++ b/tests/hotbar.spec.luau
+@@ -382,7 +382,14 @@ new = function(class, name, parent)
+     object.Parent = parent
+     return object
+ end
+-local core = { Enabled = true, Fail = false, Calls = {}, CoreGuiChangedSignal = signal() }
++local core = setmetatable({ Enabled = true, Fail = false, Calls = {} }, {
++    __index = function(_, key)
++        if key == "CoreGuiChangedSignal" then
++            error("CoreGuiChangedSignal requires RobloxScript capability")
++        end
++        return nil
++    end,
++})
+ function core:GetCoreGuiEnabled()
+     if self.ReadFail then
+         error("CoreGui state unavailable")
+@@ -397,7 +404,6 @@ function core:SetCoreGuiEnabled(_, enabled)
+     if not self.IgnoreWrite then
+         self.Enabled = enabled
+     end
+-    self.CoreGuiChangedSignal:Fire(Enum.CoreGuiType.Backpack, self.Enabled)
+ end
+ local cas = { Actions = {}, Binds = 0, Live = 0 }
+ function cas:BindAction(name, fn, touch, ...)
+@@ -1909,6 +1915,21 @@ check(Controller.Classify((function()
+     return tool
+ end)()) == "Ice", "classification priority")
+ -- Startup, transient measurements, and ownership recovery use the real controller.
++uis.TouchEnabled = true
++for _, pixels in { v(390, 844), v(844, 390) } do
++    local f = fixture(true)
++    f.Root.Pixels = pixels
++    f.Tool("Apple", "Apple", 1)
++    local stop = Controller.Start(f.Player, f.PlayerGui)
++    check(core.Enabled and not f.Bar.Visible, "cold start exposes only the native hotbar before handoff")
++    flush()
++    check(
++        not core.Enabled and f.Bar.Visible and #visible(f) == 1 and cas.Actions.HotbarSelect,
++        "cold start exposes only the usable custom hotbar without an orientation change"
++    )
++    stop()
++    flush()
++end
+ for _, pixels in { v(390, 844), v(844, 390) } do
+     local f = fixture(true)
+     f.Root.Pixels = v(0, 0)
+@@ -1948,6 +1969,7 @@ for _, pixels in { v(390, 844), v(844, 390) } do
+     stop()
+     flush()
+ end
++uis.TouchEnabled = false
+ do
+     local f = fixture(true)
+     f.Tool("Apple", "Apple", 1)
+@@ -1968,11 +1990,11 @@ do
+     f.PlayerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Fire()
+     flush()
+     check(not core.Enabled and f.Bar.Visible, "later lifecycle retries an exhausted handoff")
+-    -- A different owner can enable native Backpack; usable custom UI reasserts once.
++    -- A public layout event can recheck ownership after a CoreGui state change.
+     core.Enabled = true
+-    core.CoreGuiChangedSignal:Fire(Enum.CoreGuiType.Backpack, true)
++    guiService:GetPropertyChangedSignal("TopbarInset"):Fire()
+     flush()
+-    check(not core.Enabled and f.Bar.Visible, "ownership signal reasserts a usable custom hotbar")
++    check(not core.Enabled and f.Bar.Visible, "public layout event reasserts a usable custom hotbar")
+     stop()
+     flush()
+ end
+@@ -2083,7 +2105,7 @@ do
+     -- Replace the authored hierarchy in the same session during a failed handoff.
+     core.Enabled = true
+     core.Fail = true
+-    core.CoreGuiChangedSignal:Fire(Enum.CoreGuiType.Backpack, true)
++    guiService:GetPropertyChangedSignal("TopbarInset"):Fire()
+     flush()
+     root.Parent = nil
+     flush()
