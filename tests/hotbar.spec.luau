@@ -472,6 +472,20 @@ local services = {
     Players = {},
     ReplicatedStorage = { Shared = { IngredientPreviewGeometry = "Geometry" } },
 }
+local diagnosticEvents = {}
+services.HttpService = {
+    GenerateGUID = function()
+        return "diagnostic-module"
+    end,
+    JSONEncode = function(_, event)
+        table.insert(diagnosticEvents, event)
+        return event.kind
+    end,
+}
+function core:GetDescendants()
+    return {}
+end
+local testWorkspace = new("Workspace")
 local modules = {
     IngredientViewport = ingredientViewport,
     Geometry = {
@@ -490,6 +504,9 @@ local function requireModule(name)
     end
     local script = {
         Destroying = signal(),
+        GetFullName = function()
+            return "Player.PlayerScripts.Client.Controllers.HotbarController"
+        end,
         Parent = {
             UIRegistry = "UIRegistry",
             Parent = {
@@ -497,6 +514,7 @@ local function requireModule(name)
                     HotbarGui = "HotbarGui",
                     IngredientViewport = "IngredientViewport",
                     UIRegistry = "UIRegistry",
+                    HotbarDiagnostic = "HotbarDiagnostic",
                 },
             },
         },
@@ -506,7 +524,8 @@ local function requireModule(name)
         fn,
         setmetatable({
             script = script,
-            workspace = new("Workspace"),
+            workspace = testWorkspace,
+            print = if name == "HotbarDiagnostic" then function() end else print,
             require = requireModule,
             game = {
                 GetService = function(_, key)
@@ -687,6 +706,67 @@ local function screenFixture(width, height)
     new("ImageLabel", "IceGunImage", card).Image = "export-ice-art"
     f.Tool("Apple", "Apple", 1)
     return f
+end
+if testCase == "all" or testCase == "diagnostic" then
+    local f = fixture(true)
+    f.Player.UserId = 123
+    local tool = f.Tool("Apple", "Apple", 1)
+    testWorkspace:SetAttribute("HotbarDiagnosticUserId", 456)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    check(#diagnosticEvents == 0, "diagnostic does not run for an unselected player")
+    stop()
+    flush()
+    testWorkspace:SetAttribute("HotbarDiagnosticUserId", 123)
+    core.NativeVisible, core.DeferNativeUpdate = true, true
+    stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local readFalse, wroteFalse, unknownPixels, boundBar = false, false, false, false
+    for _, event in diagnosticEvents do
+        readFalse = readFalse or (event.kind == "backpackRead" and event.data.result == "false")
+        wroteFalse = wroteFalse or (event.kind == "backpackWrite" and event.data.requested == false)
+        unknownPixels = unknownPixels
+            or (event.kind == "snapshot" and event.data.nativeRendered == "UNKNOWN: compare phone screenshot")
+        boundBar = boundBar or event.kind == "controllerBar"
+    end
+    check(readFalse and wroteFalse and boundBar, "opt-in records actual controller reads, writes and owned bar")
+    check(unknownPixels and core.NativeVisible, "API false never claims native rendered pixels are hidden")
+    visible(f)[1].Activated:Fire()
+    flush()
+    check(tool.Parent == f.Character, "diagnostic preserves Tool selection")
+    local duplicate = f.Bar:Clone()
+    duplicate.Parent = f.Bar.Parent
+    duplicate.Visible = false
+    local overlay
+    for _, child in f.PlayerGui:GetChildren() do
+        if string.find(child.Name, "HotbarDiagnostic_", 1, true) == 1 then
+            overlay = child
+        end
+    end
+    table.clear(diagnosticEvents)
+    assert(overlay):FindFirstChild("Capture").Activated:Fire()
+    local paths, hidden = {}, false
+    for _, event in diagnosticEvents do
+        if event.kind == "liveGui" and string.match(event.data.instance, "%.Hotbar$") then
+            paths[event.data.instance] = true
+            hidden = hidden or not event.data.effectiveVisible
+        end
+    end
+    local bars = 0
+    for _ in paths do
+        bars += 1
+    end
+    check(bars == 2 and hidden, "capture distinguishes same-path bars and hidden visibility")
+    duplicate:Destroy()
+    stop()
+    flush()
+    check(core.Enabled, "diagnostic preserves native fallback")
+    testWorkspace:SetAttribute("HotbarDiagnosticUserId", nil)
+    core.NativeVisible, core.DeferNativeUpdate = nil, nil
+    if testCase == "diagnostic" then
+        print("Hotbar diagnostic contracts passed")
+        return
+    end
 end
 if testCase == "all" or testCase == "reparent" then
     do

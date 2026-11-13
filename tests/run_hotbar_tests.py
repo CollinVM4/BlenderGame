@@ -11,11 +11,12 @@ from framewisp_export import load_prepared_export
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(__doc__)
 parser.add_argument("--luau", default="luau")
-parser.add_argument("--case", choices=("all", "aspect", "template", "dock-portrait", "dock-landscape", "docking", "reparent"), default="all")
+parser.add_argument("--case", choices=("all", "diagnostic", "aspect", "template", "dock-portrait", "dock-landscape", "docking", "reparent"), default="all")
 args = parser.parse_args()
 paths = {
     "UIRegistry": "src/client/UI/UIRegistry.luau",
     "HotbarGui": "src/client/UI/HotbarGui.luau",
+    "HotbarDiagnostic": "src/client/UI/HotbarDiagnostic.luau",
     "UpgradesGui": "src/client/UI/UpgradesGui.luau",
     "Controller": "src/client/Controllers/HotbarController.luau",
 }

@@ -128,6 +128,10 @@ end
 function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     sessionVersion += 1
     local session = sessionVersion
+    local diagnosticUser = workspace:GetAttribute("HotbarDiagnosticUserId")
+    local diagnostic = if typeof(diagnosticUser) == "number" and diagnosticUser == player.UserId
+        then require(script.Parent.Parent.UI.HotbarDiagnostic).Start(player, playerGui, script, session)
+        else nil
     local stopped, queued, enabled, bound = false, false, false, false
     local mutating = false
     local handoffAttempts = 0
@@ -174,12 +178,21 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         local ok, value = pcall(function()
             return StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.Backpack)
         end)
+        if diagnostic then
+            diagnostic.Record("backpackRead", { ok = ok, result = tostring(value) })
+        end
         return if ok then value else nil
     end
-    local function setCore(value: boolean): boolean
-        pcall(function()
+    local function setCore(value: boolean, reason: string): boolean
+        local ok, message = pcall(function()
             StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, value)
         end)
+        if diagnostic then
+            diagnostic.Record(
+                "backpackWrite",
+                { requested = value, reason = reason, ok = ok, error = if ok then nil else tostring(message) }
+            )
+        end
         return coreState() == value
     end
     local function native()
@@ -200,7 +213,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             if session ~= sessionVersion or version ~= coreVersion or enabled then
                 return
             end
-            restorePending = not (coreState() == true or setCore(true))
+            restorePending = not (coreState() == true or setCore(true, "native fallback/restore"))
             if restorePending and attempt < 8 then
                 task.delay(0.25, function()
                     restore(attempt + 1)
@@ -656,6 +669,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local function setup(nextView: Gui.View): boolean
         view = nextView
         local bar = nextView.Bar
+        if diagnostic then
+            diagnostic.Bind(bar)
+        end
         local metrics = {}
         for index, slot in nextView.Slots do
             metrics[index] = Gui.Metrics(slot, nextView.Root)
@@ -1082,7 +1098,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         handoffAttempts += 1
         coreVersion += 1 -- cancel older restoration before the new handoff
         restoring, restorePending = false, false
-        if setCore(false) then
+        if setCore(false, "usable custom handoff") then
             enabled = true
             retryQueued = false
             activateKeys()
@@ -1101,7 +1117,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                         then
                             return
                         end
-                        if not setCore(false) then
+                        if not setCore(false, "existing touch reassertion " .. tostring(seconds)) then
                             schedule()
                         end
                     end)
@@ -1316,6 +1332,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         table.clear(roots)
         release()
+        if diagnostic then
+            diagnostic.Stop()
+        end
     end
     table.insert(connections, playerGui.Destroying:Connect(stopSession))
     return stopSession
