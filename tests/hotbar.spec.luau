@@ -403,6 +403,9 @@ function core:SetCoreGuiEnabled(_, enabled)
     end
     if not self.IgnoreWrite then
         self.Enabled = enabled
+        if self.NativeVisible ~= nil and not self.DeferNativeUpdate then
+            self.NativeVisible = enabled
+        end
     end
 end
 local cas = { Actions = {}, Binds = 0, Live = 0 }
@@ -1970,6 +1973,43 @@ for _, pixels in { v(390, 844), v(844, 390) } do
     flush()
 end
 uis.TouchEnabled = false
+for _, resetRequestedState in { false, true } do
+    local f = fixture(true)
+    uis.TouchEnabled = true
+    f.Root.Pixels = v(844, 390)
+    f.Tool("Apple", "Apple", 1)
+    core.NativeVisible, core.DeferNativeUpdate = true, true
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    check(not core.Enabled and f.Bar.Visible, "mobile handoff initially verifies the requested state")
+    check(core.NativeVisible, "native UI can still be visible while the request is already disabled")
+    -- Late Roblox startup may leave the rendering stale or reset the request
+    -- silently. Neither requires a viewport, inventory, or orientation change.
+    core.Enabled = resetRequestedState
+    core.DeferNativeUpdate = false
+    timers()
+    check(not core.Enabled and not core.NativeVisible and f.Bar.Visible, "cold start settles to custom only")
+    local calls = #core.Calls
+    timers()
+    check(#core.Calls == calls, "successful mobile handoff verification is bounded")
+    stop()
+    timers()
+    check(core.Enabled and core.NativeVisible and not f.Bar.Visible, "teardown restores native access")
+    core.NativeVisible = nil
+    uis.TouchEnabled = false
+end
+do
+    local f = fixture(true)
+    uis.TouchEnabled = true
+    f.Root.Pixels = v(844, 390)
+    f.Tool("Apple", "Apple", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    stop()
+    timers()
+    check(core.Enabled and not f.Bar.Visible, "pending startup reassertions cannot undo native fallback")
+    uis.TouchEnabled = false
+end
 do
     local f = fixture(true)
     f.Tool("Apple", "Apple", 1)

@@ -1086,6 +1086,27 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             enabled = true
             retryQueued = false
             activateKeys()
+            if UIS.TouchEnabled then
+                local version = coreVersion
+                -- CoreGui's requested state can settle before the native touch
+                -- Backpack finishes initializing. Reapply on a bounded schedule.
+                for _, seconds in { 0.25, 1 } do
+                    task.delay(seconds, function()
+                        if
+                            stopped
+                            or session ~= sessionVersion
+                            or version ~= coreVersion
+                            or view ~= current
+                            or not enabled
+                        then
+                            return
+                        end
+                        if not setCore(false) then
+                            schedule()
+                        end
+                    end)
+                end
+            end
         else
             enabled = false
             if bound then
