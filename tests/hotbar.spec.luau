@@ -293,6 +293,10 @@ new = function(class, name, parent)
                     return v(1200, 800)
                 end
                 local pixels = if props.Parent then props.Parent.AbsoluteSize else v(1200, 800)
+                if props.Parent and props.Parent:IsA("ScrollingFrame") then
+                    local canvas = props.Parent.AbsoluteCanvasSize
+                    pixels = v(math.max(pixels.X, canvas.X), math.max(pixels.Y, canvas.Y))
+                end
                 local result = v(
                     pixels.X * props.Size.X.Scale + props.Size.X.Offset,
                     pixels.Y * props.Size.Y.Scale + props.Size.Y.Offset
@@ -1085,7 +1089,15 @@ if testCase == "all" or testCase == "docking" then
         check(not core.Enabled, name .. " custom bar renders")
         near(-f.Bar.Position.Y.Offset, bottom, name .. " safe bottom")
         near(f.Bar.AbsoluteSize.Y, target, name .. " adaptive height")
-        near(f.Bar.AbsoluteSize.X, math.min(width * 0.483333319, width * 0.9, 960), name .. " authored width")
+        local authoredWidth = math.min(width * 0.483333319, width * 0.9, 960)
+        if input == "touch" then
+            check(
+                f.Bar.AbsoluteSize.X >= authoredWidth and f.Bar.AbsoluteSize.X <= width * 0.9 + 0.01,
+                name .. " safe width"
+            )
+        else
+            near(f.Bar.AbsoluteSize.X, authoredWidth, name .. " authored width")
+        end
         check(f.Bar.AnchorPoint.X == 0.5 and f.Bar.AnchorPoint.Y == 1, name .. " bottom anchor")
         local buttons = visible(f)
         check(#buttons == 12, name .. " overfill retained")
@@ -1752,7 +1764,6 @@ for _, viewport in { v(320, 568), v(768, 1024), v(800, 600), v(1920, 1080), v(19
         check(size.X >= 48 and size.Y >= 48, "button hit area meets both floors")
         local floor = button:FindFirstChildOfClass("UISizeConstraint").MinSize
         check(floor.X == 48 and floor.Y == 48, "floor belongs to the authored button")
-        check(button.Size.X.Offset == 0 and button.Size.Y.Offset == 0, "slot sizes use scale")
         check(icon.ScaleType == Enum.ScaleType.Fit, "image icons fit rather than stretch")
         local constraint = text:FindFirstChildOfClass("UITextSizeConstraint")
         check(
@@ -2029,8 +2040,7 @@ for _, pixels in { v(390, 844), v(844, 390) } do
     flush()
     local button = visible(f)[1]
     check(core.Enabled, "stale scroll measurement cannot finish the first handoff")
-    local expectedWidth = f.Bar.AbsoluteSize.X
-    check(button.Size.X.Scale >= 48 / expectedWidth, "slot floor derives from new bar bounds, not stale scroll")
+    check(button.AbsoluteSize.X >= 48, "slot floor derives from new bar bounds, not stale scroll")
     scroll.Pixels = nil
     scroll:GetPropertyChangedSignal("AbsoluteSize"):Fire()
     flush()
@@ -2053,6 +2063,67 @@ for _, pixels in { v(390, 844), v(844, 390) } do
     flush()
 end
 uis.TouchEnabled = false
+for _, pixels in { v(390, 844), v(844, 390) } do
+    local f = fixture(true)
+    uis.TouchEnabled = true
+    f.Root.Pixels = pixels
+    core.NativeVisible = true
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    timers()
+    check(not core.Enabled and not f.Bar.Visible, "empty inventory has no visible custom slots")
+    -- Simulate the native GUI becoming visible after the original handoff
+    -- and its follow-up attempts, without changing the stored setting.
+    core.NativeVisible = true
+    local tool = f.Tool("Apple", "Apple", 1)
+    flush()
+    check(not core.NativeVisible and f.Bar.Visible, "first Tool refreshes touch handoff without rotation")
+    core.NativeVisible = true
+    new("ScreenGui", "TouchGui", f.PlayerGui)
+    flush()
+    check(not core.NativeVisible and f.Bar.Visible, "late TouchGui refreshes a usable custom handoff")
+    visible(f)[1].Activated:Fire()
+    flush()
+    check(tool.Parent == f.Character, "first Tool is tappable after cold-start handoff")
+    stop()
+    timers()
+    core.NativeVisible = nil
+    uis.TouchEnabled = false
+end
+do
+    local f = fixture(true)
+    f.Root.Pixels = v(390, 844)
+    uis.TouchEnabled = true
+    local tools = {}
+    for i = 1, 9 do
+        tools[i] = f.Tool("Apple", "Apple", i)
+    end
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local buttons = visible(f)
+    local scroll = f.Bar:FindFirstChild("HotbarScroll")
+    local width = scroll.AbsoluteWindowSize.X
+    check(width > 390 * 0.483333319 and width <= 351, "full portrait bar uses more safe width")
+    check(scroll.ScrollingEnabled and #buttons == 9, "all nine touch slots have a scrollable row")
+    buttons[1].Activated:Fire()
+    flush()
+    local endPosition = scroll.AbsoluteCanvasSize.X - width
+    check(endPosition > 0, "nine minimum-size slots overflow in portrait")
+    scroll.CanvasPosition = v(endPosition, 0)
+    buttons[1]:GetPropertyChangedSignal("AbsolutePosition"):Fire()
+    scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Fire()
+    flush()
+    near(scroll.CanvasPosition.X, endPosition, "layout leaves the user at the swiped position with slot one equipped")
+    local last = buttons[9]
+    local left = last.AbsolutePosition.X - scroll.AbsolutePosition.X
+    check(left >= 0 and left + last.AbsoluteSize.X <= width + 1, "last slot fully fits at the end of the swipe")
+    last.Activated:Fire()
+    flush()
+    check(tools[9].Parent == f.Character, "last overflow slot equips by touch")
+    stop()
+    timers()
+    uis.TouchEnabled = false
+end
 for _, resetRequestedState in { false, true } do
     local f = fixture(true)
     uis.TouchEnabled = true

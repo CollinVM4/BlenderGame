@@ -163,6 +163,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local ownedLayout = false
     local savedLayout: any = nil
     local savedBar: any = nil
+    local authoredGap = UDim.new(0, 0)
+    local equippedButton: GuiButton? = nil
+    local pendingReveal: GuiButton? = nil
+    local touchBarShown = false
+    local handoffTouchGui: Instance? = nil
     local layoutKey = ""
     local layoutVersion = 0
     local schedule: () -> ()
@@ -197,6 +202,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     end
     local function native()
         enabled = false
+        touchBarShown, handoffTouchGui = false, nil
         if bound then
             CAS:UnbindAction(ACTION)
             bound = false
@@ -264,6 +270,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         recoveryQueued = false
         layoutVersion += 1
         layoutKey = ""
+        equippedButton, pendingReveal = nil, nil
         retryQueued = false
         native()
         disconnect(uiConnections)
@@ -372,16 +379,6 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         minimum.MinSize = Vector2.new(MIN_SLOT_WIDTH, MIN_SLOT_WIDTH)
         slot.Button.Parent = host
         table.insert(pool, binding)
-        table.insert(
-            uiConnections,
-            slot.Button:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
-                if
-                    enabled and ((slot.Selected and slot.Selected.Visible) or GuiService.SelectedObject == slot.Button)
-                then
-                    schedule()
-                end
-            end)
-        )
         clearBinding(binding)
     end
     local function reveal(button: GuiButton)
@@ -398,8 +395,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         elseif right > position + width then
             position = right - width
         end
-        scroll.CanvasPosition =
-            Vector2.new(math.clamp(position, 0, math.max(0, scroll.AbsoluteCanvasSize.X - width)), 0)
+        position = math.clamp(position, 0, math.max(0, scroll.AbsoluteCanvasSize.X - width))
+        if position ~= scroll.CanvasPosition.X then
+            scroll.CanvasPosition = Vector2.new(position, 0)
+        end
     end
     local function resize(): boolean?
         local current = view
@@ -429,6 +428,13 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             return false
         end
         local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
+        if touch and #items >= 9 then
+            -- Give full inventories more room where the existing safe-area
+            -- and action-control checks permit it.
+            local minimumContentWidth = 9 * MIN_SLOT_WIDTH + 8 * authoredGap.Offset
+            local widthForNine = minimumContentWidth / math.max(0.1, 1 - 8 * authoredGap.Scale)
+            desiredWidth = math.max(desiredWidth, widthForNine)
+        end
         local barWidth = pixels.X * math.min(0.9, MAX_WIDTH / pixels.X, desiredWidth / pixels.X)
         local origin = parent.AbsolutePosition
         local center = origin.X + pixels.X / 2
@@ -510,9 +516,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                         lift, highest = clearance, button
                     end
                 end
-                -- The host fills the bar. Convert the saved layout gap just as
-                -- the slot loop does; the outer frame never grows for overflow.
-                local gap = layout.Padding.Scale * barWidth + layout.Padding.Offset
+                -- Use the same gap as the slot layout for collision clearance.
+                local gap = math.floor(authoredGap.Scale * barWidth + authoredGap.Offset + 0.5)
                 local minimumWidth = 2 * MIN_SLOT_WIDTH + gap
                 if allowedWidth >= minimumWidth then
                     barWidth = allowedWidth
@@ -564,7 +569,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 + padding.PaddingLeft.Offset
                 + padding.PaddingRight.Offset
             else 0
-        local gap = layout.Padding.Scale * width + layout.Padding.Offset
+        local gap = math.floor(authoredGap.Scale * width + authoredGap.Offset + 0.5)
+        local layoutPadding = UDim.new(0, gap)
+        if layout.Padding ~= layoutPadding then
+            layout.Padding = layoutPadding
+        end
         local nominal = math.max(0, (width - horizontalPadding - 8 * gap) / 9)
         local bandHeight = scrollHeight - scroll.ScrollBarThickness
         local canvas = horizontalPadding
@@ -620,7 +629,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
                 return false
             end
-            slot.Button.Size = UDim2.fromScale(slotWidth / width, height / scrollHeight)
+            local slotSize = UDim2.fromOffset(slotWidth, height)
+            if slot.Button.Size ~= slotSize then
+                slot.Button.Size = slotSize
+            end
             local labelHeight = math.min(
                 available,
                 math.max((bounds.Y + 1) / height, metrics.LabelHeight, metrics.TextMax * 1.2 / height)
@@ -648,21 +660,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 canvas += slotWidth + gap
             end
         end
-        scroll.CanvasSize = UDim2.fromScale(math.max(0, canvas - (if #items > 0 then gap else 0)) / width, 0)
+        local canvasSize = UDim2.fromOffset(math.ceil(math.max(0, canvas - (if #items > 0 then gap else 0))), 0)
+        if scroll.CanvasSize ~= canvasSize then
+            scroll.CanvasSize = canvasSize
+        end
         local measured = scroll.AbsoluteSize
         if math.abs(measured.X - barWidth) > 1 or math.abs(measured.Y - targetHeight) > 1 then
             return nil
         end
-        for _, binding in pool do
-            if
-                binding.Slot.Button.Visible
-                and (
-                    (binding.Slot.Selected and binding.Slot.Selected.Visible)
-                    or GuiService.SelectedObject == binding.Slot.Button
-                )
-            then
-                reveal(binding.Slot.Button)
-            end
+        local target = pendingReveal
+        pendingReveal = nil
+        if target and target.Visible and target.Parent == scroll then
+            reveal(target)
         end
         return true
     end
@@ -765,6 +774,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         )
         local scroll = host :: ScrollingFrame
         scroll.ScrollingDirection = Enum.ScrollingDirection.X
+        scroll.ScrollingEnabled = true
+        scroll.ClipsDescendants = true
         scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
         scroll.ScrollBarThickness = 4
         local existing = bar:FindFirstChildOfClass("UIListLayout")
@@ -785,8 +796,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             ownedLayout = true
         end
         local list = layout :: UIListLayout
-        local authoredWidth = math.max(1, bar.AbsoluteSize.X)
-        list.Padding = UDim.new(list.Padding.Scale + list.Padding.Offset / authoredWidth, 0)
+        authoredGap = list.Padding
         list.FillDirection, list.SortOrder = Enum.FillDirection.Horizontal, Enum.SortOrder.LayoutOrder
         list.HorizontalAlignment = Enum.HorizontalAlignment.Left
         for _, child in bar:GetChildren() do
@@ -977,6 +987,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
         end
         local ordered: { Binding } = {}
+        local nextEquipped: GuiButton? = nil
         for index, item in items do
             local binding = assigned[item.Tool]
             if not binding then
@@ -1039,8 +1050,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 number.Text = if index <= 9 then tostring(index) elseif index == 10 then "0" else ""
             end
             slot.Button.LayoutOrder = index
+            local equipped = item.Tool.Parent == character
             if slot.Selected then
-                slot.Selected.Visible = item.Tool.Parent == character
+                slot.Selected.Visible = equipped
+            end
+            if equipped then
+                nextEquipped = slot.Button
             end
             slot.Button.Visible = true
             ordered[index] = target
@@ -1052,6 +1067,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             binding.Slot.Button.NextSelectionRight = if ordered[index + 1]
                 then ordered[index + 1].Slot.Button
                 else binding.Slot.Button
+        end
+        if nextEquipped ~= equippedButton then
+            equippedButton = nextEquipped
+            if nextEquipped then
+                pendingReveal = nextEquipped
+            end
         end
         local usable = resize()
         if usable == false then
@@ -1083,10 +1104,20 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         recoveryVersion += 1
         recoveryQueued = false
-        current.Bar.Visible = #items > 0
+        local hasItems = #items > 0
+        current.Bar.Visible = hasItems
+        local touch = UIS.TouchEnabled
+        local touchGui = if touch then playerGui:FindFirstChild("TouchGui") else nil
+        if not hasItems or not touch then
+            touchBarShown = false
+        end
+        -- An empty custom bar can hand off before the first Tool or TouchGui
+        -- arrives. Reassert at those startup transitions even if the saved
+        -- CoreGui setting already says that Backpack is disabled.
+        local touchStartup = touch and ((hasItems and not touchBarShown) or touchGui ~= handoffTouchGui)
         -- Reassert ownership only after layout is usable, and verify CoreGui's
         -- requested state rather than treating a successful pcall as a handoff.
-        if enabled and coreState() == false then
+        if enabled and not touchStartup and coreState() == false then
             return
         end
         if retryQueued or handoffAttempts >= 8 then
@@ -1102,7 +1133,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             enabled = true
             retryQueued = false
             activateKeys()
-            if UIS.TouchEnabled then
+            touchBarShown, handoffTouchGui = touch and hasItems, touchGui
+            if touch then
                 local version = coreVersion
                 -- CoreGui's requested state can settle before the native touch
                 -- Backpack finishes initializing. Reapply on a bounded schedule.
@@ -1272,7 +1304,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
             for _, binding in pool do
                 if binding.Slot.Button.Visible and GuiService.SelectedObject == binding.Slot.Button then
-                    reveal(binding.Slot.Button)
+                    pendingReveal = binding.Slot.Button
+                    schedule()
+                    break
                 end
             end
         end)
