@@ -27,7 +27,8 @@ type State = {
     NextCustomerInteractedAt: number?,
 }
 local states: { [Player]: State } = {}
-local MARKET_ZONE_PADDING = 50
+local MARKET_ZONE_PADDING = 250
+local MARKET_JUMP_ZONE_PADDING = 50
 local function reachedMarketTarget(player: Player, stage: string): boolean
     local target = Targets.GetRoots(nil, stage)[1]
     if not target or not target:IsA("BasePart") then
@@ -47,7 +48,8 @@ local function reachedMarketTarget(player: Player, stage: string): boolean
         math.clamp(point.Y, -half.Y, half.Y),
         math.clamp(point.Z, -half.Z, half.Z)
     )
-    return (point - nearest).Magnitude <= MARKET_ZONE_PADDING
+    local padding = if stage == "Market" then MARKET_ZONE_PADDING else MARKET_JUMP_ZONE_PADDING
+    return (point - nearest).Magnitude <= padding
 end
 local function climbedOwnLadder(player: Player, plot: Instance?): boolean
     local character = player.Character
@@ -232,7 +234,11 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         return "Market", nil, nil
     end
     state.JumpStartedAt = state.JumpStartedAt or os.clock()
-    if os.clock() - (state.JumpStartedAt :: number) < 7 or not reachedMarketTarget(player, "MarketJump") then
+    local jumpTargetMissing = #Targets.GetRoots(nil, "MarketJump") == 0
+    if
+        not reachedMarketTarget(player, "MarketJump")
+        or (jumpTargetMissing and os.clock() - (state.JumpStartedAt :: number) < 7)
+    then
         return "MarketJump", nil, nil
     end
     return "Complete", nil, nil

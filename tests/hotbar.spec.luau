@@ -382,13 +382,22 @@ new = function(class, name, parent)
     object.Parent = parent
     return object
 end
-local core = { Enabled = true, Fail = false, Calls = {} }
+local core = { Enabled = true, Fail = false, Calls = {}, CoreGuiChangedSignal = signal() }
+function core:GetCoreGuiEnabled()
+    if self.ReadFail then
+        error("CoreGui state unavailable")
+    end
+    return self.Enabled
+end
 function core:SetCoreGuiEnabled(_, enabled)
     table.insert(self.Calls, enabled)
     if self.Fail then
         error("CoreGui unavailable")
     end
-    self.Enabled = enabled
+    if not self.IgnoreWrite then
+        self.Enabled = enabled
+    end
+    self.CoreGuiChangedSignal:Fire(Enum.CoreGuiType.Backpack, self.Enabled)
 end
 local cas = { Actions = {}, Binds = 0, Live = 0 }
 function cas:BindAction(name, fn, touch, ...)
@@ -412,6 +421,9 @@ function guiService:GetGuiInset()
     return v(0, 36), v(0, self.BottomInset)
 end
 local uis = {
+    GetPropertyChangedSignal = function()
+        return signal()
+    end,
     TouchEnabled = false,
     GamepadEnabled = false,
     Focus = nil,
@@ -468,6 +480,7 @@ local function requireModule(name)
         return modules[name]
     end
     local script = {
+        Destroying = signal(),
         Parent = {
             UIRegistry = "UIRegistry",
             Parent = {
@@ -484,6 +497,7 @@ local function requireModule(name)
         fn,
         setmetatable({
             script = script,
+            workspace = new("Workspace"),
             require = requireModule,
             game = {
                 GetService = function(_, key)
@@ -1108,7 +1122,7 @@ if testCase == "all" or testCase == "docking" then
         uis.GamepadEnabled = true
         tool.Name = "Pear"
         flush()
-        near(-f.Bar.Position.Y.Offset, 31, "touch wins hybrid and reads second inset Y")
+        near(-f.Bar.Position.Y.Offset, 16, "touch uses already inset host without adding device inset twice")
         uis.TouchEnabled = false
         tool.Name = "Apple"
         flush()
@@ -1894,7 +1908,219 @@ check(Controller.Classify((function()
     tool:SetAttribute("IceGunWeapon", true)
     return tool
 end)()) == "Ice", "classification priority")
-print("Hotbar contracts passed:", count)
+-- Startup, transient measurements, and ownership recovery use the real controller.
+for _, pixels in { v(390, 844), v(844, 390) } do
+    local f = fixture(true)
+    f.Root.Pixels = v(0, 0)
+    local tool = f.Tool("Apple", "Apple", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local screen = f.Bar.Parent
+    local scroll = f.Bar:FindFirstChild("HotbarScroll")
+    check(core.Enabled and not cas.Actions.HotbarSelect, "zero cold start leaves native access")
+    -- Emulate the previous scroll measurement surviving the parent write.
+    scroll.Pixels = v(1200, 800)
+    f.Root.Pixels = pixels
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    local button = visible(f)[1]
+    check(core.Enabled, "stale scroll measurement cannot finish the first handoff")
+    local expectedWidth = f.Bar.AbsoluteSize.X
+    check(button.Size.X.Scale >= 48 / expectedWidth, "slot floor derives from new bar bounds, not stale scroll")
+    scroll.Pixels = nil
+    scroll:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    check(not core.Enabled and cas.Actions.HotbarSelect, "cold start hands off after usable geometry")
+    button.Activated:Fire()
+    flush()
+    scroll.CanvasPosition = v(20, 0)
+    local keys = cas.Actions.HotbarSelect
+    f.Root.Pixels = v(0, 0)
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    check(not core.Enabled and cas.Actions.HotbarSelect == keys, "transient zero keeps custom ownership and input")
+    f.Root.Pixels = pixels
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    timers()
+    check(f.Bar.Parent == screen and f.Bar:FindFirstChild("HotbarScroll") == scroll, "resize retains same usable UI")
+    check(visible(f)[1] == button and tool.Parent == f.Character, "resize retains selection and authored slot")
+    stop()
+    flush()
+end
+do
+    local f = fixture(true)
+    f.Tool("Apple", "Apple", 1)
+    core.IgnoreWrite = true
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    for _ = 1, 10 do
+        timers()
+    end
+    check(
+        core.Enabled and not f.Bar.Visible and not cas.Actions.HotbarSelect,
+        "unverified disable falls back to one native interface"
+    )
+    local calls = #core.Calls
+    timers()
+    check(#core.Calls == calls, "failed handoff has bounded retries")
+    core.IgnoreWrite = false
+    f.PlayerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Fire()
+    flush()
+    check(not core.Enabled and f.Bar.Visible, "later lifecycle retries an exhausted handoff")
+    -- A different owner can enable native Backpack; usable custom UI reasserts once.
+    core.Enabled = true
+    core.CoreGuiChangedSignal:Fire(Enum.CoreGuiType.Backpack, true)
+    flush()
+    check(not core.Enabled and f.Bar.Visible, "ownership signal reasserts a usable custom hotbar")
+    stop()
+    flush()
+end
+do
+    local f = fixture(true)
+    f.Tool("Apple", "Apple", 1)
+    core.Fail = true
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local oldHost = f.Bar.Parent
+    oldHost:Destroy()
+    flush()
+    core.Fail = false
+    local replacement = fixture(true)
+    replacement.Tool("Pear", "Pear", 2)
+    local stopReplacement = Controller.Start(replacement.Player, replacement.PlayerGui)
+    flush()
+    timers()
+    stop()
+    timers()
+    check(not core.Enabled and replacement.Bar.Visible, "old handoff and teardown cannot undo replacement ownership")
+    stopReplacement()
+    flush()
+end
+do
+    local f = fixture(true)
+    f.Tool("Apple", "Apple", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    core.Fail = true
+    stop()
+    flush()
+    check(not core.Enabled, "failed native restoration remains unconfirmed")
+    core.Fail = false
+    timers()
+    check(core.Enabled, "pending native restoration retries after teardown")
+end
+do
+    local f = fixture(true)
+    f.Root.Pixels = v(390, 844)
+    for i = 1, 12 do
+        f.Tool("Apple", "Apple", i)
+    end
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local screen, scroll = f.Bar.Parent, f.Bar:FindFirstChild("HotbarScroll")
+    local button = visible(f)[12]
+    button.Activated:Fire()
+    guiService.SelectedObject = button
+    flush()
+    local position = scroll.CanvasPosition.X
+    check(position > 0, "overflow selection begins in a valid scrolled position")
+    f.Root.Pixels = v(0, 0)
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    f.Root.Pixels = v(390, 844)
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    check(
+        scroll.CanvasPosition.X == position and guiService.SelectedObject == button,
+        "transient geometry retains scroll and gamepad selection"
+    )
+    screen.Visible = false
+    flush()
+    check(core.Enabled and not f.Bar.Visible, "hidden host restores native access")
+    screen.Visible = true
+    flush()
+    check(not core.Enabled and #visible(f) == 12, "same healthy host regains ownership after visibility recovery")
+    f.Root.Pixels = v(0, 0)
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    timers()
+    check(core.Enabled and not f.Bar.Visible, "persistent pending bounds restore native after bounded recovery")
+    f.Root.Pixels = v(844, 390)
+    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    check(not core.Enabled and #visible(f) == 12, "valid bounds recover all overflow tools without respawn")
+    stop()
+    flush()
+end
+do
+    local f = fixture(true)
+    local tool = f.Tool("Apple", "Apple", 1)
+    core.ReadFail = true
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    check(not core.Enabled and cas.Actions.HotbarSelect, "unavailable CoreGui reads retain usable custom input")
+    visible(f)[1].Activated:Fire()
+    flush()
+    check(tool.Parent == f.Character, "unknown CoreGui state never blocks custom tool access")
+    core.ReadFail = false
+    timers()
+    check(not core.Enabled, "read availability verifies the handoff")
+    stop()
+    flush()
+end
+do
+    local f = fixture(true)
+    local first = f.Tool("Apple", "Apple", 1)
+    local root = f.Root
+    root.Parent = nil
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    check(core.Enabled and not cas.Actions.HotbarSelect, "late Framewisp keeps native available")
+    root.Parent = f.PlayerGui
+    flush()
+    check(not core.Enabled and #visible(f) == 1, "late export uses normal setup without rotation")
+    -- Replace the authored hierarchy in the same session during a failed handoff.
+    core.Enabled = true
+    core.Fail = true
+    core.CoreGuiChangedSignal:Fire(Enum.CoreGuiType.Backpack, true)
+    flush()
+    root.Parent = nil
+    flush()
+    local replacement = fixture(true)
+    replacement.Root.Parent = f.PlayerGui
+    core.Fail = false
+    flush()
+    timers()
+    check(not core.Enabled and replacement.Bar.Visible, "same-session UI replacement completes pending ownership")
+    visible(replacement)[1].Activated:Fire()
+    flush()
+    check(first.Parent == f.Character, "replacement binds the existing player's inventory once")
+    stop()
+    flush()
+end
+do
+    local f = fixture(true)
+    f.Tool("Apple", "Apple", 1)
+    f.PlayerGui.Parent = nil
+    services.Players.LocalPlayer = f.Player
+    Controller.Init()
+    flush()
+    check(core.Enabled, "Init subscribes before late PlayerGui arrival")
+    f.PlayerGui.Parent = f.Player
+    flush()
+    check(not core.Enabled and #visible(f) == 1, "late PlayerGui starts the normal session")
+    f.PlayerGui.Parent = nil
+    flush()
+    check(core.Enabled, "removed PlayerGui releases ownership")
+    local nextGui = new("PlayerGui", "ReplacementGui", f.Player)
+    f.Root.Parent = nextGui
+    flush()
+    check(not core.Enabled and #visible(f) == 1, "replacement PlayerGui starts one healthy session")
+    Controller.Destroy()
+    flush()
+    check(core.Enabled and not cas.Actions.HotbarSelect, "Init lifecycle teardown restores native")
+end
 
 -- Weapon pinning compacts present items; no reserved gaps.
 do
@@ -1929,3 +2155,4 @@ do
     stop()
     flush()
 end
+print("Hotbar contracts passed:", count)

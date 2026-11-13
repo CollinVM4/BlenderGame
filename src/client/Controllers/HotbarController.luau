@@ -12,6 +12,8 @@ local IngredientViewport = require(script.Parent.Parent.UI.IngredientViewport)
 local Geometry = require(Shared.IngredientPreviewGeometry)
 local Registry = require(script.Parent.Parent.UI.UIRegistry)
 local Controller = {}
+-- A retired session must never restore CoreGui over its replacement.
+local sessionVersion = 0
 local MIN_SLOT_WIDTH = 48
 local BAR_HEIGHT, MAX_WIDTH = 96, 960
 local ACTION = "HotbarSelect"
@@ -124,16 +126,21 @@ local function visual(tool: Tool, icon: ImageLabel): (() -> ())?
 end
 
 function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+    sessionVersion += 1
+    local session = sessionVersion
     local stopped, queued, enabled, bound = false, false, false, false
     local mutating = false
     local handoffAttempts = 0
+    local coreVersion, recoveryVersion = 0, 0
+    local restoring, restorePending = false, false
+    local retryQueued, recoveryQueued = false, false
     local character = player.Character
     local removing = false
     local backpack: Backpack? = nil
     local connections: { RBXScriptConnection } = {}
     local containers: { RBXScriptConnection } = {}
     local uiConnections: { RBXScriptConnection } = {}
-    local controls: { [GuiButton]: boolean } = {}
+    local controls: { [Instance]: { RBXScriptConnection } } = {}
     local observed: { [Tool]: { RBXScriptConnection } } = {}
     local sequence: { [Tool]: number } = setmetatable({}, { __mode = "k" }) :: any
     local serial = 0
@@ -152,33 +159,57 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local ownedLayout = false
     local savedLayout: any = nil
     local savedBar: any = nil
+    local layoutKey = ""
+    local layoutVersion = 0
     local schedule: () -> ()
     local render: () -> ()
+    local queueRender: () -> ()
     local function warning(key: string, message: string)
         if not warnings[key] then
             warnings[key] = true
             warn("HotbarController: " .. message)
         end
     end
+    local function coreState(): boolean?
+        local ok, value = pcall(function()
+            return StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.Backpack)
+        end)
+        return if ok then value else nil
+    end
+    local function setCore(value: boolean): boolean
+        pcall(function()
+            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, value)
+        end)
+        return coreState() == value
+    end
     local function native()
-        -- CoreGui may not have initialized. Retry restoration independently of
-        -- inventory/UI signals; a new successful handoff cancels stale retries.
         enabled = false
         if bound then
             CAS:UnbindAction(ACTION)
             bound = false
         end
+        if restoring then
+            return
+        end
+        coreVersion += 1
+        retryQueued = false
+        local version = coreVersion
+        restorePending = true
+        restoring = true
         local function restore(attempt: number)
-            if enabled then
+            if session ~= sessionVersion or version ~= coreVersion or enabled then
                 return
             end
-            local ok = pcall(function()
-                StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
-            end)
-            if not ok and attempt < 8 then
+            restorePending = not (coreState() == true or setCore(true))
+            if restorePending and attempt < 8 then
                 task.delay(0.25, function()
                     restore(attempt + 1)
                 end)
+            else
+                restoring = false
+                if restorePending then
+                    warning("restore", "native Backpack restoration remains pending after bounded retries")
+                end
             end
         end
         restore(1)
@@ -216,8 +247,16 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local function release()
         local wasMutating = mutating
         mutating = true
+        recoveryVersion += 1
+        recoveryQueued = false
+        layoutVersion += 1
+        layoutKey = ""
+        retryQueued = false
         native()
         disconnect(uiConnections)
+        for _, list in controls do
+            disconnect(list)
+        end
         table.clear(controls)
         for _, binding in pool do
             clearBinding(binding)
@@ -349,7 +388,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         scroll.CanvasPosition =
             Vector2.new(math.clamp(position, 0, math.max(0, scroll.AbsoluteCanvasSize.X - width)), 0)
     end
-    local function resize(): boolean
+    local function resize(): boolean?
         local current = view
         local scroll = host
         if not current or not scroll or not layout then
@@ -364,12 +403,15 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         local touch = UIS.TouchEnabled
         local bottom = 12
         if touch then
-            local _, bottomRightInset = GuiService:GetGuiInset()
-            bottom = math.max(16, bottomRightInset.Y)
+            -- HotbarHost already inherits the ScreenGui's effective inset area.
+            bottom = 16
         elseif UIS.GamepadEnabled then
             bottom = math.ceil(pixels.Y * 0.05)
         end
         local targetHeight = math.clamp(math.floor(pixels.Y * 0.11 + 0.5), 64, BAR_HEIGHT)
+        if pixels.X <= 0 or pixels.Y <= 0 then
+            return nil -- transitional geometry, not a broken custom UI
+        end
         if pixels.X < MIN_SLOT_WIDTH or pixels.Y < targetHeight + bottom + 12 then
             return false
         end
@@ -394,22 +436,50 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                     end
                 end
             end
+            local wanted: { [Instance]: boolean } = {}
+            local function observe(object: Instance, properties: { string })
+                wanted[object] = true
+                if not controls[object] then
+                    local list = { object.AncestryChanged:Connect(schedule) }
+                    for _, property in properties do
+                        table.insert(list, object:GetPropertyChangedSignal(property):Connect(schedule))
+                    end
+                    controls[object] = list
+                end
+            end
             local overlapping: { GuiButton } = {}
             for _, button in buttons do
-                if not controls[button] then
-                    controls[button] = true
-                    for _, property in { "AbsolutePosition", "AbsoluteSize", "Visible" } do
-                        table.insert(uiConnections, button:GetPropertyChangedSignal(property):Connect(schedule))
+                observe(button, { "AbsolutePosition", "AbsoluteSize", "Visible" })
+                local shown = button:IsDescendantOf(playerGui)
+                local ancestor: Instance? = button
+                while ancestor and ancestor ~= playerGui do
+                    if ancestor:IsA("GuiObject") then
+                        shown = shown and ancestor.Visible
+                        if ancestor ~= button then
+                            observe(ancestor, { "AbsolutePosition", "AbsoluteSize", "Visible" })
+                        end
+                    elseif ancestor:IsA("ScreenGui") then
+                        shown = shown and ancestor.Enabled
+                        observe(ancestor, { "Enabled", "ScreenInsets", "IgnoreGuiInset" })
                     end
+                    ancestor = ancestor.Parent
                 end
                 local position, size = button.AbsolutePosition, button.AbsoluteSize
                 if
-                    button.Visible
+                    shown
+                    and size.X > 0
+                    and size.Y > 0
                     and position.Y + size.Y >= origin.Y + pixels.Y * 0.6
                     and position.X - 8 < right
                     and position.X + size.X + 8 > left
                 then
                     table.insert(overlapping, button)
+                end
+            end
+            for object, list in controls do
+                if not wanted[object] then
+                    disconnect(list)
+                    controls[object] = nil
                 end
             end
             if #overlapping > 0 then
@@ -450,10 +520,32 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
         end
         current.Bar.AnchorPoint = Vector2.new(0.5, 1)
-        current.Bar.Position = UDim2.new(0.5, 0, 1, -bottom)
-        current.Bar.Size = UDim2.fromScale(barWidth / pixels.X, targetHeight / pixels.Y)
+        local position = UDim2.new(0.5, 0, 1, -bottom)
+        local size = UDim2.fromScale(barWidth / pixels.X, targetHeight / pixels.Y)
+        if current.Bar.Position ~= position then
+            current.Bar.Position = position
+        end
+        if current.Bar.Size ~= size then
+            current.Bar.Size = size
+        end
+        local key = string.format("%.6f:%.6f:%.6f:%.6f:%.6f", pixels.X, pixels.Y, barWidth, targetHeight, bottom)
+        if key ~= layoutKey then
+            layoutKey = key
+            layoutVersion += 1
+            local version = layoutVersion
+            -- One follow-up per changed layout; further work comes from bounds
+            -- observers. Superseded/replaced UI cannot finish an old layout.
+            task.defer(function()
+                if not stopped and view == current and version == layoutVersion then
+                    queueRender()
+                end
+            end)
+        end
         local padding = scroll:FindFirstChildOfClass("UIPadding")
-        local width = scroll.AbsoluteWindowSize.X
+        -- The owned scroll fills the bar. Derive both from these same validated
+        -- bounds; AbsoluteSize can still contain the previous orientation here.
+        local width = barWidth
+        local scrollHeight = targetHeight
         local horizontalPadding = if padding
             then (padding.PaddingLeft.Scale + padding.PaddingRight.Scale) * width
                 + padding.PaddingLeft.Offset
@@ -461,7 +553,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             else 0
         local gap = layout.Padding.Scale * width + layout.Padding.Offset
         local nominal = math.max(0, (width - horizontalPadding - 8 * gap) / 9)
-        local bandHeight = scroll.AbsoluteSize.Y - scroll.ScrollBarThickness
+        local bandHeight = scrollHeight - scroll.ScrollBarThickness
         local canvas = horizontalPadding
         for _, binding in pool do
             local slot, metrics = binding.Slot, binding.Metrics
@@ -515,7 +607,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
                 return false
             end
-            slot.Button.Size = UDim2.fromScale(slotWidth / width, height / scroll.AbsoluteSize.Y)
+            slot.Button.Size = UDim2.fromScale(slotWidth / width, height / scrollHeight)
             local labelHeight = math.min(
                 available,
                 math.max((bounds.Y + 1) / height, metrics.LabelHeight, metrics.TextMax * 1.2 / height)
@@ -544,13 +636,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
         end
         scroll.CanvasSize = UDim2.fromScale(math.max(0, canvas - (if #items > 0 then gap else 0)) / width, 0)
+        local measured = scroll.AbsoluteSize
+        if math.abs(measured.X - barWidth) > 1 or math.abs(measured.Y - targetHeight) > 1 then
+            return nil
+        end
         for _, binding in pool do
-            if binding.Slot.Button.Visible then
-                local size = binding.Slot.Button.AbsoluteSize
-                if size.X > 0 and size.Y > 0 and (size.X < 48 or size.Y < 48) then
-                    return false
-                end
-            end
             if
                 binding.Slot.Button.Visible
                 and (
@@ -649,6 +739,14 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             scroll.Parent = bar
             host, ownedHost = scroll, true
         end
+        table.insert(
+            uiConnections,
+            bar:GetPropertyChangedSignal("Visible"):Connect(function()
+                if not mutating then
+                    schedule()
+                end
+            end)
+        )
         local scroll = host :: ScrollingFrame
         scroll.ScrollingDirection = Enum.ScrollingDirection.X
         scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
@@ -686,18 +784,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         for index, slot in nextView.Slots do
             bind(slot, false, metrics[index])
         end
-        table.insert(uiConnections, scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
-        if screenHost then
-            table.insert(uiConnections, screenHost:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
+        for _, property in { "AbsoluteSize", "AbsoluteWindowSize", "Visible" } do
+            table.insert(uiConnections, scroll:GetPropertyChangedSignal(property):Connect(schedule))
         end
-        table.insert(
-            uiConnections,
-            list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-                if enabled and not resize() then
-                    release()
-                end
-            end)
-        )
+        for _, property in { "ScreenInsets", "IgnoreGuiInset", "Enabled" } do
+            table.insert(uiConnections, nextView.Root:GetPropertyChangedSignal(property):Connect(schedule))
+        end
+        if screenHost then
+            for _, property in { "AbsoluteSize", "AbsolutePosition", "Visible" } do
+                table.insert(uiConnections, screenHost:GetPropertyChangedSignal(property):Connect(schedule))
+            end
+        end
+        table.insert(uiConnections, list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(schedule))
         return true
     end
     local function activateKeys()
@@ -815,6 +913,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             setup(nextView)
         end
         local current = view :: Gui.View
+        if (screenHost and not screenHost.Visible) or (host and not host.Visible) then
+            current.Bar.Visible = false
+            native()
+            return
+        end
         for _, binding in pool do
             local slot = Gui.Slot(binding.Slot.Button)
             if
@@ -934,42 +1037,94 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 then ordered[index + 1].Slot.Button
                 else binding.Slot.Button
         end
-        current.Bar.Visible = #items > 0
-        if not resize() then
+        local usable = resize()
+        if usable == false then
             warning("layout", "insufficient safe space for accessible hotbar; native Backpack retained")
-            release()
+            current.Bar.Visible = false
+            native()
+            return
+        elseif usable == nil then
+            -- Keep the same slots, selection, and scroll through transient zeros.
+            -- A single bounded recovery handles geometry that never comes back.
+            if not recoveryQueued then
+                recoveryQueued = true
+                recoveryVersion += 1
+                local version = recoveryVersion
+                task.delay(0.5, function()
+                    if stopped or session ~= sessionVersion or version ~= recoveryVersion or view ~= current then
+                        return
+                    end
+                    recoveryQueued = false
+                    if resize() == nil then
+                        current.Bar.Visible = false
+                        native()
+                    else
+                        schedule()
+                    end
+                end)
+            end
             return
         end
-        -- Only hand off after input and the first render (including empty) finish.
-        if not enabled then
-            handoffAttempts += 1
-            local ok = pcall(function()
-                StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
-            end)
-            if ok then
+        recoveryVersion += 1
+        recoveryQueued = false
+        current.Bar.Visible = #items > 0
+        -- Reassert ownership only after layout is usable, and verify CoreGui's
+        -- requested state rather than treating a successful pcall as a handoff.
+        if enabled and coreState() == false then
+            return
+        end
+        if retryQueued or handoffAttempts >= 8 then
+            if coreState() == true then
+                current.Bar.Visible = false
+            end
+            return
+        end
+        handoffAttempts += 1
+        coreVersion += 1 -- cancel older restoration before the new handoff
+        restoring, restorePending = false, false
+        if setCore(false) then
+            enabled = true
+            retryQueued = false
+            activateKeys()
+        else
+            enabled = false
+            if bound then
+                CAS:UnbindAction(ACTION)
+                bound = false
+            end
+            if coreState() == true then
+                current.Bar.Visible = false
+            else
+                -- If CoreGui state cannot be read, retain working custom input
+                -- until native access is confirmed. Never leave both unusable.
                 enabled = true
                 activateKeys()
-            else
-                warning("handoff", "CoreGui handoff failed; custom bindings released")
-                release()
-                if handoffAttempts < 8 then
-                    task.delay(0.25, function()
-                        if not stopped then
-                            schedule()
-                        end
-                    end)
-                end
+            end
+            if handoffAttempts == 8 then
+                warning("handoff", "Backpack handoff unconfirmed; retrying on the next lifecycle event")
+            end
+            if handoffAttempts < 8 and not retryQueued then
+                retryQueued = true
+                local version = coreVersion
+                task.delay(0.25, function()
+                    if stopped or session ~= sessionVersion or version ~= coreVersion or view ~= current then
+                        return
+                    end
+                    retryQueued = false
+                    -- Retry without resetting the bounded attempt budget.
+                    queueRender()
+                end)
             end
         end
     end
-    schedule = function()
+    queueRender = function()
         if stopped or queued then
             return
         end
         queued = true
         task.defer(function()
             queued = false
-            if stopped then
+            if stopped or session ~= sessionVersion then
                 return
             end
             mutating = true
@@ -980,6 +1135,15 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
             mutating = false
         end)
+    end
+    schedule = function()
+        if not mutating then
+            handoffAttempts = 0
+        end
+        if restorePending and not restoring then
+            native()
+        end
+        queueRender()
     end
     local function watchContainers()
         disconnect(containers)
@@ -1076,6 +1240,32 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
         end)
     )
+    table.insert(connections, playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(schedule))
+    table.insert(connections, GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(schedule))
+    local cameraConnection: RBXScriptConnection? = nil
+    local function cameraChanged()
+        if cameraConnection then
+            cameraConnection:Disconnect()
+        end
+        local camera = workspace.CurrentCamera
+        cameraConnection = if camera then camera:GetPropertyChangedSignal("ViewportSize"):Connect(schedule) else nil
+        schedule()
+    end
+    table.insert(connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(cameraChanged))
+    for _, property in { "TouchEnabled", "GamepadEnabled" } do
+        table.insert(connections, UIS:GetPropertyChangedSignal(property):Connect(schedule))
+    end
+    table.insert(
+        connections,
+        StarterGui.CoreGuiChangedSignal:Connect(function(kind)
+            if kind == Enum.CoreGuiType.Backpack or kind == Enum.CoreGuiType.All then
+                if not mutating and not restoring then
+                    schedule()
+                end
+            end
+        end)
+    )
+    cameraChanged()
     -- Synchronous clearing before the deferred first render/data collection.
     local _, initialBar = Gui.Find(playerGui)
     if initialBar then
@@ -1099,6 +1289,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             return
         end
         stopped = true
+        if cameraConnection then
+            cameraConnection:Disconnect()
+        end
         disconnect(connections)
         disconnect(containers)
         for _, list in observed do
@@ -1117,23 +1310,41 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     return stopSession
 end
 local stop: (() -> ())? = nil
-local destroying: RBXScriptConnection? = nil
+local lifecycle: { RBXScriptConnection } = {}
+local activeGui: PlayerGui? = nil
+local initialized = false
 function Controller.Init()
-    if stop then
+    if initialized then
         return
     end
+    initialized = true
     local player = Players.LocalPlayer
-    stop = Controller.Start(player, player:WaitForChild("PlayerGui") :: PlayerGui)
-    destroying = script.Destroying:Connect(Controller.Destroy)
+    local function reconcile()
+        local root = player:FindFirstChildOfClass("PlayerGui")
+        if root == activeGui then
+            return
+        end
+        if stop then
+            stop()
+            stop = nil
+        end
+        activeGui = root
+        if root then
+            stop = Controller.Start(player, root)
+        end
+    end
+    table.insert(lifecycle, player.ChildAdded:Connect(reconcile))
+    table.insert(lifecycle, player.ChildRemoved:Connect(reconcile))
+    table.insert(lifecycle, script.Destroying:Connect(Controller.Destroy))
+    reconcile()
 end
 function Controller.Destroy()
-    if destroying then
-        destroying:Disconnect()
-        destroying = nil
-    end
+    initialized = false
+    disconnect(lifecycle)
     if stop then
         stop()
         stop = nil
     end
+    activeGui = nil
 end
 return Controller

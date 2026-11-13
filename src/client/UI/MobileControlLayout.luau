@@ -135,7 +135,12 @@ end
 
 local function relevant(object: Instance)
     -- Only a name hint for native discovery; no WaitForChild chain or CoreGui access.
-    if object:IsA("GuiButton") or object:IsA("ScreenGui") or object.Name == "ContextButtonFrame" then
+    if
+        object:IsA("GuiButton")
+        or object:IsA("ScreenGui")
+        or object:IsA("UIScale")
+        or object.Name == "ContextButtonFrame"
+    then
         schedule()
     end
 end
@@ -148,6 +153,7 @@ update = function()
         clearUnused({})
         playerGui = root
         if root then
+            table.insert(guiConnections, root:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(schedule))
             table.insert(guiConnections, root.DescendantAdded:Connect(relevant))
             table.insert(guiConnections, root.DescendantRemoving:Connect(relevant))
         end
@@ -214,7 +220,7 @@ update = function()
         if not button or not button:IsDescendantOf(root) then
             continue
         end
-        watch(wanted, button, { "AbsoluteSize", "AnchorPoint" })
+        watch(wanted, button, { "AbsoluteSize", "AbsolutePosition", "AnchorPoint", "Size", "Position", "Visible" })
         watchAncestors(wanted, button, root)
         local parent = button.Parent
         if not parent or not parent:IsA("GuiObject") then
@@ -222,6 +228,18 @@ update = function()
         end
         local parentSize = parent.AbsoluteSize
         if parentSize.X <= 0 or parentSize.Y <= 0 then
+            continue
+        end
+        -- A UIScale on the button scales its local dimensions as well as its
+        -- art. Compensate once; ancestor scaling is already in parentSize.
+        local scale = 1
+        for _, child in button:GetChildren() do
+            if child:IsA("UIScale") then
+                watch(wanted, child, { "Scale" })
+                scale *= child.Scale
+            end
+        end
+        if scale <= 0 then
             continue
         end
         local offset = OFFSETS[action]
@@ -237,7 +255,7 @@ update = function()
             local localPosition = position
                 - parent.AbsolutePosition
                 + (button.AnchorPoint - Vector2.new(0.5, 0.5)) * size
-            local buttonSize = UDim2.fromScale(size / parentSize.X, size / parentSize.Y)
+            local buttonSize = UDim2.fromScale(size / scale / parentSize.X, size / scale / parentSize.Y)
             local buttonPosition = UDim2.fromScale(localPosition.X / parentSize.X, localPosition.Y / parentSize.Y)
             if button.Size ~= buttonSize then
                 button.Size = buttonSize

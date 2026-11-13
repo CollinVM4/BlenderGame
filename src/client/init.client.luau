@@ -1,3 +1,15 @@
+-- Mobile input and inventory UI subscribe before unrelated controllers can yield.
+for _, controller in
+    {
+        script.Controllers.SprintController,
+        script.Controllers.CarryInputController,
+        script.Controllers.HotbarController,
+    }
+do
+    task.spawn(function()
+        require(controller).Init()
+    end)
+end
 -- Wings input and shop initialize independently of yielding controllers.
 task.spawn(function()
     require(script.Controllers.WingsController).Init()
@@ -50,18 +62,11 @@ require(script.Controllers.TurbineCameraController).Init()
 require(script.Controllers.FilmCamController).Init()
 require(script.Controllers.RareIngredientPresentationController).Init()
 
-local SprintController = require(script.Controllers.SprintController)
-
-SprintController.Init()
-
 require(script.Controllers.StashPromptController).Init()
 
 require(script.Controllers.UpgradesController).Init()
 require(script.Controllers.TasksController).Init()
 require(script.Controllers.SettingsController).Init()
-
-require(script.Controllers.CarryInputController).Init()
-require(script.Controllers.HotbarController).Init()
 
 require(script.Controllers.SessionInteractionController).Init()
 

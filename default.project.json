@@ -48,6 +48,9 @@
     },
     "StarterGui": {
       "$className": "StarterGui",
+      "$properties": {
+        "ScreenOrientation": "Sensor"
+      },
       "$ignoreUnknownInstances": true,
       "Framewisp_CCVVMF": {
         "$path": "Framewisp_Hotbar.prepared.rbxmx"

@@ -278,7 +278,13 @@ local function scene(width, height, diameter)
 end
 local function geometry(button)
     local parentSize, position, size = button.Parent.AbsoluteSize, button.Position, button.Size
-    local extent = vector(size.X.Scale * parentSize.X, size.Y.Scale * parentSize.Y)
+    local scale = 1
+    for _, child in button:GetChildren() do
+        if child:IsA("UIScale") then
+            scale *= child.Scale
+        end
+    end
+    local extent = vector(size.X.Scale * parentSize.X * scale, size.Y.Scale * parentSize.Y * scale)
     local anchor = button.Parent.AbsolutePosition
         + vector(position.X.Scale * parentSize.X, position.Y.Scale * parentSize.Y)
     local center = anchor + vector((0.5 - button.AnchorPoint.X) * extent.X, (0.5 - button.AnchorPoint.Y) * extent.Y)
@@ -293,6 +299,7 @@ end
 local function verify(native)
     local sc, ss = geometry(buttons.SprintHeld)
     local tc, ts = geometry(buttons.ThrowHeld)
+    check(math.abs(ss.X - ss.Y) <= 1, "Visible Sprint circle stays square within one rendered pixel")
     for _, button in buttons do
         local c, s = geometry(button)
         check(
@@ -417,6 +424,41 @@ bounds = rect(vector(0, 0), vector(320, 460))
 camera:GetPropertyChangedSignal("ViewportSize"):Fire()
 flush()
 verify(true)
+insetAvailable = true
+-- Independent cold starts: no rotate/respawn signal is needed after zero parent geometry.
+for _, dimensions in { { 390, 844, 70 }, { 844, 390, 70 } } do
+    scene(table.unpack(dimensions))
+    local usable = frame.AbsoluteSize
+    frame.AbsoluteSize = vector(0, 0)
+    player.ChildAdded:Fire(root)
+    local before = writes
+    flush()
+    check(writes == before, "Zero parent bounds leave existing controls pending")
+    change(frame, "AbsoluteSize", usable)
+    flush()
+    verify(true)
+    -- Orientation may fire ahead of geometry; the subsequent bounds event wins.
+    root:GetPropertyChangedSignal("CurrentScreenOrientation"):Fire()
+    change(frame, "AbsoluteSize", vector(0, 0))
+    flush()
+    change(frame, "AbsoluteSize", usable)
+    flush()
+    verify(true)
+end
+local oldSprint = buttons.SprintHeld
+buttons.SprintHeld = object("ImageButton", "ReplacementSprint", frame)
+local scale = object("UIScale", "NativeScale", buttons.SprintHeld)
+scale.Scale = 0.65
+root.DescendantAdded:Fire(buttons.SprintHeld)
+flush()
+verify(true)
+change(scale, "Scale", 1.2)
+flush()
+verify(true)
+local beforeReplacement = writes
+change(oldSprint, "AbsoluteSize", vector(1, 2))
+flush()
+check(writes == beforeReplacement, "Replaced Sprint no longer drives layout")
 -- Input semantics remain held sprint and one Throw request on press when carrying.
 actions.SprintHeld("SprintHeld", "Begin")
 actions.SprintHeld("SprintHeld", "Begin")
