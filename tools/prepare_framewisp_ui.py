@@ -237,7 +237,7 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
         text = re.sub(r'<Item class="LocalScript".*?</Item>', replace_script, text, flags=re.S)
     if not external_menus and scripts_found != 1:
         raise ValueError("Could not locate exact generated script XML")
-    # Only unambiguous registered panels, never HUD/navigation descendants.
+    # Only unambiguous registered panels plus the controller-owned hotbar.
     panel_refs = panel_referents(tree)
     if external_menus:
         # Delegate only major navigation/close attributes, preserving generated
@@ -264,8 +264,10 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
             delegate(item)
         for old, replacement in text_parts:
             text = text.replace(old, replacement)
-    for ref in panel_refs:
-        pattern = (r'(<Item\b(?=[^>]*\bclass="(?:Frame|CanvasGroup)")'
+    hotbar_refs = {item.attrib["referent"] for item in tree.iter("Item")
+                   if item_name(item) == "Hotbar" and item.get("class") in {"Frame", "ScrollingFrame"}}
+    for ref in panel_refs | hotbar_refs:
+        pattern = (r'(<Item\b(?=[^>]*\bclass="(?:Frame|CanvasGroup|ScrollingFrame)")'
                    r'(?=[^>]*\breferent="' + re.escape(ref) + r'")[^>]*>\s*<Properties>)(.*?)(</Properties>)')
 
         def hide(match):
@@ -274,12 +276,12 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
             if count == 0:
                 properties += '<bool name="Visible">false</bool>'
             elif count != 1:
-                raise ValueError("Duplicate panel Visible property")
+                raise ValueError("Duplicate startup Visible property")
             return match[1] + properties + match[3]
 
         text, count = re.subn(pattern, hide, text, flags=re.S)
         if count != 1:
-            raise ValueError("Could not locate exact panel properties")
+            raise ValueError("Could not locate exact startup visibility properties")
     text = hotbar_text_bounds(text, tree)
     destination = output if output is not None else path
     destination.write_text(text, encoding="utf-8", newline="\n")

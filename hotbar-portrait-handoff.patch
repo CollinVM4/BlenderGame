@@ -1,0 +1,193 @@
+diff --git a/Framewisp_Hotbar.prepared.rbxmx b/Framewisp_Hotbar.prepared.rbxmx
+index e84ab04..37cd36d 100644
+--- a/Framewisp_Hotbar.prepared.rbxmx
++++ b/Framewisp_Hotbar.prepared.rbxmx
+@@ -30799,7 +30799,7 @@ ZXh0U3Ryb2tlVwYAAAAAAAAgQA==]]></BinaryString>
+ 						<YO>0</YO>
+ 					</UDim2>
+ 					<token name="SizeConstraint">0</token>
+-					<bool name="Visible">true</bool>
++					<bool name="Visible">false</bool>
+ 					<int name="ZIndex">560</int>
+ 					<bool name="AutoLocalize">true</bool>
+ 					<Ref name="RootLocalizationTable">null</Ref>
+diff --git a/src/client/Controllers/HotbarController.luau b/src/client/Controllers/HotbarController.luau
+index e980220..0dca8c9 100644
+--- a/src/client/Controllers/HotbarController.luau
++++ b/src/client/Controllers/HotbarController.luau
+@@ -170,6 +170,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+     local handoffTouchGui: Instance? = nil
+     local layoutKey = ""
+     local layoutVersion = 0
++    local layoutStatus = "waiting for custom hotbar"
+     local schedule: () -> ()
+     local render: () -> ()
+     local queueRender: () -> ()
+@@ -208,7 +209,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+                 return
+             end
+             local before = coreState()
+-            local result = "Backpack enabled = " .. (if before == nil then "unavailable" else tostring(before))
++            local result = "Backpack enabled = "
++                .. (if before == nil then "unavailable" else tostring(before))
++                .. " | "
++                .. layoutStatus
+             if hide then
+                 if enabled and view and view.Bar.Visible then
+                     local confirmed = setCore(false, "admin chat diagnostic")
+@@ -436,10 +440,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         local current = view
+         local scroll = host
+         if not current or not scroll or not layout then
++            layoutStatus = "missing hotbar layout"
+             return false
+         end
+         local parent = current.Bar.Parent
+         if not parent or not parent:IsA("GuiObject") then
++            layoutStatus = "missing hotbar parent"
+             return false
+         end
+         local pixels = parent.AbsoluteSize
+@@ -454,9 +460,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         end
+         local targetHeight = math.clamp(math.floor(pixels.Y * 0.11 + 0.5), 64, BAR_HEIGHT)
+         if pixels.X <= 0 or pixels.Y <= 0 then
++            layoutStatus = "waiting for host bounds"
+             return nil -- transitional geometry, not a broken custom UI
+         end
+         if pixels.X < MIN_SLOT_WIDTH or pixels.Y < targetHeight + bottom + 12 then
++            layoutStatus = "host too small"
+             return false
+         end
+         local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
+@@ -659,6 +667,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+                 end
+             end
+             if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
++                layoutStatus = "slot does not fit"
+                 return false
+             end
+             local slotSize = UDim2.fromOffset(slotWidth, height)
+@@ -698,6 +707,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         end
+         local measured = scroll.AbsoluteSize
+         if math.abs(measured.X - barWidth) > 1 or math.abs(measured.Y - targetHeight) > 1 then
++            layoutStatus =
++                string.format("scroll %.0fx%.0f, target %.0fx%.0f", measured.X, measured.Y, barWidth, targetHeight)
+             return nil
+         end
+         local target = pendingReveal
+@@ -705,11 +716,13 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         if target and target.Visible and target.Parent == scroll then
+             reveal(target)
+         end
++        layoutStatus = "layout ready"
+         return true
+     end
+     local function setup(nextView: Gui.View): boolean
+         view = nextView
+         local bar = nextView.Bar
++        bar.Visible = false
+         if diagnostic then
+             diagnostic.Bind(bar)
+         end
+@@ -952,6 +965,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+             return
+         end
+         if removing then
++            layoutStatus = "waiting for character"
+             release()
+             return
+         end
+@@ -962,6 +976,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         if not view then
+             local nextView = Gui.Resolve(playerGui)
+             if not nextView then
++                layoutStatus = "custom hotbar unresolved"
+                 if bar then
+                     bar.Visible = false
+                 end
+@@ -972,6 +987,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         end
+         local current = view :: Gui.View
+         if (screenHost and not screenHost.Visible) or (host and not host.Visible) then
++            layoutStatus = "custom host hidden"
+             current.Bar.Visible = false
+             native()
+             return
+@@ -1113,6 +1129,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+             native()
+             return
+         elseif usable == nil then
++            if not enabled then
++                current.Bar.Visible = false
++            end
+             -- Keep the same slots, selection, and scroll through transient zeros.
+             -- A single bounded recovery handles geometry that never comes back.
+             if not recoveryQueued then
+@@ -1231,6 +1250,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+             mutating = true
+             local ok, message = pcall(render :: any)
+             if not ok then
++                layoutStatus = "render error: " .. string.sub(tostring(message), 1, 140)
+                 warning("render", tostring(message))
+                 release()
+             end
+diff --git a/tests/hotbar.spec.luau b/tests/hotbar.spec.luau
+index 17d92d8..07967a4 100644
+--- a/tests/hotbar.spec.luau
++++ b/tests/hotbar.spec.luau
+@@ -2077,10 +2077,12 @@ for _, pixels in { v(390, 844), v(844, 390) } do
+     -- Emulate the previous scroll measurement surviving the parent write.
+     scroll.Pixels = v(1200, 800)
+     f.Root.Pixels = pixels
++    f.Bar.Visible = true -- An authored UI update can expose slots before the first usable layout.
+     screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+     flush()
+     local button = visible(f)[1]
+     check(core.Enabled, "stale scroll measurement cannot finish the first handoff")
++    check(not f.Bar.Visible, "pending first handoff leaves only native Backpack visible")
+     check(button.AbsoluteSize.X >= 48, "slot floor derives from new bar bounds, not stale scroll")
+     scroll.Pixels = nil
+     scroll:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+diff --git a/tools/prepare_framewisp_ui.py b/tools/prepare_framewisp_ui.py
+index 02b3023..8727e25 100644
+--- a/tools/prepare_framewisp_ui.py
++++ b/tools/prepare_framewisp_ui.py
+@@ -237,7 +237,7 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
+         text = re.sub(r'<Item class="LocalScript".*?</Item>', replace_script, text, flags=re.S)
+     if not external_menus and scripts_found != 1:
+         raise ValueError("Could not locate exact generated script XML")
+-    # Only unambiguous registered panels, never HUD/navigation descendants.
++    # Only unambiguous registered panels plus the controller-owned hotbar.
+     panel_refs = panel_referents(tree)
+     if external_menus:
+         # Delegate only major navigation/close attributes, preserving generated
+@@ -264,8 +264,10 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
+             delegate(item)
+         for old, replacement in text_parts:
+             text = text.replace(old, replacement)
+-    for ref in panel_refs:
+-        pattern = (r'(<Item\b(?=[^>]*\bclass="(?:Frame|CanvasGroup)")'
++    hotbar_refs = {item.attrib["referent"] for item in tree.iter("Item")
++                   if item_name(item) == "Hotbar" and item.get("class") in {"Frame", "ScrollingFrame"}}
++    for ref in panel_refs | hotbar_refs:
++        pattern = (r'(<Item\b(?=[^>]*\bclass="(?:Frame|CanvasGroup|ScrollingFrame)")'
+                    r'(?=[^>]*\breferent="' + re.escape(ref) + r'")[^>]*>\s*<Properties>)(.*?)(</Properties>)')
+ 
+         def hide(match):
+@@ -274,12 +276,12 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
+             if count == 0:
+                 properties += '<bool name="Visible">false</bool>'
+             elif count != 1:
+-                raise ValueError("Duplicate panel Visible property")
++                raise ValueError("Duplicate startup Visible property")
+             return match[1] + properties + match[3]
+ 
+         text, count = re.subn(pattern, hide, text, flags=re.S)
+         if count != 1:
+-            raise ValueError("Could not locate exact panel properties")
++            raise ValueError("Could not locate exact startup visibility properties")
+     text = hotbar_text_bounds(text, tree)
+     destination = output if output is not None else path
+     destination.write_text(text, encoding="utf-8", newline="\n")

@@ -1,5 +1,6 @@
 --!strict
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextChatService = game:GetService("TextChatService")
 local Config = require(script.Parent.AdminConfig)
 
@@ -11,6 +12,15 @@ local lastExecution: { [Player]: number? } = {}
 local chatConnections: { [Player]: RBXScriptConnection } = {}
 
 local commands: { [string]: (Player, { string }) -> boolean } = {}
+commands.hotbardebug = function(player: Player, args: { string }): boolean
+    local hide = #args == 1 and string.lower(args[1]) == "hide"
+    if #args ~= 0 and not hide then
+        return false
+    end
+    local remote = ReplicatedStorage.Shared.Events.HotbarDebug :: RemoteEvent
+    remote:FireClient(player, hide)
+    return true
+end
 commands.giveicegun = function(player: Player, args: { string }): boolean
     if #args ~= 1 then
         warn("[Admin] Usage: ;giveicegun username")
@@ -64,7 +74,7 @@ commands.addcash = function(player: Player, args: { string }): boolean
     return true
 end
 
--- Only server chat callbacks call this dispatcher; there is no admin remote.
+-- Only server chat callbacks call this dispatcher. HotbarDebug is server-to-client only.
 function AdminService.HandleCommand(player: Player, message: string): boolean
     if player.Parent ~= Players or not adminUserIds[player.UserId] then
         return false

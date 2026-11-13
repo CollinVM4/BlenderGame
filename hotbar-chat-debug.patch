@@ -1,0 +1,213 @@
+diff --git a/src/client/Controllers/HotbarController.luau b/src/client/Controllers/HotbarController.luau
+index e9d6987..e980220 100644
+--- a/src/client/Controllers/HotbarController.luau
++++ b/src/client/Controllers/HotbarController.luau
+@@ -200,6 +200,38 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+         end
+         return coreState() == value
+     end
++    local debugRemote = Shared.Events.HotbarDebug :: RemoteEvent
++    table.insert(
++        connections,
++        debugRemote.OnClientEvent:Connect(function(hide: boolean)
++            if stopped or session ~= sessionVersion then
++                return
++            end
++            local before = coreState()
++            local result = "Backpack enabled = " .. (if before == nil then "unavailable" else tostring(before))
++            if hide then
++                if enabled and view and view.Bar.Visible then
++                    local confirmed = setCore(false, "admin chat diagnostic")
++                    result ..= if confirmed then " | after hide: false" else " | hide: disablement unconfirmed"
++                else
++                    result ..= " | hide skipped: custom hotbar is unavailable"
++                end
++            end
++            local message = string.format(
++                "[Hotbar] %s | %s | place v%d",
++                result,
++                tostring(playerGui.CurrentScreenOrientation),
++                game.PlaceVersion
++            )
++            print(message)
++            local chat = game:GetService("TextChatService")
++            local channels = chat:FindFirstChild("TextChannels")
++            local channel = channels and (channels:FindFirstChild("RBXSystem") or channels:FindFirstChild("RBXGeneral"))
++            if channel and channel:IsA("TextChannel") then
++                channel:DisplaySystemMessage(message)
++            end
++        end)
++    )
+     local function native()
+         enabled = false
+         touchBarShown, handoffTouchGui = false, nil
+diff --git a/src/server/Admin/AdminService.luau b/src/server/Admin/AdminService.luau
+index 24842fc..5e487b3 100644
+--- a/src/server/Admin/AdminService.luau
++++ b/src/server/Admin/AdminService.luau
+@@ -1,5 +1,6 @@
+ --!strict
+ local Players = game:GetService("Players")
++local ReplicatedStorage = game:GetService("ReplicatedStorage")
+ local TextChatService = game:GetService("TextChatService")
+ local Config = require(script.Parent.AdminConfig)
+ 
+@@ -11,6 +12,15 @@ local lastExecution: { [Player]: number? } = {}
+ local chatConnections: { [Player]: RBXScriptConnection } = {}
+ 
+ local commands: { [string]: (Player, { string }) -> boolean } = {}
++commands.hotbardebug = function(player: Player, args: { string }): boolean
++    local hide = #args == 1 and string.lower(args[1]) == "hide"
++    if #args ~= 0 and not hide then
++        return false
++    end
++    local remote = ReplicatedStorage.Shared.Events.HotbarDebug :: RemoteEvent
++    remote:FireClient(player, hide)
++    return true
++end
+ commands.giveicegun = function(player: Player, args: { string }): boolean
+     if #args ~= 1 then
+         warn("[Admin] Usage: ;giveicegun username")
+@@ -64,7 +74,7 @@ commands.addcash = function(player: Player, args: { string }): boolean
+     return true
+ end
+ 
+--- Only server chat callbacks call this dispatcher; there is no admin remote.
++-- Only server chat callbacks call this dispatcher. HotbarDebug is server-to-client only.
+ function AdminService.HandleCommand(player: Player, message: string): boolean
+     if player.Parent ~= Players or not adminUserIds[player.UserId] then
+         return false
+diff --git a/src/shared/Events/HotbarDebug.model.json b/src/shared/Events/HotbarDebug.model.json
+new file mode 100644
+index 0000000..dc005af
+--- /dev/null
++++ b/src/shared/Events/HotbarDebug.model.json
+@@ -0,0 +1,3 @@
++{
++  "className": "RemoteEvent"
++}
+diff --git a/tests/admin.spec.luau b/tests/admin.spec.luau
+index 114578d..4be63dc 100644
+--- a/tests/admin.spec.luau
++++ b/tests/admin.spec.luau
+@@ -60,6 +60,14 @@ tycoon.RemovePlayer(teammate)
+ setup(tycoon.JoinSession(teammate, owner, tycoon.GetRequestContext(owner)), "join shared admin stand")
+ assignTestSession(visitor)
+ local grantedTo = {}
++local debugRequests = {}
++services.ReplicatedStorage.Shared.Events = {
++    HotbarDebug = {
++        FireClient = function(_, player, hide)
++            table.insert(debugRequests, { player, hide })
++        end,
++    },
++}
+ admin.Init({
+     TycoonService = tycoon,
+     IceGunService = {
+@@ -149,6 +157,30 @@ else
+     owner.Chatted:Fire(";giveicegun KarmaReaper2")
+ end
+ check(grantedTo[2] == visitor, "server chat dispatches grant for the specified player")
++clock += 1
++local function debugChat(player, text)
++    if modern then
++        local command = services.TextChatService:FindFirstChild("Admin_hotbardebug")
++        setup(command and command.PrimaryAlias == ";hotbardebug", "hotbar diagnostic command registered")
++        command.Triggered:Fire({ UserId = player.UserId }, text)
++    else
++        player.Chatted:Fire(text)
++    end
++end
++debugChat(visitor, ";hotbardebug hide")
++debugChat(teammate, ";hotbardebug hide other")
++check(#debugRequests == 0, "hotbar diagnostic rejects non-admins and extra arguments")
++debugChat(teammate, ";hotbardebug")
++check(
++    #debugRequests == 1 and debugRequests[1][1] == teammate and debugRequests[1][2] == false,
++    "only the requesting admin receives the read"
++)
++clock += 1
++debugChat(teammate, ";hotbardebug hide")
++check(
++    #debugRequests == 2 and debugRequests[2][1] == teammate and debugRequests[2][2] == true,
++    "only the requesting admin receives the hide"
++)
+ admin.Init({})
+ for _, name in config.BootstrapUsernames do
+     check(lookups[name] == 1, "bootstrap identity resolved once: " .. name)
+diff --git a/tests/hotbar.spec.luau b/tests/hotbar.spec.luau
+index 7bbc66c..17d92d8 100644
+--- a/tests/hotbar.spec.luau
++++ b/tests/hotbar.spec.luau
+@@ -463,6 +463,14 @@ local ingredientViewport = {
+         end
+     end,
+ }
++local debugSignal = signal()
++local debugMessages = {}
++local textChat = new("TextChatService")
++local textChannels = new("Folder", "TextChannels", textChat)
++local systemChannel = new("TextChannel", "RBXSystem", textChannels)
++function systemChannel:DisplaySystemMessage(message)
++    table.insert(debugMessages, message)
++end
+ local services = {
+     StarterGui = core,
+     ContextActionService = cas,
+@@ -474,7 +482,10 @@ local services = {
+         end,
+     },
+     Players = {},
+-    ReplicatedStorage = { Shared = { IngredientPreviewGeometry = "Geometry" } },
++    ReplicatedStorage = {
++        Shared = { IngredientPreviewGeometry = "Geometry", Events = { HotbarDebug = { OnClientEvent = debugSignal } } },
++    },
++    TextChatService = textChat,
+ }
+ local diagnosticEvents = {}
+ services.HttpService = {
+@@ -532,6 +543,7 @@ local function requireModule(name)
+             print = if name == "HotbarDiagnostic" then function() end else print,
+             require = requireModule,
+             game = {
++                PlaceVersion = 1,
+                 GetService = function(_, key)
+                     assert(services[key], "unexpected service " .. key)
+                     return services[key]
+@@ -711,6 +723,35 @@ local function screenFixture(width, height)
+     f.Tool("Apple", "Apple", 1)
+     return f
+ end
++if testCase == "all" or testCase == "diagnostic" then
++    local f = fixture(true)
++    f.Tool("Apple", "Apple", 1)
++    local stop = Controller.Start(f.Player, f.PlayerGui)
++    flush()
++    local calls = #core.Calls
++    debugSignal:Fire(false)
++    check(
++        #core.Calls == calls and string.find(debugMessages[#debugMessages], "Backpack enabled = false", 1, true),
++        "chat read reports the local setting without changing it"
++    )
++    debugSignal:Fire(true)
++    check(
++        #core.Calls == calls + 1
++            and core.Calls[#core.Calls] == false
++            and string.find(debugMessages[#debugMessages], "after hide: false", 1, true),
++        "chat hide issues one local disable and reports the result"
++    )
++    f.Root.Enabled = false
++    flush()
++    calls = #core.Calls
++    debugSignal:Fire(true)
++    check(
++        core.Enabled and #core.Calls == calls and string.find(debugMessages[#debugMessages], "hide skipped", 1, true),
++        "chat hide preserves native fallback"
++    )
++    stop()
++    flush()
++end
+ if testCase == "all" or testCase == "diagnostic" then
+     local f = fixture(true)
+     f.Player.UserId = 123

@@ -60,6 +60,14 @@ tycoon.RemovePlayer(teammate)
 setup(tycoon.JoinSession(teammate, owner, tycoon.GetRequestContext(owner)), "join shared admin stand")
 assignTestSession(visitor)
 local grantedTo = {}
+local debugRequests = {}
+services.ReplicatedStorage.Shared.Events = {
+    HotbarDebug = {
+        FireClient = function(_, player, hide)
+            table.insert(debugRequests, { player, hide })
+        end,
+    },
+}
 admin.Init({
     TycoonService = tycoon,
     IceGunService = {
@@ -149,6 +157,30 @@ else
     owner.Chatted:Fire(";giveicegun KarmaReaper2")
 end
 check(grantedTo[2] == visitor, "server chat dispatches grant for the specified player")
+clock += 1
+local function debugChat(player, text)
+    if modern then
+        local command = services.TextChatService:FindFirstChild("Admin_hotbardebug")
+        setup(command and command.PrimaryAlias == ";hotbardebug", "hotbar diagnostic command registered")
+        command.Triggered:Fire({ UserId = player.UserId }, text)
+    else
+        player.Chatted:Fire(text)
+    end
+end
+debugChat(visitor, ";hotbardebug hide")
+debugChat(teammate, ";hotbardebug hide other")
+check(#debugRequests == 0, "hotbar diagnostic rejects non-admins and extra arguments")
+debugChat(teammate, ";hotbardebug")
+check(
+    #debugRequests == 1 and debugRequests[1][1] == teammate and debugRequests[1][2] == false,
+    "only the requesting admin receives the read"
+)
+clock += 1
+debugChat(teammate, ";hotbardebug hide")
+check(
+    #debugRequests == 2 and debugRequests[2][1] == teammate and debugRequests[2][2] == true,
+    "only the requesting admin receives the hide"
+)
 admin.Init({})
 for _, name in config.BootstrapUsernames do
     check(lookups[name] == 1, "bootstrap identity resolved once: " .. name)

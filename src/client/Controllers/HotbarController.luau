@@ -170,6 +170,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local handoffTouchGui: Instance? = nil
     local layoutKey = ""
     local layoutVersion = 0
+    local layoutStatus = "waiting for custom hotbar"
+    local renderAttempts = 0
+    local rendering, renderRequested = false, false
+    local initialRecoveryAttempts = 0
     local schedule: () -> ()
     local render: () -> ()
     local queueRender: () -> ()
@@ -200,6 +204,44 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         return coreState() == value
     end
+    local debugRemote = Shared.Events.HotbarDebug :: RemoteEvent
+    table.insert(
+        connections,
+        debugRemote.OnClientEvent:Connect(function(hide: boolean)
+            if stopped or session ~= sessionVersion then
+                return
+            end
+            local before = coreState()
+            local result = "Backpack enabled = "
+                .. (if before == nil then "unavailable" else tostring(before))
+                .. " | "
+                .. layoutStatus
+                .. " | renders "
+                .. tostring(renderAttempts)
+            if hide then
+                if enabled and view and view.Bar.Visible then
+                    local confirmed = setCore(false, "admin chat diagnostic")
+                    result ..= if confirmed then " | after hide: false" else " | hide: disablement unconfirmed"
+                else
+                    result ..= " | hide skipped: retrying layout"
+                    schedule()
+                end
+            end
+            local message = string.format(
+                "[Hotbar] %s | %s | place v%d",
+                result,
+                tostring(playerGui.CurrentScreenOrientation),
+                game.PlaceVersion
+            )
+            print(message)
+            local chat = game:GetService("TextChatService")
+            local channels = chat:FindFirstChild("TextChannels")
+            local channel = channels and (channels:FindFirstChild("RBXSystem") or channels:FindFirstChild("RBXGeneral"))
+            if channel and channel:IsA("TextChannel") then
+                channel:DisplaySystemMessage(message)
+            end
+        end)
+    )
     local function native()
         enabled = false
         touchBarShown, handoffTouchGui = false, nil
@@ -404,10 +446,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         local current = view
         local scroll = host
         if not current or not scroll or not layout then
+            layoutStatus = "missing hotbar layout"
             return false
         end
         local parent = current.Bar.Parent
         if not parent or not parent:IsA("GuiObject") then
+            layoutStatus = "missing hotbar parent"
             return false
         end
         local pixels = parent.AbsoluteSize
@@ -422,9 +466,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         local targetHeight = math.clamp(math.floor(pixels.Y * 0.11 + 0.5), 64, BAR_HEIGHT)
         if pixels.X <= 0 or pixels.Y <= 0 then
+            layoutStatus = "waiting for host bounds"
             return nil -- transitional geometry, not a broken custom UI
         end
         if pixels.X < MIN_SLOT_WIDTH or pixels.Y < targetHeight + bottom + 12 then
+            layoutStatus = "host too small"
             return false
         end
         local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
@@ -627,6 +673,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 end
             end
             if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
+                layoutStatus = "slot does not fit"
                 return false
             end
             local slotSize = UDim2.fromOffset(slotWidth, height)
@@ -666,6 +713,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         local measured = scroll.AbsoluteSize
         if math.abs(measured.X - barWidth) > 1 or math.abs(measured.Y - targetHeight) > 1 then
+            layoutStatus =
+                string.format("scroll %.0fx%.0f, target %.0fx%.0f", measured.X, measured.Y, barWidth, targetHeight)
             return nil
         end
         local target = pendingReveal
@@ -673,11 +722,13 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         if target and target.Visible and target.Parent == scroll then
             reveal(target)
         end
+        layoutStatus = "layout ready"
         return true
     end
     local function setup(nextView: Gui.View): boolean
         view = nextView
         local bar = nextView.Bar
+        bar.Visible = false
         if diagnostic then
             diagnostic.Bind(bar)
         end
@@ -919,7 +970,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         if stopped then
             return
         end
+        renderAttempts += 1
+        layoutStatus = "resolving custom hotbar"
         if removing then
+            layoutStatus = "waiting for character"
             release()
             return
         end
@@ -930,6 +984,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         if not view then
             local nextView = Gui.Resolve(playerGui)
             if not nextView then
+                layoutStatus = "custom hotbar unresolved"
                 if bar then
                     bar.Visible = false
                 end
@@ -938,8 +993,10 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             end
             setup(nextView)
         end
+        layoutStatus = "checking custom slots"
         local current = view :: Gui.View
         if (screenHost and not screenHost.Visible) or (host and not host.Visible) then
+            layoutStatus = "custom host hidden"
             current.Bar.Visible = false
             native()
             return
@@ -954,11 +1011,14 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 or slot.Background ~= binding.Slot.Background
                 or not slot.Button:IsDescendantOf(current.Bar)
             then
+                layoutStatus = "slot changed during setup: " .. binding.Slot.Button.Name
                 release()
                 return
             end
         end
+        layoutStatus = "reading Tools"
         if collect() == false then
+            layoutStatus = "waiting for Tool attributes"
             release()
             return
         end
@@ -966,6 +1026,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             local copy = (pristine :: GuiButton):Clone()
             local slot = Gui.Slot(copy)
             if not slot then
+                layoutStatus = "overflow slot could not be bound"
                 copy:Destroy()
                 release()
                 return
@@ -986,6 +1047,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 clearBinding(binding)
             end
         end
+        layoutStatus = "binding Tool previews"
         local ordered: { Binding } = {}
         local nextEquipped: GuiButton? = nil
         for index, item in items do
@@ -1074,6 +1136,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 pendingReveal = nextEquipped
             end
         end
+        layoutStatus = "measuring layout"
         local usable = resize()
         if usable == false then
             warning("layout", "insufficient safe space for accessible hotbar; native Backpack retained")
@@ -1081,6 +1144,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             native()
             return
         elseif usable == nil then
+            if not enabled then
+                current.Bar.Visible = false
+            end
             -- Keep the same slots, selection, and scroll through transient zeros.
             -- A single bounded recovery handles geometry that never comes back.
             if not recoveryQueued then
@@ -1187,7 +1253,14 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
     end
     queueRender = function()
-        if stopped or queued then
+        if stopped then
+            return
+        end
+        if rendering then
+            renderRequested = true
+            return
+        end
+        if queued then
             return
         end
         queued = true
@@ -1196,13 +1269,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             if stopped or session ~= sessionVersion then
                 return
             end
-            mutating = true
+            rendering, mutating = true, true
             local ok, message = pcall(render :: any)
             if not ok then
+                layoutStatus = "render error: " .. string.sub(tostring(message), 1, 140)
                 warning("render", tostring(message))
                 release()
             end
-            mutating = false
+            rendering, mutating = false, false
+            if renderRequested then
+                renderRequested = false
+                queueRender()
+            end
         end)
     end
     schedule = function()
@@ -1327,6 +1405,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         table.insert(connections, UIS:GetPropertyChangedSignal(property):Connect(schedule))
     end
     cameraChanged()
+    -- Startup geometry or an authored GUI can settle without a delivered
+    -- change notification. Re-run discovery only while initial ownership
+    -- remains unresolved, leaving native access available in the meantime.
+    local function retryInitialLayout()
+        if stopped or session ~= sessionVersion or enabled or initialRecoveryAttempts >= 3 then
+            return
+        end
+        initialRecoveryAttempts += 1
+        schedule()
+        task.delay(0.5, retryInitialLayout)
+    end
+    task.delay(0.5, retryInitialLayout)
     -- Synchronous clearing before the deferred first render/data collection.
     local _, initialBar = Gui.Find(playerGui)
     if initialBar then

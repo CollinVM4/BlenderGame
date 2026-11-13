@@ -463,6 +463,14 @@ local ingredientViewport = {
         end
     end,
 }
+local debugSignal = signal()
+local debugMessages = {}
+local textChat = new("TextChatService")
+local textChannels = new("Folder", "TextChannels", textChat)
+local systemChannel = new("TextChannel", "RBXSystem", textChannels)
+function systemChannel:DisplaySystemMessage(message)
+    table.insert(debugMessages, message)
+end
 local services = {
     StarterGui = core,
     ContextActionService = cas,
@@ -474,7 +482,10 @@ local services = {
         end,
     },
     Players = {},
-    ReplicatedStorage = { Shared = { IngredientPreviewGeometry = "Geometry" } },
+    ReplicatedStorage = {
+        Shared = { IngredientPreviewGeometry = "Geometry", Events = { HotbarDebug = { OnClientEvent = debugSignal } } },
+    },
+    TextChatService = textChat,
 }
 local diagnosticEvents = {}
 services.HttpService = {
@@ -532,6 +543,7 @@ local function requireModule(name)
             print = if name == "HotbarDiagnostic" then function() end else print,
             require = requireModule,
             game = {
+                PlaceVersion = 1,
                 GetService = function(_, key)
                     assert(services[key], "unexpected service " .. key)
                     return services[key]
@@ -710,6 +722,35 @@ local function screenFixture(width, height)
     new("ImageLabel", "IceGunImage", card).Image = "export-ice-art"
     f.Tool("Apple", "Apple", 1)
     return f
+end
+if testCase == "all" or testCase == "diagnostic" then
+    local f = fixture(true)
+    f.Tool("Apple", "Apple", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    local calls = #core.Calls
+    debugSignal:Fire(false)
+    check(
+        #core.Calls == calls and string.find(debugMessages[#debugMessages], "Backpack enabled = false", 1, true),
+        "chat read reports the local setting without changing it"
+    )
+    debugSignal:Fire(true)
+    check(
+        #core.Calls == calls + 1
+            and core.Calls[#core.Calls] == false
+            and string.find(debugMessages[#debugMessages], "after hide: false", 1, true),
+        "chat hide issues one local disable and reports the result"
+    )
+    f.Root.Enabled = false
+    flush()
+    calls = #core.Calls
+    debugSignal:Fire(true)
+    check(
+        core.Enabled and #core.Calls == calls and string.find(debugMessages[#debugMessages], "hide skipped", 1, true),
+        "chat hide preserves native fallback"
+    )
+    stop()
+    flush()
 end
 if testCase == "all" or testCase == "diagnostic" then
     local f = fixture(true)
@@ -2036,10 +2077,12 @@ for _, pixels in { v(390, 844), v(844, 390) } do
     -- Emulate the previous scroll measurement surviving the parent write.
     scroll.Pixels = v(1200, 800)
     f.Root.Pixels = pixels
+    f.Bar.Visible = true -- An authored UI update can expose slots before the first usable layout.
     screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
     flush()
     local button = visible(f)[1]
     check(core.Enabled, "stale scroll measurement cannot finish the first handoff")
+    check(not f.Bar.Visible, "pending first handoff leaves only native Backpack visible")
     check(button.AbsoluteSize.X >= 48, "slot floor derives from new bar bounds, not stale scroll")
     scroll.Pixels = nil
     scroll:GetPropertyChangedSignal("AbsoluteSize"):Fire()
@@ -2120,6 +2163,22 @@ do
     last.Activated:Fire()
     flush()
     check(tools[9].Parent == f.Character, "last overflow slot equips by touch")
+    stop()
+    timers()
+    uis.TouchEnabled = false
+end
+do
+    local f = fixture(true)
+    uis.TouchEnabled = true
+    f.Root.Pixels = v(0, 0)
+    f.Tool("Apple", "Apple", 1)
+    local stop = Controller.Start(f.Player, f.PlayerGui)
+    flush()
+    timers()
+    check(core.Enabled and not f.Bar.Visible, "pending portrait startup keeps native access")
+    f.Root.Pixels = v(390, 844) -- No geometry or orientation notification.
+    timers()
+    check(not core.Enabled and f.Bar.Visible, "portrait startup can recover without a layout notification")
     stop()
     timers()
     uis.TouchEnabled = false

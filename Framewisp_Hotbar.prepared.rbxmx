@@ -30799,7 +30799,7 @@ ZXh0U3Ryb2tlVwYAAAAAAAAgQA==]]></BinaryString>
 						<YO>0</YO>
 					</UDim2>
 					<token name="SizeConstraint">0</token>
-					<bool name="Visible">true</bool>
+					<bool name="Visible">false</bool>
 					<int name="ZIndex">560</int>
 					<bool name="AutoLocalize">true</bool>
 					<Ref name="RootLocalizationTable">null</Ref>
