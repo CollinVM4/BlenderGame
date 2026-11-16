@@ -144,9 +144,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local coreAttempts, coreEpoch = 0, 0
     local coreDone, retryQueued = false, false
     local reason = "waiting for first Tool"
+    local inventoryTrigger: string? = "startup"
+    local inventoryUpdates, inventoryAccepted = 0, 0
+    local inventoryReason, inventoryAt = "not updated", os.clock()
     local writeError, readError = "", ""
     local externallyHidden = false
     local schedule: () -> ()
+    local function inventoryChanged(why: string): () -> ()
+        return function()
+            inventoryTrigger = why
+            schedule()
+        end
+    end
     local function coreState(): boolean?
         local ok, value = pcall(function()
             return StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.Backpack)
@@ -174,7 +183,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             retryQueued = false
             reason = transition
         end
-        if coreDone or retryQueued or coreAttempts >= 8 then
+        if coreDone then
+            -- Readiness can change without a new CoreGui ownership transition.
+            reason = transition
+            return
+        end
+        if retryQueued or coreAttempts >= 8 then
             return
         end
         coreAttempts += 1
@@ -342,14 +356,19 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                     end
                     if not observed[child] then
                         local list = {
-                            child.AncestryChanged:Connect(schedule),
-                            child.Equipped:Connect(schedule),
-                            child.Unequipped:Connect(schedule),
-                            child:GetPropertyChangedSignal("Name"):Connect(schedule),
+                            child.AncestryChanged:Connect(inventoryChanged("Tool ancestry")),
+                            child.Equipped:Connect(inventoryChanged("Tool equipped")),
+                            child.Unequipped:Connect(inventoryChanged("Tool unequipped")),
+                            child:GetPropertyChangedSignal("Name"):Connect(inventoryChanged("Tool name")),
                             child.DescendantAdded:Connect(refreshPreviews),
                         }
                         for _, attribute in { "IngredientId", "CarryItemId", "BatLevel", "IceGunWeapon" } do
-                            table.insert(list, child:GetAttributeChangedSignal(attribute):Connect(schedule))
+                            table.insert(
+                                list,
+                                child
+                                    :GetAttributeChangedSignal(attribute)
+                                    :Connect(inventoryChanged("Tool " .. attribute))
+                            )
                         end
                         observed[child] = list
                     end
@@ -416,6 +435,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     end
     local function update()
         local valid = collect()
+        inventoryUpdates += 1
+        inventoryReason, inventoryAt, inventoryAccepted = inventoryTrigger or "view/input", os.clock(), #items
+        inventoryTrigger = nil
         local wanted: { [Tool]: boolean } = {}
         local ordered: { Binding } = {}
         local nextEquipped: Tool? = nil
@@ -548,24 +570,25 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             mutating = false
         end)
     end
-    local function watchContainers()
+    local function watchContainers(why: string)
         disconnect(containers)
         backpack = player:FindFirstChildOfClass("Backpack")
         if backpack then
-            table.insert(containers, backpack.ChildAdded:Connect(schedule))
-            table.insert(containers, backpack.ChildRemoved:Connect(schedule))
+            table.insert(containers, backpack.ChildAdded:Connect(inventoryChanged("Backpack child added")))
+            table.insert(containers, backpack.ChildRemoved:Connect(inventoryChanged("Backpack child removed")))
         end
         if character and not removing then
-            table.insert(containers, character.ChildAdded:Connect(schedule))
-            table.insert(containers, character.ChildRemoved:Connect(schedule))
+            table.insert(containers, character.ChildAdded:Connect(inventoryChanged("Character child added")))
+            table.insert(containers, character.ChildRemoved:Connect(inventoryChanged("Character child removed")))
         end
+        inventoryTrigger = why
         schedule()
     end
     table.insert(
         connections,
         player.ChildAdded:Connect(function(child)
             if child:IsA("Backpack") then
-                watchContainers()
+                watchContainers("Backpack added")
             end
         end)
     )
@@ -573,7 +596,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         connections,
         player.ChildRemoved:Connect(function(child)
             if child == backpack then
-                watchContainers()
+                watchContainers("Backpack removed")
             end
         end)
     )
@@ -581,14 +604,14 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         connections,
         player.CharacterRemoving:Connect(function()
             character, removing = nil, true
-            watchContainers()
+            watchContainers("Character removing")
         end)
     )
     table.insert(
         connections,
         player.CharacterAdded:Connect(function(nextCharacter)
             character, removing = nextCharacter, false
-            watchContainers()
+            watchContainers("Character added")
         end)
     )
     local gates: { Instance } = { view.Root, view.SafeArea, view.Bar, view.Scroll }
@@ -641,7 +664,110 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     -- Admin authorization remains exclusively on the existing server command.
     local debugRemote: RemoteEvent? = nil
     local debugConnection: RBXScriptConnection? = nil
+    local function inventorySnapshot(): string
+        -- Read the live containers before any reconciliation. Snapshot IDs are
+        -- local to this report, so equal names cannot hide different instances.
+        local liveBackpack = player:FindFirstChildOfClass("Backpack")
+        local liveCharacter = player.Character
+        local ids: { [Instance]: number } = {}
+        local nextId = 0
+        local function identity(object: Instance?): string
+            if not object then
+                return "nil"
+            end
+            if not ids[object] then
+                nextId += 1
+                ids[object] = nextId
+            end
+            return string.format("%s#%d", object:GetFullName(), ids[object])
+        end
+        local function raw(container: Instance?): { Tool }
+            local result: { Tool } = {}
+            if container then
+                for _, child in container:GetChildren() do
+                    if child:IsA("Tool") then
+                        table.insert(result, child)
+                    end
+                end
+            end
+            return result
+        end
+        local lines = {
+            string.format(
+                "inventory update=%d trigger=%s accepted=%d age=%.2fs queued=%s pending=%s removing=%s",
+                inventoryUpdates,
+                inventoryReason,
+                inventoryAccepted,
+                os.clock() - inventoryAt,
+                tostring(queued),
+                inventoryTrigger or "none",
+                tostring(removing)
+            ),
+        }
+        local tools: { Tool } = {}
+        local seen: { [Tool]: boolean } = {}
+        local function containerLine(label: string, live: Instance?, watched: Instance?)
+            local liveTools, watchedTools = raw(live), raw(watched)
+            table.insert(
+                lines,
+                string.format(
+                    "%s live=%s observed=%s match=%s raw=%d observedRaw=%d",
+                    label,
+                    identity(live),
+                    identity(watched),
+                    tostring(live == watched),
+                    #liveTools,
+                    #watchedTools
+                )
+            )
+            for _, list in { liveTools, watchedTools } do
+                for _, tool in list do
+                    if not seen[tool] then
+                        seen[tool] = true
+                        table.insert(tools, tool)
+                    end
+                end
+            end
+        end
+        containerLine("BP", liveBackpack, backpack)
+        containerLine("CH", liveCharacter, character)
+        local accepted: { [Tool]: boolean } = {}
+        for _, item in items do
+            accepted[item.Tool] = true
+        end
+        for _, tool in tools do
+            local weapon = tool:GetAttribute("IceGunWeapon")
+            local kind = Controller.Classify(tool)
+            local classification = if kind == "InvalidIngredient"
+                then "reject:invalid CarryItemId"
+                elseif kind then kind
+                else "reject:unsupported attributes/name"
+            local eligibility = if removing
+                then "reject:Character removing"
+                elseif not character then "reject:no observed Character"
+                elseif character ~= liveCharacter then "reject:stale Character"
+                elseif not owned(tool) then "reject:outside observed containers"
+                else "owned"
+            table.insert(
+                lines,
+                string.format(
+                    "Tool %s name=%q parent=%s IceGunWeapon=%s:%s class=%s gate=%s watched=%s lastAccepted=%s",
+                    identity(tool),
+                    tool.Name,
+                    identity(tool.Parent),
+                    tostring(weapon),
+                    typeof(weapon),
+                    classification,
+                    eligibility,
+                    tostring(observed[tool] ~= nil),
+                    tostring(accepted[tool] == true)
+                )
+            )
+        end
+        return table.concat(lines, "\n")
+    end
     local function report(_hide: boolean)
+        local snapshot = inventorySnapshot()
         local native = coreState()
         local message = string.format(
             "[Hotbar] place v%d | %s | owner=%s | %s | safe=%.0f slots=%d visible=%s native=%s | write=%s read=%s",
@@ -655,7 +781,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             tostring(native),
             if writeError == "" then "ok" else writeError,
             if readError == "" then "ok" else readError
-        )
+        ) .. "\n" .. snapshot
         print(message)
         local channels = game:GetService("TextChatService"):FindFirstChild("TextChannels")
         local channel = channels and (channels:FindFirstChild("RBXSystem") or channels:FindFirstChild("RBXGeneral"))
@@ -721,7 +847,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     activeStop = stopSession
     table.insert(connections, playerGui.Destroying:Connect(stopSession))
     requestCore(true, "waiting for first Tool")
-    watchContainers()
+    watchContainers("startup bind")
     return stopSession
 end
 local stop: (() -> ())? = nil

@@ -110,6 +110,9 @@ local Enum = setmetatable({}, {
 })
 local pending, delayed = {}, {}
 local task = {
+    spawn = function(fn)
+        coroutine.wrap(fn)()
+    end,
     defer = function(fn)
         table.insert(pending, fn)
     end,
@@ -172,6 +175,7 @@ new = function(class, name, parent)
     end
     function object:IsA(want)
         return class == want
+            or (want == "BasePart" and (class == "Part" or class == "MeshPart"))
             or (want == "GuiButton" and (class == "TextButton" or class == "ImageButton"))
             or (
                 want == "GuiObject"
@@ -291,6 +295,7 @@ new = function(class, name, parent)
             "Destroying",
             "CharacterAdded",
             "CharacterRemoving",
+            "OnServerEvent",
         }
     do
         object[event] = signal()
@@ -470,13 +475,29 @@ local services = {
     ContextActionService = cas,
     UserInputService = uis,
     GuiService = guiService,
-    Players = {},
-    ReplicatedStorage = {
-        Shared = new("Folder", "Shared"),
+    Players = new("Players", "Players"),
+    ServerStorage = new("ServerStorage", "ServerStorage"),
+    RunService = {
+        IsStudio = function()
+            return false
+        end,
+        IsServer = function()
+            return true
+        end,
     },
+    MarketplaceService = {
+        UserOwnsGamePassAsync = function()
+            return true
+        end,
+        PromptGamePassPurchaseFinished = signal(),
+    },
+    ReplicatedStorage = new("ReplicatedStorage", "ReplicatedStorage"),
     TextChatService = textChat,
 }
+services.ReplicatedStorage.Shared = new("Folder", "Shared", services.ReplicatedStorage)
 services.ReplicatedStorage.Shared.IngredientPreviewGeometry = "Geometry"
+services.ReplicatedStorage.Shared.Constants = { IceGunConfig = "IceGunConfig" }
+iceGunTemplate(new, new("Folder", "Weapons", services.ServerStorage))
 local debugFolder = new("Folder", "Events", services.ReplicatedStorage.Shared)
 local debugRemote = new("RemoteEvent", "HotbarDebug", debugFolder)
 debugRemote.OnClientEvent = debugSignal
@@ -503,6 +524,7 @@ local function requireModule(name)
             return "Player.PlayerScripts.Client.Controllers.HotbarController"
         end,
         Parent = {
+            StudioIceGunEntitlement = "StudioIceGunEntitlement",
             UIRegistry = "UIRegistry",
             Parent = {
                 UI = {
@@ -564,6 +586,11 @@ local function requireModule(name)
 end
 local Gui = requireModule("HotbarGui")
 local Controller = requireModule("Controller")
+local IceGunService = requireModule("IceGunService")
+IceGunService.Init({
+    IceGunEffects = { Inert = function() end },
+    IceGunProjectileService = { ClearPlayer = function() end },
+})
 local cases = 0
 local function fixture(width, height, touch)
     core.Enabled, core.Fail, core.ReadFail, core.IgnoreWrite = true, false, false, false
@@ -572,7 +599,8 @@ local function fixture(width, height, touch)
     uis.TouchEnabled, uis.GamepadEnabled, uis.Focus = touch or false, false, nil
     guiService.MenuIsOpen, guiService.SelectedObject = false, nil
     local f = {}
-    f.Player = new("Player", "Player")
+    f.Player = new("Player", "Player", services.Players)
+    f.Player.UserId = 1
     f.PlayerGui = new("PlayerGui", "PlayerGui", f.Player)
     f.PlayerGui.Pixels = v(width or 1200, height or 800)
     f.PlayerGui.CurrentScreenOrientation = if (width or 1200) < (height or 800) then "Portrait" else "LandscapeLeft"
@@ -611,6 +639,15 @@ local function fixture(width, height, touch)
             tool:SetAttribute("CarryItemId", key)
         end
         tool.Parent = f.Backpack
+        return tool
+    end
+    function f.GrantIce(deferUpdate)
+        IceGunService.AddPlayer(f.Player)
+        if not deferUpdate then
+            flush()
+        end
+        local tool = f.Backpack:FindFirstChild("IcicleGun")
+        assert(tool and tool:GetAttribute("IceGunWeapon") == true, "canonical pre-plot grant fixture")
         return tool
     end
     function f.Start()
@@ -1247,6 +1284,239 @@ run("lifecycle", "Character Tool can precede Backpack replication", function()
         ice.Parent == f.Backpack and #f.Slots() == 1 and writes(false) == 1,
         "late Backpack rebind preserves ownership and unequip"
     )
+    f.Stop()
+end)
+for _, bounds in { { 390, 844 }, { 844, 390 } } do
+    for _, late in { false, true } do
+        for _, parent in { "Backpack", "Character" } do
+            run(
+                "discovery",
+                string.format(
+                    "canonical pre-plot grant %dx%d %s %s",
+                    bounds[1],
+                    bounds[2],
+                    if late then "late" else "early",
+                    parent
+                ),
+                function()
+                    local f = fixture(bounds[1], bounds[2], true)
+                    if late then
+                        f.Start()
+                        check(core.Enabled and #f.Slots() == 0, "native access before the grant")
+                    end
+                    local tool = f.GrantIce(true)
+                    tool.Parent = f[parent]
+                    if not late then
+                        f.Start()
+                    else
+                        flush()
+                    end
+                    local slot = f.Slots()[1]
+                    check(
+                        #f.Slots() == 1 and f.Bar.Visible and not core.Enabled,
+                        "real service grant reaches one custom slot"
+                    )
+                    check(
+                        named(slot, "Label").Text == "Ice Gun" and named(slot, "Icon").Image == Gui.Art.Ice,
+                        "canonical grant classification"
+                    )
+                    check(selected(slot) == (parent == "Character"), "startup selection reflects actual Tool parent")
+                    for _ = 1, 4 do
+                        local previous = tool.Parent
+                        slot.Activated:Fire()
+                        flush()
+                        check(
+                            tool.Parent ~= previous and #f.Slots() == 1 and f.Slots()[1] == slot,
+                            "equip/unequip retains one slot by Tool identity"
+                        )
+                    end
+                    check(writes(false) == 1, "one takeover without layout or diagnostic commands")
+                    f.Stop()
+                end
+            )
+        end
+    end
+end
+run("discovery", "canonical Tool classification arrives late", function()
+    local f = fixture(390, 844, true)
+    local tool = f.GrantIce(true)
+    -- Model the client receiving the instance before its classification attribute.
+    tool:SetAttribute("IceGunWeapon", nil)
+    f.Start()
+    check(core.Enabled and #f.Slots() == 0, "unclassified instance keeps native access")
+    tool:SetAttribute("IceGunWeapon", "true")
+    flush()
+    check(core.Enabled and #f.Slots() == 0, "a string does not satisfy the canonical boolean contract")
+    tool:SetAttribute("IceGunWeapon", true)
+    flush()
+    check(not core.Enabled and #f.Slots() == 1 and f.Bar.Visible, "late boolean attribute triggers normal takeover")
+    f.Stop()
+end)
+run("discovery", "populated Backpack binds before Character arrives", function()
+    local f = fixture(390, 844, true)
+    local tool = f.GrantIce(true)
+    f.Backpack.Parent, f.Player.Character = nil, nil
+    f.Start()
+    f.Backpack.Parent = f.Player
+    flush()
+    check(core.Enabled and #f.Slots() == 0, "no selectable Character retains native")
+    f.Player.Character = f.Character
+    f.Player.CharacterAdded:Fire(f.Character)
+    flush()
+    check(#f.Slots() == 1 and not core.Enabled, "binding reconciles an already populated Backpack")
+    f.Slots()[1].Activated:Fire()
+    flush()
+    check(tool.Parent == f.Character, "late Character equips the original issued Tool")
+    f.Stop()
+end)
+run("diagnostic", "current readiness reason survives an unchanged native target", function()
+    local f = fixture()
+    f.Humanoid.Parent = nil
+    f.Start()
+    f.Tool("Ice")
+    flush()
+    debugSignal:Fire(false)
+    local message = debugMessages[#debugMessages]
+    check(
+        string.find(message, "waiting for selectable character", 1, true),
+        "native readiness reason is current rather than the earlier empty inventory"
+    )
+    f.Stop()
+end)
+run("diagnostic", "snapshot distinguishes filtering and pending inventory without changing state", function()
+    local f = fixture(390, 844, true)
+    f.Start()
+    local tool = new("Tool", "IcicleGun", f.Backpack)
+    tool:SetAttribute("IceGunWeapon", "true")
+    -- Read before the queued child event is reconciled.
+    debugSignal:Fire(false)
+    local pendingReport = debugMessages[#debugMessages]
+    check(
+        string.find(pendingReport, "accepted=0", 1, true) and string.find(pendingReport, "queued=true", 1, true),
+        "pending update is visible before state changes"
+    )
+    check(
+        string.find(pendingReport, "raw=1 observedRaw=1", 1, true)
+            and string.find(pendingReport, "watched=false lastAccepted=false", 1, true),
+        "raw unobserved Tool is reported"
+    )
+    check(core.Enabled and #f.Slots() == 0, "report does not collect Tools or force takeover")
+    flush()
+    debugSignal:Fire(false)
+    local rejectedReport = debugMessages[#debugMessages]
+    check(
+        string.find(rejectedReport, "IceGunWeapon=true:string class=reject:unsupported attributes/name", 1, true),
+        "report gives attribute value/type and classification rejection"
+    )
+    check(
+        string.find(rejectedReport, "watched=true lastAccepted=false", 1, true)
+            and string.find(rejectedReport, "queued=false", 1, true),
+        "observed filtered Tool differs from a pending update"
+    )
+    tool:SetAttribute("IceGunWeapon", true)
+    flush()
+    local slot, calls = f.Slots()[1], #core.Calls
+    slot.Activated:Fire()
+    flush()
+    debugSignal:Fire(false)
+    local acceptedReport = debugMessages[#debugMessages]
+    check(
+        string.find(acceptedReport, "trigger=Tool", 1, true) and string.find(acceptedReport, "accepted=1", 1, true),
+        "last inventory trigger and accepted count are current"
+    )
+    check(
+        string.find(acceptedReport, 'name="IcicleGun" parent=', 1, true)
+            and string.find(
+                acceptedReport,
+                "IceGunWeapon=true:boolean class=Ice gate=owned watched=true lastAccepted=true",
+                1,
+                true
+            ),
+        "accepted equipped Tool has full classification and observation context"
+    )
+    check(
+        tool.Parent == f.Character and f.Slots()[1] == slot and #core.Calls == calls,
+        "read-only report preserves equip slots and CoreGui writes"
+    )
+    f.Stop()
+end)
+run("diagnostic", "snapshot detects same-name stale Character before event delivery", function()
+    local f = fixture()
+    f.GrantIce(true)
+    f.Start()
+    local replacement = f.CharacterModel()
+    local tool = new("Tool", "IcicleGun", replacement)
+    tool:SetAttribute("IceGunWeapon", true)
+    -- An intentionally withheld lifecycle event tests snapshot discrimination,
+    -- not a claim that Roblox omitted that event in the phone failure.
+    f.Player.Character = replacement
+    debugSignal:Fire(false)
+    local message = debugMessages[#debugMessages]
+    local characterLine = string.match(message, "CH [^\n]+")
+    check(
+        characterLine and string.find(characterLine, "match=false raw=1 observedRaw=0", 1, true),
+        "equal names cannot hide stale Character identity"
+    )
+    check(
+        string.find(message, "class=Ice gate=reject:stale Character watched=false lastAccepted=false", 1, true),
+        "live unobserved Tool is distinguishable from classification rejection"
+    )
+    check(#f.Slots() == 1 and not core.Enabled, "snapshot leaves the last accepted inventory untouched")
+    f.Player.CharacterAdded:Fire(replacement)
+    flush()
+    check(#f.Slots() == 2 and selected(f.Slots()[2]), "normal Character event reconciles populated replacement")
+    f.Stop()
+end)
+run("diagnostic", "snapshot detects same-name Backpack replacement before queued update", function()
+    local f = fixture()
+    f.Start()
+    f.Backpack.Parent = nil
+    f.Backpack = new("Backpack", "Backpack", f.Player)
+    local tool = new("Tool", "IcicleGun", f.Backpack)
+    tool:SetAttribute("IceGunWeapon", true)
+    debugSignal:Fire(false)
+    local message = debugMessages[#debugMessages]
+    check(
+        string.find(message, "match=true raw=1 observedRaw=1", 1, true)
+            and string.find(message, "queued=true pending=Backpack child added", 1, true),
+        "new Backpack binding and pending reconciliation are distinct"
+    )
+    check(core.Enabled and #f.Slots() == 0, "snapshot preserves native access before reconciliation")
+    flush()
+    check(#f.Slots() == 1 and not core.Enabled, "replacement Backpack reconciles its Tool on the normal event path")
+    f.Stop()
+end)
+run("diagnostic", "snapshot detects stale Backpack before lifecycle event delivery", function()
+    local f = fixture()
+    f.Start()
+    local oldBackpack = f.Backpack
+    local added, removed = f.Player.ChildAdded, f.Player.ChildRemoved
+    f.Player.ChildAdded, f.Player.ChildRemoved = signal(), signal()
+    oldBackpack.Parent = nil
+    f.Backpack = new("Backpack", "Backpack", f.Player)
+    local tool = new("Tool", "IcicleGun", f.Backpack)
+    tool:SetAttribute("IceGunWeapon", true)
+    debugSignal:Fire(false)
+    local message = debugMessages[#debugMessages]
+    local backpackLine = string.match(message, "BP [^\n]+")
+    check(
+        backpackLine and string.find(backpackLine, "match=false raw=1 observedRaw=0", 1, true),
+        "snapshot identifies a stale same-name Backpack"
+    )
+    check(
+        string.find(
+            message,
+            "class=Ice gate=reject:outside observed containers watched=false lastAccepted=false",
+            1,
+            true
+        ),
+        "missed observation is distinguishable from filtering"
+    )
+    check(core.Enabled and #f.Slots() == 0, "report does not rebind the stale container")
+    f.Player.ChildAdded, f.Player.ChildRemoved = added, removed
+    added:Fire(f.Backpack)
+    flush()
+    check(#f.Slots() == 1 and not core.Enabled, "normal Backpack event binds and reconciles existing children")
     f.Stop()
 end)
 check(cases > 0, "requested group ran")
