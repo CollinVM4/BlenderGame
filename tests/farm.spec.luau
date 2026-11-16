@@ -11,17 +11,17 @@ check(rows[1].Pad.CanTouch and not rows[2].Pad.CanTouch and not rows[3].Pad.CanT
 for _, row in rows do
     check(row.Dirt.Transparency == 1, "all dirt starts hidden")
 end
-tycoon.SetCash(owner, 470000)
+tycoon.SetCash(owner, 185000)
 touch(1, outsider)
 touch(2, owner)
 check(
-    tycoon.GetCash(owner) == 470000 and state(1) == "LOCKED" and state(2) == "LOCKED",
+    tycoon.GetCash(owner) == 185000 and state(1) == "LOCKED" and state(2) == "LOCKED",
     "outsiders and skipped rows cannot buy"
 )
 tycoon.SetCash(owner, 19999)
 touch(1, peer)
 check(state(1) == "LOCKED" and tycoon.GetCash(owner) == 19999, "insufficient shared cash is preserved")
-tycoon.SetCash(owner, 470000)
+tycoon.SetCash(owner, 185000)
 local originalSetAttribute = peer.SetAttribute
 function peer:SetAttribute(key, value)
     originalSetAttribute(self, key, value)
@@ -32,7 +32,7 @@ end
 touch(1, peer)
 touch(1, owner)
 check(
-    tycoon.GetCash(owner) == 450000 and state(1) == "EMPTY",
+    tycoon.GetCash(owner) == 165000 and state(1) == "EMPTY",
     "teammate purchase and duplicate/reentrant touches charge once"
 )
 check(
@@ -315,6 +315,19 @@ for _, rarity in { "Common", "Uncommon", "Rare", "Mystery" } do
 end
 definition.Rarity, definition.Farmable = originalRarity, nil
 inventory.ClearHeld(owner)
+-- Catalog premium pickups reject the real selected item without consuming it.
+for _, id in { "Rainbow_Trout", "Mystery" } do
+    carry(owner, id)
+    local seed = tool(owner)
+    local beforeTimers = #timers
+    owner:SetAttribute("HeldIngredientId", "Apple")
+    plantRow(1, owner)
+    check(
+        state(1) == "EMPTY" and inventory.GetCarryCount(owner) == 1 and not seed.Destroyed and #timers == beforeTimers,
+        id .. " catalog opt-out preserves held premium pickup"
+    )
+    inventory.ClearHeld(owner)
+end
 -- Dynamic avatar drops use the same central definition as template ingredients.
 local avatarHead = part("AvatarHead")
 local headDrop = ingredients.Spawn("PlayerHead", frame(), nil, true, { VisualTemplate = avatarHead })

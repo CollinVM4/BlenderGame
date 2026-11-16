@@ -4,18 +4,15 @@ local catalog = loadModule("Ingredients")
 for _, case in
     {
         { 1, 1 },
-        { 999, 1 },
-        { 1000, 1 },
-        { 4999, 1 },
-        { 5000, 2 },
-        { 19999, 2 },
-        { 20000, 3 },
-        { 49999, 3 },
-        { 50000, 4 },
-        {
-            165000,
-            4,
-        },
+        { 1499, 1 },
+        { 1500, 1 },
+        { 3499, 1 },
+        { 3500, 2 },
+        { 5499, 2 },
+        { 5500, 3 },
+        { 7999, 3 },
+        { 8000, 4 },
+        { 45000, 4 },
     }
 do
     check(rewards.Tier(case[1]) == case[2], "exact catalog value tier boundary")
@@ -135,7 +132,7 @@ for tier, jackpot in { 20, 50, 100, 200 } do
             for step = 0, 100 do
                 local result = rewards.Roll(tier, rng(step / 100 * 0.999999), definition, value, generation, true)
                 check(
-                    if value < 165000 then catalog[result].Value > value else result == "Dragon_Fruit",
+                    if value < 45000 then catalog[result].Value > value else result == "Dragon_Fruit",
                     "pity wins across RNG range or returns ceiling"
                 )
                 check(
@@ -187,3 +184,99 @@ for _, input in catalog do
 end
 check(rewards.ResultKind(catalog.Rock.Value, catalog.Rock.Value) == "Push", "own Rock is a push")
 check(rewards.ResultKind(catalog.Dragon_Fruit.Value, catalog.Dragon_Fruit.Value) == "Push", "equal jackpot is a push")
+
+-- All bands remain accessible without special pickups.
+for tier, id in { "Rock", "Mushrooms", "Milk", "Golden_Potato" } do
+    check(rewards.Tier(catalog[id].Value) == tier, "ordinary ingredient reaches each tier")
+end
+
+-- Exact catalog EV, including pushes resetting the loss streak, not simulation.
+local function expectation(value, generation)
+    local tier = rewards.Tier(value)
+    local base = rewards.Weights(tier, value)
+    local effective = rewards.ChainWeights(base, value, generation, definition)
+    local ev, loss, pityTotal, pityValue = 0, 0, 0, 0
+    for index, entry in effective do
+        local output = catalog[entry.Id].Value
+        ev += entry.Weight * output / 10000
+        if output < value then
+            loss += entry.Weight / 10000
+        elseif output > value then
+            pityTotal += base[index].Weight
+            pityValue += base[index].Weight * output
+        end
+    end
+    local pityEV = if pityTotal > 0 then pityValue / pityTotal else catalog.Dragon_Fruit.Value
+    local cycle = 0
+    for losses = 0, config.PityLosses do
+        cycle += loss ^ losses
+    end
+    local pityFrequency = loss ^ config.PityLosses / cycle
+    return ev, pityEV, ev * (1 - pityFrequency) + pityEV * pityFrequency
+end
+for _, value in { 1500, 2000, 2500, 3500, 4500, 5000, 5500, 6000, 7000, 8000, 9000, 13000, 24000, 30000, 45000 } do
+    local fresh, pity, repeated = expectation(value, 0)
+    local chain, _, repeatedChain = expectation(value, 5)
+    print(
+        string.format(
+            "ECONOMY input=%d tier=%d fresh=%.2f pity=%.2f repeat=%.2f gen5=%.2f repeatGen5=%.2f",
+            value,
+            rewards.Tier(value),
+            fresh,
+            pity,
+            repeated,
+            chain,
+            repeatedChain
+        )
+    )
+    if value == 1500 then
+        check(repeated == fresh and chain < fresh, "floor pushes never build pity; generation lowers cheap premium")
+        check(fresh < value * 1.15, "cheap fresh catalog premium stays below fifteen percent")
+    elseif value == 3500 then
+        check(
+            repeated < value and repeatedChain < value,
+            "Standard floor stays below input with pity at fresh and capped generation"
+        )
+    end
+end
+
+-- Reinsert every output, advancing the actual generation and per-machine loss streak.
+-- This differs from supplying the same fresh input repeatedly.
+for _, id in { "Rock", "Mushrooms" } do
+    local distribution = { [id] = { [0] = 1 } }
+    for generation = 0, 24 do
+        local nextDistribution, ev, total = {}, 0, 0
+        for inputId, streaks in distribution do
+            local value = catalog[inputId].Value
+            local base = rewards.Weights(rewards.Tier(value), value)
+            for streak, probability in streaks do
+                local pity = streak >= config.PityLosses
+                local pool = if pity then base else rewards.ChainWeights(base, value, generation, definition)
+                local eligible, weight = {}, 0
+                for _, entry in pool do
+                    if not pity or catalog[entry.Id].Value > value then
+                        table.insert(eligible, entry)
+                        weight += entry.Weight
+                    end
+                end
+                if weight == 0 then
+                    eligible, weight = { { Id = "Dragon_Fruit", Weight = 1 } }, 1
+                end
+                for _, entry in eligible do
+                    local chance = probability * entry.Weight / weight
+                    local output = catalog[entry.Id].Value
+                    local losses = if not pity and output < value then streak + 1 else 0
+                    nextDistribution[entry.Id] = nextDistribution[entry.Id] or {}
+                    nextDistribution[entry.Id][losses] = (nextDistribution[entry.Id][losses] or 0) + chance
+                    ev += chance * output
+                    total += chance
+                end
+            end
+        end
+        check(math.abs(total - 1) < 1e-8, "reinserted output probability conserved under pity and generation")
+        if generation == 0 or generation == 5 or generation == 24 then
+            print(string.format("REINSERT start=%s rolls=%d expectedValue=%.2f", id, generation + 1, ev))
+        end
+        distribution = nextDistribution
+    end
+end

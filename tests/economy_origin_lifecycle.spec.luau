@@ -96,5 +96,5 @@ local amount = customer.CalculateOrderPayout(
     { Ingredients = { "Melon", "Melon", "Melon" }, IngredientItems = granted },
     request
 )
-check(amount == math.round((135000 + 250) * 1.25), "granted high-tier ingredients pay value without source bonus")
+check(amount == math.round((21000 + 250) * 1.25), "granted high-tier ingredients pay value without source bonus")
 print("PASS: origin lifecycle")

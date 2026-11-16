@@ -55,6 +55,17 @@ function prompt:InputHoldEnd()
     ends += 1
 end
 row:SetAttribute("FarmState", "LOCKED")
+local laterPads = {}
+for index = 2, 3 do
+    local laterRow = uiInstance("Model", "Row" .. index, workspaceFake)
+    local markers = uiInstance("Part", "FarmMarkers", laterRow)
+    local point = uiInstance("Attachment", "PlantPoint", markers)
+    uiInstance("ProximityPrompt", "FarmPlantPrompt", point)
+    local laterPad = uiInstance("Part", "PurchasePoint" .. index, laterRow)
+    laterPad.CanTouch, laterPad.Transparency = true, 0
+    laterRow:SetAttribute("FarmState", "LOCKED")
+    laterPads[index] = laterPad
+end
 local controller = load("FarmPresentationController")
 controller.Init()
 controller.Init()
@@ -74,6 +85,9 @@ check(
     display(pad).Enabled and display(pad):FindFirstChild("Detail").Text == "$20,000",
     "configured comma-separated pad price"
 )
+for index, price in { [2] = "$55,000", [3] = "$110,000" } do
+    check(display(laterPads[index]):FindFirstChild("Detail").Text == price, "later row displays approved shared price")
+end
 row:SetAttribute("FarmState", "EMPTY")
 pad.CanTouch = false
 prompts.PromptShown:Fire(prompt, "Keyboard")
@@ -144,6 +158,9 @@ pad.CanTouch = true
 tick()
 check(not display(origin).Enabled and display(pad).Enabled, "session reset restores pad and hides row")
 row.Parent = nil
+for _, laterPad in laterPads do
+    laterPad.Parent.Parent = nil
+end
 tick()
 check(#playerGui:GetChildren() == 0, "streaming out cleans all farm views")
 env.Enum.EasingStyle, env.Enum.EasingDirection = { Back = "Back" }, { Out = "Out" }

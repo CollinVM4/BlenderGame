@@ -85,6 +85,10 @@ local function purchase(id, tier)
     remote.OnServerEvent:Fire(actor, "PurchaseUpgrade", id, tier, tycoon.GetRequestContext(actor))
     check(response and response.success and response.level == tier - 1, "valid response for " .. id)
     check(row(id).Level == tier - 1, "replicated purchased tier for " .. id)
+    check(
+        row(id).Price == (if upgrades[id][tier + 1] then upgrades[id][tier + 1].Cost else nil),
+        "UI agrees with next server cost for " .. id
+    )
     check(tycoon.GetCash(actor) == beforeCash - upgrades[id][tier].Cost, "charges next catalog row once")
 end
 purchase("SprintStamina", 2)
@@ -131,8 +135,8 @@ check(
 purchase("SprintStamina", 4)
 for _, case in
     {
-        { Id = "MovementSpeed", Rows = 16, Base = 26, Max = 41, Increment = 1, Total = 408000 },
-        { Id = "SprintStamina", Rows = 15, Base = 60, Max = 130, Increment = 5, Total = 261500 },
+        { Id = "MovementSpeed", Rows = 16, Base = 26, Max = 41, Increment = 1, Total = 344000 },
+        { Id = "SprintStamina", Rows = 15, Base = 60, Max = 130, Increment = 5, Total = 236500 },
     }
 do
     local track = upgrades[case.Id]

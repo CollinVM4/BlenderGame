@@ -177,6 +177,13 @@ check(
 check(p:GetAttribute("TasksServeTotal") == 1, "first tutorial serve counts once for serve task")
 check(#inventory.GetSmoothieInventory(p) == 0, "successful serve consumes the actual dispensed cup")
 check(p:GetAttribute("TutorialStage") == "Upgrades", "first serve offers optional combined upgrades")
+for _, id in { "Jump", "Bat" } do
+    setup(
+        dependency.TycoonService.PurchaseUpgrade(p, id, 2, dependency.TycoonService.GetRequestContext(p)),
+        "starter floor funds " .. id
+    )
+end
+check(dependency.TycoonService.GetCash(p) == afterServe - 30000, "first Red floor covers Jump one and Bat one together")
 advance(8)
 check(p:GetAttribute("TutorialStage") == "NextCustomer", "customer hint precedes Market without another serve")
 check(

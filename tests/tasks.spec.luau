@@ -71,22 +71,41 @@ flush()
 check(authority.GetCash(p) == before + 5000, "tutorial reward pays once per session")
 tier = 3
 check(p:GetAttribute("TasksServeReward") == 21000, "active milestone stays locked after tier change")
-for _ = 4, 10 do
+for _ = 4, 9 do
     serve(p)
 end
+local tenth = {}
+before = authority.GetCash(p)
 check(
-    p:GetAttribute("TasksServeThreshold") == 20 and p:GetAttribute("TasksServeReward") == 400000,
+    serve(p, true, false, tenth) == 21000 and authority.GetCash(p) == before + 21000,
+    "locked seven-serve block pays at ten"
+)
+check(serve(p, true, false, tenth) == 0 and authority.GetCash(p) == before + 21000, "ten-serve replay cannot pay twice")
+check(
+    p:GetAttribute("TasksServeThreshold") == 20 and p:GetAttribute("TasksServeReward") == 80000,
     "new tier applies at next activation"
 )
 tier = 0
-for _ = 11, 50 do
-    serve(p)
+for total = 11, 50 do
+    local event = {}
+    before = authority.GetCash(p)
+    local paid = serve(p, true, false, event)
+    if total % 10 == 0 then
+        check(
+            paid == 80000 and authority.GetCash(p) == before + 80000,
+            "recurring ten-serve block pays locked tier rate"
+        )
+        check(
+            serve(p, true, false, event) == 0 and authority.GetCash(p) == before + 80000,
+            "recurring milestone replay cannot pay twice"
+        )
+    end
 end
 check(
     p:GetAttribute("TasksServeThreshold") == 60 and p:GetAttribute("TasksServeTotal") == 50,
     "20/30/40/50 advance cumulatively and indefinitely"
 )
-check(p:GetAttribute("TasksServeReward") == 400000, "next reward never decreases after tier drop")
+check(p:GetAttribute("TasksServeReward") == 80000, "next reward never decreases after tier drop")
 local historical = actor(true, 23)
 check(
     authority.GetCash(historical) == 0 and historical:GetAttribute("TasksServeThreshold") == 30,
@@ -172,7 +191,7 @@ check(
     "fresh session starts from zero without saved state"
 )
 
-for _, sample in { { 0, 9000 }, { 1, 45000 }, { 2, 90000 }, { 3, 120000 } } do
+for _, sample in { { 0, 9000 }, { 1, 12000 }, { 2, 18000 }, { 3, 24000 } } do
     tier = sample[1]
     local scaled = actor(true)
     check(scaled:GetAttribute("TasksServeReward") == sample[2], "each configured Jump tier locks its initial reward")

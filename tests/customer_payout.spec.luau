@@ -47,9 +47,9 @@ local function award(result, request, effective, multiplier, grade)
     check(evaluation.Grade == grade and amount == expected and display == effective, "real grade/payout/display chain")
     return amount
 end
-local a = award(cup({ "Cherries", "Cherries", "Strawberry" }), byId.Red, 6000, 1, "A")
-local b = award(cup({ "Cherries", "Strawberry", "Melon" }), byId.Red, 6000, 1, "B")
-local c = award(cup({ "Cherries", "Cherries", "Melon" }), byId.Red, 6000, 1, "B")
+local a = award(cup({ "Cherries", "Cherries", "Strawberry" }), byId.Red, 7500, 1, "A")
+local b = award(cup({ "Cherries", "Strawberry", "Melon" }), byId.Red, 6750, 1, "B")
+local c = award(cup({ "Cherries", "Cherries", "Melon" }), byId.Red, 6750, 1, "B")
 check(b < a and c < a and b == c, "accepted final ordering under the real evaluator")
 local invalid = customer.EvaluateOrder({ Ingredients = { "Cherries" } }, byId.Red)
 check(
@@ -64,23 +64,23 @@ local recipe = {
     ExactIngredients = true,
     BasePayout = 250,
 }
-award(cup({ "Cherries", "Strawberry", "Melon" }), recipe, 49000, 1, "A")
+award(cup({ "Cherries", "Strawberry", "Melon" }), recipe, 12000, 1, "A")
 local pair = cup({ "Cherries", "Melon", "Melon" })
-award(pair, byId.Red, 3000, 1, "C")
-check(3000 - ingredients.Cherries.Value == 1000, "catalog-priced red match caps filler at half matching value")
+award(pair, byId.Red, 3750, 1, "C")
+check(3750 - ingredients.Cherries.Value == 1250, "catalog-priced red match caps filler at half matching value")
 award(cup({ "Melon", "Melon", "Melon" }), byId.Red, 0, 1, "D")
 local pear = { RequiredTags = { "Yellow" }, BasePayout = 250 }
-award(cup({ "Pear", "Crab", "Crab" }), pear, 15000, 1, "C")
+award(cup({ "Pear", "Crab", "Crab" }), pear, 6750, 1, "C")
 local ripe = cup({ "Cherries", "Strawberry", "Melon" })
 ripe.IngredientItems[1].IsRipe = true
 local raw = items.GetSmoothieValue(ripe, now)
-check(raw == 49500, "ripeness is included in shared per-unit value source")
+check(raw == 12625, "ripeness is included in shared per-unit value source")
 local relevantRaw = items.GetSmoothieIngredientValue(ripe, 1, now) + items.GetSmoothieIngredientValue(ripe, 2, now)
 check(
     relevantRaw + items.GetSmoothieIngredientValue(ripe, 3, now) == raw,
     "split exactly reconstructs undiscounted sum"
 )
-award(ripe, byId.Red, 6750, 1, "B")
+award(ripe, byId.Red, 7375, 1, "B")
 local allRipe = cup({ "Cherries", "Cherries", "Strawberry" })
 allRipe.IngredientItems[1].IsRipe = true
 award(allRipe, byId.Red, items.GetSmoothieValue(allRipe, now), 1, "A")
@@ -89,26 +89,26 @@ for _, origin in { "Market", "Event", "Farm", "Muncher", "Unknown" } do
     award(
         cup({ "Melon", "Cherries", "Strawberry" }, { origin, "Farm", "Farm" }),
         sweet,
-        49000,
+        12000,
         if origin == "Market" or origin == "Event" then 1.5 else 1,
         "A"
     )
 end
-award(cup({ "Cherries", "Strawberry", "Melon" }, { "Farm", "Farm", "Market" }), byId.Red, 6000, 1, "B")
-award(cup({ "Crab", "Strawberry", "Melon" }, { "Market", "Farm", "Farm" }), byId.Red, 48250, 1.25, "B")
-award(cup({ "Pear", "Melon", "Cherries" }, { "Market", "Farm", "Farm" }), sweet, 57000, 1.1, "A")
-local farm = award(cup({ "Crab", "Cherries", "Strawberry" }, { "Farm", "Farm", "Farm" }), byId.Red, 39000, 1, "A")
+award(cup({ "Cherries", "Strawberry", "Melon" }, { "Farm", "Farm", "Market" }), byId.Red, 6750, 1, "B")
+award(cup({ "Crab", "Strawberry", "Melon" }, { "Market", "Farm", "Farm" }), byId.Red, 11250, 1.25, "B")
+award(cup({ "Pear", "Melon", "Cherries" }, { "Market", "Farm", "Farm" }), sweet, 14000, 1.1, "A")
+local farm = award(cup({ "Crab", "Cherries", "Strawberry" }, { "Farm", "Farm", "Farm" }), byId.Red, 12000, 1, "A")
 local market =
-    award(cup({ "Crab", "Cherries", "Strawberry" }, { "Market", "Farm", "Farm" }), byId.Red, 39000, 1.25, "A")
+    award(cup({ "Crab", "Cherries", "Strawberry" }, { "Market", "Farm", "Farm" }), byId.Red, 12000, 1.25, "A")
 check(
-    market == math.round((39000 + 250) * 1.25 * 1.25) and market > farm,
+    market == math.round((12000 + 250) * 1.25 * 1.25) and market > farm,
     "pedestal Crab multiplies otherwise identical drink"
 )
 local legacy = { Ingredients = { "Melon", "Cherries", "Strawberry" } }
-award(legacy, sweet, 49000, 1, "A")
+award(legacy, sweet, 12000, 1, "A")
 local missing = cup({ "Melon", "Cherries", "Strawberry" })
 missing.IngredientItems[1].Origin = nil
-award(missing, sweet, 49000, 1, "A")
+award(missing, sweet, 12000, 1, "A")
 check(items.New("Melon", "new").Origin == "Unknown", "fresh unit opts out of premium")
 local original = cup({ "Melon", "Cherries", "Strawberry" }, { "Market", "Farm", "Muncher" })
 local copies = items.CopyAll(original.IngredientItems)
@@ -124,12 +124,36 @@ for _, ids in { { "Blueberry", "Blueberry", "Blueberry" }, { "Dragon_Fruit", "Dr
     check(amount == 250 and display == 0, "wildcard ignores every ingredient and provenance")
 end
 check(authoredWildcardChances[1] == 0.05 and authoredWildcardChances[2] == 0, "authored wildcard rates")
-for index, expected in { { 0, 3 }, { 30000, 5 }, { 150000, 7 } } do
+for index, expected in { { 0, 3 }, { 30000, 5 }, { 75000, 7 } } do
     check(
         upgrades.CarryCapacity[index].Cost == expected[1] and upgrades.CarryCapacity[index].Value == expected[2],
         "carry tuning"
     )
 end
+-- Approved regular-tier medians and mixed-floor order, outside tutorial/task grants.
+for _, sample in
+    {
+        { "Cherries", 2500, 1, 9688 },
+        { "Pear", 4500, 1.1, 18906 },
+        { "Coconut", 6000, 1.25, 28516 },
+        { "Golden_Potato", 8000, 1.5, 45469 },
+    }
+do
+    local id, value, multiplier, expected = unpack(sample)
+    local request = { RequiredIngredients = { id, id, id }, ExactIngredients = true, BasePayout = 250 }
+    check(
+        award(cup({ id, id, id }, { "Market", "Market", "Market" }), request, value * 3, multiplier, "A") == expected,
+        "approved median payout"
+    )
+end
+local mixed =
+    { RequiredIngredients = { "Cherries", "Strawberry", "Golden_Potato" }, ExactIngredients = true, BasePayout = 250 }
+check(
+    award(cup({ "Cherries", "Strawberry", "Golden_Potato" }, { "Market", "Market", "Market" }), mixed, 13000, 1.5, "A")
+        == 24844,
+    "matching ground ingredients retain full value alongside tower ingredient"
+)
+
 data.SetCash(owner, 750000)
 setup(buyTestUpgrade(data, owner, "Payout"), "first payout upgrade")
 setup(buyTestUpgrade(data, owner, "Payout"), "second payout upgrade")
@@ -137,7 +161,7 @@ data.GrantDoubleCash(owner, 600)
 muncher = 2
 local premium = cup({ "Melon", "Cherries", "Strawberry" }, { "Market", "Farm", "Farm" })
 local amount = customer.CalculateOrderPayout(owner, premium, sweet)
-check(amount == math.round((49000 + 250) * 1.5 * 1.25 * 1.7 * 2 * 2), "all premium payout multipliers compose")
+check(amount == math.round((12000 + 250) * 1.5 * 1.25 * 1.7 * 2 * 2), "all premium payout multipliers compose")
 local flat, display = customer.CalculateOrderPayout(owner, premium, requests.WildcardRequest)
 check(
     flat == math.round(250 * 1.7 * 2 * 2) and display == 0,
@@ -157,7 +181,7 @@ for _, shop in { false, true } do
     check(customer.CalculatePayout(owner, "A") == math.round(plain * expected), "flat payout uses max shop/lucky")
     check(
         customer.CalculateOrderPayout(owner, premium, sweet)
-            == math.round((49000 + 250) * 1.5 * 1.25 * 1.7 * (if shop then 2 else 1.5) * muncher),
+            == math.round((12000 + 250) * 1.5 * 1.25 * 1.7 * (if shop then 2 else 1.5) * muncher),
         "order payout uses max shop/lucky"
     )
 end
@@ -197,6 +221,6 @@ check(
     "expired flat payout returns to unboosted factor"
 )
 check(
-    customer.CalculateOrderPayout(owner, premium, sweet) == math.round((49000 + 250) * 1.5 * 1.25 * 1.7 * muncher),
+    customer.CalculateOrderPayout(owner, premium, sweet) == math.round((12000 + 250) * 1.5 * 1.25 * 1.7 * muncher),
     "expired order payout returns to unboosted factor"
 )

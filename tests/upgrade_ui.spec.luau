@@ -650,7 +650,7 @@ check(
     view.Rows.Bat.Current.Text == "BIG BAT" and view.Rows.Bat.Next.Text == "GIANT",
     "purchased Bat loads without effective projection"
 )
-check(view.Rows.Bat.Price.Text == "$500K", "Bat next config cost")
+check(view.Rows.Bat.Price.Text == "$125K", "Bat next config cost")
 set("BatLevel", 3)
 check(view.Rows.Bat.Current.Text == "BIG BAT", "effective Bat override cannot advance purchased progression")
 click("MovementSpeed")
