@@ -1,6 +1,8 @@
 --!strict
 local Players = game:GetService("Players")
 local Gui = require(script.Parent.Parent.UI.TasksGui)
+local Registry = require(script.Parent.Parent.UI.UIRegistry)
+local Profile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
 local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 local Controller = {}
 local started = false
@@ -34,6 +36,7 @@ function Controller.Init()
             view.Steal.Progress.Text = number("TasksStealProgress") .. "/" .. number("TasksStealTarget")
             view.Steal.Reward.Text = "Reward: " .. MoneyFormat.Full(number("TasksStealReward")) .. " (estimate)"
         end
+        refresh = Profile.Wrap("tasks.refresh", refresh)
         for _, name in
             {
                 "TasksTutorialComplete",
@@ -48,10 +51,19 @@ function Controller.Init()
         do
             player:GetAttributeChangedSignal(name):Connect(refresh)
         end
-        playerGui.DescendantAdded:Connect(refresh)
-        playerGui.DescendantRemoving:Connect(function()
-            task.defer(refresh)
-        end)
+        local pending = false
+        local function scheduleRefresh(instance: Instance)
+            if pending or not Registry.AffectsPanel(instance, "Tasks") then
+                return
+            end
+            pending = true
+            task.defer(function()
+                pending = false
+                refresh()
+            end)
+        end
+        playerGui.DescendantAdded:Connect(scheduleRefresh)
+        playerGui.DescendantRemoving:Connect(scheduleRefresh)
         refresh()
     end)
 end

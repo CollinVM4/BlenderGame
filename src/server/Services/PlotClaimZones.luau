@@ -6,6 +6,7 @@ local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Constants.StandIdentity)
+local Profile = require(ReplicatedStorage.Shared.ClaimProfile)
 local Sign = require(script.Parent.StandSignPresentation)
 local MovementService = require(script.Parent.MovementService)
 local Zones = {}
@@ -45,10 +46,16 @@ function Zones.Enter(player: Player, plot: Instance, zone: BasePart): boolean
         return false
     end
     if identity:FindFirstChild("ClaimZone") == zone then
+        Profile.Mark("server.claim.enter", { Plot = plot:GetFullName(), UserId = player.UserId })
         local success =
             authority.ClaimPlot(player, plot, { ClaimRevision = plot:GetAttribute("PlotClaimRevision") or 0 })
+        Profile.Mark("server.claim.return", { Success = success })
         if success and authority.GetOwner(plot) == player then
             local context = authority.GetRequestContext(player)
+            Profile.Claim(
+                "server.PlotClaimed.send",
+                { Session = context.PlotSessionId, Revision = context.MembershipRevision }
+            )
             claimed:FireClient(player, plot, context.PlotSessionId, context.MembershipRevision)
         end
         return success
@@ -66,6 +73,7 @@ local function showVisual(object: Instance?, active: boolean)
         return
     end
     local parts = object:GetDescendants()
+    Profile.Count("visualDescendants", #parts)
     table.insert(parts, object)
     for _, part in parts do
         if part:IsA("BasePart") then
@@ -111,9 +119,11 @@ function Zones.Refresh(plot: Instance)
     end
 end
 
+Zones.Refresh = Profile.Wrap("zones.refresh", Zones.Refresh)
 function Zones.Step()
     local live: { [BasePart]: boolean } = {}
     for _, plot in CollectionService:GetTagged("PlayerPlot") do
+        Profile.Count("plots", 1)
         if not plot:IsDescendantOf(workspace) then
             continue
         end
@@ -132,6 +142,7 @@ function Zones.Step()
             local current: { [Player]: Model } = {}
             local arrivals: { Player } = {}
             for _, player in Players:GetPlayers() do
+                Profile.Count("zonePlayerChecks", 1)
                 local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                 if root and root:IsA("BasePart") and Zones.Inside(zone, root.Position) then
                     current[player] = player.Character :: Model
@@ -167,6 +178,7 @@ function Zones.Step()
     end
 end
 
+Zones.Step = Profile.Wrap("zones.step", Zones.Step)
 function Zones.Init(services: any)
     authority = services.TycoonService
     claimed = Instance.new("RemoteEvent")

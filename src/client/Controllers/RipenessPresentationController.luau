@@ -4,6 +4,7 @@ local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Shared = game:GetService("ReplicatedStorage").Shared
+local Profile = require(Shared.ClaimProfile)
 local DisplayState = require(script.Parent.Parent.UI.RipenessDisplayState)
 local RadialProgress = require(script.Parent.Parent.UI.RadialProgress)
 local Tooltip = require(script.Parent.Parent.UI.TutorialTooltip)
@@ -19,6 +20,7 @@ local track = Color3.fromRGB(58, 68, 62)
 type Pip = { Root: Frame, RadialProgress: RadialProgress.View, Center: Frame, Ripe: boolean }
 type Slot = { Gui: BillboardGui?, Pips: { [string]: Pip }, Signature: string }
 local function pip(parent: BillboardGui, order: number): Pip
+    Profile.Count("pips", 1)
     local root = Instance.new("Frame")
     root.Name = "RipenessPip"
     root.BackgroundTransparency = 1
@@ -37,6 +39,8 @@ local function pip(parent: BillboardGui, order: number): Pip
     center.Parent = root
     return { Root = root, RadialProgress = radial, Center = center, Ripe = false }
 end
+
+pip = Profile.Wrap("ripeness.pip", pip)
 
 local function renderPip(view: Pip, amount: number, ripe: boolean)
     view.RadialProgress.Root.Visible = not ripe
@@ -79,6 +83,9 @@ function Controller.Init()
     local boundFixtures: { [Instance]: boolean } = {}
     local function bind(pad: Instance)
         if pad:IsA("BasePart") and (pad:GetAttribute("SlotIndex") ~= nil or pad.Name:match("^Slot%d+$")) then
+            if not pads[pad] then
+                Profile.ObservePad(pad)
+            end
             pads[pad] = pads[pad] or { Pips = {}, Signature = "" }
         end
     end
@@ -90,7 +97,9 @@ function Controller.Init()
         root.Destroying:Connect(function()
             boundFixtures[root] = nil
         end)
-        for _, part in root:GetDescendants() do
+        local descendants = root:GetDescendants()
+        Profile.Count("fixtureDescendants", #descendants)
+        for _, part in descendants do
             bind(part)
         end
         root.DescendantAdded:Connect(bind)
@@ -113,13 +122,14 @@ function Controller.Init()
             end)
         end
     end
+    fixture = Profile.Wrap("ripeness.fixture", fixture)
     for _, root in CollectionService:GetTagged("PlayerStash") do
         fixture(root)
     end
     CollectionService:GetInstanceAddedSignal("PlayerStash"):Connect(fixture)
 
     local elapsed = 0
-    RunService.Heartbeat:Connect(function(dt)
+    RunService.Heartbeat:Connect(Profile.Wrap("ripeness.poll", function(dt: number)
         elapsed += dt
         if elapsed < 0.1 then
             return
@@ -127,6 +137,7 @@ function Controller.Init()
         elapsed = 0
         local now = workspace:GetServerTimeNow()
         for pad, slot in pads do
+            Profile.Count("pads", 1)
             if not pad:IsDescendantOf(workspace) then
                 if slot.Gui then
                     slot.Gui:Destroy()
@@ -145,6 +156,8 @@ function Controller.Init()
             end
             local items, key = DisplayState.Read(pad, now)
             if not slot.Gui or slot.Signature ~= key then
+                Profile.Count("slotBuilds", 1)
+                Profile.Count("uiInstancesExpected", 1 + 16 * #items)
                 local old = slot.Pips
                 if slot.Gui then
                     slot.Gui:Destroy()
@@ -177,7 +190,7 @@ function Controller.Init()
                 end
             end
         end
-    end)
+    end))
 end
 
 return Controller

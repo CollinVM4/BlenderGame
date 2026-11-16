@@ -376,6 +376,7 @@ local function instance(class)
     return object
 end
 local shared = {
+    ClaimProfile = "ClaimProfile",
     LuckyBlockRewardVisual = "LuckyBlockRewardVisual",
     WorldBillboardStyle = "WorldBillboardStyle",
     MobilePromptDebug = "MobilePromptDebug",
@@ -617,6 +618,19 @@ parent.Parent = { Services = parent, UI = parent }
 -- Specific-order suites disable wildcard randomness; its suite restores authored defaults.
 local authoredWildcardChances
 local function loadModule(name)
+    -- Standalone runners can omit the temporary, disabled Studio diagnostics.
+    if name == "ClaimProfile" and not sources[name] then
+        return {
+            Wrap = function(_, callback)
+                return callback
+            end,
+            Count = function() end,
+            Mark = function() end,
+            Claim = function() end,
+            ObservePad = function() end,
+            InitClient = function() end,
+        }
+    end
     if cache[name] then
         return cache[name]
     end

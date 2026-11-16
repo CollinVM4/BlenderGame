@@ -1,6 +1,7 @@
 --!strict
 -- A circular fill built from two clipped halves of one gradient-masked disc.
 local RadialProgress = {}
+local Profile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
 
 export type View = { Root: Frame, Right: UIGradient, Left: UIGradient }
 
@@ -47,6 +48,7 @@ local function fillHalf(parent: Frame, name: string, x: number, gold: Color3): U
 end
 
 function RadialProgress.Create(parent: Frame, gold: Color3, track: Color3): View
+    Profile.Count("radials", 1)
     local root = Instance.new("Frame")
     root.Name = "RadialProgress"
     root.BackgroundTransparency = 1
@@ -67,4 +69,5 @@ function RadialProgress.SetProgress(view: View, progress: number)
     view.Left.Rotation = math.max(angle, 180)
 end
 
+RadialProgress.Create = Profile.Wrap("radial.create", RadialProgress.Create)
 return RadialProgress

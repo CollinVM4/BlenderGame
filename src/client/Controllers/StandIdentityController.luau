@@ -5,6 +5,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Constants.StandIdentity)
+local Profile = require(ReplicatedStorage.Shared.ClaimProfile)
 local Editor = require(script.Parent.Parent.UI.StandNameEditor)
 local TurbineCamera = require(script.Parent.TurbineCameraController)
 local Controller = {}
@@ -192,6 +193,7 @@ function Controller.OpenNameEditor(plot: Instance)
     end)
 end
 
+Controller.OpenNameEditor = Profile.Wrap("stand.openEditor", Controller.OpenNameEditor)
 function Controller.Init()
     if initialized then
         return
@@ -272,6 +274,7 @@ function Controller.Init()
     end)
     local claimed = ReplicatedStorage.Shared.Events:WaitForChild("PlotClaimed") :: RemoteEvent
     claimed.OnClientEvent:Connect(function(plot: Instance, id: string, revision: number)
+        Profile.Claim("client.PlotClaimed", { Session = id, Revision = revision })
         Controller.Close(true)
         local token = version
         -- Remote events and replicated attributes can arrive on different frames.
@@ -286,6 +289,7 @@ function Controller.Init()
                     and player:GetAttribute("PlotSessionId") == id
                     and plot:GetAttribute("PlotMembershipRevision") == revision
                 then
+                    Profile.Mark("stand.attributesReady", { Session = id })
                     Controller.OpenNameEditor(plot)
                     return
                 end

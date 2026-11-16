@@ -1,6 +1,7 @@
 --!strict
 -- Shared semantic contract. Generated root names and XML referents are irrelevant.
 local Registry = {}
+local claimProfile: any = nil -- Injected by the temporary Studio capture bootstrap.
 local panelNames: { [string]: boolean } =
     { Index = true, Settings = true, Shop = true, Tasks = true, Upgrades = true, Cosmetics = true }
 Registry.Panels = panelNames
@@ -30,13 +31,20 @@ function Registry.Child(parent: Instance?, role: string, names: { string }, clas
     return found
 end
 
+local function isDesktop(instance: Instance): boolean
+    return Registry.Matches(instance, "Desktop", { "Be a Blender! Desktop" })
+        and (instance:IsA("GuiObject") or instance:IsA("ScreenGui"))
+end
+
 function Registry.Desktops(container: Instance): { Instance }
     local result: { Instance } = {}
-    for _, instance in container:GetDescendants() do
-        if
-            Registry.Matches(instance, "Desktop", { "Be a Blender! Desktop" })
-            and (instance:IsA("GuiObject") or instance:IsA("ScreenGui"))
-        then
+    local descendants = container:GetDescendants()
+    if claimProfile then
+        claimProfile.Count("desktopScans", 1)
+        claimProfile.Count("instancesScanned", #descendants)
+    end
+    for _, instance in descendants do
+        if isDesktop(instance) then
             table.insert(result, instance)
         end
     end
@@ -100,4 +108,33 @@ function Registry.PanelId(instance: Instance): string?
     return nil
 end
 
+-- DescendantRemoving fires before detachment, so the same ancestry check handles
+-- late mounts and replacements. Runtime billboards never enter the desktop tree.
+function Registry.AffectsPanel(instance: Instance, id: string): boolean
+    if isDesktop(instance) then
+        return true
+    end
+    local parent = instance.Parent
+    if
+        parent
+        and isDesktop(parent)
+        and Registry.Matches(instance, "Content", { "Be a Blender! DesktopContent", "DesktopContent" })
+    then
+        return true
+    end
+    local content = Registry.ContentOf(instance)
+    if not content then
+        return false
+    end
+    local ancestor: Instance? = instance
+    while ancestor and ancestor.Parent ~= content do
+        ancestor = ancestor.Parent
+    end
+    return ancestor ~= nil and Registry.Matches(ancestor, "Panel:" .. id, { id, id .. "_panel" })
+end
+
+function Registry.SetClaimProfile(profile: any)
+    claimProfile = profile
+    Registry.Desktops = profile.Wrap("gui.desktops.scan", Registry.Desktops)
+end
 return Registry

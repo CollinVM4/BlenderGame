@@ -4,6 +4,7 @@ local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.World
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Profile = require(ReplicatedStorage.Shared.ClaimProfile)
 local RunService = game:GetService("RunService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
 local Controller = {}
@@ -98,7 +99,7 @@ function Controller.Init()
         end
     end)
     local elapsed = 0
-    RunService.Heartbeat:Connect(function(dt)
+    RunService.Heartbeat:Connect(Profile.Wrap("identity.poll", function(dt: number)
         elapsed += dt
         if elapsed < 0.25 then
             return
@@ -110,6 +111,7 @@ function Controller.Init()
         local live: { [Instance]: boolean } = {}
         local liveLabels: { [Instance]: boolean } = {}
         for _, plot in CollectionService:GetTagged("PlayerPlot") do
+            Profile.Count("plots", 1)
             local identity = plot:FindFirstChild("PlotIdentity")
             if identity and plot:IsDescendantOf(workspace) then
                 for _, role in { "Claim", "Teammate" } do
@@ -173,6 +175,7 @@ function Controller.Init()
                 .. (if type(owner) == "number" then portrait(owner) else "")
                 .. (if type(teammate) == "number" then portrait(teammate) else "")
             if display:GetAttribute("Signature") ~= signature then
+                Profile.Count("displayRebuilds", 1)
                 display:SetAttribute("Signature", signature)
                 display:ClearAllChildren()
                 if type(owner) == "number" then
@@ -222,6 +225,6 @@ function Controller.Init()
                 padLabels[origin] = nil
             end
         end
-    end)
+    end))
 end
 return Controller

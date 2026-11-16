@@ -5,6 +5,7 @@ local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local SmoothieGeometry = require(script.Parent.Parent.Services.SmoothieGeometry)
 local Shared = game:GetService("ReplicatedStorage").Shared
+local Profile = require(Shared.ClaimProfile)
 local Config = require(Shared.Constants.Economy).NormalStash
 local MoneyFormat = require(Shared.MoneyFormat)
 local IngredientName = require(Shared.IngredientName)
@@ -207,6 +208,7 @@ function Presentation.Refresh(slot: BasePart?, state: any, ingredients: any)
     local spacing = itemSize * DisplaySpacing
     local layout = Layouts[state.Count]
     for i = 1, state.Count do
+        Profile.Count("proxies", 1)
         local proxy = if state.ItemType == "Smoothie"
             then SmoothieGeometry.CreateVisual(state.Smoothie)
             else ingredients.CreateVisual(state.Ingredients[i].IngredientId, state.Ingredients[i])
@@ -222,6 +224,7 @@ function Presentation.Refresh(slot: BasePart?, state: any, ingredients: any)
             end
         end
         local descendants = proxy:GetDescendants()
+        Profile.Count("proxyDescendants", #descendants)
         table.insert(descendants, proxy)
         for _, child in descendants do
             for _, tag in CollectionService:GetTags(child) do
@@ -286,4 +289,5 @@ function Presentation.Refresh(slot: BasePart?, state: any, ingredients: any)
         model.Parent = folder
     end
 end
+Presentation.Refresh = Profile.Wrap("stash.slot.refresh", Presentation.Refresh)
 return Presentation

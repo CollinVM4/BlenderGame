@@ -32,7 +32,7 @@ cache.MenuNotifications = {
 }
 local gui = instance("PlayerGui")
 gui.Name, gui.Parent = "PlayerGui", p
-gui.DescendantAdded = signal()
+gui.DescendantAdded, gui.DescendantRemoving = signal(), signal()
 p.WaitForChild = p.FindFirstChild
 for _, row in exportNodes do
     if row[2] == 0 then

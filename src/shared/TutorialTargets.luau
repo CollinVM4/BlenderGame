@@ -2,6 +2,7 @@
 -- Paths are plot-relative except the shared Central Market. Folder assemblies expand into visible parts.
 local CollectionService = game:GetService("CollectionService")
 local Targets = {}
+local Profile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
 local paths: { [string]: { { string } } } = {
     ClaimPlot = { { "PlotIdentity", "ClaimVisual" } },
     Ladder = { { "Ladder" } },
@@ -73,7 +74,9 @@ function Targets.GetRoots(plot: Instance?, stage: string, stashSlot: number?): {
             return roots
         end
         local slots = {}
-        for _, part in stash:GetDescendants() do
+        local descendants = stash:GetDescendants()
+        Profile.Count("stashDescendants", #descendants)
+        for _, part in descendants do
             if part:IsA("BasePart") and part:GetAttribute("SlotIndex") == stashSlot then
                 table.insert(slots, part)
             end
@@ -132,7 +135,9 @@ function Targets.Resolve(plot: Instance?, stage: string, stashSlot: number?, cus
         if object:IsA("Model") or object:IsA("BasePart") then
             table.insert(result, object)
         else
-            for _, part in object:GetDescendants() do
+            local descendants = object:GetDescendants()
+            Profile.Count("targetDescendants", #descendants)
+            for _, part in descendants do
                 if part:IsA("BasePart") and part.Transparency < 1 then
                     table.insert(result, part)
                 end
@@ -279,4 +284,7 @@ function Targets.ResolveBeam(
     local part = target:FindFirstChildWhichIsA("BasePart", true)
     return if part and part:IsA("BasePart") then part else nil
 end
+Targets.GetRoots = Profile.Wrap("tutorial.targets.roots", Targets.GetRoots)
+Targets.Resolve = Profile.Wrap("tutorial.targets.resolve", Targets.Resolve)
+Targets.ResolveBeam = Profile.Wrap("tutorial.targets.beam", Targets.ResolveBeam)
 return Targets

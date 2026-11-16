@@ -1017,6 +1017,8 @@ function InventoryService.InitializeTutorialStash(player: Player): (boolean, str
         end
     end
     restoring[player] = true
+    local claimProfile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
+    claimProfile.Mark("stash.persistence.begin")
     local profile, reason = StashPersistence.Open(player.UserId, function()
         local prepared = StashRecords.Decode({})
         for _, group in StarterStash do
@@ -1036,6 +1038,7 @@ function InventoryService.InitializeTutorialStash(player: Player): (boolean, str
         end
         return StashRecords.Encode(prepared)
     end)
+    claimProfile.Mark("stash.persistence.end", { Success = profile ~= nil })
     restoring[player] = nil
     if not profile then
         return false, reason

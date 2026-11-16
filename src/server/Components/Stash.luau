@@ -1,6 +1,7 @@
 --!strict
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local Presentation = require(script.Parent.StashPresentation)
+local Profile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy).NormalStash
 local Slots = require(script.Parent.Parent.Services.StashSlots)
 local CollectionService = game:GetService("CollectionService")
@@ -31,6 +32,7 @@ function Stash.Init(services: any)
             local snapshot = owner and services.InventoryService.GetSnapshot(owner)
             local raid = owner and services.InventoryService.GetStashRaidState(owner)
             for index, slot in slots do
+                Profile.Count("slots", 1)
                 slot:SetAttribute("StashSessionId", raid and raid.SessionId)
                 slot:SetAttribute("StashRaidEndsAt", raid and raid.RaidEndsAt or 0)
                 slot:SetAttribute("StashProtectionEndsAt", raid and raid.ProtectionEndsAt or 0)
@@ -54,6 +56,7 @@ function Stash.Init(services: any)
                 prompts[index].ActionText = "STASH"
             end
         end
+        refresh = Profile.Wrap("stash.fixture.refresh", refresh)
         table.insert(
             connections,
             services.InventoryService.StashChanged:Connect(function()

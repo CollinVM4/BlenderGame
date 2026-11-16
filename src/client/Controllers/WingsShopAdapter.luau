@@ -2,6 +2,7 @@
 -- Display and intent only; grants/purchases are server-authoritative.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Profile = require(ReplicatedStorage.Shared.ClaimProfile)
 local Marketplace = game:GetService("MarketplaceService")
 local Config = require(ReplicatedStorage.Shared.Constants.WingsConfig)
 local Registry = require(script.Parent.Parent.UI.UIRegistry)
@@ -79,7 +80,7 @@ function Adapter.Init()
     end
     started = true
     local warned = false
-    local bound: { [Instance]: { RBXScriptConnection } } = {}
+    local bound: { [Instance]: { View: { Buy: GuiButton }, Connections: { RBXScriptConnection } } } = {}
     local function bind(panel: Instance)
         if Registry.PanelId(panel) ~= "Shop" or bound[panel] then
             return
@@ -97,7 +98,7 @@ function Adapter.Init()
             view.Buy.Active, view.Buy.Selectable = snapshot.CanBuy, snapshot.CanBuy
         end
         local list: { RBXScriptConnection } = {}
-        bound[panel] = list
+        bound[panel] = { View = view, Connections = list }
         table.insert(list, changed.Event:Connect(render))
         table.insert(list, view.Buy.Activated:Connect(Adapter.RequestPurchase))
         table.insert(
@@ -117,6 +118,18 @@ function Adapter.Init()
     Notifications.OnOpened("Shop", Adapter.Refresh) -- FramewispMenus' existing panel-open path.
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local function resolve()
+        -- A card or Buy control can be replaced without destroying its panel.
+        for panel, binding in bound do
+            local current = if panel:IsDescendantOf(playerGui) and Registry.PanelId(panel) == "Shop"
+                then Adapter.Resolve(panel)
+                else nil
+            if not current or current.Buy ~= binding.View.Buy then
+                for _, connection in binding.Connections do
+                    connection:Disconnect()
+                end
+                bound[panel] = nil
+            end
+        end
         for _, desktop in Registry.Desktops(playerGui) do
             local content = Registry.Content(desktop)
             if content then
@@ -126,9 +139,20 @@ function Adapter.Init()
             end
         end
     end
-    playerGui.DescendantAdded:Connect(function()
-        task.defer(resolve)
-    end)
+    resolve = Profile.Wrap("shop.wings.resolve", resolve)
+    local pending = false
+    local function scheduleResolve(instance: Instance)
+        if pending or not Registry.AffectsPanel(instance, "Shop") then
+            return
+        end
+        pending = true
+        task.defer(function()
+            pending = false
+            resolve()
+        end)
+    end
+    playerGui.DescendantAdded:Connect(scheduleResolve)
+    playerGui.DescendantRemoving:Connect(scheduleResolve)
     resolve()
     fetchPrice()
 end

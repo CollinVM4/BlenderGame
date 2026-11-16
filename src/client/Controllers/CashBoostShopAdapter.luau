@@ -2,6 +2,7 @@
 -- Display and purchase intent only; Developer Products grant exclusively by server receipt.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Profile = require(ReplicatedStorage.Shared.ClaimProfile)
 local Marketplace = game:GetService("MarketplaceService")
 local Products = require(ReplicatedStorage.Shared.Constants.ShopProducts)
 local Registry = require(script.Parent.Parent.UI.UIRegistry)
@@ -77,7 +78,8 @@ function Adapter.Init()
     end
     started = true
     local warned = false
-    local bound: { [Instance]: { RBXScriptConnection } } = {}
+    local bound: { [Instance]: { View: { Buy10: GuiButton, Buy30: GuiButton }, Connections: { RBXScriptConnection } } } =
+        {}
     local function bind(panel: Instance)
         if Registry.PanelId(panel) ~= "Shop" or bound[panel] then
             return
@@ -96,7 +98,7 @@ function Adapter.Init()
             view.Buy30.Active, view.Buy30.Selectable = snapshot.CanBuy30, snapshot.CanBuy30
         end
         local list: { RBXScriptConnection } = {}
-        bound[panel] = list
+        bound[panel] = { View = view, Connections = list }
         table.insert(list, changed.Event:Connect(render))
         table.insert(list, view.Buy10.Activated:Connect(Adapter.RequestPurchase10))
         table.insert(list, view.Buy30.Activated:Connect(Adapter.RequestPurchase30))
@@ -117,6 +119,18 @@ function Adapter.Init()
     Notifications.OnOpened("Shop", Adapter.Refresh) -- FramewispMenus' existing panel-open path.
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local function resolve()
+        -- A card or Buy control can be replaced without destroying its panel.
+        for panel, binding in bound do
+            local current = if panel:IsDescendantOf(playerGui) and Registry.PanelId(panel) == "Shop"
+                then Adapter.Resolve(panel)
+                else nil
+            if not current or current.Buy10 ~= binding.View.Buy10 or current.Buy30 ~= binding.View.Buy30 then
+                for _, connection in binding.Connections do
+                    connection:Disconnect()
+                end
+                bound[panel] = nil
+            end
+        end
         for _, desktop in Registry.Desktops(playerGui) do
             local content = Registry.Content(desktop)
             if content then
@@ -126,9 +140,20 @@ function Adapter.Init()
             end
         end
     end
-    playerGui.DescendantAdded:Connect(function()
-        task.defer(resolve)
-    end)
+    resolve = Profile.Wrap("shop.cashBoost.resolve", resolve)
+    local pending = false
+    local function scheduleResolve(instance: Instance)
+        if pending or not Registry.AffectsPanel(instance, "Shop") then
+            return
+        end
+        pending = true
+        task.defer(function()
+            pending = false
+            resolve()
+        end)
+    end
+    playerGui.DescendantAdded:Connect(scheduleResolve)
+    playerGui.DescendantRemoving:Connect(scheduleResolve)
     resolve()
     fetchPrice()
 end

@@ -6,6 +6,7 @@ local Banner = require(script.Parent.Parent.UI.AnnouncementBanner)
 local Text = require(script.Parent.Parent.UI.TutorialHintText)
 local Carry = require(script.Parent.CarryInputController)
 local Presentation = require(script.Parent.TutorialPresentationState)
+local Profile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
 local Controller = {}
 local initialized = false
 local connections: { RBXScriptConnection } = {}
@@ -81,6 +82,7 @@ local function refresh()
     local text = hint
     if not surface then
         local created = Banner.Create(gui :: PlayerGui, "TutorialHint")
+        Profile.Count("bannerBuilds", 1)
         created.Label.TextColor3 = Text.BodyColor
         surface = created
     end
@@ -102,6 +104,7 @@ local function refresh()
     banner.Show(text)
     displayed, exitingUntil = text, nil
 end
+refresh = Profile.Wrap("tutorial.hint.refresh", refresh)
 function Controller.Destroy()
     initialized = false
     stopPresentation()

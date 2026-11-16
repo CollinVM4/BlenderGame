@@ -658,11 +658,15 @@ function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Ins
                 Pending = {},
             }
             sessions[plot], byId[id] = session, session
+            local claimProfile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
+            claimProfile.Mark("server.ownership.publish.begin", { Session = id })
             publish(session)
+            claimProfile.Mark("server.ownership.publish.end", { Session = id })
             local ok, started = true, nil
             if hooks.SessionStarted then
                 ok, started = pcall(hooks.SessionStarted, player)
             end
+            claimProfile.Mark("server.sessionStarted.end", { Session = id, Success = ok and started ~= false })
             TycoonService.EndTransaction(id)
             if not ok or started == false then
                 warn("[TycoonService] Session initialization failed session=" .. id .. " reason=" .. tostring(started))

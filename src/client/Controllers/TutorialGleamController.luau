@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local Targets = require(game:GetService("ReplicatedStorage").Shared.TutorialTargets)
+local Profile = require(game:GetService("ReplicatedStorage").Shared.ClaimProfile)
 local Presentation = require(script.Parent.TutorialPresentationState)
 local Flow = require(script.Parent.Parent.UI.TutorialBeamFlow)
 local Marker = require(script.Parent.Parent.UI.TutorialObjectiveMarker)
@@ -416,6 +417,7 @@ local function refresh()
         if not marker or markerStage ~= stage or markerTarget ~= (destination :: Instance) then
             clearMarker()
             marker = Marker.Create(beamFinish, stage)
+            Profile.Count("markerBuilds", 1)
             markerStage, markerStartedAt, markerTarget = stage, os.clock(), destination
         end
         local activeMarker = marker :: Marker.Surface
@@ -463,6 +465,7 @@ local function refresh()
             end)
         )
         local highlight = Instance.new("Highlight")
+        Profile.Count("highlightBuilds", 1)
         highlight.Name = "TutorialGleam"
         highlight.Adornee = adornee
         highlight.Enabled = true
@@ -502,6 +505,7 @@ local function refresh()
         activeClaimHintTargets = table.clone(current)
     end
 end
+refresh = Profile.Wrap("tutorial.gleam.refresh", refresh)
 local function bindSpawnTarget()
     local candidate = player:FindFirstChild("TutorialSpawnTarget")
     local target = if candidate and candidate:IsA("ObjectValue") then candidate else nil

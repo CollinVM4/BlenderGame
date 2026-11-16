@@ -1,6 +1,7 @@
 --!strict
 local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Shared = game:GetService("ReplicatedStorage").Shared
+local Profile = require(Shared.ClaimProfile)
 local ServerStorage = game:GetService("ServerStorage")
 local Debris = game:GetService("Debris")
 local Customers = require(Shared.Constants.Customers)
@@ -1672,11 +1673,13 @@ function CustomerService.SpawnForPlayer(player: Player, customerId: string?): Mo
     if not token then
         return nil
     end
+    Profile.Mark("customer.spawn.begin", { Session = key(player), TutorialIndex = tutorialIndex })
     local model = spawnForPlayer(
         player,
         if tutorialIndex then IntroCustomers[tutorialIndex].CustomerId else customerId,
         tutorialIndex
     )
+    Profile.Mark("customer.spawn.end", { Session = key(player), Success = model ~= nil })
     deps.TycoonService.EndTransaction(token)
     return model
 end
