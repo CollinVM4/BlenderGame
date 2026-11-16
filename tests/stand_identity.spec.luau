@@ -199,6 +199,12 @@ for _, case in
         { "The Fucking Blender", "The #### Blender" },
         { "unsuitable", "#####" },
         { "The Fucking Blender", "The Fucking Blender" },
+        { "fuckface", "fuckface" },
+        { "MrFuCkFaCe", "MrFuCkFaCe" },
+        { "F.u.c.k.face", "F.u.c.k.face" },
+        { "MrBitchface", "MrBitchface" },
+        { "Shithead Smoothies", "Shithead Smoothies" },
+        { "Asswipe", "Asswipe" },
         { "The f.u.c.k Stand", "The f.u.c.k Stand" },
         { "F.u.c.k.i.n.g a.s.s.h.o.l.e", "F.u.c.k.i.n.g a.s.s.h.o.l.e" },
     }
@@ -218,15 +224,16 @@ do
         "blocked rename keeps the approved name and its revision"
     )
 end
-now += 2
 filter = function(text)
     return text
 end
-check(
-    names.RequestName(owner, plot, "Classy Smoothies #1", context())
-        and plot:GetAttribute("StandName") == "Classy Smoothies #1",
-    "approved literal hashes and words that contain a blocked substring are preserved"
-)
+for _, cleanName in { "Classy Smoothies #1", "Scunthorpe Smoothies", "Peacock Smoothies", "Shiitake Shakes" } do
+    now += 2
+    check(
+        names.RequestName(owner, plot, cleanName, context()) and plot:GetAttribute("StandName") == cleanName,
+        "approved names with incidental substrings are preserved"
+    )
+end
 now += 2
 names.RequestName(owner, plot, "Super Smoothies", context())
 now += 2

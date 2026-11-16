@@ -1,22 +1,35 @@
 --!strict
 -- Extra checks for known words after Roblox's broadcast filter.
 local Sanitizer = {}
-local terms = {
+
+-- Match explicit profanity even when it is part of a compound.
+local compoundTerms = {
     "fuck",
-    "fucks",
-    "fucked",
-    "fucker",
-    "fuckers",
-    "fucking",
+    "asshole",
+    "asshat",
+    "asswipe",
+    "bitchass",
+    "bitchface",
+    "bullshit",
+    "cocksucker",
+    "dickface",
+    "dickhead",
+    "dipshit",
+    "dumbass",
+    "shitface",
+    "shithead",
+    "shitshow",
+    "sonofabitch",
+}
+
+-- Short terms can also occur inside ordinary names such as Scunthorpe.
+local wholeTerms = {
     "shit",
     "shits",
     "shitty",
-    "bullshit",
     "bitch",
     "bitches",
     "ass",
-    "asshole",
-    "assholes",
     "bastard",
     "bastards",
     "cunt",
@@ -25,21 +38,24 @@ local terms = {
     "dicks",
     "cock",
     "cocks",
-    "motherfucker",
-    "motherfucking",
 }
+
+local function termPattern(term: string): string
+    return table.concat(string.split(term, ""), "[%p]*")
+end
+
+local patterns: { string } = {}
+for _, term in compoundTerms do
+    table.insert(patterns, termPattern(term))
+end
+for _, term in wholeTerms do
+    table.insert(patterns, "%f[%w_\128-\255]" .. termPattern(term) .. "%f[^%w_\128-\255]")
+end
+
 function Sanitizer.ContainsBlockedWord(text: string): boolean
-    for _, term in terms do
-        -- ASCII token boundaries include digits/underscore/non-ASCII bytes to
-        -- avoid masking inside longer names. Only punctuation, never spaces,
-        -- may separate letters (f.u.c.k); do not join unrelated words.
-        local letters = {}
-        for index = 1, #term do
-            local letter = string.sub(term, index, index)
-            table.insert(letters, "[" .. letter .. string.upper(letter) .. "]")
-        end
-        local pattern = "%f[%w_\128-\255]" .. table.concat(letters, "[%p]*") .. "%f[^%w_\128-\255]"
-        if string.find(text, pattern) then
+    local lower = string.lower(text)
+    for _, pattern in patterns do
+        if string.find(lower, pattern) then
             return true
         end
     end
