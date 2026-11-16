@@ -27,6 +27,7 @@ env.NumberSequence = {
 }
 env.Enum.HighlightDepthMode = { AlwaysOnTop = "AlwaysOnTop" }
 env.Enum.ScreenInsets = { CoreUISafeInsets = "Safe" }
+env.Enum.TextYAlignment = { Bottom = "Bottom", Center = "Center" }
 env.Enum.EasingStyle = { Back = "Back", Quad = "Quad", Sine = "Sine" }
 env.Enum.EasingDirection = { Out = "Out", In = "In", InOut = "InOut" }
 env.TweenInfo = {
@@ -63,6 +64,9 @@ env.Instance.new = function(class)
     local object = originalInstance(class)
     if class == "Attachment" then
         object.WorldPosition = vec(0, 0, 0)
+    elseif class == "ScreenGui" then
+        object.AbsoluteSize = vec(390, 782, 0)
+        object.AbsolutePosition = vec(0, 48, 0)
     end
     return object
 end
@@ -679,29 +683,61 @@ advance()
 check(noHint(), "owning both retires recommendation before the next server stage update")
 p:SetAttribute("JumpPurchasedLevel", 0)
 p:SetAttribute("BatPurchasedLevel", 0)
--- Safe-inset compact hints remain above the lower hotbar and touch-action region.
-for _, viewport in { vec(844, 390, 0), vec(390, 844, 0), vec(667, 375, 0) } do
-    workspaceFake.CurrentCamera = { ViewportSize = viewport, CFrame = frame(), FieldOfView = 70 }
-    services.UserInputService.PreferredInput = "Touch"
-    preferredChanged:Fire()
-    advance()
-    local current = label()
-    check(current.Parent.ScreenInsets == "Safe", "tutorial uses Core UI safe insets")
-    check(
-        current.Size.Y.Offset == 76 and current.Position.Y.Scale == 0.12,
-        "touch hint occupies compact upper-center region"
-    )
-    check(current.Size.X.Scale == (if viewport.X > viewport.Y then 0.64 else 0.9), "hint width responds to orientation")
-    check(
-        current.Position.Y.Scale * viewport.Y + current.Size.Y.Offset < viewport.Y * 0.5,
-        "hint clears lower interaction controls"
-    )
-end
-services.UserInputService.PreferredInput = "Gamepad"
-workspaceFake.CurrentCamera = { ViewportSize = vec(1920, 1080, 0), CFrame = frame(), FieldOfView = 70 }
+-- The hint docks against the visible row and has a bottom-safe home before it exists.
+services.UserInputService.PreferredInput = "Touch"
 preferredChanged:Fire()
 advance()
-check(label().Size.Y.Offset == 104, "console retains the larger readable hint")
+local current = label()
+local hintGui = current.Parent
+check(hintGui.ScreenInsets == "Safe", "tutorial uses Core UI safe insets")
+check(
+    current.Position.Y.Scale == 1 and current.Position.Y.Offset == -88,
+    "empty inventory keeps the hint low while reserving the hotbar's space"
+)
+local hotbarGui = instance("ScreenGui")
+hotbarGui.Name, hotbarGui.Parent, hotbarGui.Enabled = "BlenderHotbar", gui, true
+local safe = instance("Frame")
+safe.Name, safe.Parent, safe.Visible = "SafeArea", hotbarGui, true
+local bar = instance("Frame")
+bar.Name, bar.Parent, bar.Visible = "Hotbar", safe, true
+bar.AbsoluteSize = vec(180, 68, 0)
+for _, size in { vec(844, 345, 0), vec(390, 782, 0), vec(667, 330, 0) } do
+    hintGui.AbsoluteSize = size
+    local top = size.Y - 92
+    bar.AbsolutePosition = vec(100, hintGui.AbsolutePosition.Y + top, 0)
+    advance()
+    check(
+        current.AnchorPoint.Y == 1 and current.TextYAlignment == "Bottom" and current.Size.Y.Offset == 54,
+        "touch hint uses compact bottom-aligned text"
+    )
+    check(
+        current.Position.Y.Scale == 0 and current.Position.Y.Offset == top - 8,
+        "touch hint tracks the rendered hotbar top with an eight-pixel inset-aware gap"
+    )
+    check(current.Size.X.Scale == (if size.X > size.Y then 0.56 else 0.88), "hint width responds to rotation")
+end
+bar.AbsolutePosition = vec(100, bar.AbsolutePosition.Y - 28, 0)
+advance()
+check(
+    current.Position.Y.Offset == bar.AbsolutePosition.Y - hintGui.AbsolutePosition.Y - 8,
+    "hint follows a hotbar lifted by the touch layout at the same viewport size"
+)
+local lastDock = current.Position.Y.Offset
+hintGui.AbsoluteSize = vec(0, 0, 0)
+advance()
+check(current.Position.Y.Offset == lastDock, "zero bounds during rotation retain the established dock")
+hintGui.AbsoluteSize = vec(390, 782, 0)
+bar.Visible = false
+advance()
+check(current.Position.Y.Scale == 1 and current.Position.Y.Offset == -88, "hidden hotbar restores the low fallback")
+hotbarGui:Destroy()
+services.UserInputService.PreferredInput = "Gamepad"
+preferredChanged:Fire()
+advance()
+check(
+    label().Size.Y.Offset == 104 and label().AnchorPoint.Y == 0 and label().Position.Y.Scale == 0.12,
+    "console retains the larger upper-center hint"
+)
 local ordinary = loadModule("AnnouncementBanner").Create(gui, "UnrelatedBanner")
 check(
     ordinary.Label.Size.X.Scale == 0.92 and ordinary.Label.Position.Y.Scale == 0.065,
