@@ -249,9 +249,10 @@ characters. Canonical Unicode composition is preserved; no ad hoc NFC converter
 is used. Newline/control input is rejected, not silently joined into another name.
 
 `src/server/Services/StandNameSanitizer.luau` owns the explicit profanity list and
-rules: case-insensitive complete ASCII tokens, common explicit inflections and
-punctuation between letters. Longer words, digits/underscore/non-ASCII token
-neighbors and spaced-out words are deliberately left for Roblox moderation.
+rules. The matcher recognizes selected explicit roots and compounds within a
+name and checks ambiguous short terms at token boundaries so names such as
+Scunthorpe are allowed if Roblox approves them. Both checks are case-insensitive
+and recognize punctuation between letters.
 `StandIdentityService.RequestName` validates the submission and sends the entire
 normalized name to `TextService:FilterStringAsync` with the author UserId. It
 validates the result of `GetNonChatStringForBroadcastAsync` using the same name
