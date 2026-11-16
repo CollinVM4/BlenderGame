@@ -256,8 +256,9 @@ runner verifies the editor handoff preserves its existing contracts. See
 [STAND_IDENTITY.md](../docs/STAND_IDENTITY.md) for Studio setup, validation and
 pre-existing session/typecheck/runner blockers.
 
-Naming-specific coverage now includes the shared 27-grapheme contract, conservative
-token/separator masking, both Roblox filter failure stages, safe star publication,
+Naming-specific coverage now includes the shared 27-grapheme contract, blocked
+tokens and punctuation-separated spellings, both Roblox filter failure stages,
+censored-name rejection with the previous name preserved,
 duplicate SAVE/on-screen Return/FocusLost events, controller navigation and keyboard
 placement calculations. `fixtures/stand_graphemes.luau` is a limited CLI Unicode
 double; engine segmentation, native keyboards and rendered readability require the

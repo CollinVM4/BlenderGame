@@ -1,5 +1,5 @@
 --!strict
--- Conservative presentation mask; Roblox TextService remains the moderation authority.
+-- Extra checks for known words after Roblox's broadcast filter.
 local Sanitizer = {}
 local terms = {
     "fuck",
@@ -28,12 +28,7 @@ local terms = {
     "motherfucker",
     "motherfucking",
 }
--- Match inflections before their shorter roots, including separated spellings.
-table.sort(terms, function(a, b)
-    return #a > #b
-end)
-
-function Sanitizer.Mask(text: string): string
+function Sanitizer.ContainsBlockedWord(text: string): boolean
     for _, term in terms do
         -- ASCII token boundaries include digits/underscore/non-ASCII bytes to
         -- avoid masking inside longer names. Only punctuation, never spaces,
@@ -44,13 +39,11 @@ function Sanitizer.Mask(text: string): string
             table.insert(letters, "[" .. letter .. string.upper(letter) .. "]")
         end
         local pattern = "%f[%w_\128-\255]" .. table.concat(letters, "[%p]*") .. "%f[^%w_\128-\255]"
-        text = string.gsub(text, pattern, "****")
+        if string.find(text, pattern) then
+            return true
+        end
     end
-    return text
-end
-
-function Sanitizer.BroadcastDisplay(text: string): string
-    return (string.gsub(text, "#+", "****"))
+    return false
 end
 
 return Sanitizer
