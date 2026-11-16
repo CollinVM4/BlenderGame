@@ -207,6 +207,20 @@ plot:SetAttribute("PlotMembershipRevision", 1)
 plot:SetAttribute("StandNameRevision", 1)
 plot:SetAttribute("StandName", "Collin's Stand")
 owner:SetAttribute("PlotSessionId", "session")
+local areaModel = env.Instance.new("Folder", plot)
+areaModel.Name = "Customer Area"
+local sign = env.Instance.new("Folder", areaModel)
+sign.Name = "Dynamic Sign Text"
+local surface = env.Instance.new("SurfaceGui", sign)
+surface.Name = "SurfaceGui"
+local textRoot = env.Instance.new("Frame", surface)
+textRoot.Name = "TextRoot"
+local signLabels = {}
+for _, layer in { "Shadow", "Depth2", "Depth1", "Main" } do
+    local label = env.Instance.new("TextLabel", textRoot)
+    label.Name, label.Text = layer, plot:GetAttribute("StandName")
+    table.insert(signLabels, label)
+end
 local marker = instance("Part")
 marker.Name, marker.Parent, marker.CFrame = "SignCamera", plot, frame(10, 8, 6)
 shared.Events.WaitForChild = shared.Events.FindFirstChild
@@ -237,12 +251,10 @@ local function open()
     controller.OpenNameEditor(plot)
     check(camera.CameraType == "Scriptable" and not gui.Enabled, "camera moves before UI appears")
     tweens[#tweens]:Finish()
-    check(
-        gui.Enabled and not box:IsFocused() and box.Text == plot:GetAttribute("StandName"),
-        "arrival opens editor without keyboard focus and with authoritative value"
-    )
+    check(gui.Enabled and not box:IsFocused(), "arrival opens editor without keyboard focus")
 end
 open()
+check(box.Text == plot:GetAttribute("StandName"), "editor starts with the public default")
 advanceFocus(2.99)
 check(not box:IsFocused(), "autofocus waits three seconds after the UI opens")
 advanceFocus(0.01)
@@ -327,6 +339,31 @@ check(
 root.Position = vec(15, 0, 0)
 tweens[#tweens]:Finish()
 check(camera.CameraType == "Custom" and camera.CameraSubject == human, "save releases camera to current humanoid")
+for _, label in signLabels do
+    check(label.Text == "Filtered", "the owner sees the private name on every sign layer")
+end
+check(plot:GetAttribute("StandName") == "Collin's Stand", "the public name remains the username")
+surface.Parent = nil
+services.RunService.Heartbeat:Fire(0.2)
+for _, label in signLabels do
+    label.Text = plot:GetAttribute("StandName")
+end
+surface.Parent = sign
+services.RunService.Heartbeat:Fire(0.2)
+for _, label in signLabels do
+    check(label.Text == "Filtered", "streamed-in labels recover the owner's private name")
+end
+open()
+check(box.Text == "Filtered", "reopening the editor uses the approved private name")
+controller.Close(true)
+plot:SetAttribute("OwnerUserId", 88)
+plot:SetAttribute("StandName", "NewOwner's Stand")
+services.RunService.Heartbeat:Fire(0.2)
+for _, label in signLabels do
+    check(label.Text == "NewOwner's Stand", "losing ownership clears the private rendering")
+end
+plot:SetAttribute("OwnerUserId", owner.UserId)
+plot:SetAttribute("StandName", "Collin's Stand")
 for _, action in { "SKIP", "X" } do
     open()
     button(action).Activated:Fire()

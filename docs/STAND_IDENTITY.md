@@ -32,10 +32,9 @@ portraits, management/leave actions, and proximity checks. New CLAIM PLOT and JO
 STAND billboards are TextLabels attached to their separate authored label origins.
 
 `session.StandName` and `session.StandNameRevision` are authoritative; `GetSession`
-includes both. Replicated plot attributes project those values. The default is the
-platform-moderated `DisplayName .. "'s Stand"`, committed during session creation;
-long DisplayNames are shortened at grapheme boundaries to preserve the suffix.
-Promotion preserves the session name; final cleanup clears it. The centralized
+includes both. The replicated `StandName` is the current owner's Roblox username
+followed by `'s Stand`. Promotion updates it to the new owner and final cleanup
+clears it. The centralized
 name limit is **27 visible graphemes**. Unicode horizontal spaces become ordinary
 spaces and edge spaces are trimmed; empty, malformed UTF-8, multiline/control
 characters, bidi overrides and oversized normalized submissions are rejected.
@@ -45,16 +44,17 @@ It requires the owner, exact plot, session/membership revision and name revision
 guards concurrent saves and rate-limits attempts. It calls server
 `TextService:FilterStringAsync(..., PublicChat)` followed by
 `GetNonChatStringForBroadcastAsync`, the [Roblox public sign filtering path](https://create.roblox.com/docs/reference/engine/classes/TextFilterResult).
-It copies submitted context and revalidates after both yielding operations. Only
-an approved broadcast result reaches the trusted `CommitFilteredStandName` transaction.
-Filter errors, unusable results, blocked names and stale requests leave the previous
-name intact. Players can edit and retry a rejected submission.
+It copies submitted context and revalidates after both yielding operations. A
+successful submission advances the name revision and returns the filtered text
+only to the invoking owner. Filter errors, unusable results, blocked names and
+stale requests leave the previous owner-only name intact.
 
 `StandSignPresentation.SetStandName` assigns the same authoritative text to Main,
-Depth1, Depth2 and Shadow. The server updates these authored labels, so Roblox
-replicates the same public sign to every client, including late arrivals. There is
-no owner's local sign value and no runtime letter geometry. Styling uses the
-existing Fredoka convention: white main face, dark 3px outline, lavender/gray depth
+Depth1, Depth2 and Shadow. The server projects the public username-based name into
+the authored labels for teammates, visitors and late arrivals. The owner's client
+applies the private name to its own copy of the labels while it owns that plot
+session. The client reapplies the name when the labels stream back in. Styling
+uses the existing Fredoka convention: white main face, dark 3px outline, lavender/gray depth
 at 2/4px and charcoal shadow at 6px, with fixed safe insets, wrapping, scaling and
 20–96px constraints. Only `Customer Area/Dynamic Sign Text` is targeted.
 
@@ -260,11 +260,11 @@ limits. If Roblox changes the normalized text or the profanity list matches
 the result, the editor asks the owner to try another name. The previous name
 and revision stay in place.
 
-Publication stays in `TycoonService.CommitFilteredStandName` / `publishIdentity`:
-only the final broadcast-safe text enters the authoritative session, plot
-attributes and `StandSignPresentation.SetStandName` world labels. SAVE captures the
-current raw TextBox value, waits for the server and displays its authoritative
-reply. Pending-save guards on both client and server prevent overlapping requests.
+SAVE captures the current TextBox value and waits for the server's filtered reply.
+Only the owner receives that reply. `TycoonService.CommitStandNameRevision` records
+the successful rename by advancing the revision. The filtered name stays in the
+owner's client memory for that plot session. Pending-save guards on both client
+and server prevent overlapping requests.
 SKIP/X, camera sequencing, membership and ownership checks are preserved.
 
 `StandNameEditor` keeps the 320 x 154 Fredoka card and adds an understated counter
@@ -294,14 +294,15 @@ No new Studio assets or remotes need authoring. After Rojo sync, manually verify
 in Studio Device Simulator (not run in this environment):
 
 - Desktop: type, paste, delete and edit in the middle; test 0, 1, 27 and 28
-  graphemes, combined accents, emoji and long DisplayName defaults.
+  graphemes, combined accents, emoji and username-based defaults.
 - Narrow phone, larger phone/tablet, console/TV: open the keyboard, resize/rotate,
   and verify TextBox, counter, SAVE, SKIP and X remain readable and above it;
   close the keyboard and verify the original card position returns.
 - Mobile/console: press on-screen Return, then rapidly SAVE; only one request
   should be pending. Navigate all controls with a controller and reopen the editor.
-- Two clients: save a clean name and verify it appears on every sign layer for
-  both clients and late joiners. Submit profanity and punctuation-separated
-  variants and verify the editor allows a retry while the prior sign stays in place.
-  Confirm a filtering failure retains the previous name. Verify SKIP/X and teardown
-  return camera control without renaming.
+- Two clients: save a clean name and verify all sign layers show it for the owner
+  while a teammate or late joiner sees the owner's Roblox username. Check that
+  streaming and respawn restore the owner's view and promotion displays the new
+  owner's username. Submit profanity and punctuation-separated variants and verify
+  the editor allows a retry while the prior sign stays in place. Confirm a filtering
+  failure retains the previous name and SKIP/X return camera control.
