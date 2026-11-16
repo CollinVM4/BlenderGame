@@ -85,6 +85,7 @@ fallDamage.Init({
 })
 local groundNormal = nil
 local groundHeight = nil
+local groundPart = instance("Part")
 local rayCount = 0
 workspaceFake.Raycast = function(_, origin, direction, params)
     rayCount += 1
@@ -93,7 +94,7 @@ workspaceFake.Raycast = function(_, origin, direction, params)
         "support query uses collidable world geometry and excludes character"
     )
     local reachesGround = groundHeight == nil or (origin.Y >= groundHeight and origin.Y + direction.Y <= groundHeight)
-    return if groundNormal and reachesGround then { Normal = groundNormal } else nil
+    return if groundNormal and reachesGround then { Normal = groundNormal, Instance = groundPart } else nil
 end
 local function subject(jumpPower)
     local p = instance("Player")
@@ -179,6 +180,81 @@ end
 local function expected(peak, jumpPower)
     return fallDamage.ComputeDamage(math.max(0, peak - math.min(jumpPower, config.CompensationCap)))
 end
+-- Tagged landing surfaces protect every rig/player without carrying immunity
+-- into the next fall. These reuse both upright and ragdoll support results.
+for _, rig in { "R6", "R15", "Physics" } do
+    local p, h, root = subject(60)
+    if rig ~= "Physics" then
+        h.Mode, h.PlatformStand, h.RigType = "Freefall", false, rig
+    end
+    local pad = instance("Part")
+    services.CollectionService:AddTag(pad, "NegateFallDamage")
+    groundPart = pad
+    local before = h.Health
+    step(h, root, -220, false)
+    land(h, root)
+    check(h.Health == before, rig .. " tagged landing cancels damaging impact")
+
+    groundPart = instance("Part")
+    land(h, root)
+    check(h.Health == before, rig .. " protected landing clears the completed fall")
+    step(h, root, -180, false)
+    land(h, root)
+    check(h.Health == before - expected(180, 60), rig .. " next ordinary landing deals normal damage")
+
+    groundPart = pad
+    services.CollectionService:RemoveTag(pad, "NegateFallDamage")
+    before = h.Health
+    step(h, root, -220, false)
+    land(h, root)
+    check(h.Health == before - expected(220, 60), rig .. " removed tag restores normal damage")
+    fallDamage.RemovePlayer(p)
+end
+-- Only the first raycast hit qualifies, even with a tagged pad below it.
+do
+    local p, h, root = subject(60)
+    local floor, pad = instance("Part"), instance("Part")
+    services.CollectionService:AddTag(pad, "NegateFallDamage")
+    local query = workspaceFake.Raycast
+    workspaceFake.Raycast = function(world, origin, direction, params)
+        local result = query(world, origin, direction, params)
+        if result then
+            -- Ordinary floor at y=0 occludes the tagged pad at y=-0.1.
+            for _, surface in { { Part = floor, Y = 0 }, { Part = pad, Y = -0.1 } } do
+                if origin.Y >= surface.Y and origin.Y + direction.Y <= surface.Y then
+                    result.Instance = surface.Part
+                    return result
+                end
+            end
+        end
+        return nil
+    end
+    step(h, root, -220, false)
+    land(h, root)
+    check(#h.Damages == 1 and h.Damages[1] == expected(220, 60), "ordinary floor above tagged pad deals normal damage")
+    workspaceFake.Raycast = query
+    fallDamage.RemovePlayer(p)
+end
+-- Unresolved support and non-BasePart hits retain the damage path.
+for _, surface in { "unresolved", "non-part" } do
+    local p, h, root = subject(60)
+    local terrain = instance("Model")
+    services.CollectionService:AddTag(terrain, "NegateFallDamage")
+    groundPart = terrain
+    step(h, root, -220, false)
+    local query = workspaceFake.Raycast
+    if surface == "unresolved" then
+        h.Mode = "Landed"
+        workspaceFake.Raycast = function()
+            return nil
+        end
+    end
+    land(h, root)
+    check(#h.Damages == 1 and h.Damages[1] == expected(220, 60), surface .. " landing deals normal damage")
+    workspaceFake.Raycast = query
+    fallDamage.RemovePlayer(p)
+end
+groundPart = instance("Part")
 -- Damage reason must snapshot grace before the one-shot Consume clears it.
 for _, scenario in { "grace", "held", "expired", "blocked" } do
     local p, h, root = subject(60)

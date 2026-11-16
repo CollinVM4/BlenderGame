@@ -3,6 +3,7 @@
 -- reached during a fall and evaluates it once the character genuinely lands,
 -- rather than measuring raw Y-distance fallen.
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FallDamage)
 local Diagnostics = require(script.Parent.FallDamageDiagnostics)
 local FallDamageService = {}
@@ -46,8 +47,9 @@ local function reset(player: Player, state: State)
     state.LastVelocity = state.Root.AssemblyLinearVelocity
 end
 
-local function probeSupport(state: State, observations: { string }?): (boolean, string)
+local function probeSupport(state: State, observations: { string }?): (boolean, string, Instance?)
     local matchedSource: string? = nil
+    local matchedPart: Instance? = nil
     -- Probe the actual torso colliders, including rotated rigs.
     -- Appearance loading can replace torso Instances after this service attaches.
     -- Resolve the three current parts without disturbing the active fall peak.
@@ -86,8 +88,9 @@ local function probeSupport(state: State, observations: { string }?): (boolean, 
             end
             if result and result.Normal.Y >= Config.MinimumGroundNormalY then
                 matchedSource = "torso-ray:" .. body.Name
+                matchedPart = result.Instance
                 if not observations then
-                    return true, "torso-ray:" .. body.Name
+                    return true, "torso-ray:" .. body.Name, matchedPart
                 end
             end
         elseif observations then
@@ -95,12 +98,12 @@ local function probeSupport(state: State, observations: { string }?): (boolean, 
         end
     end
     if observations then
-        return matchedSource ~= nil, matchedSource or "no-support"
+        return matchedSource ~= nil, matchedSource or "no-support", matchedPart
     end
-    return false, "no-support"
+    return false, "no-support", nil
 end
 
-local function footSupport(state: State): (boolean, string)
+local function footSupport(state: State): (boolean, string, Instance?)
     local root = state.Root
     state.Ray.CollisionGroup = root.CollisionGroup
     local height = state.Humanoid.HipHeight + root.Size.Y * 0.5
@@ -113,17 +116,21 @@ local function footSupport(state: State): (boolean, string)
     end
     local length = math.max(0, height) + Config.ImpactProbePadding
     local result = workspace:Raycast(root.Position, Vector3.new(0, -length, 0), state.Ray)
-    return result ~= nil and result.Normal.Y >= Config.MinimumGroundNormalY, "foot-ray"
+    return result ~= nil and result.Normal.Y >= Config.MinimumGroundNormalY,
+        "foot-ray",
+        if result then result.Instance else nil
 end
 
-local function supported(state: State, mode: Enum.HumanoidStateType): boolean
+local function supported(state: State, mode: Enum.HumanoidStateType): (boolean, Instance?)
     -- Physics/ragdoll support comes from the collidable torso, not stale feet/floor.
     if not state.Humanoid.PlatformStand and mode ~= Enum.HumanoidStateType.Physics then
-        if footSupport(state) then
-            return true
+        local hasSupport, _, part = footSupport(state)
+        if hasSupport then
+            return true, part
         end
     end
-    return probeSupport(state, nil) or GROUNDED_STATES[mode] == true
+    local hasSupport, _, part = probeSupport(state, nil)
+    return hasSupport or GROUNDED_STATES[mode] == true, part
 end
 
 local function compensation(player: Player): number
@@ -238,7 +245,7 @@ function FallDamageService.ComputeDamage(effectiveVelocity: number): number
     end
 end
 
-local function evaluateLanding(player: Player, state: State, cause: string)
+local function evaluateLanding(player: Player, state: State, cause: string, landingPart: Instance?)
     local humanoid = state.Humanoid
     local peak = state.Peak
     local compensated = compensation(player)
@@ -247,6 +254,15 @@ local function evaluateLanding(player: Player, state: State, cause: string)
     local graceActive = WingsService and WingsService.IsGraceActive(player) == true
     local glideProtected = WingsService and WingsService.ConsumeGlideLandingProtection(player, state.Character)
     if glideProtected then
+        damage = 0
+    end
+    -- Use only the first ground hit from the existing support probe. A pad
+    -- underneath ordinary flooring must not protect that floor's landing.
+    local padProtected = damage > 0
+        and landingPart ~= nil
+        and landingPart:IsA("BasePart")
+        and CollectionService:HasTag(landingPart, "NegateFallDamage")
+    if padProtected then
         damage = 0
     end
     -- Consume before TakeDamage, which can synchronously trigger death/reset.
@@ -269,6 +285,7 @@ local function evaluateLanding(player: Player, state: State, cause: string)
         healthAfter = humanoid.Health,
         reason = if glideProtected
             then (if graceActive then "grace-protected" else "glide-protected")
+            elseif padProtected then "landing-pad-protected"
             elseif damage <= 0 then "safe-effective-speed"
             elseif applied > 0 then "applied"
             elseif state.Character:FindFirstChildOfClass("ForceField") then "forcefield-protected"
@@ -398,7 +415,7 @@ function FallDamageService.Init(dependencies)
             state.LastPosition, state.LastVelocity = root.Position, velocity
             local wingControlled = WingsService ~= nil and WingsService.IsWingControlled(player) == true
             local down = math.max(0, -velocity.Y)
-            local support = supported(state, mode)
+            local support, landingPart = supported(state, mode)
             if not state.Airborne then
                 if not support then
                     state.Airborne, state.Peak, state.SoftTime = true, down, 0
@@ -433,11 +450,11 @@ function FallDamageService.Init(dependencies)
                 )
             end
             if support and down <= state.Peak - Config.ImpactSpeedDrop then
-                evaluateLanding(player, state, "impact")
+                evaluateLanding(player, state, "impact", landingPart)
             elseif support and down <= Config.SettleVerticalSpeed then
                 state.SoftTime += dt
                 if state.SoftTime >= Config.GroundConfirmSeconds then
-                    evaluateLanding(player, state, "soft")
+                    evaluateLanding(player, state, "soft", landingPart)
                 end
             else
                 -- A graze at essentially the peak speed never consumes the episode.
