@@ -11,6 +11,30 @@ export type Surface = {
     Destroy: () -> (),
 }
 local Banner = {}
+local TOUCH_HINT_HEIGHT = 54
+local HOTBAR_GAP = 8
+local EMPTY_HOTBAR_OFFSET = 88
+
+local function hotbarTop(playerGui: PlayerGui, gui: ScreenGui): number?
+    local root = playerGui:FindFirstChild("BlenderHotbar")
+    if not root or not root:IsA("ScreenGui") or not root.Enabled then
+        return nil
+    end
+    local safe = root:FindFirstChild("SafeArea")
+    if not safe or not safe:IsA("Frame") or not safe.Visible then
+        return nil
+    end
+    local bar = safe:FindFirstChild("Hotbar")
+    if not bar or not bar:IsA("Frame") or not bar.Visible or bar.AbsoluteSize.Y <= 0 then
+        return nil
+    end
+    local top = bar.AbsolutePosition.Y - gui.AbsolutePosition.Y
+    if top >= TOUCH_HINT_HEIGHT + HOTBAR_GAP and top < gui.AbsoluteSize.Y then
+        return top
+    end
+    return nil
+end
+
 local priority = Instance.new("BindableEvent")
 local globalActive = false
 Banner.PriorityChanged = priority.Event
@@ -52,7 +76,16 @@ function Banner.Create(playerGui: PlayerGui, name: string): Surface
     scale.Parent = label
     gui.Parent = playerGui
     local tweens: { Tween } = {}
+    local slide: Tween? = nil
+    local touchTutorial = false
+    local function stopSlide()
+        if slide then
+            slide:Cancel()
+            slide = nil
+        end
+    end
     local function cancel()
+        stopSlide()
         for _, tween in tweens do
             tween:Cancel()
         end
@@ -63,39 +96,63 @@ function Banner.Create(playerGui: PlayerGui, name: string): Surface
         table.insert(tweens, animation)
         animation:Play()
     end
+    local function slideTo(info: TweenInfo, position: UDim2)
+        local animation = TweenService:Create(label, info, { Position = position })
+        slide = animation
+        animation:Play()
+    end
     return {
         Gui = gui,
         Label = label,
         LayoutTutorial = function(touch: boolean)
-            local camera = workspace.CurrentCamera
-            local viewport = if camera then camera.ViewportSize else Vector2.new(1280, 720)
-            local landscape = touch and viewport.X > viewport.Y
-            local nextResting = UDim2.new(0.5, 0, 0.12, 0)
-            if resting ~= nextResting then
-                resting = nextResting
+            local nextResting = UDim2.fromScale(0.5, 0.12)
+            local widthScale, height = 0.9, 104
+            if touch then
+                local size = gui.AbsoluteSize
+                if touchTutorial and (size.X <= 0 or size.Y <= 0) then
+                    return
+                end
+                local top = hotbarTop(playerGui, gui)
+                nextResting = if top
+                    then UDim2.new(0.5, 0, 0, top - HOTBAR_GAP)
+                    else UDim2.new(0.5, 0, 1, -EMPTY_HOTBAR_OFFSET)
+                widthScale, height = if size.X > size.Y then 0.56 else 0.88, TOUCH_HINT_HEIGHT
+            end
+            if resting ~= nextResting or touchTutorial ~= touch then
+                stopSlide()
+                resting, touchTutorial = nextResting, touch
+                label.AnchorPoint = Vector2.new(0.5, if touch then 1 else 0)
+                label.TextYAlignment = if touch then Enum.TextYAlignment.Bottom else Enum.TextYAlignment.Center
                 label.Position = resting
             end
-            -- Safe-inset upper-center space leaves the bottom hotbar, thumbstick,
-            -- jump and CAS touch controls clear, including short landscape screens.
-            label.Size = UDim2.new(if landscape then 0.64 else 0.9, 0, 0, if touch then 76 else 104)
-            width.MaxSize = Vector2.new(if touch then 600 else 780, if touch then 76 else 104)
-            textSize.MinTextSize, textSize.MaxTextSize = 18, if touch then 26 else 32
+            local size = UDim2.new(widthScale, 0, 0, height)
+            if label.Size ~= size then
+                label.Size = size
+                width.MaxSize = Vector2.new(if touch then 600 else 780, height)
+                textSize.MaxTextSize = if touch then 24 else 32
+            end
         end,
         Show = function(text: string)
             cancel()
             label.Text = text
-            label.Position = resting - UDim2.fromOffset(0, 14)
+            label.Position = if touchTutorial then resting else resting - UDim2.fromOffset(0, 14)
             label.TextTransparency, stroke.Transparency, scale.Scale = 1, 1, 0.93
             label.Visible = true
             local enter = TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-            tween(label, enter, { Position = resting, TextTransparency = 0 })
+            if not touchTutorial then
+                slideTo(enter, resting)
+            end
+            tween(label, enter, { TextTransparency = 0 })
             tween(scale, enter, { Scale = 1 })
             tween(stroke, TweenInfo.new(0.16), { Transparency = 0 })
         end,
         Exit = function()
             cancel()
             local exit = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-            tween(label, exit, { Position = resting - UDim2.fromOffset(0, 10), TextTransparency = 1 })
+            if not touchTutorial then
+                slideTo(exit, resting - UDim2.fromOffset(0, 10))
+            end
+            tween(label, exit, { TextTransparency = 1 })
             tween(stroke, exit, { Transparency = 1 })
         end,
         Hide = function()
