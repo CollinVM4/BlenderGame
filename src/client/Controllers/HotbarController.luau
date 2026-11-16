@@ -172,11 +172,30 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local layoutVersion = 0
     local layoutStatus = "waiting for custom hotbar"
     local renderAttempts = 0
+    local renderReturns, renderErrors = 0, 0
+    local startedAt, renderStartedAt = os.clock(), 0
+    local checkpoint, checkpointAt = "not entered", os.clock()
+    local slotDetail, textDetail, geometryDetail = "", "", ""
     local rendering, renderRequested = false, false
     local initialRecoveryAttempts = 0
     local schedule: () -> ()
     local render: () -> ()
     local queueRender: () -> ()
+    -- Read-only checkpoints survive a suspended call. Do not print each slot or
+    -- add timers: the existing admin chat read takes a snapshot on demand.
+    local function mark(step: string)
+        checkpoint, checkpointAt = step, os.clock()
+    end
+    local function measureText(label: TextLabel, minimum: number, bounds: Vector2, step: string): Vector2
+        mark(step .. " arguments")
+        local font, text = label.Font, label.Text
+        textDetail = string.format("%s min=%g wrap=%g,%g text=%q", tostring(font), minimum, bounds.X, bounds.Y, text)
+        mark(step .. " before")
+        local measured = TextService:GetTextSize(text, minimum, font, bounds)
+        textDetail ..= string.format(" => %g,%g", measured.X, measured.Y)
+        mark(step .. " after")
+        return measured
+    end
     local function warning(key: string, message: string)
         if not warnings[key] then
             warnings[key] = true
@@ -216,8 +235,26 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 .. (if before == nil then "unavailable" else tostring(before))
                 .. " | "
                 .. layoutStatus
-                .. " | renders "
-                .. tostring(renderAttempts)
+                .. string.format(
+                    " | entries=%d returns=%d errors=%d flight=%s followup=%s queued=%s | age=%.1fs flightAge=%.1fs",
+                    renderAttempts,
+                    renderReturns,
+                    renderErrors,
+                    tostring(rendering),
+                    tostring(renderRequested),
+                    tostring(queued),
+                    os.clock() - startedAt,
+                    if rendering then os.clock() - renderStartedAt else 0
+                )
+            -- Snapshot before a manual reconcile can change the checkpoint.
+            local trace = string.format(
+                "%s (%.1fs) | %s | %s | %s",
+                checkpoint,
+                os.clock() - checkpointAt,
+                slotDetail,
+                textDetail,
+                geometryDetail
+            )
             if hide then
                 if enabled and view and view.Bar.Visible then
                     local confirmed = setCore(false, "admin chat diagnostic")
@@ -228,10 +265,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 end
             end
             local message = string.format(
-                "[Hotbar] %s | %s | place v%d",
+                "[Hotbar] %s | %s | place v%d\n[Layout] %s",
                 result,
                 tostring(playerGui.CurrentScreenOrientation),
-                game.PlaceVersion
+                game.PlaceVersion,
+                trace
             )
             print(message)
             local chat = game:GetService("TextChatService")
@@ -443,6 +481,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
     end
     local function resize(): boolean?
+        mark("resize parent before")
+        slotDetail, textDetail, geometryDetail = "", "", ""
         local current = view
         local scroll = host
         if not current or not scroll or not layout then
@@ -455,6 +495,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             return false
         end
         local pixels = parent.AbsoluteSize
+        geometryDetail = string.format("host=%gx%g", pixels.X, pixels.Y)
+        mark("resize parent after")
         -- Reclassify each resize: hybrid devices use touch clearance.
         local touch = UIS.TouchEnabled
         local bottom = 12
@@ -486,6 +528,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         local center = origin.X + pixels.X / 2
         local left, right = center - barWidth / 2, center + barWidth / 2
         if touch then
+            mark("touch controls before")
             local buttons: { GuiButton } = {}
             for _, action in { "SprintHeld", "ThrowHeld", "IceShotgunFire" } do
                 local button = CAS:GetButton(action)
@@ -582,7 +625,9 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                     )
                 end
             end
+            mark("touch controls after")
         end
+        mark("bar bounds before")
         current.Bar.AnchorPoint = Vector2.new(0.5, 1)
         local position = UDim2.new(0.5, 0, 1, -bottom)
         local size = UDim2.fromScale(barWidth / pixels.X, targetHeight / pixels.Y)
@@ -592,6 +637,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         if current.Bar.Size ~= size then
             current.Bar.Size = size
         end
+        geometryDetail ..= string.format(" target=%.2fx%g", barWidth, targetHeight)
+        mark("bar bounds after")
         local key = string.format("%.6f:%.6f:%.6f:%.6f:%.6f", pixels.X, pixels.Y, barWidth, targetHeight, bottom)
         if key ~= layoutKey then
             layoutKey = key
@@ -623,9 +670,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         local nominal = math.max(0, (width - horizontalPadding - 8 * gap) / 9)
         local bandHeight = scrollHeight - scroll.ScrollBarThickness
         local canvas = horizontalPadding
-        for _, binding in pool do
+        mark("slots before")
+        for index, binding in pool do
             local slot, metrics = binding.Slot, binding.Metrics
             local label = slot.Label :: TextLabel
+            slotDetail = string.format(
+                "slot=%d/%d occupied=%s ratio=%.9g",
+                index,
+                #pool,
+                tostring(binding.Tool ~= nil),
+                metrics.Ratio
+            )
+            mark("slot sizing before")
             slot.Icon.Size, slot.Icon.Position = binding.IconSize, binding.IconPosition
             -- Uniform growth meets BOTH floors before constraints run. Neither
             -- constraint resolution order nor overflow can stretch one axis.
@@ -634,23 +690,31 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             local labelWidth = 0.96
             local iconBottom = slot.Icon.Position.Y.Scale + slot.Icon.Size.Y.Scale * (1 - slot.Icon.AnchorPoint.Y)
             local available = math.max(0.1, 0.98 - iconBottom)
-            local bounds = TextService:GetTextSize(
-                slot.Label.Text,
-                metrics.TextMin,
-                slot.Label.Font,
-                Vector2.new(slotWidth * labelWidth, math.huge)
-            )
+            slotDetail ..= string.format(" width=%.9g band=%g", slotWidth, bandHeight)
+            local bounds =
+                measureText(label, metrics.TextMin, Vector2.new(slotWidth * labelWidth, math.huge), "Label GetTextSize")
             -- A long name can grow its square/rectangle uniformly within the
             -- existing band; horizontal canvas growth absorbs the extra width.
             while bounds.Y + 1 > slotWidth / metrics.Ratio * available and slotWidth / metrics.Ratio < bandHeight do
+                mark("slot growth before")
                 slotWidth = math.min(bandHeight * metrics.Ratio, slotWidth * 1.1)
-                bounds = TextService:GetTextSize(
-                    slot.Label.Text,
+                slotDetail = string.format(
+                    "slot=%d/%d occupied=%s ratio=%.9g width=%.17g cap=%.17g",
+                    index,
+                    #pool,
+                    tostring(binding.Tool ~= nil),
+                    metrics.Ratio,
+                    slotWidth,
+                    bandHeight * metrics.Ratio
+                )
+                bounds = measureText(
+                    label,
                     metrics.TextMin,
-                    slot.Label.Font,
-                    Vector2.new(slotWidth * labelWidth, math.huge)
+                    Vector2.new(slotWidth * labelWidth, math.huge),
+                    "Label growth GetTextSize"
                 )
             end
+            mark("slot geometry before")
             local height = slotWidth / metrics.Ratio
             -- Short bands can need more label room at the authored minimum
             -- font size. Reserve that room by reducing the icon uniformly,
@@ -691,13 +755,15 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             )
             local number = slot.Button:FindFirstChild("Number")
             if number and number:IsA("TextLabel") then
+                mark("Number sizing before")
                 local authoredMinimum = number:GetAttribute("HotbarTextMin")
                 local minimum = if typeof(authoredMinimum) == "number" then authoredMinimum else number.TextSize
                 number:SetAttribute("HotbarTextMin", minimum)
                 local fontSize = number:GetAttribute("FigmaFontSize")
                 Gui.Text(number, minimum, math.max(minimum, if typeof(fontSize) == "number" then fontSize else minimum))
                 local numberBounds =
-                    TextService:GetTextSize(number.Text, minimum, number.Font, Vector2.new(math.huge, math.huge))
+                    measureText(number, minimum, Vector2.new(math.huge, math.huge), "Number GetTextSize")
+                mark("Number size assignment before")
                 number.Size = UDim2.fromScale(
                     math.max(number.Size.X.Scale, numberBounds.X / slotWidth),
                     math.max(number.Size.Y.Scale, numberBounds.Y / height)
@@ -706,12 +772,18 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             if binding.Tool then
                 canvas += slotWidth + gap
             end
+            mark("slot sizing after")
         end
+        mark("canvas before")
         local canvasSize = UDim2.fromOffset(math.ceil(math.max(0, canvas - (if #items > 0 then gap else 0))), 0)
         if scroll.CanvasSize ~= canvasSize then
             scroll.CanvasSize = canvasSize
         end
+        mark("canvas after")
+        mark("scroll measurement before")
         local measured = scroll.AbsoluteSize
+        geometryDetail ..= string.format(" scroll=%.2fx%.2f canvas=%g", measured.X, measured.Y, canvasSize.X.Offset)
+        mark("scroll measurement after")
         if math.abs(measured.X - barWidth) > 1 or math.abs(measured.Y - targetHeight) > 1 then
             layoutStatus =
                 string.format("scroll %.0fx%.0f, target %.0fx%.0f", measured.X, measured.Y, barWidth, targetHeight)
@@ -720,9 +792,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         local target = pendingReveal
         pendingReveal = nil
         if target and target.Visible and target.Parent == scroll then
+            mark("reveal before")
             reveal(target)
+            mark("reveal after")
         end
         layoutStatus = "layout ready"
+        mark("resize returned ready")
         return true
     end
     local function setup(nextView: Gui.View): boolean
@@ -1270,11 +1345,17 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 return
             end
             rendering, mutating = true, true
+            renderStartedAt = os.clock()
+            slotDetail, textDetail, geometryDetail = "", "", ""
+            mark("render before")
             local ok, message = pcall(render :: any)
             if not ok then
+                renderErrors += 1
                 layoutStatus = "render error: " .. string.sub(tostring(message), 1, 140)
                 warning("render", tostring(message))
                 release()
+            else
+                renderReturns += 1
             end
             rendering, mutating = false, false
             if renderRequested then

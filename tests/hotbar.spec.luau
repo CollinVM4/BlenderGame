@@ -25,7 +25,12 @@ local function signal()
         end,
     }
 end
+local floatVectors = false
 local function v(x, y)
+    if floatVectors then
+        x = (string.unpack("f", string.pack("f", x)))
+        y = (string.unpack("f", string.pack("f", y)))
+    end
     return { X = x, Y = y }
 end
 local function dim(s, o)
@@ -105,7 +110,7 @@ local function flush()
         local batch = pending
         pending = {}
         for _, fn in batch do
-            fn()
+            coroutine.wrap(fn)()
         end
     end
 end
@@ -471,6 +476,7 @@ local systemChannel = new("TextChannel", "RBXSystem", textChannels)
 function systemChannel:DisplaySystemMessage(message)
     table.insert(debugMessages, message)
 end
+local textMeasure = measure
 local services = {
     StarterGui = core,
     ContextActionService = cas,
@@ -478,7 +484,7 @@ local services = {
     GuiService = guiService,
     TextService = {
         GetTextSize = function(_, ...)
-            return measure(...)
+            return textMeasure(...)
         end,
     },
     Players = {},
@@ -668,6 +674,42 @@ local function fixture(valid)
         end,
     }
 end
+-- Mount the same export Rojo ships. Glyph bounds remain a deterministic double;
+-- font family, anchors and text minima come from the asset, not fixture defaults.
+local function mountedFixture(width, height)
+    local f = fixture(false)
+    f.Root:Destroy()
+    local nodes = { [0] = f.PlayerGui }
+    for _, row in exportNodes do
+        local object = new(row[3], row[4], nodes[row[2]])
+        for key, value in row[5] do
+            if key == "Size" or key == "Position" then
+                object[key] = UDim2.new(table.unpack(value))
+            elseif key == "AnchorPoint" then
+                object[key] = v(table.unpack(value))
+            elseif key == "TextSize" or key == "AspectRatio" then
+                object[key] = tonumber(value)
+            elseif key == "TextScaled" then
+                object[key] = value == "true"
+            else
+                object[key] = value
+            end
+        end
+        for key, value in row[6] do
+            object:SetAttribute(key, value)
+        end
+        nodes[row[1]] = object
+        if object:IsA("ScreenGui") then
+            f.Root = object
+            if width and height then
+                object.Pixels = v(width, height)
+            end
+        elseif object.Name == "Hotbar" then
+            f.Bar = object
+        end
+    end
+    return f
+end
 local function visible(f)
     local result = {}
     for _, child in f.Bar:GetDescendants() do
@@ -722,6 +764,158 @@ local function screenFixture(width, height)
     new("ImageLabel", "IceGunImage", card).Image = "export-ice-art"
     f.Tool("Apple", "Apple", 1)
     return f
+end
+if testCase == "all" or testCase == "startup-trace" then
+    floatVectors, uis.TouchEnabled = true, true
+    for _, pixels in { v(390, 844), v(844, 390) } do
+        for _, late in { false, true } do
+            local f = mountedFixture(pixels.X, pixels.Y)
+            local authored = assert(Gui.Resolve(f.PlayerGui))
+            check(#authored.Slots == 9, "mounted pre-plot export has nine authored slots")
+            for _, slot in authored.Slots do
+                near(Gui.Metrics(slot, f.Root).Ratio, 1, "authored slots are square with Vector2 precision")
+                check(slot.Label.Font == "FredokaOne", "mounted label font comes from export")
+            end
+            local ice
+            local function grant()
+                ice = f.Tool("IcicleGun")
+                ice:SetAttribute("IceGunWeapon", true)
+                new("Part", "Handle", ice)
+            end
+            if not late then
+                grant()
+            end
+            local stop = Controller.Start(f.Player, f.PlayerGui)
+            flush()
+            if late then
+                grant()
+                flush()
+            end
+            check(
+                not core.Enabled and f.Bar.Visible and #visible(f) == 1,
+                "pre-plot Ice Gun hands off without rotation or commands"
+            )
+            visible(f)[1].Activated:Fire()
+            flush()
+            check(ice.Parent == f.Character, "pre-plot Ice Gun can be selected")
+            for i = 1, 8 do
+                f.Tool("Apple", "Apple", i)
+            end
+            flush()
+            local buttons = visible(f)
+            local scroll = f.Bar:FindFirstChild("HotbarScroll")
+            local edge = math.max(0, scroll.AbsoluteCanvasSize.X - scroll.AbsoluteWindowSize.X)
+            scroll.CanvasPosition = v(edge, 0)
+            scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Fire()
+            flush()
+            near(scroll.CanvasPosition.X, edge, "mounted slot one selection permits swipe to slot nine")
+            local last = buttons[9]
+            check(last.AbsoluteSize.X >= 48 and last.AbsoluteSize.Y >= 48, "mounted slot nine retains tap target")
+            local left = last.AbsolutePosition.X - scroll.AbsolutePosition.X
+            check(
+                left >= -1 and left + last.AbsoluteSize.X <= scroll.AbsoluteWindowSize.X + 1,
+                "mounted slot nine fits at swipe end"
+            )
+            last.Activated:Fire()
+            flush()
+            check(ice.Parent == f.Backpack, "slot nine selection replaces equipped Ice Gun")
+            f.Root.Enabled = false
+            flush()
+            check(core.Enabled and not f.Bar.Visible, "unavailable mounted UI restores native access")
+            stop()
+            timers()
+        end
+    end
+    -- An injected suspension is an experiment, NOT an assertion that the live
+    -- GetTextSize yields. Compare the guard with an isolated in-memory variant;
+    -- no flag or concurrency change is shipped to players.
+    for _, serialized in { true, false } do
+        local experiment = Controller
+        if not serialized then
+            local original = sources.Controller
+            local guard =
+                "        if rendering then\n            renderRequested = true\n            return\n        end\n"
+            local first, last = string.find(original, guard, 1, true)
+            assert(first and last, "serialization experiment requires the current guard")
+            sources.Controller = string.sub(original, 1, first - 1) .. string.sub(original, last + 1)
+            modules.Controller = nil
+            experiment = requireModule("Controller")
+            sources.Controller, modules.Controller = original, Controller
+        end
+        for _, suspect in { "Ice Gun", "1", "2" } do
+            local f = mountedFixture(390, 844)
+            f.Tool("IcicleGun"):SetAttribute("IceGunWeapon", true)
+            local suspended
+            textMeasure = function(text, ...)
+                if text == suspect and not suspended then
+                    suspended = coroutine.running()
+                    coroutine.yield()
+                end
+                return measure(text, ...)
+            end
+            local stop = experiment.Start(f.Player, f.PlayerGui)
+            flush()
+            assert(suspended and coroutine.status(suspended) == "suspended", "probe must suspend the suspected call")
+            if serialized then
+                debugSignal:Fire(false)
+                local report = debugMessages[#debugMessages]
+                check(
+                    string.find(report, "entries=1 returns=0 errors=0 flight=true followup=true", 1, true),
+                    "read distinguishes an in-flight render from a completed render and held follow-up"
+                )
+                local step = if suspect == "Ice Gun" then "Label GetTextSize before" else "Number GetTextSize before"
+                check(
+                    string.find(report, step, 1, true) and string.find(report, 'text="' .. suspect .. '"', 1, true),
+                    "read identifies the suspended label or Number measurement"
+                )
+                timers()
+                check(
+                    core.Enabled and not f.Bar.Visible,
+                    "retries cannot bypass a suspended render; native stays available"
+                )
+            else
+                check(
+                    not core.Enabled and f.Bar.Visible,
+                    "without serialization a later render bypasses the injected one-call suspension"
+                )
+            end
+            local resumed, reason = coroutine.resume(suspended)
+            assert(resumed, reason)
+            flush()
+            check(not core.Enabled and f.Bar.Visible, "returning measurement permits normal handoff")
+            stop()
+            timers()
+            textMeasure = measure
+        end
+    end
+    do
+        local f = mountedFixture(844, 390)
+        f.Tool("IcicleGun"):SetAttribute("IceGunWeapon", true)
+        textMeasure = function(text, ...)
+            if text == "1" then
+                error("injected Number measurement failure")
+            end
+            return measure(text, ...)
+        end
+        local stop = Controller.Start(f.Player, f.PlayerGui)
+        flush()
+        debugSignal:Fire(false)
+        local report = debugMessages[#debugMessages]
+        check(core.Enabled and not f.Bar.Visible, "measurement exception retains native access")
+        check(
+            string.find(report, "errors=1 flight=false", 1, true)
+                and string.find(report, "Number GetTextSize before", 1, true),
+            "exception reports the failed operation separately from normal returns"
+        )
+        stop()
+        timers()
+        textMeasure = measure
+    end
+    floatVectors, uis.TouchEnabled = false, false
+    print("Mounted startup and checkpoint experiments passed")
+    if testCase == "startup-trace" then
+        return
+    end
 end
 if testCase == "all" or testCase == "diagnostic" then
     local f = fixture(true)
@@ -1417,31 +1611,8 @@ end
 
 -- Resolve and render the actual currently mounted export, not a fabricated hierarchy.
 do
-    local f = fixture(false)
-    f.Root:Destroy()
-    local nodes = { [0] = f.PlayerGui }
-    local actualBar
-    for _, row in exportNodes do
-        local object = new(row[3], row[4], nodes[row[2]])
-        for key, value in row[5] do
-            if key == "Size" or key == "Position" then
-                object[key] = UDim2.new(table.unpack(value))
-            elseif key == "TextSize" or key == "AspectRatio" then
-                object[key] = tonumber(value)
-            elseif key == "TextScaled" then
-                object[key] = value == "true"
-            else
-                object[key] = value
-            end
-        end
-        for key, value in row[6] do
-            object:SetAttribute(key, value)
-        end
-        nodes[row[1]] = object
-        if object.Name == "Hotbar" then
-            actualBar = object
-        end
-    end
+    local f = mountedFixture()
+    local actualBar = f.Bar
     check(actualBar ~= nil, "current prepared export contains Hotbar")
     local upgrades = requireModule("UpgradesGui").Resolve(f.PlayerGui)
     check(

@@ -11,7 +11,7 @@ from framewisp_export import load_prepared_export
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(__doc__)
 parser.add_argument("--luau", default="luau")
-parser.add_argument("--case", choices=("all", "diagnostic", "aspect", "template", "dock-portrait", "dock-landscape", "docking", "reparent"), default="all")
+parser.add_argument("--case", choices=("all", "startup-trace", "diagnostic", "aspect", "template", "dock-portrait", "dock-landscape", "docking", "reparent"), default="all")
 args = parser.parse_args()
 paths = {
     "UIRegistry": "src/client/UI/UIRegistry.luau",
@@ -47,6 +47,10 @@ def add(item, parent):
         key = prop.get("name")
         if prop.tag == "UDim2":
             properties[key] = [float(prop.findtext(k)) for k in ("XS", "XO", "YS", "YO")]
+        elif key == "AnchorPoint":
+            properties[key] = [float(prop.findtext(k)) for k in ("X", "Y")]
+        elif key == "FontFace":
+            properties["Font"] = Path(prop.findtext("Family/url")).stem
         elif key in ("Image", "Text", "TextSize", "TextScaled", "ScaleType", "AspectRatio"):
             properties[key] = "".join(prop.itertext()).strip()
     nodes.append([index, parent, item.attrib["class"],
