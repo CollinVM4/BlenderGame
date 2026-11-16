@@ -24,62 +24,37 @@ GUI_OBJECTS = {"Frame", "CanvasGroup", "ScrollingFrame", "ImageLabel", "ImageBut
                "TextLabel", "TextButton", "TextBox", "ViewportFrame", "VideoFrame"}
 
 
-def hotbar_text_bounds(text, tree):
-    """Retain authored text bounds before Framewisp's runtime scaler changes TextSize."""
-    for bar in tree.iter("Item"):
-        if item_name(bar) != "Hotbar":
-            continue
-        candidates = list(bar.findall("Item"))
-        for wrapper_name in ("Items", "HotbarScroll"):
-            for wrapper in bar.findall("Item"):
-                if item_name(wrapper) == wrapper_name:
-                    candidates.extend(wrapper.findall("Item"))
-        seen = set()
-        for slot in candidates:
-            referent = slot.attrib["referent"]
-            if referent in seen:
-                continue
-            seen.add(referent)
-            if item_name(slot) not in ("Slot1", "Slot1_button", "Slot1_button_smooth"):
-                continue
-            for label in slot.findall("Item"):
-                if item_name(label) not in ("Label", "Label_text", "Number", "Number_text"):
-                    continue
-                if label.get("class") not in ("TextLabel", "TextButton", "TextBox"):
-                    continue
-                minimum = float(label.findtext("./Properties/float[@name='TextSize']"))
-                prop = label.find("./Properties/BinaryString[@name='AttributesSerialize']")
-                original = prop.text if prop is not None and prop.text else ""
-                data = base64.b64decode("".join(original.split())) if original else struct.pack("<I", 0)
-                def marker(key):
-                    return struct.pack("<I", len(key)) + key.encode() + b"\x06"
-                def number(key, default):
-                    position = data.find(marker(key))
-                    return struct.unpack_from("<d", data, position + len(marker(key)))[0] if position >= 0 else default
-                # On repeated preparation the stored authored minimum wins over
-                # any generated/runtime text edits in a saved prepared export.
-                minimum = number("HotbarTextMin", minimum)
-                maximum = number("HotbarTextMax", max(minimum, number("FigmaFontSize", minimum)))
-                for key, value in (("HotbarTextMin", minimum), ("HotbarTextMax", maximum)):
-                    token = marker(key)
-                    position = data.find(token)
-                    if position >= 0:
-                        start = position + len(token)
-                        data = data[:start] + struct.pack("<d", value) + data[start + 8:]
-                    else:
-                        data = struct.pack("<I", struct.unpack_from("<I", data)[0] + 1) + data[4:] + token + struct.pack("<d", value)
-                encoded = base64.b64encode(data).decode()
-                ref = re.escape(label.attrib["referent"])
-                pattern = r'(<Item\b(?=[^>]*\breferent="' + ref + r'")[^>]*>\s*<Properties>)(.*?)(</Properties>)'
-                def stamp(match):
-                    properties, count = re.subn(r'<BinaryString name="AttributesSerialize">.*?</BinaryString>',
-                                               '<BinaryString name="AttributesSerialize">' + encoded + '</BinaryString>', match[2], flags=re.S)
-                    if not count:
-                        properties += '<BinaryString name="AttributesSerialize">' + encoded + '</BinaryString>'
-                    return match[1] + properties + match[3]
-                text, count = re.subn(pattern, stamp, text, flags=re.S)
-                if count != 1:
-                    raise ValueError("Could not stamp authored hotbar text bounds")
+def remove_legacy_hotbar(text, tree):
+    """Remove only the legacy bar subtree, preserving all other export bytes."""
+    def retired(item):
+        if item_name(item) == "Hotbar":
+            return True
+        try:
+            return semantic(item) == "Hotbar"
+        except (ValueError, struct.error):
+            return False  # Malformed identifiers elsewhere keep the menu policy.
+
+    bars = [item for item in tree.iter("Item") if retired(item)]
+    for bar in bars:
+        ref = re.escape(bar.attrib["referent"])
+        start = re.search(r'<Item\b(?=[^>]*\breferent="' + ref + r'")[^>]*>', text)
+        if start is None:
+            raise ValueError("Could not locate legacy hotbar subtree")
+        depth = 1
+        for token in re.finditer(r'<Item\b[^>]*>|</Item>', text[start.end():]):
+            depth += -1 if token.group() == "</Item>" else 1
+            if depth == 0:
+                left, right = start.start(), start.end() + token.end()
+                line_start = text.rfind("\n", 0, left) + 1
+                if not text[line_start:left].strip():
+                    left = line_start
+                line_end = text.find("\n", right)
+                if line_end >= 0 and not text[right:line_end].strip():
+                    right = line_end + 1
+                text = text[:left] + text[right:]
+                break
+        else:
+            raise ValueError("Unclosed legacy hotbar subtree")
     return text
 
 
@@ -282,7 +257,7 @@ def prepare(path: Path, output: Path | None = None, external_menus: bool = False
         text, count = re.subn(pattern, hide, text, flags=re.S)
         if count != 1:
             raise ValueError("Could not locate exact startup visibility properties")
-    text = hotbar_text_bounds(text, tree)
+    text = remove_legacy_hotbar(text, tree)
     destination = output if output is not None else path
     destination.write_text(text, encoding="utf-8", newline="\n")
     print(f"Prepared {destination.resolve()}: {len(panel_refs)} existing main panel(s) default hidden")

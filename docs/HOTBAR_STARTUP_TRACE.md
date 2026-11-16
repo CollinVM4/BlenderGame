@@ -1,5 +1,9 @@
 # Mobile hotbar startup investigation
 
+Historical diagnostics for the previous Framewisp-hosted implementation. The
+[standalone startup rebuild](HOTBAR_STARTUP_REBUILD.md) replaces that startup
+path and records the current validation and pending published-phone acceptance.
+
 Device acceptance and the live v1540 cause remain open. This change adds narrow,
 read-only checkpoints to the existing admin chat diagnostic. Sprint Pass 2 stays
 paused. It preserves the production layout, serialization, retry budgets and

@@ -29,14 +29,7 @@ def load_prepared_export(section=None):
     assert len(desktops) == 1, "expected one shipped desktop"
     desktop = desktops[0]
     if section == "Hotbar":
-        bar = child(desktop, "Hotbar")
-        slots = [item for item in bar.findall("Item") if name(item) == "Slot1"]
-        assert len(slots) == 9, "shipped Hotbar must contain nine direct Slot1 buttons"
-        for slot in slots:
-            assert slot.attrib["class"] in ("TextButton", "ImageButton")
-            child(slot, "Label", {"TextLabel", "TextButton", "TextBox"})
-            child(slot, "SlotIcon", {"ImageLabel"})
-            child(slot, "Slot1Background", {"ImageLabel"})
+        assert not any(name(item) == "Hotbar" for item in tree.iter("Item")), "legacy hotbar must be absent"
     elif section == "Settings":
         panel = child(desktop, "Settings")
         plot = child(child(panel, "PLOT"), "PLOTContent")

@@ -1,296 +1,188 @@
 --!strict
--- Authored hierarchy only. Repeated slot names are intentionally resolved locally.
-local Registry = require(script.Parent.UIRegistry)
+-- Standalone Framewisp artwork. No generated hierarchy, scripts or text scaler.
 local Gui = {}
-export type Slot = {
-    Button: GuiButton,
-    Label: TextLabel | TextButton | TextBox,
-    Icon: ImageLabel,
-    Selected: GuiObject?,
-    Background: GuiObject,
+Gui.Name = "BlenderHotbar"
+Gui.Art = {
+    Background = "rbxassetid://131076681805409",
+    Selected = "rbxassetid://98697899411894",
+    Bat = "rbxassetid://130160586259095",
+    Ice = "rbxassetid://114860674836321",
+    Generic = "rbxassetid://136789729873472",
 }
-export type Metrics = {
-    Ratio: number,
-    IconRatio: number,
-    LabelY: number,
-    LabelHeight: number,
-    TextMin: number,
-    TextMax: number,
+Gui.Gap, Gui.Padding = 6, 4
+export type Slot = {
+    Button: ImageButton,
+    Label: TextLabel,
+    Number: TextLabel,
+    Icon: ImageLabel,
+    Selected: ImageLabel,
+    Background: ImageLabel,
 }
 export type View = {
     Root: ScreenGui,
-    Bar: GuiObject,
-    Slots: { Slot },
-    BatImage: string?,
-    IceImage: string?,
-    GenericImage: string,
+    SafeArea: Frame,
+    Bar: Frame,
+    Scroll: ScrollingFrame,
+    Template: ImageButton,
+    SlotSize: number,
+    Width: number,
+    CanvasWidth: number,
 }
-local warned: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
-local measurements: { [GuiButton]: Metrics } = setmetatable({}, { __mode = "k" }) :: any
-local templates: { [ImageLabel]: string } = setmetatable({}, { __mode = "k" }) :: any
-function Gui.ClearTemplate(icon: ImageLabel)
-    if templates[icon] == nil then
-        templates[icon] = icon.Image
-    end
-    icon.Image = ""
+local function image(name: string, asset: string, parent: Instance, layer: number): ImageLabel
+    local object = Instance.new("ImageLabel")
+    object.Name, object.Image = name, asset
+    object.BackgroundTransparency, object.BorderSizePixel = 1, 0
+    object.Size, object.ZIndex = UDim2.fromScale(1, 1), layer
+    object.ScaleType = Enum.ScaleType.Fit
+    object.Parent = parent
+    return object
 end
-local function issue(instance: Instance, detail: string)
-    if not warned[instance] then
-        warned[instance] = true
-        warn("HotbarGui: " .. instance:GetFullName() .. " [" .. instance.ClassName .. "]: " .. detail)
-    end
+local function text(name: string, parent: Instance, size: number): TextLabel
+    local object = Instance.new("TextLabel")
+    object.Name, object.Text = name, ""
+    object.BackgroundTransparency = 1
+    object.Font = Enum.Font.FredokaOne
+    object.TextSize, object.TextScaled, object.TextWrapped = size, false, false
+    object.TextColor3 = Color3.new(1, 1, 1)
+    object.TextStrokeTransparency = 0.5
+    object.TextTruncate = Enum.TextTruncate.AtEnd
+    object.ZIndex = 5
+    object.Parent = parent
+    return object
 end
--- Evaluate exported scale dimensions in the export's design canvas, before any
--- slots move into the scrolling host. Runtime viewport dimensions are not ratios.
-function Gui.Metrics(slot: Slot, root: ScreenGui): Metrics
-    local existing = measurements[slot.Button]
-    if existing then
-        return existing
-    end
-    local designW, designH = root:GetAttribute("BB_DesignW"), root:GetAttribute("BB_DesignH")
-    assert(typeof(designW) == "number" and designW > 0, "export requires numeric BB_DesignW")
-    assert(typeof(designH) == "number" and designH > 0, "export requires numeric BB_DesignH")
-    local function size(object: GuiObject): Vector2
-        local parent = object.Parent
-        local base = if parent and parent:IsA("GuiObject") then size(parent) else Vector2.new(designW, designH)
-        return Vector2.new(
-            base.X * object.Size.X.Scale + object.Size.X.Offset,
-            base.Y * object.Size.Y.Scale + object.Size.Y.Offset
-        )
-    end
-    local button, icon = size(slot.Button), size(slot.Icon)
-    local authoredMin = slot.Label:GetAttribute("HotbarTextMin")
-    local minimum = if typeof(authoredMin) == "number" then authoredMin else slot.Label.TextSize
-    local fontSize = slot.Label:GetAttribute("HotbarTextMax") or slot.Label:GetAttribute("FigmaFontSize")
-    local metrics = {
-        Ratio = button.X / button.Y,
-        IconRatio = icon.X / icon.Y,
-        LabelY = slot.Label.Position.Y.Scale,
-        LabelHeight = slot.Label.Size.Y.Scale,
-        TextMin = minimum,
-        TextMax = math.max(minimum, if typeof(fontSize) == "number" then fontSize else minimum),
-    }
-    measurements[slot.Button] = metrics
-    return metrics
-end
-function Gui.Aspect(object: GuiObject, ratio: number)
-    local constraint = object:FindFirstChildOfClass("UIAspectRatioConstraint")
-        or Instance.new("UIAspectRatioConstraint")
-    constraint.Parent = object
-    constraint.AspectRatio = ratio
-    constraint.DominantAxis = Enum.DominantAxis.Width
-end
-function Gui.Text(label: TextLabel | TextButton | TextBox, minimum: number, maximum: number)
-    local text = label :: TextLabel
-    -- Framewisp explicitly yields its text scaler to FW_TextOwn. Take ownership
-    -- before its first apply, so a later viewport resize cannot undo readability.
-    label:SetAttribute("FW_TextOwn", true)
-    local spill = label:FindFirstChild("FW_Scale")
-    if spill and spill:IsA("UIScale") then
-        spill.Scale = 1
-        local channel = spill:FindFirstChild("k_text")
-        if channel and channel:IsA("NumberValue") then
-            channel.Value = 1
-        end
-    end
-    local padding = label:FindFirstChild("FW_TextPad")
-    if padding then
-        padding:Destroy()
-    end
-    text.TextScaled, text.TextWrapped = true, true
-    text.TextTruncate = Enum.TextTruncate.None
-    local constraint = label:FindFirstChildOfClass("UITextSizeConstraint") or Instance.new("UITextSizeConstraint")
-    constraint.Parent = label
-    constraint.MinTextSize, constraint.MaxTextSize = minimum, maximum
-end
-local function imported(parent: Instance?, role: string, suffix: string, class: string): Instance?
-    local names = { role, role .. suffix }
-    if role == "SlotBackground" then
-        table.insert(names, "Slot1Background")
-        table.insert(names, "Slot1Background_image")
-    elseif role == "SlotSelected" then
-        table.insert(names, "Slot1Selected")
-        table.insert(names, "Slot1Selected_image")
-    end
-    return Registry.Child(parent, role, names, class)
-end
-function Gui.Slot(instance: Instance, context: string?): Slot?
-    local label = imported(instance, "Label", "_text", "GuiObject")
-    local icon = imported(instance, "SlotIcon", "_image", "ImageLabel")
-    local selected = imported(instance, "SlotSelected", "_image", "GuiObject")
-    local background = imported(instance, "SlotBackground", "_image", "GuiObject")
-    if not instance:IsA("GuiButton") then
-        issue(
-            instance,
-            "slot must export as a GuiButton; native Backpack retained if no usable slots" .. (context or "")
-        )
-        return nil
-    end
-    if
-        not label
-        or not (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox"))
-        or not icon
-        or not background
-    then
-        issue(
-            instance,
-            "requires compatible Label, SlotIcon (ImageLabel) and SlotBackground children" .. (context or "")
-        )
-        return nil
-    end
-    if not selected then
-        issue(instance, "SlotSelected missing; selection highlight unavailable")
-    end
+function Gui.Create(playerGui: PlayerGui): View
+    local root = Instance.new("ScreenGui")
+    root.Name, root.ResetOnSpawn = Gui.Name, false
+    root.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+    root.ZIndexBehavior, root.DisplayOrder = Enum.ZIndexBehavior.Sibling, 10
+    local safe = Instance.new("Frame")
+    safe.Name, safe.Size = "SafeArea", UDim2.fromScale(1, 1)
+    safe.BackgroundTransparency = 1
+    safe.Parent = root
+    local bar = Instance.new("Frame")
+    bar.Name, bar.BackgroundTransparency, bar.Visible = "Hotbar", 1, false
+    bar.AnchorPoint = Vector2.new(0.5, 1)
+    bar.Parent = safe
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name, scroll.BackgroundTransparency, scroll.BorderSizePixel = "HotbarScroll", 1, 0
+    scroll.Size = UDim2.fromScale(1, 1)
+    scroll.ScrollingDirection = Enum.ScrollingDirection.X
+    scroll.ScrollingEnabled, scroll.ClipsDescendants = true, true
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroll.ScrollBarThickness = 4
+    scroll.CanvasSize = UDim2.fromOffset(0, 0)
+    scroll.Parent = bar
+    local template = Instance.new("ImageButton")
+    template.Name, template.Image, template.BackgroundTransparency = "Slot", "", 1
+    template.AutoButtonColor, template.Active, template.Selectable = false, true, true
+    template.Size = UDim2.fromOffset(64, 64)
+    template.AnchorPoint = Vector2.zero
+    image("Background", Gui.Art.Background, template, 1)
+    image("Selected", Gui.Art.Selected, template, 2).Visible = false
+    local icon = image("Icon", Gui.Art.Generic, template, 3)
+    icon.AnchorPoint, icon.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 4)
+    icon.Size = UDim2.new(1, -12, 1, -24)
+    local label = text("Label", template, 11)
+    label.Position, label.Size = UDim2.new(0, 4, 1, -17), UDim2.new(1, -8, 0, 14)
+    local number = text("Number", template, 13)
+    number.Position, number.Size = UDim2.fromOffset(2, 1), UDim2.fromOffset(18, 18)
+    root.Parent = playerGui
     return {
-        Button = instance,
-        Label = label :: TextLabel | TextButton | TextBox,
-        Icon = icon :: ImageLabel,
-        Selected = selected :: GuiObject?,
-        Background = background :: GuiObject,
+        Root = root,
+        SafeArea = safe,
+        Bar = bar,
+        Scroll = scroll,
+        Template = template,
+        SlotSize = 64,
+        Width = 0,
+        CanvasWidth = 0,
     }
 end
-local function fallback(content: Instance, ice: boolean): string?
-    local panel = Registry.Child(
-        content,
-        if ice then "Panel:Shop" else "Panel:Upgrades",
-        if ice then { "Shop", "Shop_panel" } else { "Upgrades", "Upgrades_panel" },
-        "GuiObject"
-    )
-    local scroll = imported(panel, if ice then "ShopScroll" else "UpgradeScroll", "_scroll", "ScrollingFrame")
-    local list = imported(scroll, if ice then "ShopList" else "UpgradeList", "_list", "GuiObject")
-    local card = if ice
-        then Registry.Child(list, "Ice Gun", { "Ice Gun" }, "GuiObject")
-        else Registry.Child(list, "Upgrade:Bat", { "BatCard" }, "GuiObject")
-    local cardContent = Registry.Child(
-        card,
-        if ice then "IceGun:Content" else "Upgrade:BatContent",
-        if ice then { "Ice GunContent" } else { "BatCardContent" },
-        "GuiObject"
-    ) or card
-    local image =
-        imported(cardContent, if ice then "IceGunImage" else "Isolated Wooden Baseball Bat 1", "_image", "ImageLabel")
-    return if image and (image :: ImageLabel).Image ~= "" then (image :: ImageLabel).Image else nil
+function Gui.NewSlot(view: View): Slot
+    local button = view.Template:Clone()
+    button.Parent = view.Scroll
+    return {
+        Button = button,
+        Label = button:FindFirstChild("Label") :: TextLabel,
+        Number = button:FindFirstChild("Number") :: TextLabel,
+        Icon = button:FindFirstChild("Icon") :: ImageLabel,
+        Selected = button:FindFirstChild("Selected") :: ImageLabel,
+        Background = button:FindFirstChild("Background") :: ImageLabel,
+    }
 end
-function Gui.Find(playerGui: PlayerGui): (ScreenGui?, GuiObject?)
-    local desktop: Instance? = nil
-    local root: ScreenGui? = nil
-    for _, candidate in Registry.Desktops(playerGui) do
-        local active = Registry.ActiveRoot(candidate, playerGui)
-        if active then
-            if desktop then
-                issue(candidate, "ambiguous active desktops; native Backpack retained")
-                return nil, nil
-            end
-            desktop, root = candidate, active
+-- Mounted safe bounds already include device/core insets. Obstacles use the
+-- same absolute coordinate space; never subtract GetGuiInset a second time.
+function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect }): boolean?
+    local size, origin = view.SafeArea.AbsoluteSize, view.SafeArea.AbsolutePosition
+    if size.X <= 0 or size.Y <= 0 then
+        return nil -- retain an established layout through rotation's zero bounds
+    end
+    local maximum = math.min(960, size.X - 24)
+    if maximum < 48 + Gui.Padding * 2 then
+        return false
+    end
+    local slotSize = math.min(math.clamp(math.floor(size.Y * 0.08), 56, 72), maximum - Gui.Padding * 2)
+    local height = slotSize + Gui.Padding * 2 + 4
+    local canvas = Gui.Padding * 2 + count * slotSize + math.max(0, count - 1) * Gui.Gap
+    local minimum = math.min((if count > 1 then 2 * slotSize + Gui.Gap else slotSize) + Gui.Padding * 2, maximum)
+    if size.Y < height + 24 then
+        return false
+    end
+    local candidates = { 12 }
+    if touch then
+        for _, obstacle in obstacles do
+            table.insert(candidates, math.max(12, origin.Y + size.Y - obstacle.Min.Y + 8))
         end
     end
-    if not desktop or not root then
-        return nil, nil
-    end
-    local content = Registry.Content(desktop)
-    local bar = Registry.Child(content, "Hotbar", { "Hotbar" }, "GuiObject")
-    local hasAuthoredBar = bar ~= nil
-    if content and not bar then
-        for _, child in content:GetChildren() do
-            if Registry.Matches(child, "Hotbar", { "Hotbar" }) then
-                hasAuthoredBar = true
-            end
+    table.sort(candidates)
+    local width, bottom = 0, 12
+    local center = origin.X + size.X / 2
+    for _, candidate in candidates do
+        if candidate + height > size.Y - 8 then
+            continue
         end
-    end
-    local reparented: GuiObject? = nil
-    for _, host in root:GetChildren() do
-        if host.Name == "HotbarHost" and host:IsA("GuiObject") then
-            for _, child in host:GetChildren() do
-                if
-                    child.Name == "Hotbar"
-                    and child:IsA("GuiObject")
-                    and child:GetAttribute("HotbarReparented") == true
-                then
-                    if hasAuthoredBar or reparented then
-                        issue(root, "ambiguous hotbar; native Backpack retained")
-                        return nil, nil
-                    end
-                    reparented = child
+        local available = maximum
+        local top, foot = origin.Y + size.Y - candidate - height, origin.Y + size.Y - candidate
+        if touch then
+            for _, obstacle in obstacles do
+                if obstacle.Max.Y + 8 > top and obstacle.Min.Y - 8 < foot then
+                    local clearance = if (obstacle.Min.X + obstacle.Max.X) / 2 < center
+                        then center - obstacle.Max.X - 8
+                        else obstacle.Min.X - center - 8
+                    available = math.min(available, 2 * clearance)
                 end
             end
         end
-    end
-    return root, reparented or bar :: GuiObject?
-end
-function Gui.Resolve(playerGui: PlayerGui): View?
-    local root, bar = Gui.Find(playerGui)
-    if not root or not bar then
-        return nil
-    end
-    local desktop: Instance? = nil
-    for _, candidate in Registry.Desktops(playerGui) do
-        if Registry.ActiveRoot(candidate, playerGui) == root then
-            desktop = Registry.Content(candidate)
+        if available >= minimum then
+            width, bottom = math.floor(math.min(available, math.max(slotSize + Gui.Padding * 2, canvas))), candidate
             break
         end
     end
-    if not desktop then
-        return nil
+    if width == 0 then
+        return false
     end
-    local slots: { Slot } = {}
-    -- During controller ownership the same authored buttons live in its scroll.
-    local children: { Instance } = {}
-    local seen: { [Instance]: boolean } = {}
-    local function collect(parent: Instance)
-        for _, child in parent:GetChildren() do
-            if not seen[child] then
-                seen[child] = true
-                table.insert(children, child)
-            end
-        end
+    view.SlotSize, view.Width = slotSize, width
+    view.CanvasWidth = canvas
+    view.Bar.Position = UDim2.new(0.5, 0, 1, -bottom)
+    view.Bar.Size = UDim2.fromOffset(width, height)
+    view.Scroll.CanvasSize = UDim2.fromOffset(view.CanvasWidth, 0)
+    Gui.Clamp(view)
+    return true
+end
+function Gui.Clamp(view: View)
+    local x = math.clamp(view.Scroll.CanvasPosition.X, 0, math.max(0, view.CanvasWidth - view.Width))
+    if x ~= view.Scroll.CanvasPosition.X then
+        view.Scroll.CanvasPosition = Vector2.new(x, 0)
     end
-    collect(bar)
-    for _, name in { "Items", "HotbarScroll" } do
-        local parent = bar:FindFirstChild(name)
-        if parent then
-            collect(parent)
-        end
+end
+function Gui.Reveal(view: View, index: number)
+    local left = Gui.Padding + (index - 1) * (view.SlotSize + Gui.Gap)
+    local x = view.Scroll.CanvasPosition.X
+    if left < x then
+        x = left
+    elseif left + view.SlotSize > x + view.Width then
+        x = left + view.SlotSize - view.Width
     end
-    for sibling, child in children do
-        if Registry.Matches(child, "Slot1", { "Slot1", "Slot1_button", "Slot1_button_smooth" }) then
-            local slot = Gui.Slot(child, " (slot child #" .. tostring(sibling) .. ")")
-            if slot then
-                table.insert(slots, slot)
-            end
-        end
-    end
-    if #slots == 0 then
-        issue(bar, "no fully usable authored GuiButton slot; correct the export, do not wrap Frames")
-        return nil
-    end
-    local upgrades = Registry.Child(desktop, "Panel:Upgrades", { "Upgrades", "Upgrades_panel" }, "GuiObject")
-    local scroll = imported(upgrades, "UpgradeScroll", "_scroll", "ScrollingFrame")
-    local list = imported(scroll, "UpgradeList", "_list", "GuiObject")
-    local card = Registry.Child(list, "Upgrade:CarryCapacity", { "CarryCapacityCard" }, "GuiObject")
-    local cardContent = Registry.Child(
-        card,
-        "Upgrade:CarryCapacityContent",
-        { "CarryCapacityCardContent" },
-        "GuiObject"
-    ) or card
-    local generic = imported(cardContent, "Glossy Fruit Trio Sticker 1", "_image", "ImageLabel") :: ImageLabel?
-    if not generic or generic.Image == "" then
-        issue(bar, "missing intentional item fallback (CarryCapacityCard/Glossy Fruit Trio Sticker 1)")
-        return nil
-    end
-    for _, slot in slots do
-        if generic.Image == (templates[slot.Icon] or slot.Icon.Image) then
-            issue(bar, "intentional fallback must differ from the slot template")
-            return nil
-        end
-    end
-    return {
-        Root = root,
-        Bar = bar :: GuiObject,
-        Slots = slots,
-        BatImage = fallback(desktop, false),
-        IceImage = fallback(desktop, true),
-        GenericImage = generic.Image,
-    }
+    view.Scroll.CanvasPosition = Vector2.new(math.clamp(x, 0, math.max(0, view.CanvasWidth - view.Width)), 0)
 end
 return Gui

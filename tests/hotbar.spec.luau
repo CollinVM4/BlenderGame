@@ -25,13 +25,34 @@ local function signal()
         end,
     }
 end
-local floatVectors = false
+local floatVectors = true
+local vector2Meta = {}
+vector2Meta.__add = function(a, b)
+    return setmetatable({ X = a.X + b.X, Y = a.Y + b.Y }, vector2Meta)
+end
+vector2Meta.__sub = function(a, b)
+    return setmetatable({ X = a.X - b.X, Y = a.Y - b.Y }, vector2Meta)
+end
+vector2Meta.__mul = function(a, b)
+    return setmetatable(
+        { X = a.X * (if type(b) == "number" then b else b.X), Y = a.Y * (if type(b) == "number" then b else b.Y) },
+        vector2Meta
+    )
+end
+vector2Meta.__div = function(a, b)
+    return setmetatable({ X = a.X / b, Y = a.Y / b }, vector2Meta)
+end
+vector2Meta.__index = {
+    Dot = function(a, b)
+        return a.X * b.X + a.Y * b.Y
+    end,
+}
 local function v(x, y)
     if floatVectors then
         x = (string.unpack("f", string.pack("f", x)))
         y = (string.unpack("f", string.pack("f", y)))
     end
-    return { X = x, Y = y }
+    return setmetatable({ X = x, Y = y }, vector2Meta)
 end
 local function dim(s, o)
     return { Scale = s, Offset = o }
@@ -67,12 +88,6 @@ local cframe = setmetatable({ Position = vector3.zero }, {
         return value
     end,
 })
--- Deterministic font bounds for layout contracts, not Studio glyph rendering.
-local function measure(text, size, _, bounds)
-    local columns = math.max(1, math.floor(bounds.X / (size * 0.6)))
-    local lines = math.max(1, math.ceil(#text / columns))
-    return v(math.min(#text, columns) * size * 0.6, lines * size)
-end
 local Color3 = {
     new = function(...)
         return { ... }
@@ -122,8 +137,6 @@ local function timers()
     end
     flush()
 end
-local failHostCreation = false
-local failReparentStage = nil
 local new
 local function emitAncestors(parent, event, child)
     while parent do
@@ -132,9 +145,6 @@ local function emitAncestors(parent, event, child)
     end
 end
 new = function(class, name, parent)
-    if failHostCreation and class == "Frame" and name == nil then
-        error("forced host creation failure")
-    end
     local props = {
         Name = name or class,
         ClassName = class,
@@ -144,7 +154,7 @@ new = function(class, name, parent)
         Text = "preview",
         Size = UDim2.fromOffset(96, 96),
         Position = UDim2.fromOffset(0, 0),
-        AnchorPoint = v(0.5, 0.5),
+        AnchorPoint = v(0, 0),
         ZIndex = 1,
         Padding = dim(0, 8),
         LayoutOrder = 0,
@@ -224,9 +234,6 @@ new = function(class, name, parent)
         return attrs[key]
     end
     function object:SetAttribute(key, value)
-        if failReparentStage == "marker" and key == "HotbarReparented" and value == true then
-            error("forced marker failure")
-        end
         attrs[key] = value
         sig("attr:" .. key):Fire()
     end
@@ -295,7 +302,7 @@ new = function(class, name, parent)
                     return props.Pixels
                 end
                 if class == "ScreenGui" or class == "PlayerGui" then
-                    return v(1200, 800)
+                    return if props.Parent then props.Parent.AbsoluteSize else v(1200, 800)
                 end
                 local pixels = if props.Parent then props.Parent.AbsoluteSize else v(1200, 800)
                 if props.Parent and props.Parent:IsA("ScrollingFrame") then
@@ -323,9 +330,6 @@ new = function(class, name, parent)
                     props.CanvasSize.Y.Scale * size.Y + props.CanvasSize.Y.Offset
                 )
             elseif key == "AbsolutePosition" then
-                if props.Name == "HotbarHost" and props.Parent then
-                    return props.Parent.AbsolutePosition
-                end
                 if props.ScreenPosition then
                     return props.ScreenPosition
                 end
@@ -333,37 +337,23 @@ new = function(class, name, parent)
                     return v(0, 0)
                 end
                 local p = props.Parent
-                local x = p.AbsolutePosition.X - p.CanvasPosition.X
-                local ordered = {}
-                for _, child in p:GetChildren() do
-                    if child:IsA("GuiButton") and child.Visible then
-                        table.insert(ordered, child)
-                    end
-                end
-                table.sort(ordered, function(a, b)
-                    return a.LayoutOrder < b.LayoutOrder
-                end)
-                local list = p:FindFirstChildOfClass("UIListLayout")
-                local gap = if list then list.Padding.Offset + list.Padding.Scale * p.AbsoluteSize.X else 0
-                for _, child in ordered do
-                    if child == object then
-                        break
-                    end
-                    x += child.AbsoluteSize.X + gap
-                end
-                return v(x, 0)
+                local size, pixels, origin = object.AbsoluteSize, p.AbsoluteSize, p.AbsolutePosition
+                return v(
+                    origin.X
+                        + pixels.X * props.Position.X.Scale
+                        + props.Position.X.Offset
+                        - size.X * props.AnchorPoint.X
+                        - p.CanvasPosition.X,
+                    origin.Y
+                        + pixels.Y * props.Position.Y.Scale
+                        + props.Position.Y.Offset
+                        - size.Y * props.AnchorPoint.Y
+                )
             end
             return props[key]
         end,
         __newindex = function(_, key, value)
             local previous = props[key]
-            if key == "Parent" and value then
-                if failReparentStage == "host parent" and props.Name == "HotbarHost" then
-                    error("forced host parent failure")
-                elseif failReparentStage == "bar parent" and props.Name == "Hotbar" and value.Name == "HotbarHost" then
-                    error("forced bar parent failure")
-                end
-            end
             if key == "Parent" and previous ~= value then
                 if previous then
                     emitAncestors(previous, "DescendantRemoving", object)
@@ -420,7 +410,6 @@ end
 local cas = { Actions = {}, Binds = 0, Live = 0 }
 function cas:BindAction(name, fn, touch, ...)
     check(touch == false, "no CAS touch button")
-    check(not core.Enabled, "number bindings exist only after successful native handoff")
     check(not self.Actions[name], "no duplicate number action")
     self.Binds += 1
     self.Actions[name] = fn
@@ -476,36 +465,21 @@ local systemChannel = new("TextChannel", "RBXSystem", textChannels)
 function systemChannel:DisplaySystemMessage(message)
     table.insert(debugMessages, message)
 end
-local textMeasure = measure
 local services = {
     StarterGui = core,
     ContextActionService = cas,
     UserInputService = uis,
     GuiService = guiService,
-    TextService = {
-        GetTextSize = function(_, ...)
-            return textMeasure(...)
-        end,
-    },
     Players = {},
     ReplicatedStorage = {
-        Shared = { IngredientPreviewGeometry = "Geometry", Events = { HotbarDebug = { OnClientEvent = debugSignal } } },
+        Shared = new("Folder", "Shared"),
     },
     TextChatService = textChat,
 }
-local diagnosticEvents = {}
-services.HttpService = {
-    GenerateGUID = function()
-        return "diagnostic-module"
-    end,
-    JSONEncode = function(_, event)
-        table.insert(diagnosticEvents, event)
-        return event.kind
-    end,
-}
-function core:GetDescendants()
-    return {}
-end
+services.ReplicatedStorage.Shared.IngredientPreviewGeometry = "Geometry"
+local debugFolder = new("Folder", "Events", services.ReplicatedStorage.Shared)
+local debugRemote = new("RemoteEvent", "HotbarDebug", debugFolder)
+debugRemote.OnClientEvent = debugSignal
 local testWorkspace = new("Workspace")
 local modules = {
     IngredientViewport = ingredientViewport,
@@ -535,6 +509,7 @@ local function requireModule(name)
                     HotbarGui = "HotbarGui",
                     IngredientViewport = "IngredientViewport",
                     UIRegistry = "UIRegistry",
+                    MobileControlLayout = "MobileControlLayout",
                     HotbarDiagnostic = "HotbarDiagnostic",
                 },
             },
@@ -560,6 +535,11 @@ local function requireModule(name)
             UDim = UDim,
             UDim2 = UDim2,
             Vector2 = Vector2,
+            Rect = {
+                new = function(a, b)
+                    return { Min = a, Max = b }
+                end,
+            },
             Vector3 = vector3,
             CFrame = {
                 lookAt = function()
@@ -584,2018 +564,690 @@ local function requireModule(name)
 end
 local Gui = requireModule("HotbarGui")
 local Controller = requireModule("Controller")
-local templateImage
-for _, row in exportNodes do
-    if row[4] == "SlotIcon" then
-        templateImage = row[5].Image
-        break
-    end
-end
-check(templateImage and templateImage ~= "", "template asset resolved from current export")
-local function fixture(valid)
-    local player = new("Player", "Player")
-    local playerGui = new("PlayerGui", "PlayerGui", player)
-    local backpack = new("Backpack", "Backpack", player)
-    local character = new("Model", "Character")
-    player.Character = character
-    local humanoid = new("Humanoid", "Humanoid", character)
-    local equipped, unequipped = 0, 0
-    function humanoid:EquipTool(tool)
-        equipped += 1
-        for _, child in character:GetChildren() do
-            if child:IsA("Tool") then
-                child.Parent = backpack
+local cases = 0
+local function fixture(width, height, touch)
+    core.Enabled, core.Fail, core.ReadFail, core.IgnoreWrite = true, false, false, false
+    table.clear(core.Calls)
+    table.clear(cas.Buttons)
+    uis.TouchEnabled, uis.GamepadEnabled, uis.Focus = touch or false, false, nil
+    guiService.MenuIsOpen, guiService.SelectedObject = false, nil
+    local f = {}
+    f.Player = new("Player", "Player")
+    f.PlayerGui = new("PlayerGui", "PlayerGui", f.Player)
+    f.PlayerGui.Pixels = v(width or 1200, height or 800)
+    f.PlayerGui.CurrentScreenOrientation = if (width or 1200) < (height or 800) then "Portrait" else "LandscapeLeft"
+    f.Backpack = new("Backpack", "Backpack", f.Player)
+    f.Equips, f.Unequips = 0, 0
+    function f.CharacterModel()
+        local character = new("Model", "Character")
+        local humanoid = new("Humanoid", "Humanoid", character)
+        function humanoid:UnequipTools()
+            f.Unequips += 1
+            for _, tool in character:GetChildren() do
+                if tool:IsA("Tool") then
+                    tool.Parent = f.Backpack
+                    tool.Unequipped:Fire()
+                end
             end
         end
-        tool.Parent = character
-        tool.Equipped:Fire()
+        function humanoid:EquipTool(tool)
+            f.Equips += 1
+            self:UnequipTools()
+            tool.Parent = character
+            tool.Equipped:Fire()
+        end
+        return character, humanoid
     end
-    function humanoid:UnequipTools()
-        unequipped += 1
-        for _, child in character:GetChildren() do
-            if child:IsA("Tool") then
-                child.Parent = backpack
-                child.Unequipped:Fire()
+    f.Character, f.Humanoid = f.CharacterModel()
+    f.Player.Character = f.Character
+    function f.Tool(kind, key, name)
+        local tool = new("Tool", name or (if kind == "Ingredient" then "Strawberry" else kind))
+        if kind == "Ice" then
+            tool:SetAttribute("IceGunWeapon", true)
+        elseif kind == "Bat" then
+            tool:SetAttribute("BatLevel", 1)
+        elseif kind == "Ingredient" then
+            tool:SetAttribute("IngredientId", "Strawberry")
+            tool:SetAttribute("CarryItemId", key)
+        end
+        tool.Parent = f.Backpack
+        return tool
+    end
+    function f.Start()
+        f.Stop = Controller.Start(f.Player, f.PlayerGui)
+        f.Root = f.PlayerGui:FindFirstChild(Gui.Name)
+        f.Safe = f.Root:FindFirstChild("SafeArea")
+        f.Bar = f.Safe:FindFirstChild("Hotbar")
+        f.Scroll = f.Bar:FindFirstChild("HotbarScroll")
+        flush()
+        return f
+    end
+    function f.Resize(w, h)
+        f.PlayerGui.Pixels = v(w, h)
+        f.Safe:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+        flush()
+    end
+    function f.Slots()
+        local result = {}
+        for _, child in f.Scroll:GetChildren() do
+            if child:IsA("GuiButton") and child.Visible then
+                table.insert(result, child)
             end
         end
-    end
-    local root = new("ScreenGui", "Authored", playerGui)
-    root:SetAttribute("BB_DesignW", 1920)
-    root:SetAttribute("BB_DesignH", 1080)
-    local desktop = new("Frame", "Be a Blender! Desktop", root)
-    desktop.Size = UDim2.fromScale(1, 1)
-    desktop.Pixels = v(1200, 800)
-    local bar = new("Frame", "Hotbar", desktop)
-    bar.Size = UDim2.new(0.483333319, 0, 0.088888891, 0)
-    local upgrades = new("CanvasGroup", "Upgrades", desktop)
-    local upgradeScroll = new("ScrollingFrame", "UpgradeScroll", upgrades)
-    local upgradeList = new("Frame", "UpgradeList", upgradeScroll)
-    local card = new("CanvasGroup", "BatCard", upgradeList)
-    new("ImageLabel", "Isolated Wooden Baseball Bat 1", card).Image = "export-bat-art"
-    local carryCard = new("CanvasGroup", "CarryCapacityCard", upgradeList)
-    new("ImageLabel", "Glossy Fruit Trio Sticker 1", carryCard).Image = "export-generic-art"
-    for _ = 1, 9 do
-        local slot = new(if valid then "ImageButton" else "Frame", "Slot1", bar)
-        slot.Size = UDim2.fromScale(0.103448279, 1)
-        local text = new("TextLabel", "Label", slot)
-        text.Size = UDim2.fromScale(1.5, 0.0729166642)
-        text.Position = UDim2.fromScale(0.5, 0.801281333)
-        text.TextSize = 8
-        text:SetAttribute("FigmaFontSize", 15)
-        if valid then
-            local icon = new("ImageLabel", "SlotIcon", slot)
-            icon.Image = templateImage
-            icon.Size = UDim2.fromScale(0.625, 0.625)
-            icon.Position = UDim2.fromScale(0.5, 0.364583343)
-            new("ImageLabel", "Slot1Background", slot)
-        end
-    end
-    local function tool(name, id, key)
-        local t = new("Tool", name)
-        if id then
-            t:SetAttribute("IngredientId", id)
-            t:SetAttribute("CarryItemId", key)
-        end
-        t.Parent = backpack
-        return t
-    end
-    return {
-        Player = player,
-        PlayerGui = playerGui,
-        Backpack = backpack,
-        Character = character,
-        Humanoid = humanoid,
-        Root = root,
-        Desktop = desktop,
-        Bar = bar,
-        Tool = tool,
-        Counts = function()
-            return equipped, unequipped
-        end,
-    }
-end
--- Mount the same export Rojo ships. Glyph bounds remain a deterministic double;
--- font family, anchors and text minima come from the asset, not fixture defaults.
-local function mountedFixture(width, height)
-    local f = fixture(false)
-    f.Root:Destroy()
-    local nodes = { [0] = f.PlayerGui }
-    for _, row in exportNodes do
-        local object = new(row[3], row[4], nodes[row[2]])
-        for key, value in row[5] do
-            if key == "Size" or key == "Position" then
-                object[key] = UDim2.new(table.unpack(value))
-            elseif key == "AnchorPoint" then
-                object[key] = v(table.unpack(value))
-            elseif key == "TextSize" or key == "AspectRatio" then
-                object[key] = tonumber(value)
-            elseif key == "TextScaled" then
-                object[key] = value == "true"
-            else
-                object[key] = value
-            end
-        end
-        for key, value in row[6] do
-            object:SetAttribute(key, value)
-        end
-        nodes[row[1]] = object
-        if object:IsA("ScreenGui") then
-            f.Root = object
-            if width and height then
-                object.Pixels = v(width, height)
-            end
-        elseif object.Name == "Hotbar" then
-            f.Bar = object
-        end
+        table.sort(result, function(a, b)
+            return a.LayoutOrder < b.LayoutOrder
+        end)
+        return result
     end
     return f
 end
-local function visible(f)
-    local result = {}
-    for _, child in f.Bar:GetDescendants() do
-        if child:IsA("GuiButton") and child.Visible then
-            table.insert(result, child)
+local function named(button, name)
+    return button:FindFirstChild(name)
+end
+local function selected(button)
+    return named(button, "Selected").Visible
+end
+local function writes(value)
+    local result = 0
+    for _, call in core.Calls do
+        if call == value then
+            result += 1
         end
     end
-    table.sort(result, function(a, b)
-        return a.LayoutOrder < b.LayoutOrder
-    end)
     return result
 end
-local function label(button)
-    return button:GetChildren()[1].Text
-end
-
--- Placement regressions exercise the real resize through render, not copied math.
-local function touchButton(f, name, x, y, width, height)
-    local touch = f.PlayerGui:FindFirstChild("TouchGui") or new("ScreenGui", "TouchGui", f.PlayerGui)
-    local button = new("ImageButton", name)
-    button.Pixels, button.ScreenPosition = v(width, height), v(x, y)
-    button.Parent = touch
-    return button
-end
-local function near(actual, expected, message)
-    check(
-        math.abs(actual - expected) < 0.001,
-        message .. ": " .. tostring(actual) .. " expected " .. tostring(expected)
-    )
-end
--- Screen docking uses a letterboxed desktop and a distinct full-screen root.
-local function screenFixture(width, height)
-    local f = fixture(true)
-    f.Root.Pixels = v(width, height)
-    f.Root.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    local desktopWidth, desktopHeight = math.min(width, height * (16 / 9)), math.min(height, width / (16 / 9))
-    f.Desktop.Pixels = v(desktopWidth, desktopHeight)
-    f.Desktop.ScreenPosition = v((width - desktopWidth) / 2, (height - desktopHeight) / 2)
-    local content = new("CanvasGroup", "DesktopContent")
-    content.Size = UDim2.fromScale(1, 1)
-    content.ZIndex, content.ClipsDescendants = 6, true
-    for _, child in f.Desktop:GetChildren() do
-        child.Parent = content
+local function run(group, name, fn)
+    if testCase ~= "all" and testCase ~= group then
+        return
     end
-    content.Parent = f.Desktop
-    f.Content = content
-    f.Bar.ZIndex = 538
-    local shop = new("Frame", "Shop", content)
-    local scroll = new("ScrollingFrame", "ShopScroll", shop)
-    local list = new("Frame", "ShopList", scroll)
-    local card = new("Frame", "Ice Gun", list)
-    new("ImageLabel", "IceGunImage", card).Image = "export-ice-art"
-    f.Tool("Apple", "Apple", 1)
-    return f
+    fn()
+    cases += 1
+    print("PASS", group, name)
 end
-if testCase == "all" or testCase == "startup-trace" then
-    floatVectors, uis.TouchEnabled = true, true
-    for _, pixels in { v(390, 844), v(844, 390) } do
-        for _, late in { false, true } do
-            local f = mountedFixture(pixels.X, pixels.Y)
-            local authored = assert(Gui.Resolve(f.PlayerGui))
-            check(#authored.Slots == 9, "mounted pre-plot export has nine authored slots")
-            for _, slot in authored.Slots do
-                near(Gui.Metrics(slot, f.Root).Ratio, 1, "authored slots are square with Vector2 precision")
-                check(slot.Label.Font == "FredokaOne", "mounted label font comes from export")
-            end
-            local ice
-            local function grant()
-                ice = f.Tool("IcicleGun")
-                ice:SetAttribute("IceGunWeapon", true)
-                new("Part", "Handle", ice)
-            end
-            if not late then
-                grant()
-            end
-            local stop = Controller.Start(f.Player, f.PlayerGui)
-            flush()
-            if late then
-                grant()
+for _, dimensions in { { 390, 844 }, { 844, 390 }, { 320, 568 }, { 740, 360 }, { 1920, 1080 } } do
+    for _, late in { false, true } do
+        run(
+            "startup",
+            string.format("%dx%d %s Ice Gun", dimensions[1], dimensions[2], if late then "late" else "early"),
+            function()
+                local f = fixture(dimensions[1], dimensions[2], true)
+                local tool = if not late then f.Tool("Ice") else nil
+                f.Start()
+                check(
+                    f.Root.ResetOnSpawn == false and f.Root.ScreenInsets == Enum.ScreenInsets.CoreUISafeInsets,
+                    "persistent dedicated safe root"
+                )
+                if late then
+                    check(
+                        core.Enabled and not f.Bar.Visible and not cas.Actions.HotbarSelect,
+                        "empty join retains native access"
+                    )
+                    tool = f.Tool("Ice")
+                    flush()
+                end
+                local slots = f.Slots()
+                check(
+                    #slots == 1 and f.Bar.Visible and not core.Enabled,
+                    "standalone startup presents one Ice Gun without export or timers"
+                )
+                check(named(slots[1], "Icon").Image == Gui.Art.Ice, "direct Ice Gun artwork")
+                check(
+                    slots[1].AbsoluteSize.X >= 48 and slots[1].AbsoluteSize.X == slots[1].AbsoluteSize.Y,
+                    "square touch target"
+                )
+                check(f.Bar.AbsoluteSize.X <= f.Safe.AbsoluteSize.X, "mounted safe width")
+                slots[1].Activated:Fire()
                 flush()
+                check(tool.Parent == f.Character and selected(slots[1]), "pre-plot Ice Gun taps through Humanoid")
+                check(writes(false) == 1, "one successful handoff")
+                f.Stop()
             end
-            check(
-                not core.Enabled and f.Bar.Visible and #visible(f) == 1,
-                "pre-plot Ice Gun hands off without rotation or commands"
-            )
-            visible(f)[1].Activated:Fire()
-            flush()
-            check(ice.Parent == f.Character, "pre-plot Ice Gun can be selected")
-            for i = 1, 8 do
-                f.Tool("Apple", "Apple", i)
-            end
-            flush()
-            local buttons = visible(f)
-            local scroll = f.Bar:FindFirstChild("HotbarScroll")
-            local edge = math.max(0, scroll.AbsoluteCanvasSize.X - scroll.AbsoluteWindowSize.X)
-            scroll.CanvasPosition = v(edge, 0)
-            scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Fire()
-            flush()
-            near(scroll.CanvasPosition.X, edge, "mounted slot one selection permits swipe to slot nine")
-            local last = buttons[9]
-            check(last.AbsoluteSize.X >= 48 and last.AbsoluteSize.Y >= 48, "mounted slot nine retains tap target")
-            local left = last.AbsolutePosition.X - scroll.AbsolutePosition.X
-            check(
-                left >= -1 and left + last.AbsoluteSize.X <= scroll.AbsoluteWindowSize.X + 1,
-                "mounted slot nine fits at swipe end"
-            )
-            last.Activated:Fire()
-            flush()
-            check(ice.Parent == f.Backpack, "slot nine selection replaces equipped Ice Gun")
-            f.Root.Enabled = false
-            flush()
-            check(core.Enabled and not f.Bar.Visible, "unavailable mounted UI restores native access")
-            stop()
-            timers()
-        end
-    end
-    -- An injected suspension is an experiment, NOT an assertion that the live
-    -- GetTextSize yields. Compare the guard with an isolated in-memory variant;
-    -- no flag or concurrency change is shipped to players.
-    for _, serialized in { true, false } do
-        local experiment = Controller
-        if not serialized then
-            local original = sources.Controller
-            local guard =
-                "        if rendering then\n            renderRequested = true\n            return\n        end\n"
-            local first, last = string.find(original, guard, 1, true)
-            assert(first and last, "serialization experiment requires the current guard")
-            sources.Controller = string.sub(original, 1, first - 1) .. string.sub(original, last + 1)
-            modules.Controller = nil
-            experiment = requireModule("Controller")
-            sources.Controller, modules.Controller = original, Controller
-        end
-        for _, suspect in { "Ice Gun", "1", "2" } do
-            local f = mountedFixture(390, 844)
-            f.Tool("IcicleGun"):SetAttribute("IceGunWeapon", true)
-            local suspended
-            textMeasure = function(text, ...)
-                if text == suspect and not suspended then
-                    suspended = coroutine.running()
-                    coroutine.yield()
-                end
-                return measure(text, ...)
-            end
-            local stop = experiment.Start(f.Player, f.PlayerGui)
-            flush()
-            assert(suspended and coroutine.status(suspended) == "suspended", "probe must suspend the suspected call")
-            if serialized then
-                debugSignal:Fire(false)
-                local report = debugMessages[#debugMessages]
-                check(
-                    string.find(report, "entries=1 returns=0 errors=0 flight=true followup=true", 1, true),
-                    "read distinguishes an in-flight render from a completed render and held follow-up"
-                )
-                local step = if suspect == "Ice Gun" then "Label GetTextSize before" else "Number GetTextSize before"
-                check(
-                    string.find(report, step, 1, true) and string.find(report, 'text="' .. suspect .. '"', 1, true),
-                    "read identifies the suspended label or Number measurement"
-                )
-                timers()
-                check(
-                    core.Enabled and not f.Bar.Visible,
-                    "retries cannot bypass a suspended render; native stays available"
-                )
-            else
-                check(
-                    not core.Enabled and f.Bar.Visible,
-                    "without serialization a later render bypasses the injected one-call suspension"
-                )
-            end
-            local resumed, reason = coroutine.resume(suspended)
-            assert(resumed, reason)
-            flush()
-            check(not core.Enabled and f.Bar.Visible, "returning measurement permits normal handoff")
-            stop()
-            timers()
-            textMeasure = measure
-        end
-    end
-    do
-        local f = mountedFixture(844, 390)
-        f.Tool("IcicleGun"):SetAttribute("IceGunWeapon", true)
-        textMeasure = function(text, ...)
-            if text == "1" then
-                error("injected Number measurement failure")
-            end
-            return measure(text, ...)
-        end
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        debugSignal:Fire(false)
-        local report = debugMessages[#debugMessages]
-        check(core.Enabled and not f.Bar.Visible, "measurement exception retains native access")
-        check(
-            string.find(report, "errors=1 flight=false", 1, true)
-                and string.find(report, "Number GetTextSize before", 1, true),
-            "exception reports the failed operation separately from normal returns"
         )
-        stop()
-        timers()
-        textMeasure = measure
-    end
-    floatVectors, uis.TouchEnabled = false, false
-    print("Mounted startup and checkpoint experiments passed")
-    if testCase == "startup-trace" then
-        return
     end
 end
-if testCase == "all" or testCase == "diagnostic" then
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+run("startup", "prepared export still mounts other screens", function()
+    local sawDesktop, sawUpgrades, sawShop = false, false, false
+    check(not table.find(exportNames, "Hotbar"), "shipped export has no legacy hotbar")
+    for _, name in exportNames do
+        sawDesktop = sawDesktop or name == "Be a Blender! Desktop"
+        sawUpgrades = sawUpgrades or name == "Upgrades"
+        sawShop = sawShop or name == "Shop"
+    end
+    check(sawDesktop and sawUpgrades and sawShop, "other Framewisp screens preserved")
+end)
+run("startup", "optional preview may suspend without blocking takeover", function()
+    local original = ingredientViewport.Create
+    local suspended
+    ingredientViewport.Create = function()
+        suspended = coroutine.running()
+        coroutine.yield()
+        return nil
+    end
+    local f = fixture(390, 844, true)
+    f.Tool("Ingredient", 1)
+    f.Start()
+    check(suspended ~= nil and not core.Enabled and f.Bar.Visible, "preview suspension cannot hold handoff")
+    check(named(f.Slots()[1], "Icon").Image == Gui.Art.Generic, "fallback remains available while preview loads")
+    f.Slots()[1].Activated:Fire()
     flush()
-    local calls = #core.Calls
-    debugSignal:Fire(false)
+    check(f.Equips == 1, "fallback slot is selectable")
+    f.Stop()
+    check(coroutine.resume(suspended), "stale preview may finish after teardown")
+    ingredientViewport.Create = original
+end)
+run("input", "classification ordering and identity through equip", function()
+    local f = fixture()
+    local smoothie = f.Tool("Smoothie")
+    local high = f.Tool("Ingredient", 9, "Very long ingredient name which must truncate")
+    local ice = f.Tool("Ice")
+    local low = f.Tool("Ingredient", 2)
+    local bat = f.Tool("Bat")
+    local unsupported = f.Tool("Unknown")
+    f.Start()
+    local slots = f.Slots()
+    check(#slots == 5, "only supported Tools")
+    check(named(slots[1], "Label").Text == "Bat" and named(slots[2], "Label").Text == "Ice Gun", "Bat then Ice")
     check(
-        #core.Calls == calls and string.find(debugMessages[#debugMessages], "Backpack enabled = false", 1, true),
-        "chat read reports the local setting without changing it"
+        named(slots[3], "Label").Text == low.Name
+            and named(slots[4], "Label").Text == high.Name
+            and named(slots[5], "Label").Text == "Smoothie",
+        "CarryItemId order then Smoothie"
     )
-    debugSignal:Fire(true)
     check(
-        #core.Calls == calls + 1
-            and core.Calls[#core.Calls] == false
-            and string.find(debugMessages[#debugMessages], "after hide: false", 1, true),
-        "chat hide issues one local disable and reports the result"
+        named(slots[4], "Label").TextTruncate == Enum.TextTruncate.AtEnd
+            and slots[4].Size.X.Offset == slots[1].Size.X.Offset,
+        "long names cannot resize slots"
     )
-    f.Root.Enabled = false
-    flush()
-    calls = #core.Calls
-    debugSignal:Fire(true)
-    check(
-        core.Enabled and #core.Calls == calls and string.find(debugMessages[#debugMessages], "hide skipped", 1, true),
-        "chat hide preserves native fallback"
-    )
-    stop()
-    flush()
-end
-if testCase == "all" or testCase == "diagnostic" then
-    local f = fixture(true)
-    f.Player.UserId = 123
-    local tool = f.Tool("Apple", "Apple", 1)
-    testWorkspace:SetAttribute("HotbarDiagnosticUserId", 456)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    check(#diagnosticEvents == 0, "diagnostic does not run for an unselected player")
-    stop()
-    flush()
-    testWorkspace:SetAttribute("HotbarDiagnosticUserId", 123)
-    core.NativeVisible, core.DeferNativeUpdate = true, true
-    stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local readFalse, wroteFalse, unknownPixels, boundBar = false, false, false, false
-    for _, event in diagnosticEvents do
-        readFalse = readFalse or (event.kind == "backpackRead" and event.data.result == "false")
-        wroteFalse = wroteFalse or (event.kind == "backpackWrite" and event.data.requested == false)
-        unknownPixels = unknownPixels
-            or (event.kind == "snapshot" and event.data.nativeRendered == "UNKNOWN: compare phone screenshot")
-        boundBar = boundBar or event.kind == "controllerBar"
-    end
-    check(readFalse and wroteFalse and boundBar, "opt-in records actual controller reads, writes and owned bar")
-    check(unknownPixels and core.NativeVisible, "API false never claims native rendered pixels are hidden")
-    visible(f)[1].Activated:Fire()
-    flush()
-    check(tool.Parent == f.Character, "diagnostic preserves Tool selection")
-    local duplicate = f.Bar:Clone()
-    duplicate.Parent = f.Bar.Parent
-    duplicate.Visible = false
-    local overlay
-    for _, child in f.PlayerGui:GetChildren() do
-        if string.find(child.Name, "HotbarDiagnostic_", 1, true) == 1 then
-            overlay = child
-        end
-    end
-    table.clear(diagnosticEvents)
-    assert(overlay):FindFirstChild("Capture").Activated:Fire()
-    local paths, hidden = {}, false
-    for _, event in diagnosticEvents do
-        if event.kind == "liveGui" and string.match(event.data.instance, "%.Hotbar$") then
-            paths[event.data.instance] = true
-            hidden = hidden or not event.data.effectiveVisible
-        end
-    end
-    local bars = 0
-    for _ in paths do
-        bars += 1
-    end
-    check(bars == 2 and hidden, "capture distinguishes same-path bars and hidden visibility")
-    duplicate:Destroy()
-    stop()
-    flush()
-    check(core.Enabled, "diagnostic preserves native fallback")
-    testWorkspace:SetAttribute("HotbarDiagnosticUserId", nil)
-    core.NativeVisible, core.DeferNativeUpdate = nil, nil
-    if testCase == "diagnostic" then
-        print("Hotbar diagnostic contracts passed")
-        return
-    end
-end
-if testCase == "all" or testCase == "reparent" then
-    do
-        local f = screenFixture(390, 844)
-        local before = Gui.Resolve(f.PlayerGui)
-        local geometry = { f.Bar.AnchorPoint, f.Bar.Position, f.Bar.Size }
-        local metrics = {}
-        for i, slot in before.Slots do
-            metrics[i] = Gui.Metrics(slot, f.Root)
-        end
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        local screenHost = f.Bar.Parent
-        check(
-            screenHost.Name == "HotbarHost" and screenHost.Parent == f.Root,
-            "same bar docks directly under its ScreenGui"
-        )
-        check(
-            f.Bar.ZIndex == 538 and screenHost.ZIndex == 6,
-            "sibling host inherits content stacking; bar ZIndex preserved"
-        )
-        check(
-            screenHost.Active == false and screenHost.ClipsDescendants == false and screenHost.Visible,
-            "host permits input pass-through and unclipped rendering"
-        )
-        check(
-            screenHost.BackgroundTransparency == 1 and screenHost.BorderSizePixel == 0,
-            "host has no background or border"
-        )
-        near(screenHost.Size.X.Scale, 1, "host fills screen width")
-        near(screenHost.Size.Y.Scale, 1, "host fills screen height")
-        near(screenHost.Position.X.Scale, 0, "host starts at screen origin X")
-        near(screenHost.Position.Y.Scale, 0, "host starts at screen origin Y")
-        check(screenHost.AnchorPoint == Vector2.zero, "host anchor is zero")
-        for i, slot in before.Slots do
-            check(slot.Button:IsDescendantOf(f.Bar), "same slot remains below the bar through its scroll")
-            check(Gui.Metrics(slot, f.Root) == metrics[i], "authored metrics cache survives reparent and resize")
-        end
-        local root, bar = Gui.Find(f.PlayerGui)
-        check(root == f.Root and bar == before.Bar, "Find preserves render identity after setup")
-        local after = Gui.Resolve(f.PlayerGui)
-        check(
-            after and after.Bar == before.Bar and #after.Slots == #before.Slots,
-            "Resolve recognizes same live slots through HotbarScroll"
-        )
-        check(
-            after.BatImage == before.BatImage
-                and after.IceImage == before.IceImage
-                and after.GenericImage == before.GenericImage,
-            "Resolve retains all three panel fallbacks after setup"
-        )
-        f.Backpack:GetChildren()[1].Name = "Apple renamed"
-        flush()
-        check(
-            f.Bar.Parent == screenHost and not core.Enabled,
-            "next render retains custom bar instead of identity release"
-        )
-        stop()
-        flush()
-        check(
-            f.Bar.Parent == f.Content and not f.Bar.Destroyed,
-            "release restores original content before host destruction; bar survives"
-        )
-        check(
-            f.Bar.AnchorPoint == geometry[1] and f.Bar.Position == geometry[2] and f.Bar.Size == geometry[3],
-            "release restores authored geometry"
-        )
-        check(
-            not f.Bar.Visible and f.Bar:GetAttribute("HotbarReparented") == nil,
-            "release hides and clears reparent marker"
-        )
-        check(screenHost.Destroyed and screenHost.Parent == nil, "release removes owned screen host")
-        for _, slot in before.Slots do
-            check(slot.Button.Parent == f.Bar and not slot.Button.Destroyed, "release restores original slot instances")
-        end
-        print("PASS reparent identity, metrics, render continuity, panel fallback, release survival")
-    end
-    for _, mode in { "desktop hidden", "root disabled" } do
-        local f = screenFixture(390, 844)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        if mode == "desktop hidden" then
-            f.Desktop.Visible = false
-        else
-            f.Root.Enabled = false
-        end
-        local root, bar = Gui.Find(f.PlayerGui)
-        check(root == nil and bar == nil, "reparented bar respects " .. mode)
-        flush()
-        check(
-            core.Enabled and f.Bar.Parent == f.Content and not f.Bar.Visible,
-            "visibility loss restores native Backpack and original bar"
-        )
-        stop()
-        flush()
-        print("PASS reparent visibility", mode)
-    end
-    do
-        local f = screenFixture(390, 844)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        local duplicate = new("Frame", "Hotbar", f.Content)
-        local countBefore = #warnings
-        local root, bar = Gui.Find(f.PlayerGui)
-        check(
-            root == nil and bar == nil and #warnings == countBefore + 1,
-            "content and hosted bar ambiguity warns and returns neither"
-        )
-        Gui.Find(f.PlayerGui)
-        check(#warnings == countBefore + 1, "ambiguity warning deduplicated")
-        local duplicateAgain = new("Frame", "Hotbar", f.Content)
-        root, bar = Gui.Find(f.PlayerGui)
-        check(root == nil and bar == nil, "multiple content bars cannot conceal hosted ambiguity")
-        duplicate:Destroy()
-        duplicateAgain:Destroy()
-        flush()
-        stop()
-        flush()
-        print("PASS reparent ambiguity")
-    end
-    for _, case in
-        {
-            { 390, 844, "touch", 93, 16 },
-            { 844, 390, "touch", 64, 16 },
-            { 1920, 1080, "desktop", 96, 12 },
-            { 1920, 1080, "gamepad", 96, 54 },
-        }
-    do
-        local width, height, mode = case[1], case[2], case[3]
-        local f = screenFixture(width, height)
-        uis.TouchEnabled, uis.GamepadEnabled = mode == "touch", mode == "gamepad"
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        local screenHost = f.Bar.Parent
-        near(screenHost.AbsoluteSize.X, width, "screen host width")
-        near(screenHost.AbsoluteSize.Y, height, "screen host height")
-        near(f.Bar.AbsoluteSize.Y, case[4], "height measured against screen host")
-        near(-f.Bar.Position.Y.Offset, case[5], "bottom rule measured against screen host")
-        near(f.Bar.AbsoluteSize.X, math.min(width * 0.483333319, width * 0.9, 960), "host width and existing cap")
-        near(f.Content.AbsoluteSize.Y, math.min(height, width / (16 / 9)), "desktop remains letterboxed")
-        check(not core.Enabled, "docked viewport remains custom")
-        if width == 390 then
-            f.Root.Pixels = v(844, 390)
-            screenHost:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-            flush()
-            near(f.Bar.AbsoluteSize.Y, 64, "rotation remeasures height without inventory event")
-            near(f.Bar.AbsoluteSize.X, 844 * 0.483333319, "rotation recalculates pixel-derived width")
-            near(-f.Bar.Position.Y.Offset, 16, "rotation redocks bottom")
-            f.Root.Pixels = v(390, 844)
-            screenHost:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-            flush()
-            near(f.Bar.AbsoluteSize.Y, 93, "rotation back restores portrait height")
-            check(f.Bar.Parent == screenHost and not core.Enabled, "rotation preserves ownership and native handoff")
-        end
-        stop()
-        flush()
-        print("PASS reparent viewport", width, height, mode, "bottom", case[5], "height", case[4])
-    end
-    uis.TouchEnabled, uis.GamepadEnabled = false, false
-    do
-        local f = screenFixture(390, 844)
-        f.Root.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(f.Bar.Parent.ZIndex == 1 and f.Bar.ZIndex == 538, "Global leaves host default and retains bar stacking")
-        stop()
-        flush()
-        print("PASS reparent Global stacking")
-    end
-    do
-        local f = screenFixture(390, 844)
-        local function hostWarnings()
-            local count = 0
-            for _, message in warnings do
-                if string.find(message, "forced host creation failure", 1, true) then
-                    count += 1
-                end
-            end
-            return count
-        end
-        local countBefore = hostWarnings()
-        failHostCreation = true
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(
-            f.Bar.Parent == f.Content and not core.Enabled,
-            "host creation failure retains original viewport logic and custom Backpack handoff"
-        )
-        near(f.Bar.AbsoluteSize.Y, 64, "failure measures letterboxed content")
-        check(hostWarnings() == countBefore + 1, "reparent failure reports reason once")
-        f.Backpack:GetChildren()[1].Name = "Apple renamed"
-        flush()
-        check(hostWarnings() == countBefore + 1, "reparent failure does not warn again on render")
-        check(f.Root:FindFirstChild("HotbarHost") == nil, "failed creation leaves no host")
-        stop()
-        flush()
-        failHostCreation = false
-        print("PASS reparent failure soft fallback")
-        -- A subsequent session can dock the same bar after ordinary release.
-        local stopAgain = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(f.Bar.Parent.Name == "HotbarHost" and not core.Enabled, "reinit docks original restored bar")
-        stopAgain()
-        flush()
-        print("PASS reparent reinitialization")
-    end
-    for _, stage in { "host parent", "bar parent", "marker" } do
-        local f = screenFixture(390, 844)
-        failReparentStage = stage
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(
-            f.Bar.Parent == f.Content and not f.Bar.Destroyed and not core.Enabled,
-            "partial reparent rolls back and keeps working custom bar: " .. stage
-        )
-        check(
-            f.Bar:GetAttribute("HotbarReparented") == nil and f.Root:FindFirstChild("HotbarHost") == nil,
-            "partial reparent clears marker and destroys only empty host: " .. stage
-        )
-        near(f.Bar.AbsoluteSize.Y, 64, "partial failure uses existing content resize")
-        stop()
-        flush()
-        failReparentStage = nil
-        print("PASS reparent rollback", stage)
-    end
-    do
-        local f = screenFixture(390, 844)
-        local foreignHost = new("Frame", "HotbarHost", f.Root)
-        foreignHost.Size = UDim2.fromScale(1, 1)
-        local anchor, position, size = f.Bar.AnchorPoint, f.Bar.Position, f.Bar.Size
-        foreignHost:SetAttribute("HotbarAuthoredAnchor", anchor)
-        foreignHost:SetAttribute("HotbarAuthoredPosition", position)
-        foreignHost:SetAttribute("HotbarAuthoredSize", size)
-        f.Bar.Parent = foreignHost
-        f.Bar.Size = UDim2.fromScale(0.4, 0.1)
-        f.Bar:SetAttribute("HotbarReparented", true)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(
-            f.Bar.Parent == foreignHost and not core.Enabled,
-            "already hosted bar continues without nesting or taking host ownership"
-        )
-        local hosts = 0
-        for _, child in f.Root:GetChildren() do
-            if child.Name == "HotbarHost" then
-                hosts += 1
-            end
-        end
-        check(hosts == 1, "already reparented bar gets no duplicate host")
-        stop()
-        flush()
-        check(
-            f.Bar.Parent == f.Content and not foreignHost.Destroyed and not f.Bar.Destroyed,
-            "unowned host is preserved; recovery parent is original DesktopContent"
-        )
-        check(
-            f.Bar.AnchorPoint == anchor and f.Bar.Position == position and f.Bar.Size == size,
-            "stale host metadata restores authored geometry instead of resized geometry"
-        )
-        foreignHost:Destroy()
-        print("PASS reparent already hosted guard")
-    end
-    if testCase == "reparent" then
-        return
-    end
-end
-
-if testCase == "all" or testCase == "docking" or testCase == "dock-portrait" or testCase == "dock-landscape" then
-    for _, size in { v(390, 844), v(844, 390) } do
-        if testCase == "dock-portrait" and size.X ~= 390 or testCase == "dock-landscape" and size.X ~= 844 then
-            continue
-        end
-        local f = fixture(true)
-        f.Root.Pixels = size
-        -- Narrow authored fake ensures the expanded right control has zero overlap.
-        f.Bar.Size = UDim2.fromScale(if size.X == 390 then 0.34 else 0.4, 0.088888891)
-        uis.TouchEnabled = true
-        touchButton(f, "JumpButton", size.X - 100, size.Y - 200, 100, 120)
-        touchButton(f, "Thumbstick", 0, size.Y - 120, 120, 120)
-        f.Tool("Apple", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        print("Dock regression", size.X, size.Y, "bottom", -f.Bar.Position.Y.Offset)
-        near(-f.Bar.Position.Y.Offset, 16, "non-overlapping right-edge control must not lift")
-        stop()
-        flush()
-        uis.TouchEnabled = false
-    end
-    if testCase == "dock-portrait" or testCase == "dock-landscape" then
-        return
-    end
-end
-
-if testCase == "all" or testCase == "docking" then
-    local viewports = {
-        { "phone portrait", 390, 844, "touch", 16, 93 },
-        { "phone landscape", 844, 390, "touch", 16, 64 },
-        { "small phone landscape", 740, 360, "touch", 16, 64 },
-        { "tablet portrait", 820, 1180, "touch", 16, 96 },
-        { "tablet landscape", 1180, 820, "touch", 16, 90 },
-        { "narrow desktop", 1024, 768, "desktop", 12, 84 },
-        { "desktop", 1920, 1080, "desktop", 12, 96 },
-        { "console 1080p", 1920, 1080, "gamepad", 54, 96 },
-        { "console 720p", 1280, 720, "gamepad", 36, 79 },
-    }
-    for _, viewport in viewports do
-        local name, width, height, input, bottom, target = table.unpack(viewport)
-        local f = fixture(true)
-        f.Root.Pixels = v(width, height)
-        uis.TouchEnabled, uis.GamepadEnabled = input == "touch", input == "gamepad"
-        for i = 1, 12 do
-            f.Tool("Apple", "Apple", i)
-        end
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(not core.Enabled, name .. " custom bar renders")
-        near(-f.Bar.Position.Y.Offset, bottom, name .. " safe bottom")
-        near(f.Bar.AbsoluteSize.Y, target, name .. " adaptive height")
-        local authoredWidth = math.min(width * 0.483333319, width * 0.9, 960)
-        if input == "touch" then
-            check(
-                f.Bar.AbsoluteSize.X >= authoredWidth and f.Bar.AbsoluteSize.X <= width * 0.9 + 0.01,
-                name .. " safe width"
-            )
-        else
-            near(f.Bar.AbsoluteSize.X, authoredWidth, name .. " authored width")
-        end
-        check(f.Bar.AnchorPoint.X == 0.5 and f.Bar.AnchorPoint.Y == 1, name .. " bottom anchor")
-        local buttons = visible(f)
-        check(#buttons == 12, name .. " overfill retained")
-        for _, button in buttons do
-            near(button.AbsoluteSize.X / button.AbsoluteSize.Y, 1, name .. " slot ratio")
-            check(button.AbsoluteSize.X >= 48 and button.AbsoluteSize.Y >= 48, name .. " hit floor")
-            check(button.Selectable, name .. " selectable")
-        end
-        check(
-            buttons[1].NextSelectionRight == buttons[2] and buttons[2].NextSelectionLeft == buttons[1],
-            name .. " navigation order"
-        )
-        buttons[12].Activated:Fire()
-        guiService.SelectedObject = buttons[12]
-        flush()
-        check(f.Bar:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.X > 0, name .. " selected overflow revealed")
-        print("PASS viewport", name, width, height, input, "bottom", bottom, "height", target)
-        stop()
-        flush()
-    end
-    uis.TouchEnabled, uis.GamepadEnabled = true, false
-    -- Widened authored bar shrinks before lifting; all slots still scroll.
-    for _, leftSide in { false, true } do
-        local f = fixture(true)
-        f.Root.Pixels = v(844, 390)
-        f.Root.ScreenPosition = v(37, 55)
-        f.Bar.Size = UDim2.fromScale(0.95, 0.1)
-        touchButton(f, "JumpButton", 37 + (if leftSide then 0 else 744), 55 + 270, if leftSide then 120 else 100, 120)
-        for i = 1, 12 do
-            f.Tool("Apple", "Apple", i)
-        end
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        near(
-            f.Bar.AbsoluteSize.X,
-            if leftSide then 588 else 628,
-            "shrink clears expanded control in absolute coordinates"
-        )
-        near(-f.Bar.Position.Y.Offset, 16, "shrink stays docked")
-        check(
-            #visible(f) == 12
-                and f.Bar:FindFirstChildOfClass("ScrollingFrame").AbsoluteCanvasSize.X > f.Bar.AbsoluteSize.X,
-            "shrunk overflow retained"
-        )
-        stop()
-        flush()
-    end
-    -- Only the overlapping control contributes to a necessary, permitted lift.
-    do
-        local f = fixture(true)
-        f.Root.Pixels = v(240, 500)
-        touchButton(f, "JumpButton", 150, 400, 90, 100)
-        cas.Buttons.ThrowHeld = touchButton(f, "Throw", 0, 200, 20, 300)
-        f.Tool("Apple", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        near(-f.Bar.Position.Y.Offset, 108, "lift includes overlapping Jump only")
-        near(f.Bar.AbsoluteSize.X, 240 * 0.483333319, "lift preserves candidate width")
-        stop()
-        flush()
-        cas.Buttons = {}
-    end
-    -- High and invisible action buttons cannot lift or shrink the bar.
-    do
-        local f = fixture(true)
-        f.Root.Pixels = v(844, 390)
-        cas.Buttons.SprintHeld = touchButton(f, "Sprint", 400, 130, 70, 70)
-        cas.Buttons.IceShotgunFire = touchButton(f, "Fire", 400, 270, 70, 120)
-        cas.Buttons.IceShotgunFire.Visible = false
-        f.Tool("Apple", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        near(-f.Bar.Position.Y.Offset, 16, "high/invisible controls ignored")
-        near(f.Bar.AbsoluteSize.X, 844 * 0.483333319, "high/invisible controls do not shrink")
-        stop()
-        flush()
-        cas.Buttons = {}
-    end
-    do
-        local f = fixture(true)
-        f.Root.Pixels = v(240, 390)
-        touchButton(f, "JumpButton", 145, 150, 95, 240)
-        local tool = f.Tool("Apple", "Apple", 1)
-        Gui.Resolve(f.PlayerGui)
-        local before = #warnings
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        tool.Name = "Pear"
-        flush()
-        near(-f.Bar.Position.Y.Offset, 16, "excessive lift docks")
-        near(f.Bar.AbsoluteSize.X, 96 + (240 * 0.483333319) * 8 / 928, "cap uses two hit areas plus converted gap")
-        check(
-            #warnings == before + 1
-                and string.find(warnings[#warnings], "240x390", 1, true)
-                and string.find(warnings[#warnings], "JumpButton", 1, true),
-            "cap warns once per viewport with control name"
-        )
-        stop()
-        flush()
-    end
-    -- Late Jump/CAS additions and removals use the existing coalesced UI watch.
-    do
-        local f = fixture(true)
-        f.Root.Pixels = v(844, 390)
-        f.Bar.Size = UDim2.fromScale(0.9, 0.1)
-        local tool = f.Tool("Apple", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        local jump = touchButton(f, "JumpButton", 744, 270, 100, 120)
-        flush()
-        near(f.Bar.AbsoluteSize.X, 628, "late Jump triggers clearance")
-        jump:Destroy()
-        flush()
-        near(f.Bar.AbsoluteSize.X, 844 * 0.9, "removed Jump restores width")
-        local action = touchButton(f, "Throw", 744, 270, 100, 120)
-        cas.Buttons.ThrowHeld = action
-        flush()
-        near(f.Bar.AbsoluteSize.X, 628, "late CAS triggers clearance")
-        action.Visible = false
-        flush()
-        near(f.Bar.AbsoluteSize.X, 844 * 0.9, "observed visibility restores width")
-        guiService.BottomInset = 31
-        uis.GamepadEnabled = true
-        tool.Name = "Pear"
-        flush()
-        near(-f.Bar.Position.Y.Offset, 16, "touch uses already inset host without adding device inset twice")
-        uis.TouchEnabled = false
-        tool.Name = "Apple"
-        flush()
-        near(-f.Bar.Position.Y.Offset, 20, "gamepad reclassified each resize with ceil")
-        uis.GamepadEnabled = false
-        tool.Name = "Pear"
-        flush()
-        near(-f.Bar.Position.Y.Offset, 12, "desktop ignores touch controls")
-        stop()
-        flush()
-        cas.Buttons = {}
-        guiService.BottomInset = 0
-    end
-    for _, size in { v(390, 80), v(47, 500) } do
-        local f = fixture(true)
-        f.Root.Pixels = size
-        uis.TouchEnabled = true
-        f.Tool("Apple", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(
-            core.Enabled and cas.Actions.HotbarSelect == nil and not f.Bar.Visible,
-            "size guard restores native Backpack"
-        )
-        stop()
-        flush()
-    end
-    -- User-approved label accommodation at the new 64px minimum band.
-    do
-        local f = fixture(true)
-        f.Root.Pixels = v(844, 390)
-        local tool = f.Tool("WWWWWWWWWWWWWWWWWWWW's Head", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        check(not core.Enabled and #visible(f) == 1, "long label remains in custom short bar")
-        local button = visible(f)[1]
-        local icon, text = button:FindFirstChild("SlotIcon"), button:FindFirstChild("Label")
-        local iconBottom = icon.Position.Y.Scale + icon.Size.Y.Scale * (1 - icon.AnchorPoint.Y)
-        local textTop = text.Position.Y.Scale - text.Size.Y.Scale / 2
-        check(iconBottom <= textTop, "reserved label band does not overlap icon")
-        near(icon.AbsoluteSize.X / icon.AbsoluteSize.Y, 1, "reduced icon keeps authored aspect")
-        check(icon.AbsoluteSize.Y >= 24, "short-band icon remains visible")
-        local bounds = measure(text.Text, 8, text.Font, text.AbsoluteSize)
-        check(
-            bounds.Y <= text.AbsoluteSize.Y and text.Position.Y.Scale + text.Size.Y.Scale / 2 <= 1,
-            "long label fits inside slot"
-        )
-        f.Root.Pixels = v(1920, 1080)
-        tool.Name = "Apple"
-        flush()
-        near(icon.Size.Y.Scale, 0.625, "authored icon size restored when room returns")
-        stop()
-        flush()
-    end
-    uis.TouchEnabled, uis.GamepadEnabled = false, false
-    print("Docking contracts passed")
-    if testCase == "docking" then
-        return
-    end
-end
-
--- Stage A reproductions run independently against the pre-change production modules.
-if testCase == "aspect" then
-    local ratios = {}
-    for _, width in { 320, 768, 1280, 1920 } do
-        local f = fixture(true)
-        f.Root.Pixels = v(width, 1080)
-        f.Tool("Apple", "Apple", 1)
-        local stop = Controller.Start(f.Player, f.PlayerGui)
-        flush()
-        local size = visible(f)[1].AbsoluteSize
-        table.insert(ratios, size.X / size.Y)
-        stop()
-        flush()
-    end
-    print("Viewport sweep slot ratios:", table.unpack(ratios))
-    for _, ratio in ratios do
-        check(math.abs(ratio - 1) < 0.001, "slot preserves exported 96:96 ratio across viewport widths")
-    end
-    return
-elseif testCase == "template" then
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    f.Tool("No preview", "Missing", 2)
-    f.Tool("Smoothie")
-    f.Tool("bat"):SetAttribute("BatLevel", 1)
-    f.Tool("ray"):SetAttribute("IceGunWeapon", true)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local templates = 0
-    for _, button in visible(f) do
-        if button:FindFirstChild("SlotIcon").Image == templateImage then
-            templates += 1
-        end
-    end
-    print("Visible template images after full rebuild:", templates)
-    stop()
-    flush()
-    check(templates == 0, "zero visible template images after full rebuild")
-    return
-end
-
--- Required slot content stays required even when Selected is optional.
-do
-    for _, name in { "Label", "SlotIcon", "Slot1Background" } do
-        local f = fixture(true)
-        local button = assert(Gui.Resolve(f.PlayerGui)).Slots[1].Button
-        button:FindFirstChild(name):Destroy()
-        check(Gui.Slot(button) == nil, "slot rejects missing required " .. name)
-        f.Root:Destroy()
-    end
-end
-
--- Supported authored slot locations and optional authored highlight.
-do
-    for _, wrapper in { "direct", "Items", "HotbarScroll" } do
-        local f = fixture(true)
-        local view = assert(Gui.Resolve(f.PlayerGui))
-        check(#view.Slots == 9 and view.Slots[1].Selected == nil, "shipped background works without Selected")
-        local button = view.Slots[1].Button
-        local selected = new("ImageLabel", "SlotSelected", button)
-        check(assert(Gui.Slot(button)).Selected == selected, "authored Selected still binds")
-        selected:Destroy()
-        if wrapper ~= "direct" then
-            local parent = new(if wrapper == "Items" then "Frame" else "ScrollingFrame", wrapper, view.Bar)
-            for _, slot in view.Slots do
-                slot.Button.Parent = parent
-            end
-        end
-        check(#assert(Gui.Resolve(f.PlayerGui)).Slots == 9, "supported slot location: " .. wrapper)
-        f.Root:Destroy()
-    end
-end
-
-do
-    local f = fixture(true)
-    local view = assert(Gui.Resolve(f.PlayerGui))
-    local highlight = new("ImageLabel", "SlotSelected", view.Slots[1].Button)
-    local tool = f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    check(not highlight.Visible, "authored selection starts unequipped")
-    visible(f)[1].Activated:Fire()
-    flush()
-    check(tool.Parent == f.Character and highlight.Visible, "authored highlight still follows equipped Tool")
-    stop()
-    flush()
-    check(not highlight.Visible, "authored highlight clears on release")
-end
-
--- Resolve and render the actual currently mounted export, not a fabricated hierarchy.
-do
-    local f = mountedFixture()
-    local actualBar = f.Bar
-    check(actualBar ~= nil, "current prepared export contains Hotbar")
-    local upgrades = requireModule("UpgradesGui").Resolve(f.PlayerGui)
-    check(
-        upgrades
-            and upgrades.Cash
-            and upgrades.Rows.Bat
-            and upgrades.Rows.CarryCapacity
-            and upgrades.Rows.Jump
-            and upgrades.Rows.MovementSpeed
-            and upgrades.Rows.SprintStamina,
-        "new mounted export preserves existing upgrade and cash bindings"
-    )
-    check(requireModule("UIRegistry").PanelId(actualBar) == nil, "persistent Hotbar is outside panel registry")
-    local slots = 0
-    for _, slot in actualBar:GetChildren() do
-        if slot.Name == "Slot1" then
-            slots += 1
-            check(slot.ClassName == "TextButton", "actual slot class reported")
-        end
-    end
-    check(slots == 9 and Gui.Resolve(f.PlayerGui) ~= nil, "actual newest export resolves nine authored buttons")
-    local content = actualBar.Parent
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    if core.Enabled then
-        print("Actual-export render warnings:", table.concat(warnings, "\n"))
-    end
-    check(
-        not core.Enabled and cas.Actions.HotbarSelect ~= nil and not actualBar.Visible,
-        "actual export hands off after empty render; unused bar hidden"
-    )
-    local generic = content
-        :FindFirstChild("Upgrades")
-        :FindFirstChild("UpgradeScroll")
-        :FindFirstChild("UpgradeList")
-        :FindFirstChild("CarryCapacityCard")
-        :FindFirstChild("CarryCapacityCardContent")
-        :FindFirstChild("Glossy Fruit Trio Sticker 1").Image
-    local batImage = content
-        :FindFirstChild("Upgrades")
-        :FindFirstChild("UpgradeScroll")
-        :FindFirstChild("UpgradeList")
-        :FindFirstChild("BatCard")
-        :FindFirstChild("BatCardContent")
-        :FindFirstChild("Isolated Wooden Baseball Bat 1").Image
-    local iceImage = content
-        :FindFirstChild("Shop")
-        :FindFirstChild("ShopScroll")
-        :FindFirstChild("ShopList")
-        :FindFirstChild("Ice Gun")
-        :FindFirstChild("Ice GunContent")
-        :FindFirstChild("IceGunImage").Image
-    f.Tool("Apple", "Apple", 1)
-    f.Tool("Missing", "Missing", 2)
-    f.Tool("Smoothie")
-    f.Tool("Bat"):SetAttribute("BatLevel", 1)
-    f.Tool("Ray"):SetAttribute("IceGunWeapon", true)
-    flush()
-    local buttons = {}
-    for _, button in actualBar:GetDescendants() do
-        if button:IsA("GuiButton") and button.Visible then
-            table.insert(buttons, button)
-        end
-    end
-    table.sort(buttons, function(a, b)
-        return a.LayoutOrder < b.LayoutOrder
-    end)
-    check(#buttons == 5, "mounted export rebuild contains every item category")
-    for index, button in buttons do
-        local icon = button:FindFirstChild("SlotIcon")
-        local sources = if icon.Image ~= "" then 1 else 0
-        for _, child in icon:GetChildren() do
-            if child:IsA("ViewportFrame") then
-                sources += 1
-            end
-        end
-        check(
-            icon.Image ~= templateImage and sources == 1,
-            "actual mounted export has one non-template source per occupied slot"
-        )
-        if index == 4 or index == 5 then
-            check(icon.Image == generic, "mounted export intentional fallback resolved")
-        end
-    end
-    check(buttons[1]:FindFirstChild("SlotIcon").Image == batImage, "mounted bat card artwork resolved")
-    check(buttons[2]:FindFirstChild("SlotIcon").Image == iceImage, "mounted ice ray artwork resolved")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    local card = f.Desktop
-        :FindFirstChild("Upgrades")
-        :FindFirstChild("UpgradeScroll")
-        :FindFirstChild("UpgradeList")
-        :FindFirstChild("CarryCapacityCard")
-    card:FindFirstChild("Glossy Fruit Trio Sticker 1").Image = templateImage
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    slots[2].Activated:Fire()
     flush()
     check(
-        core.Enabled and cas.Actions.HotbarSelect == nil,
-        "template cannot masquerade as intentional fallback after init clearing"
+        ice.Parent == f.Character and #f.Slots() == 5 and f.Slots()[2] == slots[2],
+        "equipping moves one Tool without duplicating identity"
     )
-    stop()
+    slots[2].Activated:Fire()
     flush()
-    card:Destroy()
-    check(Gui.Resolve(f.PlayerGui) == nil, "missing intentional fallback fails resolution")
-end
-do
-    local f = fixture(false)
-    local before = #warnings
-    check(Gui.Resolve(f.PlayerGui) == nil, "incompatible hierarchy retains native")
-    local warned = #warnings
-    Gui.Resolve(f.PlayerGui)
-    check(warned > before and #warnings == warned, "invalid slot warning once per instance")
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    check(ice.Parent == f.Backpack and not selected(slots[2]), "second selection unequips")
+    slots[3].Activated:Fire()
     flush()
-    check(core.Enabled and cas.Actions.HotbarSelect == nil, "resolution failure never binds keys")
-    stop()
+    check(low.Parent == f.Character, "ingredient ordering maps to correct Tool")
+    low:SetAttribute("CarryItemId", 12)
     flush()
-end
-do
-    local f = fixture(true)
-    local view = Gui.Resolve(f.PlayerGui)
-    check(view and #view.Slots == 9, "duplicate slot names resolve per-slot children")
-    local first = view.Slots[1]
-    first.Icon:Destroy()
-    view = Gui.Resolve(f.PlayerGui)
-    check(view and #view.Slots == 8, "missing child skips just one slot")
-    local other = new("Frame", "Be a Blender! Desktop", f.Root)
-    check(Gui.Resolve(f.PlayerGui) == nil, "ambiguous active desktops fail")
-    other:Destroy()
-end
-do
-    local f = fixture(true)
-    f.Player:SetAttribute("CarryCapacity", 5)
-    local ingredients = {}
-    for index = 8, 1, -1 do
-        ingredients[index] = f.Tool("Apple", "Apple", index)
-    end
-    local smoothie1, smoothie2 = f.Tool("Smoothie"), f.Tool("Smoothie")
-    local ice = f.Tool("ray")
-    ice:SetAttribute("IceGunWeapon", true)
-    local bat = f.Tool("bat")
-    bat:SetAttribute("BatLevel", 2)
-    f.Tool("Unsupported")
-    check(core.Enabled, "native enabled before readiness")
-    local before = previews
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    check(core.Enabled, "native remains enabled before deferred render")
-    flush()
-    check(not core.Enabled and cas.Actions.HotbarSelect ~= nil, "handoff after render and input wiring")
-    local buttons = visible(f)
-    check(#buttons == 12, "eight ingredients at capacity five plus four other Tools all display")
-    check(
-        label(buttons[1]) == "Bat"
-            and label(buttons[2]) == "Ice Gun"
-            and label(buttons[11]) == "Smoothie"
-            and label(buttons[12]) == "Smoothie",
-        "category order and labels"
-    )
-    check(buttons[1]:GetChildren()[2].Image == "export-bat-art", "bat fallback resolved from authored card")
-    check(previews - before == 8, "ingredient viewports once per distinct Tool")
-    for i = 1, 8 do
-        buttons[i + 2].Activated:Fire()
-        flush()
-        check(ingredients[i].Parent == f.Character, "CarryItemId order independent of child order")
-    end
-    check(previews - before == 8, "equip moves preserve bindings and renders")
-    buttons[10].Activated:Fire()
-    flush()
-    local eq, uneq = f.Counts()
-    check(eq == 8 and uneq == 1 and ingredients[8].Parent == f.Backpack, "button activation only equips/toggles")
-    ingredients[3].Name = "Fresh Apple"
-    flush()
-    check(label(visible(f)[5]) == "Fresh Apple", "live ingredient label verbatim")
-    visible(f)[11].Activated:Fire()
-    flush()
-    check(smoothie1.Parent == f.Character, "first smoothie selected")
-    visible(f)[11].Activated:Fire()
-    flush()
-    visible(f)[11].Activated:Fire()
-    flush()
-    check(smoothie1.Parent == f.Character, "smoothie sequence retained across reparent moves")
-    ingredients[1]:Destroy()
-    flush()
-    buttons = visible(f)
-    check(
-        #buttons == 11 and smoothie1.Parent == f.Character and label(buttons[10]) == "Smoothie",
-        "selection follows Tool after index shift"
-    )
-    local scroll = f.Bar:FindFirstChildOfClass("ScrollingFrame")
-    check(scroll.AbsoluteCanvasSize.X >= 11 * 48, "spacing-aware overflow canvas")
-    check(buttons[1].AbsoluteSize.X >= 48, "named minimum target width")
-    guiService.SelectedObject = buttons[11]
-    check(scroll.CanvasPosition.X > 0, "gamepad focused overflow slot reachable")
-    local callback = cas.Actions.HotbarSelect
-    uis.Focus = {}
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(smoothie1.Parent == f.Character, "focused textbox ignores keyboard")
-    uis.Focus = nil
-    guiService.MenuIsOpen = true
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(smoothie1.Parent == f.Character, "menu ignores keyboard")
-    guiService.MenuIsOpen = false
-    guiService.BottomInset = 0
-    function guiService:GetGuiInset()
-        return v(0, 36), v(0, self.BottomInset)
-    end
-    f.Player.GameplayPaused = true
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(smoothie1.Parent == f.Character, "paused ignores keyboard")
-    f.Player.GameplayPaused = false
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Zero })
-    flush()
-    check(smoothie1.Parent == f.Backpack, "zero toggles the selected smoothie at visible index ten after shift")
-    for index = 2, 8 do
-        ingredients[index]:Destroy()
-    end
-    smoothie1:Destroy()
-    smoothie2:Destroy()
-    ice:Destroy()
-    flush()
-    check(#visible(f) == 1 and label(visible(f)[1]) == "Bat", "shrink hides unused slots without locks")
-    check(disposed >= 8, "hidden ingredient renders disposed")
-    f.Player.CharacterRemoving:Fire(f.Character)
-    flush()
-    check(#visible(f) == 0, "death clears old character and all slots")
-    local nextCharacter = new("Model", "Respawn")
-    local nextHumanoid = new("Humanoid", "Humanoid", nextCharacter)
-    local respawnEquips = 0
-    function nextHumanoid:EquipTool(tool)
-        respawnEquips += 1
-        tool.Parent = nextCharacter
-    end
-    f.Player.Character = nextCharacter
-    local respawnBinds = cas.Binds
-    f.Player.CharacterAdded:Fire(nextCharacter)
-    flush()
-    check(cas.Binds == respawnBinds + 1, "respawn activates each number key once")
-    bat.Parent = nil
-    f.Tool("First respawn pickup", "Apple", 99)
-    flush()
-    check(
-        #visible(f) == 1 and label(visible(f)[1]) == "First respawn pickup",
-        "first pickup after respawn has no ghosts"
-    )
-    visible(f)[1].Activated:Fire()
-    flush()
-    check(respawnEquips == 1, "respawn activation reaches the new humanoid exactly once")
-    stop()
-    flush()
-    check(
-        core.Enabled and cas.Actions.HotbarSelect == nil and #visible(f) == 0,
-        "teardown restores native and releases custom UI"
-    )
-end
-do
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local button = visible(f)[1]
-    button:GetChildren()[2]:Destroy()
-    flush()
-    check(core.Enabled and cas.Actions.HotbarSelect == nil, "loss of required slot content releases custom selection")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    core.Fail = true
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    check(core.Enabled and cas.Actions.HotbarSelect == nil, "failed handoff releases selection")
-    core.Fail = false
-    timers()
-    check(not core.Enabled, "CoreGui readiness retries can hand off empty inventory")
-    f.Root.Enabled = false
-    flush()
-    check(core.Enabled and cas.Actions.HotbarSelect == nil, "loss of active root restores native")
-    f.Root.Enabled = true
-    flush()
-    check(not core.Enabled, "root reactivation reconnects")
-    stop()
-    flush()
-    timers()
-end
-do
-    local f = fixture(true)
-    f.Tool("Bad ingredient", "Apple", nil)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    check(core.Enabled and #visible(f) == 0, "missing order contract retains native")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    f.Root.Pixels = v(320, 600)
-    uis.TouchEnabled = true
-    for i = 1, 12 do
-        f.Tool("Apple", "Missing", i)
-    end
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local buttons = visible(f)
-    check(#buttons == 12 and buttons[1].AbsoluteSize.X >= 48, "phone targets keep 48px floor with scrolling")
-    buttons[12].Activated:Fire()
-    guiService.SelectedObject = buttons[12]
-    flush()
-    local scroll = f.Bar:FindFirstChildOfClass("ScrollingFrame")
-    check(scroll.CanvasPosition.X > 0, "selected last slot scrolls fully into view")
-    check(buttons[12]:GetChildren()[2].Image == "export-generic-art", "missing preview uses intentional fallback")
-    stop()
-    flush()
-    uis.TouchEnabled = false
-end
--- Aspect, label, hit-area and scrolling contracts use independent font bounds.
--- Actual glyph rasterization and safe insets remain Studio acceptance checks.
-for _, viewport in { v(320, 568), v(768, 1024), v(800, 600), v(1920, 1080), v(1920, 1080) } do
-    local f = fixture(true)
-    f.Root.Pixels = viewport
-    local longestName = "WWWWWWWWWWWWWWWWWWWW's Head"
+    check(f.Slots()[4] == slots[3], "reordering preserves Tool button identity")
+    check(writes(false) == 1, "equip and Tool changes never repeat successful disable")
+    f.Stop()
+end)
+run("input", "keyboard guards and zero shortcut", function()
+    local f = fixture()
     local tools = {}
-    for i = 1, 12 do
-        tools[i] = f.Tool(if i == 1 then longestName else "Apple", "Apple", i)
+    for i = 1, 10 do
+        tools[i] = f.Tool("Ingredient", i)
     end
-    local before = cas.Binds
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    for _, slot in f.Bar:GetChildren() do
-        if slot:IsA("GuiButton") then
-            check(slot:FindFirstChild("SlotIcon").Image == "", "init clears every pooled template before first bind")
-            check(not slot.Visible, "unbound slots are hidden before first render")
-        end
-    end
-    check(cas.Actions.HotbarSelect == nil and core.Enabled, "before first render native keys remain untouched")
-    flush()
-    check(cas.Binds == before + 1, "activation binds one keyboard action")
-    local scroll = f.Bar:FindFirstChildOfClass("ScrollingFrame")
-    local outerWidth = f.Bar.AbsoluteSize.X
-    local buttons = visible(f)
-    check(#buttons == 12, "viewport sweep retains every occupied slot")
-    for _, button in buttons do
-        local icon, text = button:FindFirstChild("SlotIcon"), button:FindFirstChild("Label")
-        local size, iconSize = button.AbsoluteSize, icon.AbsoluteSize
-        check(math.abs(size.X / size.Y - 1) < 0.001, "authored slot ratio is viewport invariant")
-        check(math.abs(iconSize.X / iconSize.Y - 1) < 0.001, "authored icon ratio is viewport invariant")
-        check(
-            button:FindFirstChildOfClass("UIAspectRatioConstraint")
-                and icon:FindFirstChildOfClass("UIAspectRatioConstraint"),
-            "aspect constraints cover only slot and icon"
-        )
-        check(
-            text:FindFirstChildOfClass("UIAspectRatioConstraint") == nil,
-            "labels remain flexible without aspect constraints"
-        )
-        check(size.X >= 48 and size.Y >= 48, "button hit area meets both floors")
-        local floor = button:FindFirstChildOfClass("UISizeConstraint").MinSize
-        check(floor.X == 48 and floor.Y == 48, "floor belongs to the authored button")
-        check(icon.ScaleType == Enum.ScaleType.Fit, "image icons fit rather than stretch")
-        local constraint = text:FindFirstChildOfClass("UITextSizeConstraint")
-        check(
-            text.TextScaled and text.TextWrapped and constraint.MinTextSize == 8 and constraint.MaxTextSize == 15,
-            "text scales within authored bounds"
-        )
-        local required = measure(text.Text, constraint.MinTextSize, text.Font, text.AbsoluteSize)
-        check(
-            required.X <= text.AbsoluteSize.X + 0.01 and required.Y <= text.AbsoluteSize.Y + 0.01,
-            "complete label fits at authored minimum"
-        )
-        check(
-            text.Size.X.Scale <= 1 and text.Position.Y.Scale + text.Size.Y.Scale / 2 <= 1,
-            "labels stay inside their slots"
-        )
-        check(
-            icon.Image == "" and #icon:GetChildren() == 2,
-            "one constrained viewport replaces template with no overlay stack"
-        )
-        check(
-            icon:GetChildren()[2]:FindFirstChildOfClass("UIAspectRatioConstraint") ~= nil,
-            "viewport inherits icon aspect"
-        )
-    end
-    check(scroll.AbsoluteCanvasSize.X > scroll.AbsoluteWindowSize.X, "hit-area canvas overflows horizontally")
-    check(
-        outerWidth <= viewport.X * 0.9 and math.abs(outerWidth - viewport.X * 0.483333319) < 0.01,
-        "floor leaves outer bar width bounded and unchanged"
-    )
-    local callback = cas.Actions.HotbarSelect
-    for index, key in
-        {
-            Enum.KeyCode.One,
-            Enum.KeyCode.Two,
-            Enum.KeyCode.Three,
-            Enum.KeyCode.Four,
-            Enum.KeyCode.Five,
-            Enum.KeyCode.Six,
-            Enum.KeyCode.Seven,
-            Enum.KeyCode.Eight,
-            Enum.KeyCode.Nine,
-            Enum.KeyCode.Zero,
-        }
-    do
-        callback("", Enum.UserInputState.Begin, { KeyCode = key })
-        flush()
-        check(tools[index].Parent == f.Character, "1-9 and overflow 0 equip current visible tool without Selected")
-    end
-    buttons[12].Activated:Fire()
-    guiService.SelectedObject = buttons[12]
-    flush()
-    check(scroll.CanvasPosition.X > 0, "selected overflow slot scrolls into view")
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(cas.Binds == before + 1, "rebuild never duplicates keyboard bindings")
-    f.Player.CharacterRemoving:Fire(f.Character)
-    flush()
-    check(cas.Actions.HotbarSelect == nil, "character teardown removes keyboard actions")
-    stop()
-    flush()
-    check(core.Enabled and cas.Actions.HotbarSelect == nil, "teardown restores native keyboard behavior")
-    local authored = 0
-    for _, child in f.Bar:GetChildren() do
-        if child:IsA("GuiButton") then
-            authored += 1
-            check(
-                not child.Visible and child:FindFirstChild("SlotIcon").Image == "",
-                "released authored slots remain hidden and cleared"
-            )
-        end
+    f.Start()
+    local function press(code, state)
+        return cas.Actions.HotbarSelect(ACTION, state or Enum.UserInputState.Begin, { KeyCode = code })
     end
     check(
-        authored == 9 and not f.Bar:FindFirstChildOfClass("ScrollingFrame"),
-        "teardown removes all overflow clones and owned scrolling UI"
+        press(Enum.KeyCode.Zero) == Enum.ContextActionResult.Sink and tools[10].Parent == f.Character,
+        "zero selects tenth supported item"
     )
-end
-do
-    -- A non-square authored design proves the floor grows uniformly, rather
-    -- than assuming all future exports are squares.
-    local f = fixture(true)
-    f.Root.Pixels = v(320, 568)
-    for _, button in f.Bar:GetChildren() do
-        if button:IsA("GuiButton") then
-            button.Size = UDim2.fromScale(0.206896558, 1)
-            button:FindFirstChild("SlotIcon").Size = UDim2.fromScale(0.46875, 0.625)
-        end
+    check(
+        press(Enum.KeyCode.One) == Enum.ContextActionResult.Sink and tools[1].Parent == f.Character,
+        "number shortcut"
+    )
+    local countBefore = f.Equips
+    guiService.MenuIsOpen = true
+    check(press(Enum.KeyCode.Two) == Enum.ContextActionResult.Pass, "menu releases keys")
+    f.Slots()[2].Activated:Fire()
+    guiService.MenuIsOpen = false
+    f.Player.GameplayPaused = true
+    check(press(Enum.KeyCode.Two) == Enum.ContextActionResult.Pass, "pause releases keys")
+    f.Slots()[2].Activated:Fire()
+    f.Player.GameplayPaused = false
+    uis.Focus = {}
+    check(press(Enum.KeyCode.Two) == Enum.ContextActionResult.Pass, "chat releases keys")
+    f.Slots()[2].Activated:Fire()
+    uis.Focus = nil
+    check(f.Equips == countBefore, "guards protect both keyboard and activation")
+    check(
+        press(Enum.KeyCode.Two, Enum.UserInputState.End) == Enum.ContextActionResult.Sink and f.Equips == countBefore,
+        "only Begin equips"
+    )
+    f.Humanoid.Health = 0
+    f.Slots()[2].Activated:Fire()
+    check(f.Equips == countBefore, "dead Humanoid guard")
+    f.Humanoid.Health = 100
+    tools[2].Parent = nil
+    f.Slots()[2].Activated:Fire()
+    check(
+        press(Enum.KeyCode.Two) == Enum.ContextActionResult.Pass and f.Equips == countBefore,
+        "stale Tool guard before render"
+    )
+    flush()
+    f.Stop()
+end)
+run("input", "controller links focus reveal and activation", function()
+    local f = fixture(390, 844, true)
+    for i = 1, 9 do
+        f.Tool("Ingredient", i)
     end
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local button = visible(f)[1]
-    local icon = button:FindFirstChild("SlotIcon")
+    f.Start()
+    local slots = f.Slots()
     check(
-        math.abs(button.AbsoluteSize.X - 96) < 0.01 and math.abs(button.AbsoluteSize.Y - 48) < 0.01,
-        "2:1 button uniformly grows to 96x48 floor"
+        slots[1].NextSelectionLeft == slots[1] and slots[9].NextSelectionRight == slots[9],
+        "controller endpoints stay in bar"
     )
     check(
-        math.abs(icon.AbsoluteSize.X / icon.AbsoluteSize.Y - 1.5) < 0.001,
-        "non-square icon retains its own authored ratio"
+        slots[2].NextSelectionLeft == slots[1] and slots[2].NextSelectionRight == slots[3],
+        "ordered controller navigation"
     )
-    stop()
+    guiService.SelectedObject = slots[9]
     flush()
-end
-do
-    local f = fixture(true)
-    local item = f.Tool("Tool geometry", "Missing", 1)
-    new("Part", "Handle", item)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    check(f.Scroll.CanvasPosition.X > 0, "changed focus reveals ninth slot")
+    slots[9].Activated:Fire()
     flush()
-    local icon = visible(f)[1]:FindFirstChild("SlotIcon")
-    check(
-        icon.Image == "" and icon:FindFirstChild("HotbarToolPreview") ~= nil,
-        "missing ingredient preview falls through to sanitized Tool geometry"
-    )
-    check(
-        icon:FindFirstChild("HotbarToolPreview"):FindFirstChildOfClass("UIAspectRatioConstraint") ~= nil,
-        "Tool render inherits host ratio"
-    )
-    item:FindFirstChild("Handle"):Destroy()
-    item:SetAttribute("IngredientId", "OtherMissing")
+    check(selected(slots[9]) and f.Equips == 1, "controller activation uses Humanoid")
+    f.Scroll.CanvasPosition = v(0, 0)
+    guiService:GetPropertyChangedSignal("SelectedObject"):Fire()
     flush()
-    -- OtherMissing is accepted by this preview double; the real shared pipeline
-    -- separately allowlists IDs. Rebinding must dispose the Tool render first.
-    check(
-        icon:FindFirstChild("HotbarToolPreview") == nil and icon:FindFirstChild("IngredientPreview") ~= nil,
-        "Tool render is removed before replacement ingredient render"
-    )
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    -- Simulate Framewisp's responsive pass running before controller startup.
-    for _, button in f.Bar:GetChildren() do
-        if button:IsA("GuiButton") then
-            local text = button:FindFirstChild("Label")
-            text:SetAttribute("HotbarTextMin", 8)
-            text:SetAttribute("HotbarTextMax", 15)
-            text.TextSize = 2
-        end
-    end
-    f.Tool("Dragon Fruit", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local text = visible(f)[1]:FindFirstChild("Label")
-    check(
-        text:FindFirstChildOfClass("UITextSizeConstraint").MinTextSize == 8,
-        "responsive export cannot shrink authored text minimum before init"
-    )
-    check(text:GetAttribute("FW_TextOwn") == true, "controller owns flexible label sizing across later export resizes")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    local missing1 = f.Tool("Missing item", "Missing", 1)
-    local missing2 = f.Tool("Missing again", "Missing", 2)
-    local bat = f.Tool("bat")
-    bat:SetAttribute("BatLevel", 1)
-    local beforeWarnings = #warnings
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local function missingWarnings()
-        local total = 0
-        for i = beforeWarnings + 1, #warnings do
-            if string.find(warnings[i], "missing icon for Missing", 1, true) then
-                total += 1
-            end
-        end
-        return total
-    end
-    check(missingWarnings() == 1, "intentional fallback reports missing id exactly once")
-    check(
-        visible(f)[2]:FindFirstChild("SlotIcon").Image == "export-generic-art",
-        "fallback is intentional distinct export artwork"
-    )
-    local callback = cas.Actions.HotbarSelect
-    for index, key in { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three } do
-        callback("", Enum.UserInputState.Begin, { KeyCode = key })
-        flush()
-        check(
-            ({ bat, missing1, missing2 })[index].Parent == f.Character,
-            "key equips Nth current visible Tool without Selected"
-        )
-    end
-    local eq, uneq = f.Counts()
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Nine })
-    local eq2, uneq2 = f.Counts()
-    check(eq == eq2 and uneq == uneq2, "absent visible index has no equip effect")
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(bat.Parent == f.Character, "key one reaches pinned bat through click path")
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(bat.Parent == f.Backpack, "key uses exact click toggle path")
-    local beforeRemoval = f.Counts()
-    missing1.Parent = nil
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Two })
-    local eq3 = f.Counts()
-    check(eq3 == beforeRemoval, "removed Tool cannot be equipped before rebuild")
-    flush()
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(bat.Parent == f.Character, "key remaps after current view order shifts")
-    f.Tool("Another missing", "Missing", 3)
-    flush()
-    check(missingWarnings() == 1, "rebind does not repeat missing id report")
-    -- Force reuse of a viewport slot for artwork, then reuse it for a viewport.
-    for _, tool in f.Backpack:GetChildren() do
-        tool:Destroy()
-    end
-    bat:Destroy()
-    flush()
-    local fresh = f.Tool("Apple", "Apple", 4)
-    flush()
-    local icon = visible(f)[1]:FindFirstChild("SlotIcon")
-    check(icon.Image == "" and #icon:GetChildren() == 2, "artwork rebind clears source before viewport")
-    fresh:SetAttribute("IngredientId", "Missing")
-    flush()
-    check(
-        icon.Image == "export-generic-art" and #icon:GetChildren() == 1,
-        "viewport rebind disposes old render before artwork"
-    )
-    fresh:SetAttribute("IngredientId", "Apple")
-    flush()
-    check(icon.Image == "" and #icon:GetChildren() == 2, "repeated rebind leaves exactly one live source")
-    for _, button in visible(f) do
-        check(
-            button:FindFirstChild("SlotIcon").Image ~= templateImage,
-            "template absent after equipment changes and full rebuild"
-        )
-    end
-    stop()
-    flush()
-end
--- No remote service exists in the double: any attempted gameplay request errors.
-check(Controller.Classify((function()
-    local tool = new("Tool", "Smoothie")
-    tool:SetAttribute("IngredientId", "Apple")
-    tool:SetAttribute("CarryItemId", 1)
-    tool:SetAttribute("BatLevel", 1)
-    tool:SetAttribute("IceGunWeapon", true)
-    return tool
-end)()) == "Ice", "classification priority")
--- Startup, transient measurements, and ownership recovery use the real controller.
-uis.TouchEnabled = true
-for _, pixels in { v(390, 844), v(844, 390) } do
-    local f = fixture(true)
-    f.Root.Pixels = pixels
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    check(core.Enabled and not f.Bar.Visible, "cold start exposes only the native hotbar before handoff")
-    flush()
-    check(
-        not core.Enabled and f.Bar.Visible and #visible(f) == 1 and cas.Actions.HotbarSelect,
-        "cold start exposes only the usable custom hotbar without an orientation change"
-    )
-    stop()
-    flush()
-end
-for _, pixels in { v(390, 844), v(844, 390) } do
-    local f = fixture(true)
-    f.Root.Pixels = v(0, 0)
-    local tool = f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local screen = f.Bar.Parent
-    local scroll = f.Bar:FindFirstChild("HotbarScroll")
-    check(core.Enabled and not cas.Actions.HotbarSelect, "zero cold start leaves native access")
-    -- Emulate the previous scroll measurement surviving the parent write.
-    scroll.Pixels = v(1200, 800)
-    f.Root.Pixels = pixels
-    f.Bar.Visible = true -- An authored UI update can expose slots before the first usable layout.
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    local button = visible(f)[1]
-    check(core.Enabled, "stale scroll measurement cannot finish the first handoff")
-    check(not f.Bar.Visible, "pending first handoff leaves only native Backpack visible")
-    check(button.AbsoluteSize.X >= 48, "slot floor derives from new bar bounds, not stale scroll")
-    scroll.Pixels = nil
-    scroll:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    check(not core.Enabled and cas.Actions.HotbarSelect, "cold start hands off after usable geometry")
-    button.Activated:Fire()
-    flush()
-    scroll.CanvasPosition = v(20, 0)
-    local keys = cas.Actions.HotbarSelect
-    f.Root.Pixels = v(0, 0)
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    check(not core.Enabled and cas.Actions.HotbarSelect == keys, "transient zero keeps custom ownership and input")
-    f.Root.Pixels = pixels
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    timers()
-    check(f.Bar.Parent == screen and f.Bar:FindFirstChild("HotbarScroll") == scroll, "resize retains same usable UI")
-    check(visible(f)[1] == button and tool.Parent == f.Character, "resize retains selection and authored slot")
-    stop()
-    flush()
-end
-uis.TouchEnabled = false
-for _, pixels in { v(390, 844), v(844, 390) } do
-    local f = fixture(true)
-    uis.TouchEnabled = true
-    f.Root.Pixels = pixels
-    core.NativeVisible = true
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    timers()
-    check(not core.Enabled and not f.Bar.Visible, "empty inventory has no visible custom slots")
-    -- Simulate the native GUI becoming visible after the original handoff
-    -- and its follow-up attempts, without changing the stored setting.
-    core.NativeVisible = true
-    local tool = f.Tool("Apple", "Apple", 1)
-    flush()
-    check(not core.NativeVisible and f.Bar.Visible, "first Tool refreshes touch handoff without rotation")
-    core.NativeVisible = true
-    new("ScreenGui", "TouchGui", f.PlayerGui)
-    flush()
-    check(not core.NativeVisible and f.Bar.Visible, "late TouchGui refreshes a usable custom handoff")
-    visible(f)[1].Activated:Fire()
-    flush()
-    check(tool.Parent == f.Character, "first Tool is tappable after cold-start handoff")
-    stop()
-    timers()
-    core.NativeVisible = nil
-    uis.TouchEnabled = false
-end
-do
-    local f = fixture(true)
-    f.Root.Pixels = v(390, 844)
-    uis.TouchEnabled = true
+    check(f.Scroll.CanvasPosition.X == 0, "unchanged focus never snaps scroll")
+    f.Stop()
+end)
+run("overflow", "nine slots remain swipeable while first equipped", function()
+    local f = fixture(390, 844, true)
     local tools = {}
     for i = 1, 9 do
-        tools[i] = f.Tool("Apple", "Apple", i)
+        tools[i] = f.Tool("Ingredient", i)
     end
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    f.Start()
+    local slots = f.Slots()
+    slots[1].Activated:Fire()
     flush()
-    local buttons = visible(f)
-    local scroll = f.Bar:FindFirstChild("HotbarScroll")
-    local width = scroll.AbsoluteWindowSize.X
-    check(width > 390 * 0.483333319 and width <= 351, "full portrait bar uses more safe width")
-    check(scroll.ScrollingEnabled and #buttons == 9, "all nine touch slots have a scrollable row")
-    buttons[1].Activated:Fire()
+    check(tools[1].Parent == f.Character, "slot one equipped")
+    local max = f.Scroll.CanvasSize.X.Offset - f.Bar.AbsoluteSize.X
+    check(max > 0, "narrow phone uses horizontal overflow")
+    f.Scroll.CanvasPosition = v(max, 0)
+    tools[1].Name = "Renamed"
     flush()
-    local endPosition = scroll.AbsoluteCanvasSize.X - width
-    check(endPosition > 0, "nine minimum-size slots overflow in portrait")
-    scroll.CanvasPosition = v(endPosition, 0)
-    buttons[1]:GetPropertyChangedSignal("AbsolutePosition"):Fire()
-    scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Fire()
+    check(f.Scroll.CanvasPosition.X == max, "routine renders preserve swipe with first equipped")
+    f.Resize(0, 0)
+    check(
+        not core.Enabled and f.Bar.Visible and f.Scroll.CanvasPosition.X == max,
+        "zero bounds preserve working ownership and scroll"
+    )
+    f.Resize(360, 780)
+    local max2 = math.max(0, f.Scroll.CanvasSize.X.Offset - f.Bar.AbsoluteSize.X)
+    check(f.Scroll.CanvasPosition.X == math.min(max, max2), "rotation clamps without snapping to equipped slot")
+    check(f.Slots()[1] == slots[1] and f.Slots()[9] == slots[9], "rotation retains slots")
+    f.Scroll.CanvasPosition = v(max2, 0)
+    local ninth = slots[9].AbsolutePosition.X + slots[9].AbsoluteSize.X
+    check(
+        ninth <= f.Scroll.AbsolutePosition.X + f.Scroll.AbsoluteSize.X + 0.001,
+        "ninth target fully inside scroll at end"
+    )
+    slots[9].Activated:Fire()
     flush()
-    near(scroll.CanvasPosition.X, endPosition, "layout leaves the user at the swiped position with slot one equipped")
-    local last = buttons[9]
-    local left = last.AbsolutePosition.X - scroll.AbsolutePosition.X
-    check(left >= 0 and left + last.AbsoluteSize.X <= width + 1, "last slot fully fits at the end of the swipe")
-    last.Activated:Fire()
+    check(tools[9].Parent == f.Character, "ninth slot tappable")
+    f.Resize(844, 390)
+    f.Resize(390, 844)
+    check(writes(false) == 1 and selected(slots[9]), "orientation changes preserve selection and one-time handoff")
+    for i = 2, 9 do
+        tools[i]:Destroy()
+    end
     flush()
-    check(tools[9].Parent == f.Character, "last overflow slot equips by touch")
-    stop()
+    check(f.Scroll.CanvasPosition.X == 0, "smaller inventory clamps old scroll range")
+    f.Stop()
+end)
+run("lifecycle", "same root across empty inventory respawn and new Backpack", function()
+    local f = fixture(390, 844, true)
+    local ice = f.Tool("Ice")
+    f.Start()
+    local root = f.Root
+    ice:Destroy()
+    flush()
+    check(not core.Enabled and not f.Bar.Visible, "empty inventory after takeover stays custom-owned")
+    local oldCharacter = f.Character
+    f.Player.CharacterRemoving:Fire(f.Character)
+    f.Player.Character = nil
+    flush()
+    f.Backpack:Destroy()
+    f.Backpack = new("Backpack", "NewBackpack", f.Player)
+    f.Character, f.Humanoid = f.CharacterModel()
+    f.Player.Character = f.Character
+    f.Player.CharacterAdded:Fire(f.Character)
+    local replacement = f.Tool("Ice")
+    flush()
+    check(
+        f.PlayerGui:FindFirstChild(Gui.Name) == root and #f.Slots() == 1,
+        "respawn retains one view with actual new Tools"
+    )
+    f.Slots()[1].Activated:Fire()
+    flush()
+    check(replacement.Parent == f.Character, "new Character binding equips")
+    local stale = new("Tool", "StaleIce", oldCharacter)
+    stale:SetAttribute("IceGunWeapon", true)
+    flush()
+    check(#f.Slots() == 1 and writes(false) == 1, "old Character Tools cannot affect the replacement inventory")
+    f.Stop()
+    check(
+        core.Enabled and not cas.Actions.HotbarSelect and f.PlayerGui:FindFirstChild(Gui.Name) == nil,
+        "teardown restores native and removes custom inputs/view"
+    )
+end)
+run("lifecycle", "Init is idempotent and follows PlayerGui replacement", function()
+    local f = fixture()
+    services.Players.LocalPlayer = f.Player
+    f.Tool("Ice")
+    Controller.Init()
+    Controller.Init()
+    flush()
+    local first = f.PlayerGui:FindFirstChild(Gui.Name)
+    check(first ~= nil and #f.PlayerGui:GetChildren() == 1, "one dedicated view after repeated Init")
+    f.PlayerGui.Parent = nil
+    flush()
+    check(core.Enabled and first.Destroyed, "PlayerGui replacement retires old view")
+    f.PlayerGui = new("PlayerGui", "ReplacementGui", f.Player)
+    flush()
+    check(
+        not core.Enabled and f.PlayerGui:FindFirstChild(Gui.Name) ~= nil,
+        "replacement PlayerGui gets one working view"
+    )
+    Controller.Destroy()
+    flush()
+    check(core.Enabled and not cas.Actions.HotbarSelect, "Destroy releases lifecycle inputs")
+end)
+run("fallback", "disabled detached damaged and undersized view recovers", function()
+    local f = fixture(390, 844, true)
+    f.Tool("Ice")
+    f.Start()
+    local function native()
+        check(core.Enabled and not cas.Actions.HotbarSelect and not f.Bar.Visible, "native fallback usable")
+    end
+    local function custom()
+        check(not core.Enabled and cas.Actions.HotbarSelect and f.Bar.Visible, "same view recovered")
+    end
+    f.Root.Enabled = false
+    flush()
+    native()
+    f.Root.Enabled = true
+    flush()
+    custom()
+    f.Root.Parent = nil
+    flush()
+    native()
+    f.Root.Parent = f.PlayerGui
+    flush()
+    custom()
+    f.Bar.Visible = false
+    flush()
+    native()
+    f.Bar.Visible = true
+    flush()
+    custom()
+    local icon = named(f.Slots()[1], "Icon")
+    icon.Parent = nil
+    flush()
+    native()
+    icon.Parent = f.Slots()[1]
+    flush()
+    custom()
+    f.Resize(40, 100)
+    native()
+    f.Resize(390, 844)
+    custom()
+    f.Slots()[1].Activated:Fire()
+    flush()
+    check(f.Equips == 1, "recovery preserves slot input")
+    f.Stop()
+end)
+run("fallback", "failed CoreGui call bounded retry and recovery", function()
+    local f = fixture(390, 844, true)
+    f.Tool("Ice")
+    core.Fail = true
+    f.Start()
+    check(core.Enabled and not f.Bar.Visible and not cas.Actions.HotbarSelect, "failed disable leaves native active")
+    core.Fail = false
     timers()
-    uis.TouchEnabled = false
-end
-do
-    local f = fixture(true)
-    uis.TouchEnabled = true
-    f.Root.Pixels = v(0, 0)
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    check(not core.Enabled and f.Bar.Visible and cas.Actions.HotbarSelect, "CoreGui-only retry recovers")
+    local calls = writes(false)
+    for _ = 1, 10 do
+        timers()
+    end
+    f.Resize(844, 390)
+    f.Tool("Bat")
+    flush()
+    check(writes(false) == calls, "successful disable has no delayed reassertion")
+    f.Stop()
+end)
+run("fallback", "CoreGui failures exhaust one budget and readiness resets it", function()
+    local f = fixture()
+    f.Tool("Ice")
+    core.Fail = true
+    f.Start()
+    for _ = 1, 12 do
+        timers()
+    end
+    check(writes(false) == 8 and core.Enabled and not cas.Actions.HotbarSelect, "eight attempts maximum")
+    f.Resize(1000, 800)
+    f.Tool("Bat")
     flush()
     timers()
-    check(core.Enabled and not f.Bar.Visible, "pending portrait startup keeps native access")
-    f.Root.Pixels = v(390, 844) -- No geometry or orientation notification.
-    timers()
-    check(not core.Enabled and f.Bar.Visible, "portrait startup can recover without a layout notification")
-    stop()
-    timers()
-    uis.TouchEnabled = false
-end
-for _, resetRequestedState in { false, true } do
-    local f = fixture(true)
-    uis.TouchEnabled = true
-    f.Root.Pixels = v(844, 390)
-    f.Tool("Apple", "Apple", 1)
-    core.NativeVisible, core.DeferNativeUpdate = true, true
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    check(writes(false) == 8, "routine layout/Tools do not replenish API budget")
+    f.Root.Enabled = false
     flush()
-    check(not core.Enabled and f.Bar.Visible, "mobile handoff initially verifies the requested state")
-    check(core.NativeVisible, "native UI can still be visible while the request is already disabled")
-    -- Late Roblox startup may leave the rendering stale or reset the request
-    -- silently. Neither requires a viewport, inventory, or orientation change.
-    core.Enabled = resetRequestedState
-    core.DeferNativeUpdate = false
-    timers()
-    check(not core.Enabled and not core.NativeVisible and f.Bar.Visible, "cold start settles to custom only")
-    local calls = #core.Calls
-    timers()
-    check(#core.Calls == calls, "successful mobile handoff verification is bounded")
-    stop()
-    timers()
-    check(core.Enabled and core.NativeVisible and not f.Bar.Visible, "teardown restores native access")
-    core.NativeVisible = nil
-    uis.TouchEnabled = false
-end
-do
-    local f = fixture(true)
-    uis.TouchEnabled = true
-    f.Root.Pixels = v(844, 390)
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    core.Fail = false
+    f.Root.Enabled = true
     flush()
-    stop()
-    timers()
-    check(core.Enabled and not f.Bar.Visible, "pending startup reassertions cannot undo native fallback")
-    uis.TouchEnabled = false
-end
-do
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    core.IgnoreWrite = true
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    check(not core.Enabled and f.Bar.Visible, "new usable-view transition recovers exhausted handoff")
+    f.Stop()
+end)
+run("fallback", "read errors do not reject successful CoreGui write", function()
+    local f = fixture()
+    f.Tool("Ice")
+    core.ReadFail = true
+    f.Start()
+    check(
+        not core.Enabled and f.Bar.Visible and cas.Actions.HotbarSelect,
+        "successful write allows usable custom bar despite read error"
+    )
+    debugSignal:Fire(false)
+    local message = debugMessages[#debugMessages]
+    check(
+        string.find(message, "place v1", 1, true)
+            and string.find(message, "owner=custom", 1, true)
+            and string.find(message, "CoreGui state unavailable", 1, true),
+        "concise QA report includes place owner and read error"
+    )
+    core.ReadFail = false
+    f.Stop()
+end)
+run("fallback", "malformed ingredient recovers on replicated attributes", function()
+    local f = fixture()
+    local tool = f.Tool("Ingredient", nil)
+    f.Start()
+    check(core.Enabled and not cas.Actions.HotbarSelect, "invalid CarryItemId retains native")
+    tool:SetAttribute("CarryItemId", 1)
     flush()
+    check(not core.Enabled and #f.Slots() == 1, "attribute completion triggers handoff")
+    for _, invalid in { 0, -1, 1.5, math.huge, 0 / 0, "1" } do
+        tool:SetAttribute("CarryItemId", invalid)
+        flush()
+        check(core.Enabled and not cas.Actions.HotbarSelect, "malformed CarryItemId releases custom selection")
+    end
+    tool:SetAttribute("CarryItemId", 2)
+    flush()
+    check(not core.Enabled and #f.Slots() == 1, "valid Tool recovery")
+    f.Stop()
+end)
+run("startup", "live mobile controls have clear lane and late mounting adjusts it", function()
+    for _, bounds in { { 390, 844 }, { 844, 390 } } do
+        local f = fixture(bounds[1], bounds[2], true)
+        f.Tool("Ice")
+        f.Start()
+        local original = f.Root
+        local touch = new("ScreenGui", "TouchGui", f.PlayerGui)
+        local function button(name, x, y, w, h)
+            local object = new("ImageButton", name)
+            object.ScreenPosition, object.Pixels = v(x, y), v(w, h)
+            object.Parent = touch
+            return object
+        end
+        local h, w = bounds[2], bounds[1]
+        local stick = button("DynamicThumbstickFrame", 0, h - 150, 150, 150)
+        local jump = button("JumpButton", w - 90, h - 90, 80, 80)
+        cas.Buttons.SprintHeld = button("Sprint", w - 190, h - 90, 70, 70)
+        cas.Buttons.ThrowHeld = button("Throw", w - 160, h - 180, 70, 70)
+        cas.Buttons.IceShotgunFire = button("Fire", w - 100, h - 260, 70, 70)
+        flush()
+        local a = f.Bar.AbsolutePosition
+        local b = v(a.X + f.Bar.AbsoluteSize.X, a.Y + f.Bar.AbsoluteSize.Y)
+        for _, object in { stick, jump, cas.Buttons.SprintHeld, cas.Buttons.ThrowHeld, cas.Buttons.IceShotgunFire } do
+            local p, s = object.AbsolutePosition, object.AbsoluteSize
+            check(
+                b.X <= p.X or a.X >= p.X + s.X or b.Y <= p.Y or a.Y >= p.Y + s.Y,
+                "row clears native and action targets"
+            )
+        end
+        check(f.Root == original and writes(false) == 1, "late controls adjust same bar without another disable")
+        f.Stop()
+    end
+end)
+run("startup", "zero initial safe area waits for mounted bounds", function()
+    local f = fixture(0, 0, true)
+    f.Tool("Ice")
+    f.Start()
+    check(core.Enabled and not f.Bar.Visible and not cas.Actions.HotbarSelect, "initial zero area keeps native")
+    check(writes(false) == 0, "no disable before a usable slot area")
+    f.Resize(390, 844)
+    check(not core.Enabled and #f.Slots() == 1 and f.Bar.Visible, "bounds event alone completes takeover")
+    f.Stop()
+end)
+run("startup", "safe-area origin and bounds apply insets once", function()
+    local f = fixture(844, 390, true)
+    f.Tool("Ice")
+    f.Start()
+    local original = guiService.GetGuiInset
+    guiService.GetGuiInset = function()
+        error("hotbar must use mounted safe bounds")
+    end
+    f.Safe.Pixels, f.Safe.ScreenPosition = v(700, 320), v(44, 24)
+    f.Safe:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    flush()
+    local p, safe, bar = f.Bar.AbsolutePosition, f.Safe.AbsolutePosition, f.Bar.AbsoluteSize
+    check(f.Bar.Visible and not core.Enabled, "mounted bounds remain usable without GetGuiInset")
+    check(
+        p.X >= safe.X and p.Y >= safe.Y and p.X + bar.X <= safe.X + 700 and p.Y + bar.Y <= safe.Y + 320,
+        "row stays inside actual inset container"
+    )
+    check(writes(false) == 1, "inset changes do not reassert CoreGui")
+    guiService.GetGuiInset = original
+    f.Stop()
+end)
+run("startup", "late ingredient preview preserves an already usable slot", function()
+    local original = ingredientViewport.Create
+    ingredientViewport.Create = function()
+        return nil
+    end
+    local f = fixture(390, 844, true)
+    f.Tool("Ingredient", 1)
+    f.Start()
+    local button = f.Slots()[1]
+    check(
+        named(button, "Icon").Image == Gui.Art.Generic and f.Bar.Visible,
+        "missing preview presents intentional fallback"
+    )
+    button.Activated:Fire()
+    flush()
+    ingredientViewport.Create = original
+    new("Folder", "ScrapbookPreviewAssets", services.ReplicatedStorage.Shared)
+    flush()
+    check(
+        f.Slots()[1] == button and selected(button) and named(button, "Icon"):FindFirstChild("IngredientPreview"),
+        "late preview does not replace identity or selection"
+    )
+    check(writes(false) == 1, "preview arrival does not repeat handoff")
+    f.Stop()
+end)
+run("fallback", "failed native restoration retries without stale-session takeover", function()
+    local f = fixture()
+    f.Tool("Ice")
+    f.Start()
+    core.Fail = true
+    f.Root.Enabled = false
+    flush()
+    check(
+        not f.Bar.Visible and not cas.Actions.HotbarSelect,
+        "unusable custom view releases input even during API failure"
+    )
+    core.Fail = false
+    timers()
+    check(core.Enabled, "bounded API retry restores native access")
+    f.Root.Enabled = true
+    flush()
+    check(not core.Enabled and f.Bar.Visible, "restored custom view can reclaim ownership")
+    core.Fail = true
+    f.Stop()
+    core.Fail = false
+    local replacement = fixture()
+    replacement.Tool("Ice")
+    replacement.Start()
     for _ = 1, 10 do
         timers()
     end
     check(
+        not core.Enabled and replacement.Bar.Visible and cas.Actions.HotbarSelect,
+        "retired restoration cannot overwrite replacement owner"
+    )
+    replacement.Stop()
+end)
+run("fallback", "successful API call with unchanged readback stays native", function()
+    local f = fixture()
+    f.Tool("Ice")
+    core.IgnoreWrite = true
+    f.Start()
+    check(
         core.Enabled and not f.Bar.Visible and not cas.Actions.HotbarSelect,
-        "unverified disable falls back to one native interface"
+        "native still enabled prevents a duplicate custom bar"
     )
-    local calls = #core.Calls
-    timers()
-    check(#core.Calls == calls, "failed handoff has bounded retries")
     core.IgnoreWrite = false
-    f.PlayerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Fire()
-    flush()
-    check(not core.Enabled and f.Bar.Visible, "later lifecycle retries an exhausted handoff")
-    -- A public layout event can recheck ownership after a CoreGui state change.
-    core.Enabled = true
-    guiService:GetPropertyChangedSignal("TopbarInset"):Fire()
-    flush()
-    check(not core.Enabled and f.Bar.Visible, "public layout event reasserts a usable custom hotbar")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    core.Fail = true
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local oldHost = f.Bar.Parent
-    oldHost:Destroy()
-    flush()
-    core.Fail = false
-    local replacement = fixture(true)
-    replacement.Tool("Pear", "Pear", 2)
-    local stopReplacement = Controller.Start(replacement.Player, replacement.PlayerGui)
-    flush()
     timers()
-    stop()
-    timers()
-    check(not core.Enabled and replacement.Bar.Visible, "old handoff and teardown cannot undo replacement ownership")
-    stopReplacement()
+    check(not core.Enabled and f.Bar.Visible, "confirmed disable permits recovery")
+    f.Stop()
+end)
+run("startup", "late debug remote never gates startup", function()
+    debugRemote.Parent = nil
+    local f = fixture(390, 844, true)
+    f.Tool("Ice")
+    f.Start()
+    check(not core.Enabled and f.Bar.Visible, "missing QA remote cannot block takeover")
+    debugRemote.Parent = debugFolder
     flush()
-end
-do
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
+    debugSignal:Fire(false)
+    local message = debugMessages[#debugMessages]
+    check(
+        string.find(message, "owner=custom", 1, true) and string.find(message, "Portrait", 1, true),
+        "late QA remote reports the existing owner"
+    )
+    f.Stop()
+end)
+run("lifecycle", "Character Tool can precede Backpack replication", function()
+    local f = fixture(390, 844, true)
+    local ice = f.Tool("Ice")
+    ice.Parent = f.Character
+    f.Backpack.Parent = nil
+    f.Start()
+    check(
+        not core.Enabled and #f.Slots() == 1 and selected(f.Slots()[1]),
+        "early Character Tool is presented without a Backpack"
+    )
+    f.Backpack = new("Backpack", "LateBackpack", f.Player)
     flush()
-    core.Fail = true
-    stop()
-    flush()
-    check(not core.Enabled, "failed native restoration remains unconfirmed")
-    core.Fail = false
-    timers()
-    check(core.Enabled, "pending native restoration retries after teardown")
-end
-do
-    local f = fixture(true)
-    f.Root.Pixels = v(390, 844)
-    for i = 1, 12 do
-        f.Tool("Apple", "Apple", i)
-    end
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local screen, scroll = f.Bar.Parent, f.Bar:FindFirstChild("HotbarScroll")
-    local button = visible(f)[12]
-    button.Activated:Fire()
-    guiService.SelectedObject = button
-    flush()
-    local position = scroll.CanvasPosition.X
-    check(position > 0, "overflow selection begins in a valid scrolled position")
-    f.Root.Pixels = v(0, 0)
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    f.Root.Pixels = v(390, 844)
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+    f.Slots()[1].Activated:Fire()
     flush()
     check(
-        scroll.CanvasPosition.X == position and guiService.SelectedObject == button,
-        "transient geometry retains scroll and gamepad selection"
+        ice.Parent == f.Backpack and #f.Slots() == 1 and writes(false) == 1,
+        "late Backpack rebind preserves ownership and unequip"
     )
-    screen.Visible = false
-    flush()
-    check(core.Enabled and not f.Bar.Visible, "hidden host restores native access")
-    screen.Visible = true
-    flush()
-    check(not core.Enabled and #visible(f) == 12, "same healthy host regains ownership after visibility recovery")
-    f.Root.Pixels = v(0, 0)
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    timers()
-    check(core.Enabled and not f.Bar.Visible, "persistent pending bounds restore native after bounded recovery")
-    f.Root.Pixels = v(844, 390)
-    screen:GetPropertyChangedSignal("AbsoluteSize"):Fire()
-    flush()
-    check(not core.Enabled and #visible(f) == 12, "valid bounds recover all overflow tools without respawn")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    local tool = f.Tool("Apple", "Apple", 1)
-    core.ReadFail = true
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    check(not core.Enabled and cas.Actions.HotbarSelect, "unavailable CoreGui reads retain usable custom input")
-    visible(f)[1].Activated:Fire()
-    flush()
-    check(tool.Parent == f.Character, "unknown CoreGui state never blocks custom tool access")
-    core.ReadFail = false
-    timers()
-    check(not core.Enabled, "read availability verifies the handoff")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    local first = f.Tool("Apple", "Apple", 1)
-    local root = f.Root
-    root.Parent = nil
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    check(core.Enabled and not cas.Actions.HotbarSelect, "late Framewisp keeps native available")
-    root.Parent = f.PlayerGui
-    flush()
-    check(not core.Enabled and #visible(f) == 1, "late export uses normal setup without rotation")
-    -- Replace the authored hierarchy in the same session during a failed handoff.
-    core.Enabled = true
-    core.Fail = true
-    guiService:GetPropertyChangedSignal("TopbarInset"):Fire()
-    flush()
-    root.Parent = nil
-    flush()
-    local replacement = fixture(true)
-    replacement.Root.Parent = f.PlayerGui
-    core.Fail = false
-    flush()
-    timers()
-    check(not core.Enabled and replacement.Bar.Visible, "same-session UI replacement completes pending ownership")
-    visible(replacement)[1].Activated:Fire()
-    flush()
-    check(first.Parent == f.Character, "replacement binds the existing player's inventory once")
-    stop()
-    flush()
-end
-do
-    local f = fixture(true)
-    f.Tool("Apple", "Apple", 1)
-    f.PlayerGui.Parent = nil
-    services.Players.LocalPlayer = f.Player
-    Controller.Init()
-    flush()
-    check(core.Enabled, "Init subscribes before late PlayerGui arrival")
-    f.PlayerGui.Parent = f.Player
-    flush()
-    check(not core.Enabled and #visible(f) == 1, "late PlayerGui starts the normal session")
-    f.PlayerGui.Parent = nil
-    flush()
-    check(core.Enabled, "removed PlayerGui releases ownership")
-    local nextGui = new("PlayerGui", "ReplacementGui", f.Player)
-    f.Root.Parent = nextGui
-    flush()
-    check(not core.Enabled and #visible(f) == 1, "replacement PlayerGui starts one healthy session")
-    Controller.Destroy()
-    flush()
-    check(core.Enabled and not cas.Actions.HotbarSelect, "Init lifecycle teardown restores native")
-end
-
--- Weapon pinning compacts present items; no reserved gaps.
-do
-    local f = fixture(true)
-    local ingredient = f.Tool("Apple", "Apple", 1)
-    local ice = f.Tool("Ray")
-    ice:SetAttribute("IceGunWeapon", true)
-    local bat = f.Tool("Bat")
-    bat:SetAttribute("BatLevel", 1)
-    local stop = Controller.Start(f.Player, f.PlayerGui)
-    flush()
-    local callback = cas.Actions.HotbarSelect
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.One })
-    flush()
-    check(bat.Parent == f.Character, "key one selects pinned bat")
-    callback("", Enum.UserInputState.Begin, { KeyCode = Enum.KeyCode.Two })
-    flush()
-    check(ice.Parent == f.Character, "key two selects pinned ice ray")
-    bat:Destroy()
-    flush()
-    check(
-        label(visible(f)[1]) == "Ice Gun" and label(visible(f)[2]) == "Apple",
-        "absent bat compacts ice then ingredient"
-    )
-    ice:Destroy()
-    flush()
-    check(label(visible(f)[1]) == "Apple", "absent weapons leave no reserved gaps")
-    local nextBat = f.Tool("Bat")
-    nextBat:SetAttribute("BatLevel", 1)
-    flush()
-    check(label(visible(f)[2]) == "Apple", "absent ice places ingredients directly after bat")
-    stop()
-    flush()
-end
-print("Hotbar contracts passed:", count)
+    f.Stop()
+end)
+check(cases > 0, "requested group ran")
+print(string.format("Hotbar: %d cases passed, 0 failed (%d checks; Roblox UI/input doubles)", cases, count))

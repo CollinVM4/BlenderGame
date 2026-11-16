@@ -268,6 +268,75 @@ update = function()
     clearUnused(wanted)
 end
 
+-- The hotbar consumes the same action placement and coordinate space. Reserve
+-- predicted controls before TouchGui/CAS mounts, then use their actual bounds.
+function Layout.HotbarObstacles(root: PlayerGui, bounds: Rect): ({ Rect }, { Instance })
+    local obstacles: { Rect } = {}
+    local watched: { Instance } = {}
+    local function inspect(object: GuiObject): boolean
+        table.insert(watched, object)
+        local ancestor = object.Parent
+        while ancestor and ancestor ~= root do
+            if ancestor:IsA("GuiObject") or ancestor:IsA("ScreenGui") then
+                table.insert(watched, ancestor)
+            end
+            ancestor = ancestor.Parent
+        end
+        if visible(object, root) and object.AbsoluteSize.X > 0 and object.AbsoluteSize.Y > 0 then
+            table.insert(obstacles, Rect.new(object.AbsolutePosition, object.AbsolutePosition + object.AbsoluteSize))
+            return true
+        end
+        return false
+    end
+    local available = bounds.Max - bounds.Min
+    local diameter = math.clamp(math.min(available.X, available.Y) * 0.18, 70, 120)
+    local jumpSize = Vector2.new(diameter, diameter)
+    local center = bounds.Max - jumpSize / 2 - Vector2.new(PADDING, PADDING)
+    local jumpFound, stickFound = false, false
+    local touchGui = root:FindFirstChild("TouchGui")
+    if touchGui then
+        for _, object in touchGui:GetDescendants() do
+            if object:IsA("GuiObject") then
+                if object.Name == "JumpButton" and inspect(object) then
+                    jumpFound = true
+                    jumpSize = object.AbsoluteSize
+                    diameter = math.min(jumpSize.X, jumpSize.Y)
+                    center = object.AbsolutePosition + jumpSize / 2
+                elseif object.Name == "ThumbstickFrame" or object.Name == "DynamicThumbstickFrame" then
+                    stickFound = inspect(object) or stickFound
+                end
+            end
+        end
+    end
+    if not jumpFound then
+        table.insert(obstacles, Rect.new(center - jumpSize / 2, center + jumpSize / 2))
+    end
+    if not stickFound then
+        local extent = math.min(180, available.X * 0.4, available.Y * 0.4)
+        table.insert(
+            obstacles,
+            Rect.new(Vector2.new(bounds.Min.X, bounds.Max.Y - extent), Vector2.new(bounds.Min.X + extent, bounds.Max.Y))
+        )
+    end
+    local size = math.max(44, diameter * 0.83)
+    for _, action in ACTIONS do
+        local button = ContextActionService:GetButton(action)
+        if button and button:IsDescendantOf(root) and inspect(button) then
+            continue
+        end
+        local offset = OFFSETS[action]
+        if action == "IceShotgunFire" and available.X > available.Y then
+            offset = Vector2.new(OFFSETS.ThrowHeld.X, -1.85)
+        end
+        local position = place(center + offset * diameter, size, bounds, obstacles)
+        if position then
+            local half = Vector2.new(size / 2, size / 2)
+            table.insert(obstacles, Rect.new(position - half, position + half))
+        end
+    end
+    return obstacles, watched
+end
+
 function Layout.Destroy()
     started = false
     queued = false

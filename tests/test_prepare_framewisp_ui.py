@@ -43,7 +43,7 @@ class PreparationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = self.root / "new export.rbxmx"
-        self.source.write_bytes((ROOT / "export116.rbxmx").read_bytes())
+        self.source.write_bytes((ROOT / "export1162.rbxmx").read_bytes())
         self.tree = ET.parse(self.source)
         actions = next(i for i in self.tree.iter("Item") if prep.item_name(i) == "FramewispActions")
         source = actions.find("./Properties/ProtectedString[@name='Source']")
@@ -80,62 +80,24 @@ class PreparationTests(unittest.TestCase):
         self.assertNotIn("Warning", warnings)
         actions = next(i for i in after.iter("Item") if prep.item_name(i) == "FramewispActions")
         self.assertIn("local blenderMenus = menus.Attach(gui, player)", actions.findtext("./Properties/ProtectedString[@name='Source']"))
+        for parent in before.iter("Item"):
+            for child in list(parent.findall("Item")):
+                if prep.item_name(child) == "Hotbar":
+                    parent.remove(child)
+        self.assertEqual(len(list(before.iter("Item"))), len(list(after.iter("Item"))))
         for old, new in zip(before.iter("Item"), after.iter("Item")):
             if old.attrib["referent"] in {i.attrib["referent"] for i in self.panels.values()}:
                 old.find("./Properties/bool[@name='Visible']").text = "false"
             if prep.item_name(old) == "FramewispActions":
                 old.find("./Properties/ProtectedString[@name='Source']").text = new.findtext("./Properties/ProtectedString[@name='Source']")
-            encoded = new.findtext("./Properties/BinaryString[@name='AttributesSerialize']", "")
-            if b"HotbarTextMin" in base64.b64decode("".join(encoded.split())):
-                old_attr = old.find("./Properties/BinaryString[@name='AttributesSerialize']")
-                previous = base64.b64decode("".join(old_attr.text.split()))
-                current = base64.b64decode("".join(encoded.split()))
-                self.assertEqual(struct.unpack_from("<I", current)[0], struct.unpack_from("<I", previous)[0] + 2)
-                self.assertEqual(current[4:len(previous)], previous[4:])
-                old_attr.text = encoded
             self.assertEqual(ET.tostring(old.find("Properties")), ET.tostring(new.find("Properties")))
 
-    def test_hotbar_text_preserves_authored_bounds(self):
+    def test_legacy_hotbar_removed_and_repeated_preparation_is_safe(self):
         tree, _ = self.prepare()
-        labels = []
-        for bar in tree.iter("Item"):
-            if prep.item_name(bar) == "Hotbar":
-                labels = [label for slot in bar.findall("Item") for label in slot.findall("Item")
-                          if prep.item_name(label) in ("Label", "Number")]
-        self.assertEqual(len(labels), 18)
-        for label in labels:
-            data = base64.b64decode(label.findtext("./Properties/BinaryString[@name='AttributesSerialize']"))
-            def number(key):
-                token = struct.pack("<I", len(key)) + key.encode() + b"\x06"
-                return struct.unpack_from("<d", data, data.index(token) + len(token))[0]
-            self.assertEqual(number("HotbarTextMin"), float(label.findtext("./Properties/float[@name='TextSize']")))
-            self.assertEqual(number("HotbarTextMax"), number("FigmaFontSize"))
-
-    def test_hotbar_text_bounds_in_supported_wrappers(self):
-        for wrapper_name in (None, "Items", "HotbarScroll"):
-            with self.subTest(wrapper=wrapper_name):
-                tree = ET.parse(ROOT / "export116.rbxmx")
-                bar = next(i for i in tree.iter("Item") if prep.item_name(i) == "Hotbar")
-                slots = [i for i in bar.findall("Item") if prep.item_name(i) == "Slot1"]
-                self.assertEqual(len(slots), 9)
-                if wrapper_name:
-                    wrapper = ET.SubElement(bar, "Item", {"class": "Frame" if wrapper_name == "Items" else "ScrollingFrame", "referent": "SLOT_WRAPPER"})
-                    props = ET.SubElement(wrapper, "Properties")
-                    ET.SubElement(props, "string", name="Name").text = wrapper_name
-                    for slot in slots:
-                        bar.remove(slot)
-                        wrapper.append(slot)
-                stamped = ET.fromstring(prep.hotbar_text_bounds(ET.tostring(tree.getroot(), encoding="unicode"), tree))
-                labels = [i for i in stamped.iter("Item") if prep.item_name(i) in ("Label", "Number")
-                          and i.attrib["referent"] in {label.attrib["referent"] for slot in slots for label in slot.findall("Item")}]
-                self.assertEqual(len(labels), 18)
-                for label in labels:
-                    data = base64.b64decode(label.findtext("./Properties/BinaryString[@name='AttributesSerialize']"))
-                    def number(key):
-                        token = struct.pack("<I", len(key)) + key.encode() + b"\x06"
-                        return struct.unpack_from("<d", data, data.index(token) + len(token))[0]
-                    self.assertEqual(number("HotbarTextMin"), float(label.findtext("./Properties/float[@name='TextSize']")))
-                    self.assertEqual(number("HotbarTextMax"), number("FigmaFontSize"))
+        self.assertFalse(any(prep.item_name(i) == "Hotbar" for i in tree.iter("Item")))
+        first = self.source.read_bytes()
+        self.prepare()
+        self.assertEqual(self.source.read_bytes(), first)
 
     def test_canvasgroup_and_renamed_semantic_wrappers(self):
         attribute(self.desktop, "Desktop")
@@ -253,8 +215,8 @@ class CLITests(unittest.TestCase):
         self.script = self.root / "tools/prepare_framewisp_ui.py"
         shutil.copyfile(ROOT / "tools/prepare_framewisp_ui.py", self.script)
         self.default = self.root / "Framewisp_Hotbar.prepared.rbxmx"
-        shutil.copyfile(ROOT / "export116.rbxmx", self.root / "newestExport11426.rbxmx")
-        shutil.copyfile(ROOT / "export116.rbxmx", self.default)
+        shutil.copyfile(ROOT / "export1162.rbxmx", self.root / "newestExport11426.rbxmx")
+        shutil.copyfile(ROOT / "export1162.rbxmx", self.default)
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.root,
@@ -313,7 +275,7 @@ class CLITests(unittest.TestCase):
 
 class ExternalMenuTests(unittest.TestCase):
     def test_new_export_preserves_scripts_and_artwork(self):
-        source = ROOT / "export116.rbxmx"
+        source = ROOT / "export1162.rbxmx"
         original = source.read_bytes()
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "prepared.rbxmx"
@@ -323,6 +285,10 @@ class ExternalMenuTests(unittest.TestCase):
                 return {prep.item_name(i): i.findtext("./Properties/ProtectedString[@name='Source']")
                         for i in tree.iter("Item") if i.attrib['class'] == 'LocalScript'}
             self.assertEqual(scripts(before), scripts(after))
+            for parent in before.iter('Item'):
+                for child in list(parent.findall('Item')):
+                    if prep.item_name(child) == 'Hotbar':
+                        parent.remove(child)
             old_items, new_items = list(before.iter('Item')), list(after.iter('Item'))
             self.assertEqual(len(old_items), len(new_items))
             delegated = 0

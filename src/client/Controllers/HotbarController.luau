@@ -1,21 +1,14 @@
 --!strict
--- Observes replicated Tools only. Selection never sends gameplay requests.
+-- Observes replicated Tools only. Humanoid owns selection; no gameplay remotes.
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local CAS = game:GetService("ContextActionService")
 local UIS = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
-local TextService = game:GetService("TextService")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Gui = require(script.Parent.Parent.UI.HotbarGui)
-local IngredientViewport = require(script.Parent.Parent.UI.IngredientViewport)
-local Geometry = require(Shared.IngredientPreviewGeometry)
-local Registry = require(script.Parent.Parent.UI.UIRegistry)
+local MobileLayout = require(script.Parent.Parent.UI.MobileControlLayout)
 local Controller = {}
--- A retired session must never restore CoreGui over its replacement.
-local sessionVersion = 0
-local MIN_SLOT_WIDTH = 48
-local BAR_HEIGHT, MAX_WIDTH = 96, 960
 local ACTION = "HotbarSelect"
 local KEYS = {
     Enum.KeyCode.One,
@@ -29,23 +22,22 @@ local KEYS = {
     Enum.KeyCode.Nine,
     Enum.KeyCode.Zero,
 }
+local sessionVersion = 0
+local activeStop: (() -> ())? = nil
 type Item = { Tool: Tool, Kind: string, Label: string, Id: string?, Key: number, Sequence: number }
 type Binding = {
     Slot: Gui.Slot,
-    Tool: Tool?,
-    Kind: string?,
+    Tool: Tool,
+    Kind: string,
     Id: string?,
-    Dispose: (() -> ())?,
+    Index: number,
     Connection: RBXScriptConnection,
-    OriginalParent: Instance?,
-    Clone: boolean,
-    Metrics: Gui.Metrics,
-    IconSize: UDim2,
-    IconPosition: UDim2,
+    Dispose: (() -> ())?,
+    PreviewAttempted: boolean,
 }
 local function disconnect(list: { RBXScriptConnection })
-    for _, c in list do
-        c:Disconnect()
+    for _, connection in list do
+        connection:Disconnect()
     end
     table.clear(list)
 end
@@ -72,6 +64,7 @@ end
 local function visual(tool: Tool, icon: ImageLabel): (() -> ())?
     -- Geometry.Clone allowlists inert geometry. A Tool itself is never parented
     -- into the preview tree, and no scripts are copied into a live container.
+    local Geometry = require(Shared.IngredientPreviewGeometry)
     local model = Instance.new("Model")
     for _, child in tool:GetChildren() do
         local copy = Geometry.Clone(child)
@@ -126,286 +119,106 @@ local function visual(tool: Tool, icon: ImageLabel): (() -> ())?
 end
 
 function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
+    if activeStop then
+        activeStop()
+    end
     sessionVersion += 1
     local session = sessionVersion
-    local diagnosticUser = workspace:GetAttribute("HotbarDiagnosticUserId")
-    local diagnostic = if typeof(diagnosticUser) == "number" and diagnosticUser == player.UserId
-        then require(script.Parent.Parent.UI.HotbarDiagnostic).Start(player, playerGui, script, session)
-        else nil
-    local stopped, queued, enabled, bound = false, false, false, false
-    local mutating = false
-    local handoffAttempts = 0
-    local coreVersion, recoveryVersion = 0, 0
-    local restoring, restorePending = false, false
-    local retryQueued, recoveryQueued = false, false
+    local stopped, queued, mutating, enabled, bound = false, false, false, false, false
+    local view = Gui.Create(playerGui)
     local character = player.Character
-    local removing = false
     local backpack: Backpack? = nil
+    local removing = false
     local connections: { RBXScriptConnection } = {}
     local containers: { RBXScriptConnection } = {}
-    local uiConnections: { RBXScriptConnection } = {}
-    local controls: { [Instance]: { RBXScriptConnection } } = {}
     local observed: { [Tool]: { RBXScriptConnection } } = {}
-    local sequence: { [Tool]: number } = setmetatable({}, { __mode = "k" }) :: any
-    local serial = 0
-    local warnings: { [string]: boolean } = {}
-    local view: Gui.View? = nil
-    local pool: { Binding } = {}
+    local controls: { [Instance]: { RBXScriptConnection } } = {}
+    local sequence: { [Tool]: number } = {}
+    local bindings: { [Tool]: Binding } = {}
     local items: { Item } = {}
-    local pristine: GuiButton? = nil
-    local host: ScrollingFrame? = nil
-    local ownedHost = false
-    -- Separate from host, the ScrollingFrame inside the bar.
-    local screenHost: Frame? = nil
-    local ownedScreenHost = false
-    local originalBarParent: GuiObject? = nil
-    local layout: UIListLayout? = nil
-    local ownedLayout = false
-    local savedLayout: any = nil
-    local savedBar: any = nil
-    local authoredGap = UDim.new(0, 0)
-    local equippedButton: GuiButton? = nil
-    local pendingReveal: GuiButton? = nil
-    local touchBarShown = false
-    local handoffTouchGui: Instance? = nil
-    local layoutKey = ""
-    local layoutVersion = 0
-    local layoutStatus = "waiting for custom hotbar"
-    local renderAttempts = 0
-    local renderReturns, renderErrors = 0, 0
-    local startedAt, renderStartedAt = os.clock(), 0
-    local checkpoint, checkpointAt = "not entered", os.clock()
-    local slotDetail, textDetail, geometryDetail = "", "", ""
-    local rendering, renderRequested = false, false
-    local initialRecoveryAttempts = 0
+    local serial = 0
+    local equipped: Tool? = nil
+    local focused: GuiObject? = nil
+    local revealTool: Tool? = nil
+    local coreTarget: boolean? = nil
+    local coreAttempts, coreEpoch = 0, 0
+    local coreDone, retryQueued = false, false
+    local reason = "waiting for first Tool"
+    local writeError, readError = "", ""
+    local externallyHidden = false
     local schedule: () -> ()
-    local render: () -> ()
-    local queueRender: () -> ()
-    -- Read-only checkpoints survive a suspended call. Do not print each slot or
-    -- add timers: the existing admin chat read takes a snapshot on demand.
-    local function mark(step: string)
-        checkpoint, checkpointAt = step, os.clock()
-    end
-    local function measureText(label: TextLabel, minimum: number, bounds: Vector2, step: string): Vector2
-        mark(step .. " arguments")
-        local font, text = label.Font, label.Text
-        textDetail = string.format("%s min=%g wrap=%g,%g text=%q", tostring(font), minimum, bounds.X, bounds.Y, text)
-        mark(step .. " before")
-        local measured = TextService:GetTextSize(text, minimum, font, bounds)
-        textDetail ..= string.format(" => %g,%g", measured.X, measured.Y)
-        mark(step .. " after")
-        return measured
-    end
-    local function warning(key: string, message: string)
-        if not warnings[key] then
-            warnings[key] = true
-            warn("HotbarController: " .. message)
-        end
-    end
     local function coreState(): boolean?
         local ok, value = pcall(function()
             return StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.Backpack)
         end)
-        if diagnostic then
-            diagnostic.Record("backpackRead", { ok = ok, result = tostring(value) })
+        if not ok then
+            readError = string.sub(tostring(value), 1, 160)
         end
         return if ok then value else nil
     end
-    local function setCore(value: boolean, reason: string): boolean
-        local ok, message = pcall(function()
-            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, value)
-        end)
-        if diagnostic then
-            diagnostic.Record(
-                "backpackWrite",
-                { requested = value, reason = reason, ok = ok, error = if ok then nil else tostring(message) }
-            )
-        end
-        return coreState() == value
-    end
-    local debugRemote = Shared.Events.HotbarDebug :: RemoteEvent
-    table.insert(
-        connections,
-        debugRemote.OnClientEvent:Connect(function(hide: boolean)
-            if stopped or session ~= sessionVersion then
-                return
-            end
-            local before = coreState()
-            local result = "Backpack enabled = "
-                .. (if before == nil then "unavailable" else tostring(before))
-                .. " | "
-                .. layoutStatus
-                .. string.format(
-                    " | entries=%d returns=%d errors=%d flight=%s followup=%s queued=%s | age=%.1fs flightAge=%.1fs",
-                    renderAttempts,
-                    renderReturns,
-                    renderErrors,
-                    tostring(rendering),
-                    tostring(renderRequested),
-                    tostring(queued),
-                    os.clock() - startedAt,
-                    if rendering then os.clock() - renderStartedAt else 0
-                )
-            -- Snapshot before a manual reconcile can change the checkpoint.
-            local trace = string.format(
-                "%s (%.1fs) | %s | %s | %s",
-                checkpoint,
-                os.clock() - checkpointAt,
-                slotDetail,
-                textDetail,
-                geometryDetail
-            )
-            if hide then
-                if enabled and view and view.Bar.Visible then
-                    local confirmed = setCore(false, "admin chat diagnostic")
-                    result ..= if confirmed then " | after hide: false" else " | hide: disablement unconfirmed"
-                else
-                    result ..= " | hide skipped: retrying layout"
-                    schedule()
-                end
-            end
-            local message = string.format(
-                "[Hotbar] %s | %s | place v%d\n[Layout] %s",
-                result,
-                tostring(playerGui.CurrentScreenOrientation),
-                game.PlaceVersion,
-                trace
-            )
-            print(message)
-            local chat = game:GetService("TextChatService")
-            local channels = chat:FindFirstChild("TextChannels")
-            local channel = channels and (channels:FindFirstChild("RBXSystem") or channels:FindFirstChild("RBXGeneral"))
-            if channel and channel:IsA("TextChannel") then
-                channel:DisplaySystemMessage(message)
-            end
-        end)
-    )
-    local function native()
-        enabled = false
-        touchBarShown, handoffTouchGui = false, nil
+    local function unbind()
         if bound then
             CAS:UnbindAction(ACTION)
             bound = false
         end
-        if restoring then
-            return
-        end
-        coreVersion += 1
-        retryQueued = false
-        local version = coreVersion
-        restorePending = true
-        restoring = true
-        local function restore(attempt: number)
-            if session ~= sessionVersion or version ~= coreVersion or enabled then
-                return
-            end
-            restorePending = not (coreState() == true or setCore(true, "native fallback/restore"))
-            if restorePending and attempt < 8 then
-                task.delay(0.25, function()
-                    restore(attempt + 1)
-                end)
-            else
-                restoring = false
-                if restorePending then
-                    warning("restore", "native Backpack restoration remains pending after bounded retries")
-                end
-            end
-        end
-        restore(1)
     end
-    local function clearBinding(binding: Binding)
-        if binding.Dispose then
-            binding.Dispose()
-            binding.Dispose = nil
-        end
-        binding.Tool, binding.Kind, binding.Id = nil, nil, nil
-        local icon = binding.Slot.Icon
-        icon.Image = ""
-        -- Remove prior render sources, including legacy sibling previews. The
-        -- authored ImageLabel is the sole host; constraints are not sources.
-        for _, child in icon:GetChildren() do
-            if child:IsA("ViewportFrame") or child:IsA("ImageLabel") then
-                child:Destroy()
-            end
-        end
-        for _, child in binding.Slot.Button:GetChildren() do
-            if child.Name == "IngredientPreview" or child.Name == "HotbarToolPreview" then
-                child:Destroy()
-            end
-        end
-        if binding.Slot.Selected then
-            binding.Slot.Selected.Visible = false
-        end
-        binding.Slot.Button.Visible = false
-        binding.Slot.Button.NextSelectionLeft = binding.Slot.Button
-        binding.Slot.Button.NextSelectionRight = binding.Slot.Button
-        if GuiService.SelectedObject == binding.Slot.Button then
-            GuiService.SelectedObject = nil
-        end
-    end
-    local function release()
-        local wasMutating = mutating
-        mutating = true
-        recoveryVersion += 1
-        recoveryQueued = false
-        layoutVersion += 1
-        layoutKey = ""
-        equippedButton, pendingReveal = nil, nil
-        retryQueued = false
-        native()
-        disconnect(uiConnections)
-        for _, list in controls do
-            disconnect(list)
-        end
-        table.clear(controls)
-        for _, binding in pool do
-            clearBinding(binding)
-            binding.Slot.Icon.Size, binding.Slot.Icon.Position = binding.IconSize, binding.IconPosition
-            binding.Connection:Disconnect()
-            if binding.Clone then
-                binding.Slot.Button:Destroy()
-            elseif binding.Slot.Button.Parent then
-                binding.Slot.Button.Parent = binding.OriginalParent
-            end
-        end
-        table.clear(pool)
-        if pristine then
-            pristine:Destroy()
-            pristine = nil
-        end
-        if ownedLayout and layout then
-            layout:Destroy()
-        elseif layout and savedLayout then
-            layout.FillDirection, layout.SortOrder, layout.HorizontalAlignment =
-                savedLayout.FillDirection, savedLayout.SortOrder, savedLayout.HorizontalAlignment
-            layout.Padding = savedLayout.Padding
-            if view then
-                layout.Parent = view.Bar
-            end
-        end
-        if ownedHost and host then
-            host:Destroy()
-        end
-        if view then
-            if originalBarParent and originalBarParent.Parent and view.Bar.Parent ~= originalBarParent then
-                view.Bar.Parent = originalBarParent
-            end
-            view.Bar:SetAttribute("HotbarReparented", nil)
-            if savedBar then
-                view.Bar.AnchorPoint, view.Bar.Position, view.Bar.Size =
-                    savedBar.AnchorPoint, savedBar.Position, savedBar.Size
-            end
+    local function requestCore(native: boolean, transition: string)
+        if native then
+            enabled = false
+            unbind()
             view.Bar.Visible = false
         end
-        -- Never destroy a host while the bar is still inside it (for example,
-        -- when its original UI was removed during teardown).
-        if ownedScreenHost and screenHost and (not view or not view.Bar:IsDescendantOf(screenHost)) then
-            screenHost:Destroy()
+        if coreTarget ~= native then
+            coreTarget, coreDone, coreAttempts = native, false, 0
+            coreEpoch += 1
+            retryQueued = false
+            reason = transition
         end
-        screenHost, originalBarParent, ownedScreenHost = nil, nil, false
-        view, host, layout, savedBar, savedLayout = nil, nil, nil, nil, nil
-        ownedHost, ownedLayout = false, false
-        mutating = wasMutating
+        if coreDone or retryQueued or coreAttempts >= 8 then
+            return
+        end
+        coreAttempts += 1
+        local ok, message = true, nil :: any
+        if not native or coreState() ~= true then
+            ok, message = pcall(function()
+                StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, native)
+            end)
+            if not ok then
+                writeError = string.sub(tostring(message), 1, 160)
+            end
+        end
+        local readback = coreState()
+        coreDone = readback == native or (ok and readback == nil)
+        if coreDone then
+            enabled = not native
+            reason = transition
+            -- Input is prepared before the API write. Visibility and ownership
+            -- commit here without yielding, in the same update as that write.
+            view.Bar.Visible = enabled and #items > 0
+        else
+            enabled = false
+            unbind()
+            view.Bar.Visible = false
+            reason = transition .. " (CoreGui pending)"
+            if coreAttempts < 8 then
+                retryQueued = true
+                local epoch = coreEpoch
+                task.delay(0.25, function()
+                    if session ~= sessionVersion or epoch ~= coreEpoch then
+                        return
+                    end
+                    retryQueued = false
+                    if stopped then
+                        -- Teardown may still need its bounded native restore.
+                        if native then
+                            requestCore(true, transition)
+                        end
+                    else
+                        schedule()
+                    end
+                end)
+            end
+        end
     end
     local function owned(tool: Tool): boolean
         return not removing
@@ -432,536 +245,17 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             humanoid:EquipTool(tool)
         end
     end
-    local function bind(slot: Gui.Slot, clone: boolean, metrics: Gui.Metrics)
-        local binding: Binding
-        binding = {
-            Slot = slot,
-            Tool = nil,
-            Kind = nil,
-            Id = nil,
-            Dispose = nil,
-            OriginalParent = slot.Button.Parent,
-            Clone = clone,
-            Metrics = metrics,
-            IconSize = slot.Icon.Size,
-            IconPosition = slot.Icon.Position,
-            Connection = slot.Button.Activated:Connect(function()
-                selectTool(binding.Tool)
-            end),
-        }
-        slot.Button.Active, slot.Button.Selectable = true, true
-        Gui.Aspect(slot.Button, metrics.Ratio)
-        Gui.Aspect(slot.Icon, metrics.IconRatio)
-        slot.Icon.ScaleType = Enum.ScaleType.Fit
-        Gui.Text(slot.Label, metrics.TextMin, metrics.TextMax)
-        local minimum = slot.Button:FindFirstChildOfClass("UISizeConstraint") or Instance.new("UISizeConstraint")
-        minimum.Parent = slot.Button
-        minimum.MinSize = Vector2.new(MIN_SLOT_WIDTH, MIN_SLOT_WIDTH)
-        slot.Button.Parent = host
-        table.insert(pool, binding)
-        clearBinding(binding)
-    end
-    local function reveal(button: GuiButton)
-        local scroll = host
-        if not scroll then
-            return
-        end
-        local left = button.AbsolutePosition.X - scroll.AbsolutePosition.X + scroll.CanvasPosition.X
-        local right = left + button.AbsoluteSize.X
-        local width = scroll.AbsoluteWindowSize.X
-        local position = scroll.CanvasPosition.X
-        if left < position then
-            position = left
-        elseif right > position + width then
-            position = right - width
-        end
-        position = math.clamp(position, 0, math.max(0, scroll.AbsoluteCanvasSize.X - width))
-        if position ~= scroll.CanvasPosition.X then
-            scroll.CanvasPosition = Vector2.new(position, 0)
-        end
-    end
-    local function resize(): boolean?
-        mark("resize parent before")
-        slotDetail, textDetail, geometryDetail = "", "", ""
-        local current = view
-        local scroll = host
-        if not current or not scroll or not layout then
-            layoutStatus = "missing hotbar layout"
-            return false
-        end
-        local parent = current.Bar.Parent
-        if not parent or not parent:IsA("GuiObject") then
-            layoutStatus = "missing hotbar parent"
-            return false
-        end
-        local pixels = parent.AbsoluteSize
-        geometryDetail = string.format("host=%gx%g", pixels.X, pixels.Y)
-        mark("resize parent after")
-        -- Reclassify each resize: hybrid devices use touch clearance.
-        local touch = UIS.TouchEnabled
-        local bottom = 12
-        if touch then
-            -- HotbarHost already inherits the ScreenGui's effective inset area.
-            bottom = 16
-        elseif UIS.GamepadEnabled then
-            bottom = math.ceil(pixels.Y * 0.05)
-        end
-        local targetHeight = math.clamp(math.floor(pixels.Y * 0.11 + 0.5), 64, BAR_HEIGHT)
-        if pixels.X <= 0 or pixels.Y <= 0 then
-            layoutStatus = "waiting for host bounds"
-            return nil -- transitional geometry, not a broken custom UI
-        end
-        if pixels.X < MIN_SLOT_WIDTH or pixels.Y < targetHeight + bottom + 12 then
-            layoutStatus = "host too small"
-            return false
-        end
-        local desiredWidth = pixels.X * savedBar.Size.X.Scale + savedBar.Size.X.Offset
-        if touch and #items >= 9 then
-            -- Give full inventories more room where the existing safe-area
-            -- and action-control checks permit it.
-            local minimumContentWidth = 9 * MIN_SLOT_WIDTH + 8 * authoredGap.Offset
-            local widthForNine = minimumContentWidth / math.max(0.1, 1 - 8 * authoredGap.Scale)
-            desiredWidth = math.max(desiredWidth, widthForNine)
-        end
-        local barWidth = pixels.X * math.min(0.9, MAX_WIDTH / pixels.X, desiredWidth / pixels.X)
-        local origin = parent.AbsolutePosition
-        local center = origin.X + pixels.X / 2
-        local left, right = center - barWidth / 2, center + barWidth / 2
-        if touch then
-            mark("touch controls before")
-            local buttons: { GuiButton } = {}
-            for _, action in { "SprintHeld", "ThrowHeld", "IceShotgunFire" } do
-                local button = CAS:GetButton(action)
-                if button then
-                    table.insert(buttons, button)
-                end
-            end
-            local touchGui = playerGui:FindFirstChild("TouchGui")
-            if touchGui then
-                for _, object in touchGui:GetDescendants() do
-                    if object.Name == "JumpButton" and object:IsA("GuiButton") then
-                        table.insert(buttons, object)
-                    end
-                end
-            end
-            local wanted: { [Instance]: boolean } = {}
-            local function observe(object: Instance, properties: { string })
-                wanted[object] = true
-                if not controls[object] then
-                    local list = { object.AncestryChanged:Connect(schedule) }
-                    for _, property in properties do
-                        table.insert(list, object:GetPropertyChangedSignal(property):Connect(schedule))
-                    end
-                    controls[object] = list
-                end
-            end
-            local overlapping: { GuiButton } = {}
-            for _, button in buttons do
-                observe(button, { "AbsolutePosition", "AbsoluteSize", "Visible" })
-                local shown = button:IsDescendantOf(playerGui)
-                local ancestor: Instance? = button
-                while ancestor and ancestor ~= playerGui do
-                    if ancestor:IsA("GuiObject") then
-                        shown = shown and ancestor.Visible
-                        if ancestor ~= button then
-                            observe(ancestor, { "AbsolutePosition", "AbsoluteSize", "Visible" })
-                        end
-                    elseif ancestor:IsA("ScreenGui") then
-                        shown = shown and ancestor.Enabled
-                        observe(ancestor, { "Enabled", "ScreenInsets", "IgnoreGuiInset" })
-                    end
-                    ancestor = ancestor.Parent
-                end
-                local position, size = button.AbsolutePosition, button.AbsoluteSize
-                if
-                    shown
-                    and size.X > 0
-                    and size.Y > 0
-                    and position.Y + size.Y >= origin.Y + pixels.Y * 0.6
-                    and position.X - 8 < right
-                    and position.X + size.X + 8 > left
-                then
-                    table.insert(overlapping, button)
-                end
-            end
-            for object, list in controls do
-                if not wanted[object] then
-                    disconnect(list)
-                    controls[object] = nil
-                end
-            end
-            if #overlapping > 0 then
-                local allowedWidth = barWidth
-                local lift = bottom
-                local highest = overlapping[1]
-                for _, button in overlapping do
-                    local position, size = button.AbsolutePosition, button.AbsoluteSize
-                    local allowed = if position.X + size.X / 2 >= center
-                        then 2 * (position.X - 8 - center)
-                        else 2 * (center - position.X - size.X - 8)
-                    allowedWidth = math.min(allowedWidth, allowed)
-                    local clearance = origin.Y + pixels.Y - position.Y + 8
-                    if clearance > lift then
-                        lift, highest = clearance, button
-                    end
-                end
-                -- Use the same gap as the slot layout for collision clearance.
-                local gap = math.floor(authoredGap.Scale * barWidth + authoredGap.Offset + 0.5)
-                local minimumWidth = 2 * MIN_SLOT_WIDTH + gap
-                if allowedWidth >= minimumWidth then
-                    barWidth = allowedWidth
-                elseif lift <= pixels.Y * 0.35 then
-                    bottom = lift
-                else
-                    barWidth = minimumWidth
-                    warning(
-                        "lift:" .. tostring(pixels.X) .. "x" .. tostring(pixels.Y),
-                        string.format(
-                            "touch clearance exceeds 35%% at %gx%g (%s); docking minimum-width hotbar",
-                            pixels.X,
-                            pixels.Y,
-                            highest.Name
-                        )
-                    )
-                end
-            end
-            mark("touch controls after")
-        end
-        mark("bar bounds before")
-        current.Bar.AnchorPoint = Vector2.new(0.5, 1)
-        local position = UDim2.new(0.5, 0, 1, -bottom)
-        local size = UDim2.fromScale(barWidth / pixels.X, targetHeight / pixels.Y)
-        if current.Bar.Position ~= position then
-            current.Bar.Position = position
-        end
-        if current.Bar.Size ~= size then
-            current.Bar.Size = size
-        end
-        geometryDetail ..= string.format(" target=%.2fx%g", barWidth, targetHeight)
-        mark("bar bounds after")
-        local key = string.format("%.6f:%.6f:%.6f:%.6f:%.6f", pixels.X, pixels.Y, barWidth, targetHeight, bottom)
-        if key ~= layoutKey then
-            layoutKey = key
-            layoutVersion += 1
-            local version = layoutVersion
-            -- One follow-up per changed layout; further work comes from bounds
-            -- observers. Superseded/replaced UI cannot finish an old layout.
-            task.defer(function()
-                if not stopped and view == current and version == layoutVersion then
-                    queueRender()
-                end
-            end)
-        end
-        local padding = scroll:FindFirstChildOfClass("UIPadding")
-        -- The owned scroll fills the bar. Derive both from these same validated
-        -- bounds; AbsoluteSize can still contain the previous orientation here.
-        local width = barWidth
-        local scrollHeight = targetHeight
-        local horizontalPadding = if padding
-            then (padding.PaddingLeft.Scale + padding.PaddingRight.Scale) * width
-                + padding.PaddingLeft.Offset
-                + padding.PaddingRight.Offset
-            else 0
-        local gap = math.floor(authoredGap.Scale * width + authoredGap.Offset + 0.5)
-        local layoutPadding = UDim.new(0, gap)
-        if layout.Padding ~= layoutPadding then
-            layout.Padding = layoutPadding
-        end
-        local nominal = math.max(0, (width - horizontalPadding - 8 * gap) / 9)
-        local bandHeight = scrollHeight - scroll.ScrollBarThickness
-        local canvas = horizontalPadding
-        mark("slots before")
-        for index, binding in pool do
-            local slot, metrics = binding.Slot, binding.Metrics
-            local label = slot.Label :: TextLabel
-            slotDetail = string.format(
-                "slot=%d/%d occupied=%s ratio=%.9g",
-                index,
-                #pool,
-                tostring(binding.Tool ~= nil),
-                metrics.Ratio
-            )
-            mark("slot sizing before")
-            slot.Icon.Size, slot.Icon.Position = binding.IconSize, binding.IconPosition
-            -- Uniform growth meets BOTH floors before constraints run. Neither
-            -- constraint resolution order nor overflow can stretch one axis.
-            local slotWidth =
-                math.max(MIN_SLOT_WIDTH, MIN_SLOT_WIDTH * metrics.Ratio, math.min(nominal, bandHeight * metrics.Ratio))
-            local labelWidth = 0.96
-            local iconBottom = slot.Icon.Position.Y.Scale + slot.Icon.Size.Y.Scale * (1 - slot.Icon.AnchorPoint.Y)
-            local available = math.max(0.1, 0.98 - iconBottom)
-            slotDetail ..= string.format(" width=%.9g band=%g", slotWidth, bandHeight)
-            local bounds =
-                measureText(label, metrics.TextMin, Vector2.new(slotWidth * labelWidth, math.huge), "Label GetTextSize")
-            -- A long name can grow its square/rectangle uniformly within the
-            -- existing band; horizontal canvas growth absorbs the extra width.
-            while bounds.Y + 1 > slotWidth / metrics.Ratio * available and slotWidth / metrics.Ratio < bandHeight do
-                mark("slot growth before")
-                slotWidth = math.min(bandHeight * metrics.Ratio, slotWidth * 1.1)
-                slotDetail = string.format(
-                    "slot=%d/%d occupied=%s ratio=%.9g width=%.17g cap=%.17g",
-                    index,
-                    #pool,
-                    tostring(binding.Tool ~= nil),
-                    metrics.Ratio,
-                    slotWidth,
-                    bandHeight * metrics.Ratio
-                )
-                bounds = measureText(
-                    label,
-                    metrics.TextMin,
-                    Vector2.new(slotWidth * labelWidth, math.huge),
-                    "Label growth GetTextSize"
-                )
-            end
-            mark("slot geometry before")
-            local height = slotWidth / metrics.Ratio
-            -- Short bands can need more label room at the authored minimum
-            -- font size. Reserve that room by reducing the icon uniformly,
-            -- keeping its top edge and ratio; never overlap text and artwork.
-            if bounds.Y + 1 > height * available then
-                local iconHeight = slot.Icon.Size.Y.Scale
-                local iconTop = slot.Icon.Position.Y.Scale - iconHeight * slot.Icon.AnchorPoint.Y
-                local room = 0.98 - (bounds.Y + 1) / height - 0.01 - iconTop
-                if room > 0 and room * height >= 24 and iconHeight > 0 then
-                    local factor = math.min(1, room / iconHeight)
-                    slot.Icon.Size = UDim2.fromScale(binding.IconSize.X.Scale * factor, iconHeight * factor)
-                    slot.Icon.Position = UDim2.new(
-                        binding.IconPosition.X.Scale,
-                        binding.IconPosition.X.Offset,
-                        iconTop + iconHeight * factor * slot.Icon.AnchorPoint.Y,
-                        binding.IconPosition.Y.Offset
-                    )
-                    iconBottom = iconTop + iconHeight * factor
-                    available = math.max(0.1, 0.98 - iconBottom)
-                end
-            end
-            if binding.Tool and (height > bandHeight + 0.01 or bounds.Y + 1 > height * available) then
-                layoutStatus = "slot does not fit"
-                return false
-            end
-            local slotSize = UDim2.fromOffset(slotWidth, height)
-            if slot.Button.Size ~= slotSize then
-                slot.Button.Size = slotSize
-            end
-            local labelHeight = math.min(
-                available,
-                math.max((bounds.Y + 1) / height, metrics.LabelHeight, metrics.TextMax * 1.2 / height)
-            )
-            label.Size = UDim2.fromScale(labelWidth, labelHeight)
-            label.Position = UDim2.fromScale(
-                0.5,
-                math.min(1 - labelHeight / 2, math.max(metrics.LabelY, iconBottom + labelHeight / 2))
-            )
-            local number = slot.Button:FindFirstChild("Number")
-            if number and number:IsA("TextLabel") then
-                mark("Number sizing before")
-                local authoredMinimum = number:GetAttribute("HotbarTextMin")
-                local minimum = if typeof(authoredMinimum) == "number" then authoredMinimum else number.TextSize
-                number:SetAttribute("HotbarTextMin", minimum)
-                local fontSize = number:GetAttribute("FigmaFontSize")
-                Gui.Text(number, minimum, math.max(minimum, if typeof(fontSize) == "number" then fontSize else minimum))
-                local numberBounds =
-                    measureText(number, minimum, Vector2.new(math.huge, math.huge), "Number GetTextSize")
-                mark("Number size assignment before")
-                number.Size = UDim2.fromScale(
-                    math.max(number.Size.X.Scale, numberBounds.X / slotWidth),
-                    math.max(number.Size.Y.Scale, numberBounds.Y / height)
-                )
-            end
-            if binding.Tool then
-                canvas += slotWidth + gap
-            end
-            mark("slot sizing after")
-        end
-        mark("canvas before")
-        local canvasSize = UDim2.fromOffset(math.ceil(math.max(0, canvas - (if #items > 0 then gap else 0))), 0)
-        if scroll.CanvasSize ~= canvasSize then
-            scroll.CanvasSize = canvasSize
-        end
-        mark("canvas after")
-        mark("scroll measurement before")
-        local measured = scroll.AbsoluteSize
-        geometryDetail ..= string.format(" scroll=%.2fx%.2f canvas=%g", measured.X, measured.Y, canvasSize.X.Offset)
-        mark("scroll measurement after")
-        if math.abs(measured.X - barWidth) > 1 or math.abs(measured.Y - targetHeight) > 1 then
-            layoutStatus =
-                string.format("scroll %.0fx%.0f, target %.0fx%.0f", measured.X, measured.Y, barWidth, targetHeight)
-            return nil
-        end
-        local target = pendingReveal
-        pendingReveal = nil
-        if target and target.Visible and target.Parent == scroll then
-            mark("reveal before")
-            reveal(target)
-            mark("reveal after")
-        end
-        layoutStatus = "layout ready"
-        mark("resize returned ready")
-        return true
-    end
-    local function setup(nextView: Gui.View): boolean
-        view = nextView
-        local bar = nextView.Bar
-        bar.Visible = false
-        if diagnostic then
-            diagnostic.Bind(bar)
-        end
-        local metrics = {}
-        for index, slot in nextView.Slots do
-            metrics[index] = Gui.Metrics(slot, nextView.Root)
-            slot.Icon.Image = ""
-            slot.Button.Visible = false
-        end
-        pristine = nextView.Slots[1].Button:Clone()
-        local parent = bar.Parent
-        local alreadyOwned = ownedScreenHost and screenHost ~= nil and parent == screenHost
-        if not alreadyOwned then
-            savedBar = { AnchorPoint = bar.AnchorPoint, Position = bar.Position, Size = bar.Size }
-            if parent and parent:IsA("GuiObject") then
-                originalBarParent = parent
-            end
-            if parent and parent.Name == "HotbarHost" and bar:GetAttribute("HotbarReparented") == true then
-                -- Do not nest another host or take ownership of another instance's
-                -- host. Recovery still returns the bar to its desktop content.
-                originalBarParent = nil
-                for _, desktop in Registry.Desktops(playerGui) do
-                    if Registry.ActiveRoot(desktop, playerGui) == nextView.Root then
-                        local content = Registry.Content(desktop)
-                        if content and content:IsA("GuiObject") then
-                            originalBarParent = content
-                        end
-                        break
-                    end
-                end
-                local anchor = parent:GetAttribute("HotbarAuthoredAnchor")
-                local position = parent:GetAttribute("HotbarAuthoredPosition")
-                local size = parent:GetAttribute("HotbarAuthoredSize")
-                if typeof(anchor) == "Vector2" and typeof(position) == "UDim2" and typeof(size) == "UDim2" then
-                    savedBar = { AnchorPoint = anchor, Position = position, Size = size }
-                end
-            end
-        end
-        local moved, reason = pcall(function()
-            if alreadyOwned then
-                return true
-            end
-            assert(originalBarParent, "bar requires its original GuiObject parent")
-            assert(not bar:GetAttribute("HotbarReparented"), "bar already reparented by another instance")
-            assert(nextView.Root and nextView.Root:IsA("ScreenGui"), "missing ScreenGui root")
-            local created = Instance.new("Frame")
-            screenHost, ownedScreenHost = created, true
-            created.Name = "HotbarHost"
-            created.Size, created.Position, created.AnchorPoint =
-                UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Vector2.zero
-            created.BackgroundTransparency, created.BorderSizePixel = 1, 0
-            created.Active, created.ClipsDescendants, created.Visible = false, false, true
-            -- Retain authored geometry if a later setup encounters a stale host.
-            created:SetAttribute("HotbarAuthoredAnchor", savedBar.AnchorPoint)
-            created:SetAttribute("HotbarAuthoredPosition", savedBar.Position)
-            created:SetAttribute("HotbarAuthoredSize", savedBar.Size)
-            if nextView.Root.ZIndexBehavior == Enum.ZIndexBehavior.Sibling then
-                created.ZIndex = (originalBarParent :: GuiObject).ZIndex
-            end
-            created.Parent = nextView.Root
-            bar.Parent = created
-            bar:SetAttribute("HotbarReparented", true)
-            return true
-        end)
-        if not moved then
-            if ownedScreenHost and screenHost then
-                -- Roll back even when setting the marker failed after the move.
-                bar.Parent = originalBarParent
-                bar:SetAttribute("HotbarReparented", nil)
-                screenHost:Destroy()
-            end
-            screenHost, ownedScreenHost = nil, false
-            if parent and parent:IsA("Frame") and parent.Name == "HotbarHost" and bar.Parent == parent then
-                screenHost = parent
-            end
-            warning("reparent", "screen host unavailable; retaining existing hotbar placement: " .. tostring(reason))
-        end
-        if bar:IsA("ScrollingFrame") then
-            host = bar
-        else
-            local scroll = Instance.new("ScrollingFrame")
-            scroll.Name, scroll.BackgroundTransparency, scroll.BorderSizePixel = "HotbarScroll", 1, 0
-            scroll.Size, scroll.ZIndex = UDim2.fromScale(1, 1), bar.ZIndex
-            scroll.Parent = bar
-            host, ownedHost = scroll, true
-        end
-        table.insert(
-            uiConnections,
-            bar:GetPropertyChangedSignal("Visible"):Connect(function()
-                if not mutating then
-                    schedule()
-                end
-            end)
-        )
-        local scroll = host :: ScrollingFrame
-        scroll.ScrollingDirection = Enum.ScrollingDirection.X
-        scroll.ScrollingEnabled = true
-        scroll.ClipsDescendants = true
-        scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-        scroll.ScrollBarThickness = 4
-        local existing = bar:FindFirstChildOfClass("UIListLayout")
-        if existing then
-            layout = existing
-            savedLayout = {
-                FillDirection = existing.FillDirection,
-                SortOrder = existing.SortOrder,
-                HorizontalAlignment = existing.HorizontalAlignment,
-                Padding = existing.Padding,
-            }
-            existing.Parent = scroll
-        else
-            local created = Instance.new("UIListLayout")
-            created.Padding = UDim.new(8 / 928, 0)
-            created.Parent = scroll
-            layout = created
-            ownedLayout = true
-        end
-        local list = layout :: UIListLayout
-        authoredGap = list.Padding
-        list.FillDirection, list.SortOrder = Enum.FillDirection.Horizontal, Enum.SortOrder.LayoutOrder
-        list.HorizontalAlignment = Enum.HorizontalAlignment.Left
-        for _, child in bar:GetChildren() do
-            if
-                Registry.Matches(child, "Slot1", { "Slot1", "Slot1_button", "Slot1_button_smooth" })
-                and child:IsA("GuiObject")
-            then
-                child.Visible = false
-            end
-        end
-        for index, slot in nextView.Slots do
-            bind(slot, false, metrics[index])
-        end
-        for _, property in { "AbsoluteSize", "AbsoluteWindowSize", "Visible" } do
-            table.insert(uiConnections, scroll:GetPropertyChangedSignal(property):Connect(schedule))
-        end
-        for _, property in { "ScreenInsets", "IgnoreGuiInset", "Enabled" } do
-            table.insert(uiConnections, nextView.Root:GetPropertyChangedSignal(property):Connect(schedule))
-        end
-        if screenHost then
-            for _, property in { "AbsoluteSize", "AbsolutePosition", "Visible" } do
-                table.insert(uiConnections, screenHost:GetPropertyChangedSignal(property):Connect(schedule))
-            end
-        end
-        table.insert(uiConnections, list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(schedule))
-        return true
-    end
-    local function activateKeys()
+    local function bindKeys()
         if bound then
             return
         end
-        CAS:UnbindAction(ACTION)
         CAS:BindAction(ACTION, function(_, state, input)
             if not enabled or guarded() then
                 return Enum.ContextActionResult.Pass
             end
             local index = table.find(KEYS, input.KeyCode)
             local item = if index then items[index] else nil
-            if not item then
+            if not item or not owned(item.Tool) then
                 return Enum.ContextActionResult.Pass
             end
             if state == Enum.UserInputState.Begin then
@@ -971,67 +265,116 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end, false, table.unpack(KEYS))
         bound = true
     end
+    local function clear(binding: Binding)
+        if binding.Dispose then
+            binding.Dispose()
+        end
+        if GuiService.SelectedObject == binding.Slot.Button then
+            GuiService.SelectedObject = nil
+        end
+        binding.Connection:Disconnect()
+        binding.Slot.Button:Destroy()
+    end
+    local function preview(binding: Binding)
+        if binding.PreviewAttempted or binding.Dispose then
+            return
+        end
+        binding.PreviewAttempted = true
+        -- Optional art never gates layout, input, or CoreGui ownership. Even a
+        -- suspended preview cannot suspend the controller's update path.
+        task.defer(function()
+            if stopped or bindings[binding.Tool] ~= binding then
+                return
+            end
+            local ok, dispose = pcall(function(): (() -> ())?
+                if binding.Kind == "Ingredient" and binding.Id then
+                    local renderer = require(script.Parent.Parent.UI.IngredientViewport)
+                    return renderer.Create(binding.Slot.Icon, binding.Id)
+                elseif binding.Kind == "Smoothie" then
+                    return visual(binding.Tool, binding.Slot.Icon)
+                end
+                return nil
+            end)
+            if not ok or not dispose then
+                return
+            end
+            if stopped or bindings[binding.Tool] ~= binding then
+                dispose()
+                return
+            end
+            binding.Dispose = dispose
+            for _, child in binding.Slot.Button:GetChildren() do
+                if child:IsA("ViewportFrame") and child.Name == "IngredientPreview" then
+                    child.Size, child.Position, child.AnchorPoint =
+                        UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Vector2.zero
+                    child.Rotation = 0
+                    child.Parent = binding.Slot.Icon
+                end
+            end
+            binding.Slot.Icon.Image = ""
+        end)
+    end
+    local function refreshPreviews()
+        for _, binding in bindings do
+            if not binding.Dispose then
+                binding.PreviewAttempted = false
+            end
+        end
+        schedule()
+    end
     local function collect(): boolean
         local found: { [Tool]: boolean } = {}
         local nextItems: { Item } = {}
-        if removing or not character or character ~= player.Character then
-            items = {}
-            return true
-        end
-        for _, container in { backpack :: Instance?, character :: Instance? } do
-            if not container then
-                continue
-            end
-            for _, child in container:GetChildren() do
-                if not child:IsA("Tool") or found[child] or not owned(child) then
+        local valid = true
+        if not removing and character and character == player.Character then
+            for _, container in { backpack :: Instance?, character :: Instance? } do
+                if not container then
                     continue
                 end
-                found[child] = true
-                if not sequence[child] then
-                    serial += 1
-                    sequence[child] = serial
-                end
-                if not observed[child] then
-                    local list = {
-                        child.AncestryChanged:Connect(schedule),
-                        child.Equipped:Connect(schedule),
-                        child.Unequipped:Connect(schedule),
-                        child:GetPropertyChangedSignal("Name"):Connect(schedule),
-                    }
-                    for _, attribute in { "IngredientId", "CarryItemId", "BatLevel", "IceGunWeapon" } do
-                        table.insert(list, child:GetAttributeChangedSignal(attribute):Connect(schedule))
+                for _, child in container:GetChildren() do
+                    if not child:IsA("Tool") or found[child] or not owned(child) then
+                        continue
                     end
-                    observed[child] = list
-                end
-                local kind, label, id, key = Controller.Classify(child)
-                if kind == "InvalidIngredient" then
-                    warning(
-                        "carry:" .. tostring(sequence[child]),
-                        child:GetFullName() .. ": missing/malformed numeric CarryItemId; custom UI paused"
-                    )
-                    nextItems = {}
-                    items = {}
-                    return false
-                end
-                if kind and label and key then
-                    table.insert(
-                        nextItems,
-                        { Tool = child, Kind = kind, Label = label, Id = id, Key = key, Sequence = sequence[child] }
-                    )
+                    found[child] = true
+                    if not sequence[child] then
+                        serial += 1
+                        sequence[child] = serial
+                    end
+                    if not observed[child] then
+                        local list = {
+                            child.AncestryChanged:Connect(schedule),
+                            child.Equipped:Connect(schedule),
+                            child.Unequipped:Connect(schedule),
+                            child:GetPropertyChangedSignal("Name"):Connect(schedule),
+                            child.DescendantAdded:Connect(refreshPreviews),
+                        }
+                        for _, attribute in { "IngredientId", "CarryItemId", "BatLevel", "IceGunWeapon" } do
+                            table.insert(list, child:GetAttributeChangedSignal(attribute):Connect(schedule))
+                        end
+                        observed[child] = list
+                    end
+                    local kind, label, id, key = Controller.Classify(child)
+                    if kind == "InvalidIngredient" then
+                        valid = false
+                    elseif kind and label and key then
+                        table.insert(
+                            nextItems,
+                            { Tool = child, Kind = kind, Label = label, Id = id, Key = key, Sequence = sequence[child] }
+                        )
+                    end
                 end
             end
         end
         for tool, list in observed do
             if not found[tool] then
                 disconnect(list)
-                observed[tool] = nil
+                observed[tool], sequence[tool] = nil, nil
             end
         end
         local rank = { Bat = 1, Ice = 2, Ingredient = 3, Smoothie = 4 }
         table.sort(nextItems, function(a, b)
-            local ar, br = rank[a.Kind], rank[b.Kind]
-            if ar ~= br then
-                return ar < br
+            if rank[a.Kind] ~= rank[b.Kind] then
+                return rank[a.Kind] < rank[b.Kind]
             end
             if a.Kind == "Ingredient" and a.Key ~= b.Key then
                 return a.Key < b.Key
@@ -1039,163 +382,88 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             return a.Sequence < b.Sequence
         end)
         items = nextItems
-        return true
+        return valid
     end
-    render = function()
-        if stopped then
-            return
-        end
-        renderAttempts += 1
-        layoutStatus = "resolving custom hotbar"
-        if removing then
-            layoutStatus = "waiting for character"
-            release()
-            return
-        end
-        local root, bar = Gui.Find(playerGui)
-        if view and (root ~= view.Root or bar ~= view.Bar) then
-            release()
-        end
-        if not view then
-            local nextView = Gui.Resolve(playerGui)
-            if not nextView then
-                layoutStatus = "custom hotbar unresolved"
-                if bar then
-                    bar.Visible = false
+    local function obstacles(): { Rect }
+        local wanted: { [Instance]: boolean } = {}
+        local result: { Rect } = {}
+        local size, origin = view.SafeArea.AbsoluteSize, view.SafeArea.AbsolutePosition
+        if UIS.TouchEnabled and size.X > 0 and size.Y > 0 then
+            local objects: { Instance }
+            result, objects = MobileLayout.HotbarObstacles(playerGui, Rect.new(origin, origin + size))
+            for _, object in objects do
+                wanted[object] = true
+                if controls[object] then
+                    continue
                 end
-                native()
-                return
-            end
-            setup(nextView)
-        end
-        layoutStatus = "checking custom slots"
-        local current = view :: Gui.View
-        if (screenHost and not screenHost.Visible) or (host and not host.Visible) then
-            layoutStatus = "custom host hidden"
-            current.Bar.Visible = false
-            native()
-            return
-        end
-        for _, binding in pool do
-            local slot = Gui.Slot(binding.Slot.Button)
-            if
-                not slot
-                or slot.Icon ~= binding.Slot.Icon
-                or slot.Label ~= binding.Slot.Label
-                or slot.Selected ~= binding.Slot.Selected
-                or slot.Background ~= binding.Slot.Background
-                or not slot.Button:IsDescendantOf(current.Bar)
-            then
-                layoutStatus = "slot changed during setup: " .. binding.Slot.Button.Name
-                release()
-                return
+                local list = { object.AncestryChanged:Connect(schedule) }
+                local properties: { string } = if object:IsA("ScreenGui")
+                    then { "Enabled" }
+                    else { "AbsoluteSize", "AbsolutePosition", "Visible" }
+                for _, property in properties do
+                    table.insert(list, object:GetPropertyChangedSignal(property):Connect(schedule))
+                end
+                controls[object] = list
             end
         end
-        layoutStatus = "reading Tools"
-        if collect() == false then
-            layoutStatus = "waiting for Tool attributes"
-            release()
-            return
-        end
-        while #pool < #items do
-            local copy = (pristine :: GuiButton):Clone()
-            local slot = Gui.Slot(copy)
-            if not slot then
-                layoutStatus = "overflow slot could not be bound"
-                copy:Destroy()
-                release()
-                return
+        for object, list in controls do
+            if not wanted[object] then
+                disconnect(list)
+                controls[object] = nil
             end
-            bind(slot, true, pool[1].Metrics)
         end
-        -- Keep unchanged Tools in their existing bindings; order is LayoutOrder,
-        -- never authored child enumeration or duplicated exported LayoutOrder.
-        local assigned: { [Tool]: Binding } = {}
+        return result
+    end
+    local function update()
+        local valid = collect()
         local wanted: { [Tool]: boolean } = {}
-        for _, item in items do
-            wanted[item.Tool] = true
-        end
-        for _, binding in pool do
-            if binding.Tool and wanted[binding.Tool] then
-                assigned[binding.Tool] = binding
-            else
-                clearBinding(binding)
-            end
-        end
-        layoutStatus = "binding Tool previews"
         local ordered: { Binding } = {}
-        local nextEquipped: GuiButton? = nil
+        local nextEquipped: Tool? = nil
         for index, item in items do
-            local binding = assigned[item.Tool]
+            wanted[item.Tool] = true
+            local binding: Binding? = bindings[item.Tool]
+            if binding and (binding.Kind ~= item.Kind or binding.Id ~= item.Id) then
+                clear(binding)
+                bindings[item.Tool], binding = nil, nil
+            end
             if not binding then
-                for _, candidate in pool do
-                    if not candidate.Tool then
-                        binding = candidate
-                        break
-                    end
-                end
+                local slot = Gui.NewSlot(view)
+                binding = {
+                    Slot = slot,
+                    Tool = item.Tool,
+                    Kind = item.Kind,
+                    Id = item.Id,
+                    Index = index,
+                    Connection = slot.Button.Activated:Connect(function()
+                        selectTool(item.Tool)
+                    end),
+                    Dispose = nil,
+                    PreviewAttempted = false,
+                }
+                bindings[item.Tool] = binding
+                slot.Icon.Image = if item.Kind == "Bat"
+                    then Gui.Art.Bat
+                    elseif item.Kind == "Ice" then Gui.Art.Ice
+                    else Gui.Art.Generic
             end
             local target = binding :: Binding
-            if target.Tool ~= item.Tool or target.Kind ~= item.Kind or target.Id ~= item.Id then
-                clearBinding(target)
-                target.Tool, target.Kind, target.Id = item.Tool, item.Kind, item.Id
-                local dispose = if item.Kind == "Ingredient" and item.Id
-                    then IngredientViewport.Create(target.Slot.Icon, item.Id)
-                    else nil
-                if not dispose then
-                    dispose = visual(item.Tool, target.Slot.Icon)
-                end
-                -- IngredientViewport's shared pipeline initially creates a
-                -- sibling. Move that one render into the cleared icon host.
-                for _, child in target.Slot.Button:GetChildren() do
-                    if child:IsA("ViewportFrame") and child.Name == "IngredientPreview" then
-                        child.Size, child.Position, child.AnchorPoint =
-                            UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Vector2.zero
-                        child.Rotation = 0
-                        child.Parent = target.Slot.Icon
-                    end
-                end
-                for _, child in target.Slot.Icon:GetChildren() do
-                    if child:IsA("ViewportFrame") then
-                        Gui.Aspect(child, target.Metrics.IconRatio)
-                    end
-                end
-                target.Dispose = dispose
-                if not dispose then
-                    local art = if item.Kind == "Bat"
-                        then current.BatImage
-                        elseif item.Kind == "Ice" then current.IceImage
-                        else nil
-                    if art then
-                        target.Slot.Icon.Image = art
-                    else
-                        target.Slot.Icon.Image = current.GenericImage
-                        warning(
-                            "icon:" .. (item.Id or item.Kind),
-                            "missing icon for "
-                                .. (item.Id or item.Kind)
-                                .. "; using authored Glossy Fruit Trio Sticker 1"
-                        )
-                    end
-                end
-            end
+            target.Index = index
             local slot = target.Slot
-            local label = slot.Label :: TextLabel
-            label.Text = item.Label
-            local number = slot.Button:FindFirstChild("Number")
-            if number and number:IsA("TextLabel") then
-                number.Text = if index <= 9 then tostring(index) elseif index == 10 then "0" else ""
-            end
+            slot.Label.Text, slot.Number.Text =
+                item.Label, if index <= 9 then tostring(index) elseif index == 10 then "0" else ""
             slot.Button.LayoutOrder = index
-            local equipped = item.Tool.Parent == character
-            if slot.Selected then
-                slot.Selected.Visible = equipped
+            slot.Selected.Visible = item.Tool.Parent == character
+            if slot.Selected.Visible then
+                nextEquipped = item.Tool
             end
-            if equipped then
-                nextEquipped = slot.Button
-            end
-            slot.Button.Visible = true
             ordered[index] = target
+            preview(target)
+        end
+        for tool, binding in bindings do
+            if not wanted[tool] then
+                bindings[tool] = nil
+                clear(binding)
+            end
         end
         for index, binding in ordered do
             binding.Slot.Button.NextSelectionLeft = if ordered[index - 1]
@@ -1205,137 +473,64 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 then ordered[index + 1].Slot.Button
                 else binding.Slot.Button
         end
-        if nextEquipped ~= equippedButton then
-            equippedButton = nextEquipped
-            if nextEquipped then
-                pendingReveal = nextEquipped
-            end
+        if equipped ~= nextEquipped then
+            equipped = nextEquipped
+            revealTool = nextEquipped
         end
-        layoutStatus = "measuring layout"
-        local usable = resize()
-        if usable == false then
-            warning("layout", "insufficient safe space for accessible hotbar; native Backpack retained")
-            current.Bar.Visible = false
-            native()
-            return
-        elseif usable == nil then
-            if not enabled then
-                current.Bar.Visible = false
-            end
-            -- Keep the same slots, selection, and scroll through transient zeros.
-            -- A single bounded recovery handles geometry that never comes back.
-            if not recoveryQueued then
-                recoveryQueued = true
-                recoveryVersion += 1
-                local version = recoveryVersion
-                task.delay(0.5, function()
-                    if stopped or session ~= sessionVersion or version ~= recoveryVersion or view ~= current then
-                        return
-                    end
-                    recoveryQueued = false
-                    if resize() == nil then
-                        current.Bar.Visible = false
-                        native()
-                    else
-                        schedule()
-                    end
-                end)
-            end
+        local mounted = view.Root.Parent == playerGui
+            and view.Root.Enabled
+            and view.SafeArea.Parent == view.Root
+            and view.SafeArea.Visible
+            and view.Bar.Parent == view.SafeArea
+            and not externallyHidden
+            and view.Scroll.Parent == view.Bar
+            and view.Scroll.Visible
+        for _, binding in ordered do
+            local slot = binding.Slot
+            mounted = mounted
+                and slot.Button.Parent == view.Scroll
+                and slot.Icon.Parent == slot.Button
+                and slot.Label.Parent == slot.Button
+                and slot.Background.Parent == slot.Button
+                and slot.Selected.Parent == slot.Button
+                and slot.Number.Parent == slot.Button
+        end
+        local usable = if mounted then Gui.Layout(view, #items, UIS.TouchEnabled, obstacles()) else false
+        for index, binding in ordered do
+            binding.Slot.Button.Size = UDim2.fromOffset(view.SlotSize, view.SlotSize)
+            binding.Slot.Button.Position =
+                UDim2.fromOffset(Gui.Padding + (index - 1) * (view.SlotSize + Gui.Gap), Gui.Padding)
+        end
+        if usable == false or not valid then
+            requestCore(true, if not valid then "waiting for valid Tool attributes" else "custom view unavailable")
             return
         end
-        recoveryVersion += 1
-        recoveryQueued = false
-        local hasItems = #items > 0
-        current.Bar.Visible = hasItems
-        local touch = UIS.TouchEnabled
-        local touchGui = if touch then playerGui:FindFirstChild("TouchGui") else nil
-        if not hasItems or not touch then
-            touchBarShown = false
-        end
-        -- An empty custom bar can hand off before the first Tool or TouchGui
-        -- arrives. Reassert at those startup transitions even if the saved
-        -- CoreGui setting already says that Backpack is disabled.
-        local touchStartup = touch and ((hasItems and not touchBarShown) or touchGui ~= handoffTouchGui)
-        -- Reassert ownership only after layout is usable, and verify CoreGui's
-        -- requested state rather than treating a successful pcall as a handoff.
-        if enabled and not touchStartup and coreState() == false then
+        if usable == nil then
+            -- Keep ownership, slots and scroll during a brief zero-size rotation.
+            -- No geometry timers, reassertions, or repeated layout gates.
             return
         end
-        if retryQueued or handoffAttempts >= 8 then
-            if coreState() == true then
-                current.Bar.Visible = false
-            end
+        if revealTool and bindings[revealTool] then
+            Gui.Reveal(view, bindings[revealTool].Index)
+            revealTool = nil
+        end
+        if not enabled and #items == 0 then
+            requestCore(true, "waiting for first Tool")
             return
         end
-        handoffAttempts += 1
-        coreVersion += 1 -- cancel older restoration before the new handoff
-        restoring, restorePending = false, false
-        if setCore(false, "usable custom handoff") then
-            enabled = true
-            retryQueued = false
-            activateKeys()
-            touchBarShown, handoffTouchGui = touch and hasItems, touchGui
-            if touch then
-                local version = coreVersion
-                -- CoreGui's requested state can settle before the native touch
-                -- Backpack finishes initializing. Reapply on a bounded schedule.
-                for _, seconds in { 0.25, 1 } do
-                    task.delay(seconds, function()
-                        if
-                            stopped
-                            or session ~= sessionVersion
-                            or version ~= coreVersion
-                            or view ~= current
-                            or not enabled
-                        then
-                            return
-                        end
-                        if not setCore(false, "existing touch reassertion " .. tostring(seconds)) then
-                            schedule()
-                        end
-                    end)
-                end
+        if not enabled then
+            local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+            if removing or not humanoid or humanoid.Health <= 0 then
+                requestCore(true, "waiting for selectable character")
+                return
             end
-        else
-            enabled = false
-            if bound then
-                CAS:UnbindAction(ACTION)
-                bound = false
-            end
-            if coreState() == true then
-                current.Bar.Visible = false
-            else
-                -- If CoreGui state cannot be read, retain working custom input
-                -- until native access is confirmed. Never leave both unusable.
-                enabled = true
-                activateKeys()
-            end
-            if handoffAttempts == 8 then
-                warning("handoff", "Backpack handoff unconfirmed; retrying on the next lifecycle event")
-            end
-            if handoffAttempts < 8 and not retryQueued then
-                retryQueued = true
-                local version = coreVersion
-                task.delay(0.25, function()
-                    if stopped or session ~= sessionVersion or version ~= coreVersion or view ~= current then
-                        return
-                    end
-                    retryQueued = false
-                    -- Retry without resetting the bounded attempt budget.
-                    queueRender()
-                end)
-            end
+            bindKeys()
+            requestCore(false, "custom ready")
         end
+        view.Bar.Visible = enabled and #items > 0
     end
-    queueRender = function()
-        if stopped then
-            return
-        end
-        if rendering then
-            renderRequested = true
-            return
-        end
-        if queued then
+    schedule = function()
+        if stopped or queued or mutating then
             return
         end
         queued = true
@@ -1344,34 +539,14 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             if stopped or session ~= sessionVersion then
                 return
             end
-            rendering, mutating = true, true
-            renderStartedAt = os.clock()
-            slotDetail, textDetail, geometryDetail = "", "", ""
-            mark("render before")
-            local ok, message = pcall(render :: any)
+            mutating = true
+            local ok, message = pcall(update)
             if not ok then
-                renderErrors += 1
-                layoutStatus = "render error: " .. string.sub(tostring(message), 1, 140)
-                warning("render", tostring(message))
-                release()
-            else
-                renderReturns += 1
+                requestCore(true, "custom update error")
+                warn("HotbarController: " .. tostring(message))
             end
-            rendering, mutating = false, false
-            if renderRequested then
-                renderRequested = false
-                queueRender()
-            end
+            mutating = false
         end)
-    end
-    schedule = function()
-        if not mutating then
-            handoffAttempts = 0
-        end
-        if restorePending and not restoring then
-            native()
-        end
-        queueRender()
     end
     local function watchContainers()
         disconnect(containers)
@@ -1405,14 +580,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     table.insert(
         connections,
         player.CharacterRemoving:Connect(function()
-            removing, character = true, nil
-            for _, list in observed do
-                disconnect(list)
-            end
-            table.clear(observed)
-            table.clear(sequence)
-            table.clear(items)
-            release()
+            character, removing = nil, true
             watchContainers()
         end)
     )
@@ -1423,47 +591,44 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             watchContainers()
         end)
     )
-    -- Root visibility changes and live-sync replacement are coalesced. Do not
-    -- watch Hotbar.Visible: the controller hides its own empty/invalid bar.
-    local roots: { [Instance]: RBXScriptConnection } = {}
-    local function uiChanged()
-        if stopped or mutating then
-            return
-        end
-        for object, connection in roots do
-            if not object:IsDescendantOf(playerGui) then
-                connection:Disconnect()
-                roots[object] = nil
-            end
-        end
-        for _, desktop in Registry.Desktops(playerGui) do
-            local ancestor: Instance? = desktop
-            while ancestor and ancestor ~= playerGui do
-                if not roots[ancestor] and (ancestor:IsA("GuiObject") or ancestor:IsA("ScreenGui")) then
-                    roots[ancestor] = ancestor
-                        :GetPropertyChangedSignal(if ancestor:IsA("ScreenGui") then "Enabled" else "Visible")
-                        :Connect(schedule)
+    local gates: { Instance } = { view.Root, view.SafeArea, view.Bar, view.Scroll }
+    for _, object in gates do
+        table.insert(connections, object.AncestryChanged:Connect(schedule))
+        table.insert(
+            connections,
+            object:GetPropertyChangedSignal(if object:IsA("ScreenGui") then "Enabled" else "Visible"):Connect(function()
+                if not mutating then
+                    if object == view.Bar then
+                        externallyHidden = not view.Bar.Visible
+                    end
+                    schedule()
                 end
-                ancestor = ancestor.Parent
-            end
-        end
-        schedule()
+            end)
+        )
     end
-    table.insert(connections, playerGui.DescendantAdded:Connect(uiChanged))
+    table.insert(connections, view.SafeArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
+    table.insert(connections, view.SafeArea:GetPropertyChangedSignal("AbsolutePosition"):Connect(schedule))
+    table.insert(connections, playerGui.DescendantAdded:Connect(schedule))
     table.insert(
         connections,
         playerGui.DescendantRemoving:Connect(function()
             if not mutating then
-                task.defer(uiChanged)
+                schedule()
             end
         end)
     )
+    table.insert(connections, Shared.DescendantAdded:Connect(refreshPreviews))
     table.insert(
         connections,
         GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
-            for _, binding in pool do
-                if binding.Slot.Button.Visible and GuiService.SelectedObject == binding.Slot.Button then
-                    pendingReveal = binding.Slot.Button
+            local nextFocus = GuiService.SelectedObject
+            if nextFocus == focused then
+                return
+            end
+            focused = nextFocus
+            for tool, binding in bindings do
+                if nextFocus == binding.Slot.Button then
+                    revealTool = tool
                     schedule()
                     break
                 end
@@ -1471,77 +636,92 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end)
     )
     table.insert(connections, playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(schedule))
-    table.insert(connections, GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(schedule))
-    local cameraConnection: RBXScriptConnection? = nil
-    local function cameraChanged()
-        if cameraConnection then
-            cameraConnection:Disconnect()
+    table.insert(connections, UIS:GetPropertyChangedSignal("TouchEnabled"):Connect(schedule))
+    -- Diagnostic replication is optional and never gates the standalone view.
+    -- Admin authorization remains exclusively on the existing server command.
+    local debugRemote: RemoteEvent? = nil
+    local debugConnection: RBXScriptConnection? = nil
+    local function report(_hide: boolean)
+        local native = coreState()
+        local message = string.format(
+            "[Hotbar] place v%d | %s | owner=%s | %s | safe=%.0f slots=%d visible=%s native=%s | write=%s read=%s",
+            game.PlaceVersion,
+            tostring(playerGui.CurrentScreenOrientation),
+            if enabled then "custom" else "native",
+            reason,
+            view.SafeArea.AbsoluteSize.X,
+            #items,
+            tostring(enabled and view.Root.Enabled and view.Bar.Visible),
+            tostring(native),
+            if writeError == "" then "ok" else writeError,
+            if readError == "" then "ok" else readError
+        )
+        print(message)
+        local channels = game:GetService("TextChatService"):FindFirstChild("TextChannels")
+        local channel = channels and (channels:FindFirstChild("RBXSystem") or channels:FindFirstChild("RBXGeneral"))
+        if channel and channel:IsA("TextChannel") then
+            channel:DisplaySystemMessage(message)
         end
-        local camera = workspace.CurrentCamera
-        cameraConnection = if camera then camera:GetPropertyChangedSignal("ViewportSize"):Connect(schedule) else nil
-        schedule()
     end
-    table.insert(connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(cameraChanged))
-    for _, property in { "TouchEnabled", "GamepadEnabled" } do
-        table.insert(connections, UIS:GetPropertyChangedSignal(property):Connect(schedule))
-    end
-    cameraChanged()
-    -- Startup geometry or an authored GUI can settle without a delivered
-    -- change notification. Re-run discovery only while initial ownership
-    -- remains unresolved, leaving native access available in the meantime.
-    local function retryInitialLayout()
-        if stopped or session ~= sessionVersion or enabled or initialRecoveryAttempts >= 3 then
+    local function attachDebug()
+        if stopped then
             return
         end
-        initialRecoveryAttempts += 1
-        schedule()
-        task.delay(0.5, retryInitialLayout)
-    end
-    task.delay(0.5, retryInitialLayout)
-    -- Synchronous clearing before the deferred first render/data collection.
-    local _, initialBar = Gui.Find(playerGui)
-    if initialBar then
-        initialBar.Visible = false
-        for _, child in initialBar:GetChildren() do
-            if Registry.Matches(child, "Slot1", { "Slot1", "Slot1_button", "Slot1_button_smooth" }) then
-                if child:IsA("GuiObject") then
-                    child.Visible = false
-                end
-                local icon = Registry.Child(child, "SlotIcon", { "SlotIcon", "SlotIcon_image" }, "ImageLabel")
-                if icon and icon:IsA("ImageLabel") then
-                    Gui.ClearTemplate(icon)
-                end
-            end
+        local events = Shared:FindFirstChild("Events")
+        local remote = if events then events:FindFirstChild("HotbarDebug") else nil
+        local nextRemote = if remote and remote:IsA("RemoteEvent") then remote else nil
+        if nextRemote == debugRemote then
+            return
+        end
+        if debugConnection then
+            debugConnection:Disconnect()
+            debugConnection = nil
+        end
+        debugRemote = nextRemote
+        if nextRemote then
+            debugConnection = nextRemote.OnClientEvent:Connect(report)
         end
     end
-    uiChanged()
-    watchContainers()
+    table.insert(connections, Shared.DescendantAdded:Connect(attachDebug))
+    table.insert(
+        connections,
+        Shared.DescendantRemoving:Connect(function()
+            task.defer(attachDebug)
+        end)
+    )
+    attachDebug()
     local function stopSession()
         if stopped then
             return
         end
         stopped = true
-        if cameraConnection then
-            cameraConnection:Disconnect()
-        end
+        mutating = true
         disconnect(connections)
+        if debugConnection then
+            debugConnection:Disconnect()
+            debugConnection = nil
+        end
         disconnect(containers)
         for _, list in observed do
             disconnect(list)
         end
+        for _, list in controls do
+            disconnect(list)
+        end
         table.clear(observed)
-        table.clear(sequence)
-        table.clear(items)
-        for _, connection in roots do
-            connection:Disconnect()
+        table.clear(controls)
+        for _, binding in bindings do
+            clear(binding)
         end
-        table.clear(roots)
-        release()
-        if diagnostic then
-            diagnostic.Stop()
-        end
+        table.clear(bindings)
+        requestCore(true, "controller stopped")
+        view.Template:Destroy()
+        view.Root:Destroy()
     end
+    activeStop = stopSession
     table.insert(connections, playerGui.Destroying:Connect(stopSession))
+    requestCore(true, "waiting for first Tool")
+    watchContainers()
     return stopSession
 end
 local stop: (() -> ())? = nil
@@ -1576,10 +756,10 @@ end
 function Controller.Destroy()
     initialized = false
     disconnect(lifecycle)
-    if stop then
-        stop()
-        stop = nil
+    if activeStop then
+        activeStop()
+        activeStop = nil
     end
-    activeGui = nil
+    stop, activeGui = nil, nil
 end
 return Controller
