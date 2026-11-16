@@ -34,22 +34,16 @@ function Service.RequestName(player: Player, plot: any, value: any, context: any
     pending[player] = true
     nextSave[player] = os.clock() + Config.SaveCooldown
     local ok, result = pcall(function()
-        -- Four stars can expand a short token. Fit only after raw validation;
-        -- this never lets an oversized client submission bypass the limit.
-        return TextService:FilterStringAsync(
-            Config.Truncate(Sanitizer.Mask(text)),
-            player.UserId,
-            Enum.TextFilterContext.PublicChat
-        ):GetNonChatStringForBroadcastAsync()
+        return TextService:FilterStringAsync(text, player.UserId, Enum.TextFilterContext.PublicChat)
+            :GetNonChatStringForBroadcastAsync()
     end)
     pending[player] = nil
-    local filtered = if ok
-            and type(result) == "string"
-            and #result <= Config.MaxInputBytes
-        then Config.Normalize(Config.Truncate(Sanitizer.BroadcastDisplay(result)))
-        else nil
+    local filtered = if ok then Config.Normalize(result) else nil
     if not filtered then
-        return false, "Name unavailable. Try another name."
+        return false, "Could not check that name. Try again."
+    end
+    if filtered ~= text or Sanitizer.ContainsBlockedWord(filtered) then
+        return false, "That name contains blocked text. Try another name."
     end
     if not valid(player, plot, captured) or not authority.CommitFilteredStandName(player, plot, filtered, captured) then
         return false, "Stand ownership changed."

@@ -46,10 +46,9 @@ guards concurrent saves and rate-limits attempts. It calls server
 `TextService:FilterStringAsync(..., PublicChat)` followed by
 `GetNonChatStringForBroadcastAsync`, the [Roblox public sign filtering path](https://create.roblox.com/docs/reference/engine/classes/TextFilterResult).
 It copies submitted context and revalidates after both yielding operations. Only
-a usable filtered result reaches the trusted `CommitFilteredStandName` transaction.
-Errors, blank results and stale requests leave the previous name intact. Conservative
-custom token masking occurs before Roblox filtering; already filtered hash runs
-become `****` for display. Fully censored names may safely display `****`.
+an approved broadcast result reaches the trusted `CommitFilteredStandName` transaction.
+Filter errors, unusable results, blocked names and stale requests leave the previous
+name intact. Players can edit and retry a rejected submission.
 
 `StandSignPresentation.SetStandName` assigns the same authoritative text to Main,
 Depth1, Depth2 and Shadow. The server updates these authored labels, so Roblox
@@ -253,13 +252,12 @@ is used. Newline/control input is rejected, not silently joined into another nam
 rules: case-insensitive complete ASCII tokens, common explicit inflections and
 punctuation between letters. Longer words, digits/underscore/non-ASCII token
 neighbors and spaced-out words are deliberately left for Roblox moderation.
-`StandIdentityService.RequestName` validates raw input first, masks it, calls
-`TextService:FilterStringAsync` with the author UserId, and obtains
-`GetNonChatStringForBroadcastAsync`. Masking and the post-filter hash-to-star display
-transformation can expand short tokens, so only these trusted transformed strings
-are fitted back to the limit and the final result is validated. Oversized raw
-client submissions are never accepted through server truncation. Neither filter
-stage can publish raw input on failure.
+`StandIdentityService.RequestName` validates the submission and sends the entire
+normalized name to `TextService:FilterStringAsync` with the author UserId. It
+validates the result of `GetNonChatStringForBroadcastAsync` using the same name
+limits. If Roblox changes the normalized text or the profanity list matches
+the result, the editor asks the owner to try another name. The previous name
+and revision stay in place.
 
 Publication stays in `TycoonService.CommitFilteredStandName` / `publishIdentity`:
 only the final broadcast-safe text enters the authoritative session, plot
@@ -301,7 +299,8 @@ in Studio Device Simulator (not run in this environment):
   close the keyboard and verify the original card position returns.
 - Mobile/console: press on-screen Return, then rapidly SAVE; only one request
   should be pending. Navigate all controls with a controller and reopen the editor.
-- Two clients: save profanity and separator variants, verify only the filtered
-  result appears on every sign layer and for late joiners; filtering failure must
-  retain the previous/default name. Verify SKIP/X and teardown still return camera
-  control without renaming.
+- Two clients: save a clean name and verify it appears on every sign layer for
+  both clients and late joiners. Submit profanity and punctuation-separated
+  variants and verify the editor allows a retry while the prior sign stays in place.
+  Confirm a filtering failure retains the previous name. Verify SKIP/X and teardown
+  return camera control without renaming.

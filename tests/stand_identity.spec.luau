@@ -155,18 +155,6 @@ check(
     config.Normalize("a\u{2028}b") == nil and config.Normalize("a\0b") == nil,
     "Unicode line separators and controls rejected"
 )
-local sanitizer = loadModule("StandNameSanitizer")
-check(sanitizer.Mask("The Fucking Blender") == "The **** Blender", "explicit inflection masked")
-check(
-    sanitizer.Mask("ass class Scunthorpe bass passion") == "**** class Scunthorpe bass passion",
-    "whole tokens avoid substring false positives"
-)
-check(sanitizer.Mask("The f.u.c.k Stand") == "The **** Stand", "obvious punctuation bypass masked")
-check(sanitizer.Mask("F.u.c.k.i.n.g a.s.s.h.o.l.e") == "**** ****", "punctuated inflections mask whole known words")
-check(
-    sanitizer.Mask("compass-fuckery éfuck f u c k") == "compass-fuckery éfuck f u c k",
-    "longer words and unrelated words remain intact"
-)
 check(config.Normalize("  Super Smoothies  ") == "Super Smoothies", "trim name")
 check(
     config.Normalize(string.rep("é", config.MaxCharacters)) ~= nil
@@ -175,11 +163,12 @@ check(
 )
 check(config.Normalize("\255") == nil and config.Normalize("a\nb") == nil, "invalid UTF-8 and controls rejected")
 check(not names.RequestName(owner, plot, "   ", context()) and filterCalls == 0, "blank input never reaches filter")
-filter = function()
-    return "Super Smoothies"
+filter = function(text)
+    check(text == "Super Smoothies", "Roblox receives the complete, normalized submission")
+    return text
 end
-check(names.RequestName(owner, plot, "  raw name  ", context()), "filtered rename commits")
-check(plot:GetAttribute("StandName") == "Super Smoothies", "only filtered result is replicated")
+check(names.RequestName(owner, plot, "  Super Smoothies  ", context()), "approved rename commits")
+check(plot:GetAttribute("StandName") == "Super Smoothies", "approved text is replicated")
 now += 2
 local filterAsync = services.TextService.FilterStringAsync
 services.TextService.FilterStringAsync = function()
@@ -204,39 +193,42 @@ check(
     not names.RequestName(owner, plot, "Other", context()) and plot:GetAttribute("StandName") == "Super Smoothies",
     "filter error retains prior name"
 )
-now += 2
-filter = function()
-    return "#####"
+local approvedRevision = plot:GetAttribute("StandNameRevision")
+for _, case in
+    {
+        { "The Fucking Blender", "The #### Blender" },
+        { "unsuitable", "#####" },
+        { "The Fucking Blender", "The Fucking Blender" },
+        { "The f.u.c.k Stand", "The f.u.c.k Stand" },
+        { "F.u.c.k.i.n.g a.s.s.h.o.l.e", "F.u.c.k.i.n.g a.s.s.h.o.l.e" },
+    }
+do
+    now += 2
+    local submitted, broadcast = case[1], case[2]
+    filter = function(text)
+        check(text == submitted, "Roblox receives the complete name before the word list check")
+        return broadcast
+    end
+    local saved, message = names.RequestName(owner, plot, submitted, context())
+    check(not saved and string.find(message, "blocked text", 1, true), "censored or blocked name can be retried")
+    check(
+        plot:GetAttribute("StandName") == "Super Smoothies"
+            and t.GetSession(owner).StandName == "Super Smoothies"
+            and plot:GetAttribute("StandNameRevision") == approvedRevision,
+        "blocked rename keeps the approved name and its revision"
+    )
 end
-check(
-    names.RequestName(owner, plot, "Other", context()) and plot:GetAttribute("StandName") == "****",
-    "already censored broadcast output becomes stars"
-)
-now += 2
-filter = function(text)
-    check(text == "The **** Blender", "custom mask precedes Roblox filtering")
-    return "The #### Blender"
-end
-check(names.RequestName(owner, plot, "The Fucking Blender", context()), "profanity is masked rather than rejected")
-check(
-    plot:GetAttribute("StandName") == "The **** Blender" and t.GetSession(owner).StandName == "The **** Blender",
-    "only safe display value reaches session and replication"
-)
 now += 2
 filter = function(text)
     return text
 end
-local expanded = "ass " .. string.rep("x", config.MaxCharacters - 4)
-local success, safe = names.RequestName(owner, plot, expanded, context())
 check(
-    success and config.Count(safe) == config.MaxCharacters and string.sub(safe, 1, 4) == "****",
-    "mask expansion fits validated final name without a profanity error"
+    names.RequestName(owner, plot, "Classy Smoothies #1", context())
+        and plot:GetAttribute("StandName") == "Classy Smoothies #1",
+    "approved literal hashes and words that contain a blocked substring are preserved"
 )
 now += 2
-filter = function()
-    return "Super Smoothies"
-end
-names.RequestName(owner, plot, "Restore", context())
+names.RequestName(owner, plot, "Super Smoothies", context())
 now += 2
 filter = function(text)
     coroutine.yield()
