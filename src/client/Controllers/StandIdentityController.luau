@@ -227,7 +227,7 @@ function Controller.OpenNameEditor(plot: Instance)
         ui.Box.Text = if saved and saved.Plot == plot and saved.SessionId == sequence.Context.PlotSessionId
             then saved.Text
             else Config.Normalize(publicName) or ""
-        ui.Status.Text, ui.Save.Text = "Only you can see your custom name.", "SAVE"
+        ui.Status.Text, ui.Save.Text = "you can rename at anytime in settings.", "SAVE"
         ui.Show()
         task.delay(3, function()
             if
