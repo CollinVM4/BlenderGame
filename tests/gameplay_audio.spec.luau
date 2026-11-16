@@ -3,7 +3,7 @@ local config = loadModule("GameplayAudio")
 local receive
 local played = {}
 local preloadCount = 0
-local expectedPreload = 8
+local expectedPreload = 9
 local lastSound
 local jobs = {}
 local remote = { OnClientEvent = {
@@ -28,7 +28,7 @@ local boundary = {
             preloadCount += 1
             check(
                 #assets == expectedPreload,
-                "preload deduplicates ingredient sounds and includes bat swing and customer hurt"
+                "preload deduplicates shared clips and loads the Muncher reveal clip"
             )
         end,
     },
@@ -114,6 +114,13 @@ check(
     "cash feedback reuses verified clips and throttles overlapping cues"
 )
 
+receive("MuncherReveal", "position")
+check(
+    #played == 7 and lastSound.SoundId == "rbxassetid://137370579818072" and not lastSound.Looped,
+    "Muncher reveal plays the supplied clip once"
+)
+check(lastSound.Parent.Position == "position", "Muncher reveal plays at the purchase position")
+
 local slotConfig = loadModule("Muncher")
 local before = #played
 controller.PlayMuncher("ReelStop", {})()
@@ -147,7 +154,7 @@ for _, kind in { "Insert", "Roll", "Win", "Lose" } do
     local key = kind .. "SoundId"
     saved[key], slotConfig[key] = slotConfig[key], ""
 end
-expectedPreload = 4
+expectedPreload = 5
 local silent = chunk()
 local jobStart = #jobs
 silent.Init()

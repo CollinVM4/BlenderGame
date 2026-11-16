@@ -1,7 +1,13 @@
 --!strict
 local Events = game:GetService("ReplicatedStorage").Shared.Events
 local GameplaySfx = {}
-export type Event = "IngredientPickup" | "IngredientPlant" | "IngredientThrow" | "BatSwing" | "CustomerHurt"
+export type Event =
+    | "IngredientPickup"
+    | "IngredientPlant"
+    | "IngredientThrow"
+    | "BatSwing"
+    | "CustomerHurt"
+    | "MuncherReveal"
 local remote: RemoteEvent?
 
 function GameplaySfx.Init()

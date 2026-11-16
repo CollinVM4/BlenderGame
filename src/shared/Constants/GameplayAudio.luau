@@ -9,6 +9,7 @@ return {
     IngredientThrowSoundId = PLOP,
     BatSwingSoundId = BAT_SWING,
     CustomerHurtSoundId = "rbxassetid://126967734395019",
+    MuncherRevealSoundId = "rbxassetid://137370579818072",
     SoundVolume = 0.7,
     SoundRollOffMinDistance = 10,
     SoundRollOffMaxDistance = 50,
