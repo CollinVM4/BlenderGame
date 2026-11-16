@@ -6,6 +6,7 @@ local Rewards = require(script.Parent.MuncherRewards)
 local Output = require(script.Parent.MuncherOutput)
 local WorldInput = require(script.Parent.MuncherWorldInput)
 local Diagnostics = require(script.Parent.MuncherDiagnostics)
+local GameplaySfx = require(script.Parent.GameplaySfxService)
 local Service = {}
 local deps: any
 local states: { [string]: any } = {}
@@ -137,7 +138,7 @@ function Service.TryPurchase(player: Player, pad: BasePart, context: any): (bool
     if state.Purchased then
         return false, "AlreadyPurchased"
     end
-    return deps.TycoonService.PurchasePersonalUpgrade(
+    local purchased, reason = deps.TycoonService.PurchasePersonalUpgrade(
         player,
         context or deps.TycoonService.GetRequestContext(player),
         Config.PurchaseCost,
@@ -146,6 +147,10 @@ function Service.TryPurchase(player: Player, pad: BasePart, context: any): (bool
             state.ReadyAt = workspace:GetServerTimeNow() + Config.RevealSeconds
         end
     )
+    if purchased then
+        GameplaySfx.Emit("MuncherReveal", pad.Position)
+    end
+    return purchased, reason
 end
 
 -- Called only by the server assembly presenter after placing every part at rest.

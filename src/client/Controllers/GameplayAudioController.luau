@@ -14,6 +14,7 @@ local eventAssets: { [string]: string } = {
     IngredientThrow = Config.IngredientThrowSoundId,
     BatSwing = Config.BatSwingSoundId,
     CustomerHurt = Config.CustomerHurtSoundId,
+    MuncherReveal = Config.MuncherRevealSoundId,
 }
 
 local muncherAssets: { [string]: string } = {

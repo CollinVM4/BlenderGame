@@ -45,11 +45,26 @@ local function finish()
     muncher.Step()
     now += config.SpitSeconds
 end
+local sfx = loadModule("GameplaySfxService")
+sfx.Init()
+local revealPositions = {}
+local remote = shared.Events:FindFirstChild("GameplaySfx")
+remote.FireAllClients = function(_, name, position)
+    if name == "MuncherReveal" then
+        table.insert(revealPositions, position)
+    end
+end
 local function unlock()
+    local previousReveals = #revealPositions
     authority.SetCash(p, 100100)
     setup(muncher.TryPurchase(p, pad, nil), "purchase")
     check(authority.GetCash(p) == 100, "exact purchase cost")
+    check(
+        #revealPositions == previousReveals + 1 and revealPositions[#revealPositions] == pad.Position,
+        "successful purchase emits the rise cue immediately at the purchase pad"
+    )
     check(not muncher.TryPurchase(p, pad, nil), "duplicate purchase rejected")
+    check(#revealPositions == previousReveals + 1, "duplicate purchase is silent")
     check(not muncher.CompleteReveal(p, model), "reveal cannot complete early")
     now += config.RevealSeconds
     setup(muncher.CompleteReveal(p, model), "reveal complete")
@@ -60,6 +75,7 @@ check(not feed(apple) and ingredients.GetRecord(apple) ~= nil, "locked machine p
 authority.SetCash(p, 99999)
 local ok, reason = muncher.TryPurchase(p, pad, nil)
 check(not ok and reason == "InsufficientCash", "insufficient shared cash preserved")
+check(#revealPositions == 0, "failed purchase is silent")
 unlock()
 carry(p, "Banana")
 check(muncher.TryFeed == nil, "carried feed API retired")
