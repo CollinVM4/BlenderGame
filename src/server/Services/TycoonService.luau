@@ -377,6 +377,7 @@ function TycoonService.RemovePlayer(player: Player, afterTransition: (() -> ())?
     local remaining = if session.Owner == player then session.Teammate else session.Owner
     if remaining then
         session.Owner, session.OwnerUserId = remaining, remaining.UserId
+        session.StandName = StandIdentity.DefaultName(remaining.Name)
         session.Teammate, session.TeammateUserId = nil, nil
     else
         session.Status = "Closing" -- invalidate first, clean once, release last
@@ -647,8 +648,7 @@ function TycoonService.AssignPlot(player: Player, requestedPlot: Instance?): Ins
                 Teammate = nil,
                 TeammateUserId = nil,
                 JoinMode = "Open",
-                -- DisplayName is platform moderated; custom submissions use StandIdentityService.
-                StandName = StandIdentity.DefaultName(player.DisplayName or player.Name),
+                StandName = StandIdentity.DefaultName(player.Name),
                 StandNameRevision = 1,
                 SharedCash = 0,
                 SharedUpgrades = upgrades,
@@ -749,8 +749,8 @@ function TycoonService.SetTeammateAccess(player: Player, mode: string, context: 
     return TycoonService.SetJoinMode(player, if mode == "Anyone" then "Open" else mode, context)
 end
 
--- Trusted server-only commit. Never expose this method directly to a remote.
-function TycoonService.CommitFilteredStandName(player: Player, plot: Instance, text: string, context: any): boolean
+-- A successful rename advances the revision without storing the private text.
+function TycoonService.CommitStandNameRevision(player: Player, plot: Instance, context: any): boolean
     local session = sessionFor(player)
     if
         not session
@@ -765,9 +765,8 @@ function TycoonService.CommitFilteredStandName(player: Player, plot: Instance, t
     if not id then
         return false
     end
-    session.StandName = text
     session.StandNameRevision += 1
-    publishIdentity(plot, session)
+    plot:SetAttribute("StandNameRevision", session.StandNameRevision)
     TycoonService.EndTransaction(id)
     return true
 end

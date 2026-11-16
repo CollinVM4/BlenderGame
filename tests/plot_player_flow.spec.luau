@@ -2,6 +2,7 @@
 local t = dependency.TycoonService
 local started, ended = 0, 0
 local owner, peer, visitor = player(), player(), player()
+visitor.Name = "FreshOwner"
 local plot, second = t.GetPlot(owner), t.GetPlot(peer)
 t.RemovePlayer(owner)
 t.RemovePlayer(peer)
@@ -132,8 +133,9 @@ check(
     t.GetSessionId(visitor) == id
         and t.GetCash(visitor) == 3000
         and plot:GetAttribute("OwnerUserId") == visitor.UserId
-        and plot:GetAttribute("PlotOwnerName") == visitor.Name,
-    "promotion preserves session and updates identity"
+        and plot:GetAttribute("PlotOwnerName") == visitor.Name
+        and plot:GetAttribute("StandName") == visitor.Name .. "'s Stand",
+    "promotion preserves the session and updates the public sign to the new owner"
 )
 check(not t.SetJoinMode(owner, "Open", beforePromotion), "old owner management invalid")
 local promotionContext = t.GetRequestContext(visitor)

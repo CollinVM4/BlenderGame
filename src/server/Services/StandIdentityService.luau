@@ -45,9 +45,10 @@ function Service.RequestName(player: Player, plot: any, value: any, context: any
     if filtered ~= text or Sanitizer.ContainsBlockedWord(filtered) then
         return false, "That name contains blocked text. Try another name."
     end
-    if not valid(player, plot, captured) or not authority.CommitFilteredStandName(player, plot, filtered, captured) then
+    if not valid(player, plot, captured) or not authority.CommitStandNameRevision(player, plot, captured) then
         return false, "Stand ownership changed."
     end
+    -- The RemoteFunction returns this only to the owner who submitted it.
     return true, filtered
 end
 

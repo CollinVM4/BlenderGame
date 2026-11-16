@@ -18,7 +18,7 @@ function Presentation.SetStandName(signRoot: Instance, text: string)
     end
     for _, name in layers do
         local label = root:FindFirstChild(name)
-        if label and label:IsA("TextLabel") then
+        if label and label:IsA("TextLabel") and label.Text ~= text then
             label.Text = text
         end
     end

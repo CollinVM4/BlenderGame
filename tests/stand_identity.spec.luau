@@ -10,7 +10,8 @@ for _, p in { owner, peer, other } do
     t.RemovePlayer(p)
     p.Parent, p.Character.Parent = services.Players, workspaceFake
 end
-owner.DisplayName = "Collin"
+owner.Name, owner.DisplayName = "Eatandpoop", "Collin"
+local publicName = "Eatandpoop's Stand"
 services.CollectionService:AddTag(plot, "PlayerPlot")
 services.CollectionService:AddTag(second, "PlayerPlot")
 env.typeof = function(value)
@@ -107,8 +108,8 @@ check(
 zones.Step()
 check(#intros == 1, "remaining inside never repeats intro")
 check(
-    plot:GetAttribute("StandName") == "Collin's Stand" and t.GetSession(owner).StandName == "Collin's Stand",
-    "DisplayName default exists without editor"
+    plot:GetAttribute("StandName") == publicName and t.GetSession(owner).StandName == publicName,
+    "public stand name uses the Roblox username"
 )
 check(
     not claim:GetAttribute("PlotZoneActive")
@@ -136,8 +137,8 @@ check(join:GetAttribute("PlotZoneActive") and teamVisual.Transparency == 0.4, "d
 local config = loadModule("StandIdentity")
 check(config.MaxCharacters == 27, "stand name contract is 27 visible characters")
 check(
-    config.DefaultName(string.rep("e\u{301}", 25)) == string.rep("e\u{301}", 19) .. "'s Stand",
-    "long platform defaults fit limit and retain suffix"
+    config.DefaultName("TwentyCharacterUserX") == "TwentyCharacterUserX's Stand",
+    "public sign preserves the entire Roblox username"
 )
 check(config.Normalize("") == nil and config.Normalize("a") == "a", "empty rejected; one character accepted")
 for _, grapheme in { "é", "e\u{301}", "😀", "👍🏽", "👩‍👩‍👧‍👦", "🇺🇸" } do
@@ -167,15 +168,19 @@ filter = function(text)
     check(text == "Super Smoothies", "Roblox receives the complete, normalized submission")
     return text
 end
-check(names.RequestName(owner, plot, "  Super Smoothies  ", context()), "approved rename commits")
-check(plot:GetAttribute("StandName") == "Super Smoothies", "approved text is replicated")
+local renamed, privateName = names.RequestName(owner, plot, "  Super Smoothies  ", context())
+check(renamed and privateName == "Super Smoothies", "approved name returns to the requesting owner")
+check(
+    plot:GetAttribute("StandName") == publicName and t.GetSession(owner).StandName == publicName,
+    "owner-only text never enters the public plot or session projection"
+)
 now += 2
 local filterAsync = services.TextService.FilterStringAsync
 services.TextService.FilterStringAsync = function()
     error("initial filtering outage")
 end
 check(
-    not names.RequestName(owner, plot, "Other", context()) and plot:GetAttribute("StandName") == "Super Smoothies",
+    not names.RequestName(owner, plot, "Other", context()) and plot:GetAttribute("StandName") == publicName,
     "initial Roblox filter failure retains authoritative name"
 )
 services.TextService.FilterStringAsync = filterAsync
@@ -190,7 +195,7 @@ filter = function()
     error("filter outage")
 end
 check(
-    not names.RequestName(owner, plot, "Other", context()) and plot:GetAttribute("StandName") == "Super Smoothies",
+    not names.RequestName(owner, plot, "Other", context()) and plot:GetAttribute("StandName") == publicName,
     "filter error retains prior name"
 )
 local approvedRevision = plot:GetAttribute("StandNameRevision")
@@ -204,6 +209,7 @@ for _, case in
         { "F.u.c.k.face", "F.u.c.k.face" },
         { "MrBitchface", "MrBitchface" },
         { "Shithead Smoothies", "Shithead Smoothies" },
+        { "shittybooty", "shittybooty" },
         { "Asswipe", "Asswipe" },
         { "The f.u.c.k Stand", "The f.u.c.k Stand" },
         { "F.u.c.k.i.n.g a.s.s.h.o.l.e", "F.u.c.k.i.n.g a.s.s.h.o.l.e" },
@@ -218,10 +224,10 @@ do
     local saved, message = names.RequestName(owner, plot, submitted, context())
     check(not saved and string.find(message, "blocked text", 1, true), "censored or blocked name can be retried")
     check(
-        plot:GetAttribute("StandName") == "Super Smoothies"
-            and t.GetSession(owner).StandName == "Super Smoothies"
+        plot:GetAttribute("StandName") == publicName
+            and t.GetSession(owner).StandName == publicName
             and plot:GetAttribute("StandNameRevision") == approvedRevision,
-        "blocked rename keeps the approved name and its revision"
+        "blocked rename keeps the public name and the current rename revision"
     )
 end
 filter = function(text)
@@ -229,13 +235,12 @@ filter = function(text)
 end
 for _, cleanName in { "Classy Smoothies #1", "Scunthorpe Smoothies", "Peacock Smoothies", "Shiitake Shakes" } do
     now += 2
+    local accepted, filtered = names.RequestName(owner, plot, cleanName, context())
     check(
-        names.RequestName(owner, plot, cleanName, context()) and plot:GetAttribute("StandName") == cleanName,
-        "approved names with incidental substrings are preserved"
+        accepted and filtered == cleanName and plot:GetAttribute("StandName") == publicName,
+        "approved names with incidental substrings are returned privately"
     )
 end
-now += 2
-names.RequestName(owner, plot, "Super Smoothies", context())
 now += 2
 filter = function(text)
     coroutine.yield()
@@ -250,7 +255,7 @@ check(coroutine.resume(pendingSave), "filter yields")
 check(not names.RequestName(owner, plot, "Duplicate", captured), "duplicate save rejected while filtering")
 t.SetJoinMode(owner, "Closed", t.GetRequestContext(owner))
 check(
-    coroutine.resume(pendingSave) and not saved and plot:GetAttribute("StandName") == "Super Smoothies",
+    coroutine.resume(pendingSave) and not saved and plot:GetAttribute("StandName") == publicName,
     "revision change invalidates pending filter"
 )
 now += 2
@@ -272,7 +277,7 @@ check(
     "replacement session claims"
 )
 check(
-    coroutine.resume(pendingSave) and not saved and plot:GetAttribute("StandName") == "Collin's Stand",
+    coroutine.resume(pendingSave) and not saved and plot:GetAttribute("StandName") == publicName,
     "old filter cannot write into replacement session"
 )
 now += 2

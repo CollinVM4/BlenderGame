@@ -19,6 +19,7 @@ local compoundTerms = {
     "shitface",
     "shithead",
     "shitshow",
+    "shitty",
     "sonofabitch",
 }
 
@@ -26,7 +27,6 @@ local compoundTerms = {
 local wholeTerms = {
     "shit",
     "shits",
-    "shitty",
     "bitch",
     "bitches",
     "ass",

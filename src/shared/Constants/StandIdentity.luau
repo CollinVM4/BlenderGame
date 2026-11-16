@@ -37,9 +37,8 @@ function Config.Truncate(value: string, maximum: number?): string
     return value
 end
 
-function Config.DefaultName(displayName: string): string
-    local suffix = "'s Stand"
-    return Config.Truncate(displayName, Config.MaxCharacters - (Config.Count(suffix) or 0)) .. suffix
+function Config.DefaultName(username: string): string
+    return username .. "'s Stand"
 end
 
 function Config.Normalize(value: any): string?

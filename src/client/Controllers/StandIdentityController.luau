@@ -25,7 +25,17 @@ type Sequence = {
     Saving: boolean,
     FocusUsed: boolean,
 }
+type OwnerName = {
+    Plot: Instance,
+    SessionId: string,
+    Revision: number,
+    Text: string,
+}
 local current: Sequence? = nil
+local ownerName: OwnerName? = nil
+local signRefreshElapsed = 0
+local signRefreshInterval = 0.15
+local signLayers = { "Shadow", "Depth2", "Depth1", "Main" }
 local ui: Editor.View
 local remote: RemoteFunction
 local initialized = false
@@ -92,6 +102,44 @@ function Controller.Close(immediate: boolean?)
     end)
 end
 
+local function ownsPlot(plot: Instance, sessionId: string): boolean
+    return player:GetAttribute("PlotSessionId") == sessionId
+        and plot:GetAttribute("PlotSessionId") == sessionId
+        and plot:GetAttribute("OwnerUserId") == player.UserId
+end
+
+local function setLocalSign(plot: Instance, text: string)
+    local area = plot:FindFirstChild("Customer Area")
+    local sign = if area then area:FindFirstChild("Dynamic Sign Text") else nil
+    local gui = if sign then sign:FindFirstChild("SurfaceGui") else nil
+    local root = if gui and gui:IsA("SurfaceGui") then gui:FindFirstChild("TextRoot") else nil
+    if not root then
+        return
+    end
+    for _, layer in signLayers do
+        local label = root:FindFirstChild(layer)
+        if label and label:IsA("TextLabel") and label.Text ~= text then
+            label.Text = text
+        end
+    end
+end
+
+local function refreshOwnerName()
+    local saved = ownerName
+    if not saved then
+        return
+    end
+    local plot = saved.Plot
+    local streamedIn = plot:IsDescendantOf(workspace)
+    local stillInSession = player:GetAttribute("PlotSessionId") == saved.SessionId
+    if not stillInSession or (streamedIn and not ownsPlot(plot, saved.SessionId)) then
+        ownerName = nil
+        setLocalSign(plot, tostring(plot:GetAttribute("StandName") or ""))
+    elseif streamedIn then
+        setLocalSign(plot, saved.Text)
+    end
+end
+
 local function valid(sequence: Sequence): boolean
     local subject = humanoid()
     return type(sequence.Context.PlotSessionId) == "string"
@@ -106,9 +154,7 @@ local function valid(sequence: Sequence): boolean
         and sequence.Plot:IsDescendantOf(workspace)
         and sequence.Marker.Parent == sequence.Plot
         and sequence.Plot:FindFirstChild("SignCamera") == sequence.Marker
-        and sequence.Plot:GetAttribute("OwnerUserId") == player.UserId
-        and sequence.Plot:GetAttribute("PlotSessionId") == sequence.Context.PlotSessionId
-        and player:GetAttribute("PlotSessionId") == sequence.Context.PlotSessionId
+        and ownsPlot(sequence.Plot, sequence.Context.PlotSessionId)
         and sequence.Plot:GetAttribute("PlotMembershipRevision") == sequence.Context.MembershipRevision
 end
 
@@ -175,8 +221,13 @@ function Controller.OpenNameEditor(plot: Instance)
             Controller.Close(true)
             return
         end
-        ui.Box.Text = tostring(plot:GetAttribute("StandName") or "")
-        ui.Status.Text, ui.Save.Text = "", "SAVE"
+        local saved = ownerName
+        local publicName = tostring(plot:GetAttribute("StandName") or "")
+        ui.Box.PlaceholderText = publicName
+        ui.Box.Text = if saved and saved.Plot == plot and saved.SessionId == sequence.Context.PlotSessionId
+            then saved.Text
+            else Config.Normalize(publicName) or ""
+        ui.Status.Text, ui.Save.Text = "Only you can see your custom name.", "SAVE"
         ui.Show()
         task.delay(3, function()
             if
@@ -218,6 +269,18 @@ function Controller.Init()
             local ok, success, message = pcall(function()
                 return remote:InvokeServer(sequence.Plot, raw, sequence.Context)
             end)
+            local plot, sessionId = sequence.Plot, sequence.Context.PlotSessionId
+            if ok and success and type(message) == "string" and ownsPlot(plot, sessionId) then
+                local revision = sequence.Context.StandNameRevision + 1
+                local saved = ownerName
+                if not saved or saved.SessionId ~= sessionId or saved.Revision < revision then
+                    if saved and saved.SessionId ~= sessionId then
+                        refreshOwnerName()
+                    end
+                    ownerName = { Plot = plot, SessionId = sessionId, Revision = revision, Text = message }
+                    refreshOwnerName()
+                end
+            end
             if current ~= sequence or sequence.Closing then
                 return
             end
@@ -267,9 +330,16 @@ function Controller.Init()
             Controller.Close()
         end
     end)
-    RunService.Heartbeat:Connect(function()
+    RunService.Heartbeat:Connect(function(dt)
         if current and not valid(current) then
             cancel()
+        end
+        if ownerName then
+            signRefreshElapsed += dt
+            if signRefreshElapsed >= signRefreshInterval then
+                signRefreshElapsed = 0
+                refreshOwnerName()
+            end
         end
     end)
     local claimed = ReplicatedStorage.Shared.Events:WaitForChild("PlotClaimed") :: RemoteEvent
