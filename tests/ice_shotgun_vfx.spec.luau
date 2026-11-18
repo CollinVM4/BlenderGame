@@ -49,6 +49,14 @@ check(
     "surge reuses model and sphere without another active slot"
 )
 check(heldPulse.CFrame.Position.X == 3, "reused surge moves to current server origin")
+check(heldPulse.Size.X == 2, "surge restarts at the caster instead of the held init sphere's radius")
+local surgeFrost = emitted[#emitted].Emitter
+check(
+    surgeFrost.Parent.ClassName == "Attachment"
+        and surgeFrost.Parent.Parent == heldPulse
+        and emitted[#emitted].Count == presentationConfig.SurgeFrostCount,
+    "stronger surge frost emits from a point at the caster rather than the sphere volume"
+)
 advance(0.11)
 check(heldPulse.Size.X == config.BlastRadius * 2, "surge expands reused sphere to full diameter")
 advance(0.24)
@@ -126,9 +134,11 @@ check(
     "large multiplayer hit lists obey the mobile impact budget"
 )
 check(
-    mobileBlast:FindFirstChild("IceRadialPulse"):FindFirstChild("ShotgunFrost").EmittedCount
-        == presentationConfig.MobileFrostCount,
-    "mobile pulse center uses the reduced frost budget"
+    mobileBlast
+        :FindFirstChild("IceRadialPulse")
+        :FindFirstChild("IceFrostOrigin")
+        :FindFirstChild("ShotgunFrost").EmittedCount == presentationConfig.MobileSurgeFrostCount,
+    "mobile surge center uses the reduced surge frost budget"
 )
 setup(vfx.Play(shot()), "second mobile shot")
 check(
@@ -193,6 +203,11 @@ local cue = playerGui:FindFirstChild("IceRayCasterSurge")
 check(cue ~= nil, "confirmed local surge remains visible inside its sphere on a miss at full world budget")
 local ring = cue:FindFirstChild("SurgeRing")
 check(
+    ring.Position.X.Offset == workspaceFake.CurrentCamera.ViewportSize.X * 0.5
+        and ring.Position.Y.Offset == workspaceFake.CurrentCamera.ViewportSize.Y * 0.65,
+    "screen shockwave originates at the caster's projected position rather than the screen center"
+)
+check(
     ring.BackgroundTransparency == 1
         and ring.Active == false
         and playerGui:FindFirstChild("IceShotgunHitFeedback") == nil,
@@ -223,4 +238,32 @@ end
 setup(vfx.Play(shot()), "surge before teardown")
 vfx.Destroy()
 check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "teardown clears the caster surge cue")
+
+-- Late packets can deliver the initial growth and surge close together.
+vfx.Init()
+flush()
+init.ServerTime = workspaceFake:GetServerTimeNow()
+setup(vfx.Play(init), "late init visual")
+advance(0.05)
+setup(vfx.Play(shot(nil, vec(7, 1, 0))), "catch-up surge")
+local catchUpPulse = childrenNamed(workspaceFake, "IceShotgunBlast")[1]:FindFirstChild("IceRadialPulse")
+advance(0.061)
+check(catchUpPulse.Size.X == 2, "late initial growth cannot overwrite the restarted surge")
+advance(0.05)
+check(
+    catchUpPulse.Size.X == config.BlastRadius * 2 and catchUpPulse.CFrame.Position.X == 7,
+    "restarted surge reaches the authoritative radius at the current caster position"
+)
+advance(presentationConfig.Lifetime)
+workspaceFake.CurrentCamera.WorldToViewportPoint = function()
+    return vec(0, 0, -1), false
+end
+setup(vfx.Play(shot()), "first-person surge")
+ring = playerGui:FindFirstChild("IceRayCasterSurge"):FindFirstChild("SurgeRing")
+check(
+    ring.Position.X.Offset == workspaceFake.CurrentCamera.ViewportSize.X * 0.5
+        and ring.Position.Y.Offset == workspaceFake.CurrentCamera.ViewportSize.Y * 0.5,
+    "first-person surge stays visible when the caster root is behind the camera"
+)
+vfx.Destroy()
 print("PASS: Ice Ray client presentation and mobile budgets")

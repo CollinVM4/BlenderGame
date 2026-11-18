@@ -21,7 +21,7 @@ type Result = {
     ServerTime: number,
     Hits: { Hit },
 }
-type Blast = { Model: Model, Sphere: BasePart, Expires: number }
+type Blast = { Model: Model, Sphere: BasePart, Expires: number, GrowTween: Tween? }
 local held: { [number]: Blast? } = {}
 local active: { Blast } = {}
 local connections: { RBXScriptConnection } = {}
@@ -81,8 +81,10 @@ local function part(class: string, model: Model, at: CFrame, size: Vector3): Bas
     return p
 end
 local function tween(object: Instance, seconds: number, properties: { [string]: any })
-    TweenService:Create(object, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties)
-        :Play()
+    local animation =
+        TweenService:Create(object, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties)
+    animation:Play()
+    return animation
 end
 -- A held init sphere stays at activation position until the confirmed surge.
 local function pulse(model: Model, origin: Vector3): BasePart
@@ -93,8 +95,16 @@ local function pulse(model: Model, origin: Vector3): BasePart
 end
 local function expand(blast: Blast, origin: Vector3, radius: number, fade: boolean)
     local sphere = blast.Sphere
+    if blast.GrowTween then
+        blast.GrowTween:Cancel()
+    end
     sphere.CFrame = CFrame.new(origin)
-    tween(sphere, Config.PulseGrowSeconds, { Size = Vector3.new(radius * 2, radius * 2, radius * 2) })
+    -- Each stage erupts from the caster again, rather than continuing from
+    -- the held init sphere's outer edge. Cancel a late init tween as well.
+    sphere.Size, sphere.Transparency = Vector3.new(2, 2, 2), Config.PulseStartTransparency
+    blast.GrowTween = tween(sphere, Config.PulseGrowSeconds, {
+        Size = Vector3.new(radius * 2, radius * 2, radius * 2),
+    })
     if fade then
         task.delay(Config.PulseGrowSeconds, function()
             if blast.Model.Parent then
@@ -104,6 +114,10 @@ local function expand(blast: Blast, origin: Vector3, radius: number, fade: boole
     end
 end
 local function frost(parent: BasePart, count: number, angle: number)
+    -- Attachment emission starts at the center, independent of the enclosing
+    -- sphere's size. Part emission otherwise spreads over its growing volume.
+    local origin = Instance.new("Attachment")
+    origin.Name, origin.Parent = "IceFrostOrigin", parent
     local emitter = Instance.new("ParticleEmitter")
     emitter.Name, emitter.Texture = "ShotgunFrost", frostTexture
     emitter.Enabled, emitter.Rate = false, 0
@@ -113,7 +127,7 @@ local function frost(parent: BasePart, count: number, angle: number)
     emitter.Drag, emitter.LightEmission = 4, 0.4
     emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.28), NumberSequenceKeypoint.new(1, 0) })
     emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1) })
-    emitter.Parent = parent
+    emitter.Parent = origin
     emitter:Emit(count)
 end
 local function sound(parent: Instance, id: string, volume: number)
@@ -166,11 +180,17 @@ local function showCasterSurge(result: Result, camera: Camera)
     screen.DisplayOrder = 8
     local shortEdge = math.min(viewport.X, viewport.Y)
     local startDiameter = shortEdge * Config.CasterSurgeStartScale
-    local endDiameter = viewport.Magnitude * 1.1
+    local projected, onScreen = camera:WorldToViewportPoint(result.Origin)
+    -- In first person the caster root can be behind the camera. Fall back to
+    -- screen center there; third person erupts from the projected player.
+    local centerX = if onScreen and projected.Z > 0 then projected.X else viewport.X * 0.5
+    local centerY = if onScreen and projected.Z > 0 then projected.Y else viewport.Y * 0.5
+    local farX, farY = math.max(centerX, viewport.X - centerX), math.max(centerY, viewport.Y - centerY)
+    local endDiameter = math.sqrt(farX * farX + farY * farY) * 2.1
     local ring = Instance.new("Frame")
     ring.Name, ring.BackgroundTransparency, ring.BorderSizePixel = "SurgeRing", 1, 0
     ring.Active, ring.AnchorPoint = false, Vector2.new(0.5, 0.5)
-    ring.Position, ring.Size = UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(startDiameter, startDiameter)
+    ring.Position, ring.Size = UDim2.fromOffset(centerX, centerY), UDim2.fromOffset(startDiameter, startDiameter)
     local corner = Instance.new("UICorner")
     corner.CornerRadius, corner.Parent = UDim.new(0.5, 0), ring
     local stroke = Instance.new("UIStroke")
@@ -185,11 +205,11 @@ local function showCasterSurge(result: Result, camera: Camera)
         streak.Name, streak.Active, streak.BorderSizePixel = "SurgeStreak", false, 0
         streak.BackgroundColor3, streak.BackgroundTransparency = Config.White, 0.3
         streak.AnchorPoint, streak.Rotation = Vector2.new(0.5, 0.5), math.deg(angle)
-        streak.Size = UDim2.fromOffset(shortEdge * 0.07, 2)
-        streak.Position = UDim2.new(0.5, x * startDiameter * 0.75, 0.5, y * startDiameter * 0.75)
+        streak.Size = UDim2.fromOffset(shortEdge * 0.1, 3)
+        streak.Position = UDim2.fromOffset(centerX + x * startDiameter * 0.75, centerY + y * startDiameter * 0.75)
         streak.Parent = screen
         tween(streak, Config.CasterSurgeSeconds, {
-            Position = UDim2.new(0.5, x * endDiameter * 0.5, 0.5, y * endDiameter * 0.5),
+            Position = UDim2.fromOffset(centerX + x * endDiameter * 0.5, centerY + y * endDiameter * 0.5),
             BackgroundTransparency = 1,
         })
     end
@@ -293,7 +313,11 @@ function Controller.Play(result: any): boolean
     held[result.ShooterUserId] = if isInit then blast else nil
     local model, center = blast.Model, blast.Sphere
     expand(blast, result.Origin, result.Radius, not isInit)
-    frost(center, if isMobile then Config.MobileFrostCount else Config.FrostCount, 360)
+    local frostCount = if isMobile then Config.MobileFrostCount else Config.FrostCount
+    if not isInit then
+        frostCount = if isMobile then Config.MobileSurgeFrostCount else Config.SurgeFrostCount
+    end
+    frost(center, frostCount, 360)
     local caster = Players:GetPlayerByUserId(result.ShooterUserId)
     local root = caster and caster.Character and caster.Character:FindFirstChild("HumanoidRootPart")
     -- A dedicated emitter follows the caster; the expanding pulse is never an audio source.

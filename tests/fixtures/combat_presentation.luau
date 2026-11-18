@@ -65,10 +65,14 @@ env.Enum.RollOffMode = { InverseTapered = "InverseTapered" }
 env.Enum.AssetFetchStatus = { Success = "Success", Failure = "Failure" }
 services.TweenService = {
     Create = function(_, object, info, properties)
+        local cancelled = false
         return {
+            Cancel = function()
+                cancelled = true
+            end,
             Play = function()
                 env.task.delay(info.Time, function()
-                    if not object.Destroyed then
+                    if not cancelled and not object.Destroyed then
                         for key, value in properties do
                             object[key] = value
                         end
@@ -92,6 +96,9 @@ services.ContentProvider = {
 services.UserInputService = { PreferredInput = "KeyboardAndMouse" }
 services.Players.PlayerAdded, services.Players.PlayerRemoving = signal(), signal()
 workspaceFake.CurrentCamera = { CFrame = frame(0, 1, 0), ViewportSize = vec(1280, 720, 0) }
+workspaceFake.CurrentCamera.WorldToViewportPoint = function(camera, _position)
+    return vec(camera.ViewportSize.X * 0.5, camera.ViewportSize.Y * 0.65, 10), true
+end
 workspaceFake.GetChildren = function(self)
     local children = {}
     for _, object in allInstances do

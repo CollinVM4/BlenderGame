@@ -9,16 +9,18 @@ return table.freeze({
     PulseFadeSeconds = 0.24,
     PulseStartTransparency = 0.25,
     -- Caster-only surge cue remains visible from inside the world sphere.
-    CasterSurgeSeconds = 0.35,
-    CasterSurgeStartScale = 0.3, -- Diameter relative to the shorter viewport edge.
-    CasterSurgeStroke = 4,
-    CasterSurgeStreakCount = 8,
+    CasterSurgeSeconds = 0.4,
+    CasterSurgeStartScale = 0.08, -- Tight burst from the player; relative to the shorter viewport edge.
+    CasterSurgeStroke = 6,
+    CasterSurgeStreakCount = 12,
     ViewDistance = 100,
     MobileViewDistance = 70,
     MaxActiveBlasts = 4,
     MobileMaxActiveBlasts = 2,
     FrostCount = 24,
     MobileFrostCount = 12,
+    SurgeFrostCount = 36,
+    MobileSurgeFrostCount = 18,
     ShardCount = 4,
     MobileShardCount = 2,
     MaxImpactEffects = 4,
