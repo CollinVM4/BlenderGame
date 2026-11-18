@@ -39,6 +39,7 @@ function Service.ResolveAssets(plot: Instance): any
     local visual = assembly and assembly:FindFirstChild("Visual")
     return {
         Lock = lock,
+        Walls = lock and lock:FindFirstChild("Walls"),
         Assembly = assembly,
         Button = if button and button:IsA("BasePart") then button else nil,
         Attachment = if attachment and attachment:IsA("Attachment") then attachment else nil,
@@ -91,10 +92,18 @@ function Service.CheckStanding(player: Player, plot: Instance): (boolean, string
         if plate and plate.Instance == button then "ButtonOverSupport" else "OutsideButton"
 end
 
--- Tagged walls can be below LockBase or elsewhere in this plot's Walls hierarchy.
--- An explicit association handles unnamed sibling walls without taking over helpers.
+-- The dedicated LockBase/Walls model can contain any number of barriers, including a roof.
+-- Tagged barriers elsewhere in the plot still use the existing association rules.
 function Service.DiscoverWalls(plot: Instance, lock: Instance?): { BasePart }
     local walls = {}
+    local wallContainer = lock and lock:FindFirstChild("Walls")
+    if wallContainer then
+        for _, part in wallContainer:GetDescendants() do
+            if part:IsA("BasePart") then
+                table.insert(walls, part)
+            end
+        end
+    end
     local assembly = lock and lock:FindFirstChild("LockButton")
     local visual = assembly and assembly:FindFirstChild("Visual")
     local button = assembly and assembly:FindFirstChild("Button")
@@ -103,6 +112,7 @@ function Service.DiscoverWalls(plot: Instance, lock: Instance?): { BasePart }
         if
             not part:IsA("BasePart")
             or not part:IsDescendantOf(plot)
+            or (wallContainer and part:IsDescendantOf(wallContainer))
             or part == button
             or part == base
             or part == assembly
@@ -191,6 +201,7 @@ local function lockFor(state: any, duration: number): boolean
 end
 
 local function bindAssets(state: any)
+    local previousWalls = state.Assets and state.Assets.Walls
     local previousVisual = state.Assets and state.Assets.Visual
     if state.TouchConnection then
         state.TouchConnection:Disconnect()
@@ -210,6 +221,21 @@ local function bindAssets(state: any)
     local plot = state.Plot
     local assets = Service.ResolveAssets(plot)
     state.Assets = assets
+    if assets.Walls ~= previousWalls then
+        for _, connection in state.WallConnections do
+            connection:Disconnect()
+        end
+        table.clear(state.WallConnections)
+        if assets.Walls then
+            local function wallChanged(instance: Instance)
+                if instance:IsA("BasePart") then
+                    state.Dirty = true
+                end
+            end
+            table.insert(state.WallConnections, assets.Walls.DescendantAdded:Connect(wallChanged))
+            table.insert(state.WallConnections, assets.Walls.DescendantRemoving:Connect(wallChanged))
+        end
+    end
     local lock = assets.Lock
     state.Button = assets.Button
     local origin, model = assets.Attachment, assets.Visual
@@ -228,7 +254,7 @@ local function bindAssets(state: any)
         table.insert(missing, "LockButton.Visual Model")
     end
     if #walls == 0 then
-        table.insert(missing, "associated PlayerOnlyCollision walls (under LockBase/Walls, or LockBaseWall=true)")
+        table.insert(missing, "barriers under LockBase/Walls or associated PlayerOnlyCollision parts")
     end
     if model then
         for _, name in { "Laser", "LaserBase" } do
@@ -317,13 +343,16 @@ local function bindPlot(plot: Instance)
     if states[plot] or not plot:IsDescendantOf(workspace) then
         return
     end
-    local state: any = { Plot = plot, Deadline = 0, NextLockAt = 0, Latched = {}, Connections = {} }
+    local state: any =
+        { Plot = plot, Deadline = 0, NextLockAt = 0, Latched = {}, Connections = {}, WallConnections = {} }
     states[plot] = state
     refreshState(state)
     bindAssets(state)
     local function changed(instance: Instance)
         if
             instance.Name == "LockBase"
+            or instance == state.Assets.Walls
+            or (instance.Name == "Walls" and instance.Parent == state.Assets.Lock)
             or instance.Name == "LockButton"
             or instance.Name == "Button"
             or instance.Name == "LockAttachment"
@@ -484,6 +513,9 @@ function Service.Init(services: any)
                     state.TouchEndConnection:Disconnect()
                 end
                 for _, connection in state.Connections do
+                    connection:Disconnect()
+                end
+                for _, connection in state.WallConnections do
                     connection:Disconnect()
                 end
                 states[plot] = nil

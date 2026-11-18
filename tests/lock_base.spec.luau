@@ -13,6 +13,14 @@ for i = 1, 6 do
     plots[i] = tycoon.GetPlot(owners[i])
     buttons[i], walls[i] = securityAssets(plots[i])
 end
+local lock = plots[1]:FindFirstChild("LockBase")
+local wallContainer = lockObject("Model", "Walls", lock)
+for _ = 1, 4 do
+    local side = lockObject("Part", "InvisWall", wallContainer)
+    services.CollectionService:AddTag(side, "PlayerOnlyCollision")
+end
+local roof = lockObject("Part", "InvisWall", wallContainer)
+roof.CanCollide = true
 local helper = lockObject("Part", "TurbineHelper", plots[1])
 services.CollectionService:AddTag(helper, "PlayerOnlyCollision")
 services.CollectionService:AddTag(buttons[1], "PlayerOnlyCollision")
@@ -32,6 +40,7 @@ tycoon.Init({
 for _, owner in owners do
     security.StartSession(owner)
 end
+check(not roof.CanCollide and roof.Transparency == 1 and roof.Anchored, "untagged roof starts invisible and unlocked")
 for i, plot in plots do
     check(
         not security.IsLocked(plot) and plot:GetAttribute("LockBaseLockedUntil") == 0,
@@ -45,11 +54,12 @@ for i, plot in plots do
 end
 check(helper.CanCollide and helper.CollisionGroup == "PlayerOnly", "unrelated tagged helper stays collidable")
 check(
-    #security.DiscoverWalls(plots[1], plots[1]:FindFirstChild("LockBase")) == 1,
-    "discover sibling walls without taking over turbine helper"
+    #security.DiscoverWalls(plots[1], lock) == 6,
+    "discover same-named barriers and sibling walls without duplicating tagged parts or taking over turbine helper"
 )
 local root = owners[1].Character:FindFirstChild("HumanoidRootPart")
 local enemyRoot = owners[2].Character:FindFirstChild("HumanoidRootPart")
+check(physicalCollision(roof, enemyRoot) and not physicalCollision(roof, root), "locked roof blocks only outsiders")
 check(not physicalCollision(walls[1], root), "owner crosses own barrier")
 check(
     physicalCollision(walls[1], enemyRoot) and physicalCollision(walls[2], root),
@@ -70,6 +80,7 @@ standingOn[root.Position] = nil
 now += 60
 heartbeat:Fire(0.1)
 check(not security.IsLocked(plots[1]) and not walls[1].CanCollide, "deadline automatically unlocks walls")
+check(not roof.CanCollide, "deadline disables roof collision")
 standingOn[root.Position] = buttons[1]
 check(security.Activate(owners[1], plots[1]), "manual lock available immediately after expiration")
 local deadline = now + 60
@@ -87,6 +98,7 @@ tycoon.RemovePlayer(teammate)
 setup(tycoon.JoinSession(teammate, owners[1], tycoon.GetRequestContext(owners[1])), "join locked plot")
 local teammateRoot = teammate.Character:FindFirstChild("HumanoidRootPart")
 check(not physicalCollision(walls[1], teammateRoot), "new teammate crosses active walls immediately")
+check(not physicalCollision(roof, teammateRoot), "new teammate passes through the locked roof")
 carry(owners[1], "Milk")
 setup(inventory.Deposit(owners[1], "Milk", 1), "seed member stash access")
 check(press(teammate, "TAKE", 1, owners[1]), "teammate keeps protected stash access during lock")
@@ -200,14 +212,21 @@ check(
     lateWall.CanCollide and not physicalCollision(lateWall, replacementRoot) and physicalCollision(lateWall, enemyRoot),
     "late wall discovery preserves member/outsider security"
 )
-local nestedWall = lockObject("Part", "UnnamedBarrier", plots[1]:FindFirstChild("LockBase"))
+local nestedWall = lockObject("Part", "UnnamedBarrier", lock)
 services.CollectionService:AddTag(nestedWall, "PlayerOnlyCollision")
 local explicitWall = lockObject("Part", "UnnamedSibling", plots[1])
 explicitWall:SetAttribute("LockBaseWall", true)
 services.CollectionService:AddTag(explicitWall, "PlayerOnlyCollision")
 check(
-    #security.DiscoverWalls(plots[1], plots[1]:FindFirstChild("LockBase")) == 4,
+    #security.DiscoverWalls(plots[1], lock) == 9,
     "discover both nested walls and explicitly associated sibling walls"
+)
+local lateRoof = lockObject("Part", "InvisWall", wallContainer)
+wallContainer.DescendantAdded:Fire(lateRoof)
+heartbeat:Fire(0.1)
+check(
+    physicalCollision(lateRoof, enemyRoot) and not physicalCollision(lateRoof, replacementRoot),
+    "untagged roof added during a lock adopts its collision and member exemptions"
 )
 now += 60
 heartbeat:Fire(0.1)
