@@ -74,9 +74,14 @@ function Controller.Init()
             if current.Rename then
                 current.Rename.Visible, current.Rename.Active = owner, owner
             end
-            local hasTeammate = owner and type(teammate) == "number"
             if current.Kick then
-                current.Kick.Visible, current.Kick.Active = hasTeammate, hasTeammate
+                local isTeammate = teammate == player.UserId
+                local label = current.KickLabel
+                local canAct = type(teammate) == "number" and (owner or (isTeammate and label ~= nil))
+                current.Kick.Visible, current.Kick.Active = canAct, canAct
+                if label then
+                    label.Text = if isTeammate then "LEAVE TEAM" else "KICK TEAM"
+                end
             end
             local mode = if plot then plot:GetAttribute("JoinMode") else nil
             for value, button in current.Modes do
@@ -132,11 +137,12 @@ function Controller.Init()
             StandIdentity.OpenNameEditor(plot)
         end, function()
             local plot = sessionPlot()
-            if not plot or not remote or plot:GetAttribute("OwnerUserId") ~= player.UserId then
+            if not plot or not remote then
                 return
             end
             local teammate = plot:GetAttribute("TeammateUserId")
-            if type(teammate) ~= "number" then
+            local isTeammate = teammate == player.UserId
+            if type(teammate) ~= "number" or (not isTeammate and plot:GetAttribute("OwnerUserId") ~= player.UserId) then
                 return
             end
             local captured = {
@@ -144,7 +150,11 @@ function Controller.Init()
                 MembershipRevision = plot:GetAttribute("PlotMembershipRevision"),
                 ClaimRevision = plot:GetAttribute("PlotClaimRevision") or 0,
             }
-            remote:FireServer("KickTeammate", plot, teammate, captured)
+            if isTeammate then
+                remote:FireServer("LeaveTeam", plot, nil, captured)
+            else
+                remote:FireServer("KickTeammate", plot, teammate, captured)
+            end
         end)
         player:GetAttributeChangedSignal("PlotSessionId"):Connect(refresh)
         player:GetAttributeChangedSignal("MusicEnabled"):Connect(refresh)
