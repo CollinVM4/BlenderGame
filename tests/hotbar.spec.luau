@@ -744,10 +744,12 @@ for _, dimensions in { { 390, 844 }, { 844, 390 }, { 320, 568 }, { 740, 360 }, {
                     "standalone startup presents one Ice Gun without export or timers"
                 )
                 check(named(slots[1], "Icon").Image == Gui.Art.Ice, "direct Ice Gun artwork")
-                check(
-                    slots[1].AbsoluteSize.X >= 48 and slots[1].AbsoluteSize.X == slots[1].AbsoluteSize.Y,
-                    "square touch target"
-                )
+                local slotSize = slots[1].AbsoluteSize
+                if dimensions[1] > dimensions[2] then
+                    check(slotSize.X >= 44 and slotSize.Y >= 48, "compact touch target is large enough to tap")
+                else
+                    check(slotSize.X >= 48 and slotSize.X == slotSize.Y, "square portrait touch target")
+                end
                 check(f.Bar.AbsoluteSize.X <= f.Safe.AbsoluteSize.X, "mounted safe width")
                 slots[1].Activated:Fire()
                 flush()
@@ -998,15 +1000,18 @@ run("overflow", "landscape inventory growth stays bottom-docked between touch co
         flush()
         check(f.Bar.AbsolutePosition.Y == lowestY, string.format("pickup %d keeps the bottom dock", i))
         check(f.Bar.AbsolutePosition.X >= 298, "the row clears the thumbstick horizontally")
-        if i <= 4 then
-            check(f.Bar.AbsoluteSize.X == f.Scroll.CanvasSize.X.Offset, "the clear bottom gap fits four items")
+        if i <= 5 then
+            check(f.Bar.AbsoluteSize.X == f.Scroll.CanvasSize.X.Offset, "the clear bottom gap fits five items")
         end
     end
     local slots = f.Slots()
-    local width, slotSize = f.Bar.AbsoluteSize.X, slots[1].AbsoluteSize.X
+    local width = f.Bar.AbsoluteSize.X
     local maxScroll = f.Scroll.CanvasSize.X.Offset - width
     check(maxScroll > 0, "excess items use horizontal scrolling")
-    check((width - 2 * Gui.Padding + Gui.Gap) % (slotSize + Gui.Gap) == 0, "the resting row shows only full slots")
+    local right = f.Bar.AbsolutePosition.X + width
+    check(slots[5].AbsolutePosition.X + slots[5].AbsoluteSize.X <= right, "five slots are fully visible")
+    check(slots[6].AbsolutePosition.X >= right, "the sixth slot is fully offscreen at rest")
+    check(slots[5].AbsoluteSize.X >= 44, "compact slots have at least 44 pixels of touch width")
     f.Scroll.CanvasPosition = v(maxScroll, 0)
     local last = slots[9]
     check(
@@ -1023,6 +1028,25 @@ run("overflow", "landscape inventory growth stays bottom-docked between touch co
     check(f.Bar.AbsolutePosition.Y == lowestY and f.Scroll.CanvasPosition.X == 0, "shrinking inventory stays docked")
     check(not core.Enabled and writes(false) == 1, "layout growth keeps the one-time handoff")
     f.Stop()
+end)
+run("overflow", "landscape fits more full slots as the bottom gap widens", function()
+    local f = fixture(740, 360, true)
+    local view = Gui.Create(f.PlayerGui)
+    for _, case in { { 188, 4 }, { 278, 6 }, { 416, 9 } } do
+        local width, count = case[1], case[2]
+        local halfGap = width / 2 + 8
+        local obstacles = {
+            { Min = v(0, 230), Max = v(370 - halfGap, 360) },
+            { Min = v(370 + halfGap, 230), Max = v(740, 360) },
+        }
+        check(Gui.Layout(view, count, true, obstacles), "the lane is usable")
+        check(view.Width == view.CanvasWidth, string.format("%d slots fit in the %d-pixel gap", count, width))
+        local dock = view.Bar.AbsolutePosition.Y
+        check(dock + view.Bar.AbsoluteSize.Y == 348, "the compact bar stays at the bottom")
+        check(Gui.Layout(view, count + 1, true, obstacles), "overflow stays usable")
+        check(view.Width < view.CanvasWidth and view.Bar.AbsolutePosition.Y == dock, "overflow keeps the dock")
+    end
+    view.Root:Destroy()
 end)
 run("overflow", "landscape lifts only when there is no room for one full slot at the bottom", function()
     local f = fixture(740, 360, true)

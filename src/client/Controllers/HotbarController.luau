@@ -562,9 +562,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         local usable = if mounted then Gui.Layout(view, #items, UIS.TouchEnabled, obstacles()) else false
         for index, binding in ordered do
-            binding.Slot.Button.Size = UDim2.fromOffset(view.SlotSize, view.SlotSize)
-            binding.Slot.Button.Position =
-                UDim2.fromOffset(Gui.Padding + (index - 1) * (view.SlotSize + Gui.Gap), Gui.Padding)
+            Gui.PlaceSlot(view, binding.Slot, index)
         end
         if usable == false or not valid then
             requestCore(true, if not valid then "waiting for valid Tool attributes" else "custom view unavailable")
