@@ -6,6 +6,7 @@ export type Event =
     | "IngredientPlant"
     | "IngredientThrow"
     | "BatSwing"
+    | "BatImpact"
     | "CustomerHurt"
     | "MuncherReveal"
 local remote: RemoteEvent?

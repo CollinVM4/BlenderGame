@@ -11,9 +11,13 @@ local config = loadModule("BatConfig")
 local gameplaySfx = loadModule("GameplaySfxService")
 gameplaySfx.Init()
 local sfxRemote = shared.Events:FindFirstChild("GameplaySfx")
-local swingSounds = {}
+local swingSounds, impactSounds = {}, {}
 sfxRemote.FireAllClients = function(_, name, position)
-    table.insert(swingSounds, { Name = name, Position = position })
+    if name == "BatImpact" then
+        table.insert(impactSounds, position)
+    else
+        table.insert(swingSounds, { Name = name, Position = position })
+    end
 end
 dependency.MovementService = movement
 dependency.CombatService = combat
@@ -104,7 +108,7 @@ template.Grip = authoredGrip
 local handle = part("Handle", template)
 handle.Size = vec(1, 2, 1)
 local mesh = part("BatMesh", template)
-mesh.Size = vec(1, 4, 1)
+mesh.Size = vec(1, 1, 4)
 mesh.CFrame = frame(-0.15, 0.2, -1.1)
 local hitbox = part("Hitbox", template)
 hitbox.Size = vec(3.087, 2.35, 8.118)

@@ -5,6 +5,7 @@ local played = {}
 local preloadCount = 0
 local expectedPreload = 9
 local lastSound
+local emitted
 local jobs = {}
 local remote = { OnClientEvent = {
     Connect = function(_, callback)
@@ -26,10 +27,7 @@ local boundary = {
     ContentProvider = {
         PreloadAsync = function(_, assets)
             preloadCount += 1
-            check(
-                #assets == expectedPreload,
-                "preload deduplicates shared clips and loads the Muncher reveal clip"
-            )
+            check(#assets == expectedPreload, "preload deduplicates shared clips and loads the Muncher reveal clip")
         end,
     },
     Debris = { AddItem = function() end },
@@ -67,7 +65,23 @@ setfenv(
         end,
         Instance = {
             new = function(class)
-                return if class == "Sound" then sound() else {}
+                if class == "Sound" then
+                    return sound()
+                elseif class == "ParticleEmitter" then
+                    return {
+                        Emit = function(self, count)
+                            if count > 0 then
+                                emitted = self.Parent
+                            end
+                        end,
+                    }
+                end
+                return {}
+            end,
+        },
+        NumberSequence = {
+            new = function()
+                return {}
             end,
         },
         workspace = {},
@@ -120,6 +134,12 @@ check(
     "Muncher reveal plays the supplied clip once"
 )
 check(lastSound.Parent.Position == "position", "Muncher reveal plays at the purchase position")
+check(emitted == nil, "ordinary cues do not emit hit particles")
+receive("BatImpact", "position")
+check(
+    #played == 8 and lastSound.SoundId == config.BatImpactSoundId and emitted == lastSound.Parent,
+    "confirmed bat impact plays its own sound and flashes at the contact position"
+)
 
 local slotConfig = loadModule("Muncher")
 local before = #played

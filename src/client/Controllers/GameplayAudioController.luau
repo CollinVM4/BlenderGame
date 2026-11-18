@@ -13,6 +13,7 @@ local eventAssets: { [string]: string } = {
     IngredientPlant = Config.IngredientPlantSoundId,
     IngredientThrow = Config.IngredientThrowSoundId,
     BatSwing = Config.BatSwingSoundId,
+    BatImpact = Config.BatImpactSoundId,
     CustomerHurt = Config.CustomerHurtSoundId,
     MuncherReveal = Config.MuncherRevealSoundId,
 }
@@ -45,7 +46,7 @@ function Controller.PlayCashFeedback(kind: "Pop" | "Collect")
     Debris:AddItem(sound, 0.4)
 end
 
-local function play(template: Sound, position: Vector3)
+local function play(template: Sound, position: Vector3, batImpact: boolean?)
     local camera = workspace.CurrentCamera
     if camera and (camera.CFrame.Position - position).Magnitude > Config.SoundRollOffMaxDistance then
         return
@@ -59,6 +60,18 @@ local function play(template: Sound, position: Vector3)
     local sound = template:Clone()
     sound.Parent = emitter
     emitter.Parent = workspace
+    if batImpact then
+        local flash = Instance.new("ParticleEmitter")
+        flash.Rate = 0
+        flash.Lifetime = NumberRange.new(0.10, 0.18)
+        flash.Speed = NumberRange.new(6, 10)
+        flash.SpreadAngle = Vector2.new(180, 180)
+        flash.LightEmission = 1
+        flash.Color = ColorSequence.new(Color3.fromRGB(255, 217, 91))
+        flash.Size = NumberSequence.new(0.35, 0)
+        flash.Parent = emitter
+        flash:Emit(7)
+    end
     sound.Ended:Once(function()
         emitter:Destroy()
     end)
@@ -116,7 +129,7 @@ function Controller.Init()
         end
     end
     local ready = false
-    local pending: { { Template: Sound, Position: Vector3 } } = {}
+    local pending: { { Template: Sound, Position: Vector3, BatImpact: boolean } } = {}
     task.spawn(function()
         local remote = ReplicatedStorage.Shared.Events:WaitForChild("GameplaySfx") :: RemoteEvent
         remote.OnClientEvent:Connect(function(event: any, position: any)
@@ -126,10 +139,10 @@ function Controller.Init()
             end
             local template = templates[id]
             if ready then
-                play(template, position)
+                play(template, position, event == "BatImpact")
             elseif #pending < 32 then
                 -- Preserve early authorized events while the two assets load.
-                table.insert(pending, { Template = template, Position = position })
+                table.insert(pending, { Template = template, Position = position, BatImpact = event == "BatImpact" })
             end
         end)
     end)
@@ -142,7 +155,7 @@ function Controller.Init()
         end
         ready = true
         for _, event in pending do
-            play(event.Template, event.Position)
+            play(event.Template, event.Position, event.BatImpact)
         end
         table.clear(pending)
     end)

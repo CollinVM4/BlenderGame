@@ -445,6 +445,32 @@ for _, dimensions in { { 390, 844, 70 }, { 844, 390, 70 } } do
     flush()
     verify(true)
 end
+-- Switching weapons preserves the same right-thumb target in both orientations.
+for _, dimensions in { { 390, 844, 70 }, { 844, 390, 70 } } do
+    scene(table.unpack(dimensions))
+    player.ChildAdded:Fire(root)
+    flush()
+    local fireCenter, fireSize = geometry(buttons.IceShotgunFire)
+    layout.Unregister("IceShotgunFire")
+    buttons.IceShotgunFire = nil
+    buttons.BatSwing = object("ImageButton", "BatSwing", frame)
+    layout.Register("BatSwing")
+    root.DescendantAdded:Fire(buttons.BatSwing)
+    flush()
+    local swingCenter, swingSize = geometry(buttons.BatSwing)
+    check(
+        near(fireCenter.X, swingCenter.X)
+            and near(fireCenter.Y, swingCenter.Y)
+            and near(fireSize.X, swingSize.X)
+            and near(fireSize.Y, swingSize.Y),
+        "Swing uses exactly Ice Ray Fire's touch target"
+    )
+    layout.Unregister("BatSwing")
+    layout.Register("IceShotgunFire")
+end
+scene(844, 390, 70)
+player.ChildAdded:Fire(root)
+flush()
 local oldSprint = buttons.SprintHeld
 buttons.SprintHeld = object("ImageButton", "ReplacementSprint", frame)
 local scale = object("UIScale", "NativeScale", buttons.SprintHeld)

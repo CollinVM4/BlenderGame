@@ -1,9 +1,13 @@
 --!strict
 return {
     SwingCooldown = 1.1,
-    -- Server samples the live equipped Hitbox throughout this active swing window.
+    -- Bat 1 dimensions in studs. The long axis of the authored Hitbox is local Z.
+    HitboxSize = Vector3.new(3.75, 3, 8.5),
+    SwingHalfAngle = 55,
+    CloseContactRadius = 1.875,
+    -- The server samples the front sweep during the contact portion of the animation.
     HitActiveStart = 0.08,
-    HitActiveEnd = 0.50,
+    HitActiveEnd = 0.28,
     HitSampleInterval = 0.04,
     ImmunitySeconds = 2.5,
     Knockback = {
@@ -22,30 +26,24 @@ return {
         SpawnRadius = 2,
         SpawnHeight = 1,
     },
-    -- Maximum distance from the attacker root to the equipped Hitbox center before scaling.
-    -- Contact comes from overlap with the issued Hitbox.
-    MaxRootDistance = 8,
     Levels = {
         -- Independent horizontal/upward velocity changes in studs/sec, mass-scaled at impact.
         {
-            Scale = 1,
-            Reach = 5,
+            LengthScale = 1,
             StunDuration = 1.5,
             HorizontalKnockback = 28,
             VerticalKnockback = 10,
             DamageFraction = 0.25,
         },
         {
-            Scale = 1.25,
-            Reach = 5.75,
+            LengthScale = 1.40,
             StunDuration = 2.25,
             HorizontalKnockback = 48,
             VerticalKnockback = 20,
             DamageFraction = 0.34,
         },
         {
-            Scale = 1.50,
-            Reach = 6.5,
+            LengthScale = 1.80,
             StunDuration = 3,
             HorizontalKnockback = 75,
             VerticalKnockback = 32,
