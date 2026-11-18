@@ -69,10 +69,19 @@ for _, plot in plots do
     if not walls then
         -- Read-only fallback also works when bootstrap stopped before publication.
         walls = {}
+        local wallContainer = lock and lock:FindFirstChild("Walls")
+        if wallContainer then
+            for _, part in wallContainer:GetDescendants() do
+                if part:IsA("BasePart") then
+                    table.insert(walls, part)
+                end
+            end
+        end
         for _, part in CollectionService:GetTagged("PlayerOnlyCollision") do
             if
                 not part:IsA("BasePart")
                 or not part:IsDescendantOf(plot)
+                or (wallContainer and part:IsDescendantOf(wallContainer))
                 or part == button
                 or part == base
                 or part == assembly

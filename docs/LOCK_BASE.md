@@ -54,8 +54,7 @@ single-line idle text is centered horizontally and vertically; Fredoka, outline,
 color and 65-stud camera culling are retained. The UI uses the exact authored
 attachment with zero offsets and independent 6/7-stud character proximity.
 
-Collision and theft behavior are unchanged: existing PlayerOnlyCollision walls
-block outsiders while locked, server-created NoCollisionConstraints exempt owner/
+Security walls block outsiders while locked. Server-created NoCollisionConstraints exempt owner/
 teammate character parts, and members still collide with other plots' locked walls.
 NPCs and loose items retain nonplayer collision behavior. Locked-base outsider TAKE
 is denied and checked again before slot reservation; permanent stash protection
@@ -74,6 +73,8 @@ LockBase
     Visual (Model)
       LaserBase (multiple)
       Laser (multiple)
+  Walls (Model or Folder)
+    InvisWall (BasePart, repeat for each side wall and roof)
 ```
 
 The exact UI anchor is `LockBase.LockButton.Button.LockAttachment`. Runtime leaves
@@ -90,12 +91,12 @@ culling remains at 65 studs to accommodate normal third-person camera offsets.
 `Enabled` is locally controlled, so its server value stays false even when a
 nearby player sees the text. The existing color/outline are retained at size 24.
 
-Retain PlayerOnlyCollision on the authored security walls. Discovery accepts tagged
-parts beneath LockBase, in any Wall/Walls hierarchy within the plot, or explicitly
-marked `LockBaseWall=true`. Only unnamed sibling walls outside those hierarchies
-need that boolean attribute. Button, LockButton, BlackBase and Visual descendants
-are excluded; unrelated helpers keep their existing behavior. Runtime makes the
-security walls invisible/anchored and controls CanCollide.
+Put each side wall and the roof under `LockBase.Walls`. Every BasePart in this
+container is a security barrier, with or without a `PlayerOnlyCollision` tag.
+Existing tagged barriers still work beneath LockBase, in any Wall/Walls hierarchy
+within the plot, or with `LockBaseWall=true`. Button, LockButton, BlackBase and
+Visual descendants are excluded from tagged discovery. Runtime anchors the
+barriers, makes them invisible, and enables collision against outsiders while locked.
 
 Run [InspectLockBase](studio/InspectLockBase.luau) in the Server Command Bar during
 Play. It reports actual paths/classes, Button properties, attachment host, visual
