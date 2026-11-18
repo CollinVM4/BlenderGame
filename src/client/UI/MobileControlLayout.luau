@@ -6,9 +6,14 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local Layout = {}
-local OFFSETS =
-    { SprintHeld = Vector2.new(-1.25, 0), ThrowHeld = Vector2.new(-0.95, -0.95), IceShotgunFire = Vector2.new(0, -1.8) }
-local ACTIONS = { "SprintHeld", "ThrowHeld", "IceShotgunFire" }
+local WEAPON_OFFSET = Vector2.new(0, -1.8)
+local OFFSETS = {
+    SprintHeld = Vector2.new(-1.25, 0),
+    ThrowHeld = Vector2.new(-0.95, -0.95),
+    IceShotgunFire = WEAPON_OFFSET,
+    BatSwing = WEAPON_OFFSET,
+}
+local ACTIONS = { "SprintHeld", "ThrowHeld", "IceShotgunFire", "BatSwing" }
 local PADDING = 8
 local GAP = 2
 local registered: { [string]: boolean } = {}
@@ -22,6 +27,14 @@ local playerGui: PlayerGui? = nil
 local started = false
 local queued = false
 local generation = 0
+
+local function preferredOffset(action: string, available: Vector2): Vector2
+    local offset = OFFSETS[action]
+    if offset == WEAPON_OFFSET and available.X > available.Y then
+        return Vector2.new(OFFSETS.ThrowHeld.X, -1.85)
+    end
+    return offset
+end
 
 local function buttonsChanged()
     for _, callback in buttonObservers do
@@ -282,15 +295,14 @@ update = function()
         if scale <= 0 then
             continue
         end
-        local offset = OFFSETS[action]
-        if action == "IceShotgunFire" and available.X > available.Y then
-            -- Stack Fire above Throw in landscape, clear of the right-side menus.
-            offset = Vector2.new(OFFSETS.ThrowHeld.X, -1.85)
-        end
+        local offset = preferredOffset(action, available)
         local position = place(center + offset * diameter, size, bounds, obstacles)
         if position then
-            local half = Vector2.new(size / 2, size / 2)
-            table.insert(obstacles, Rect.new(position - half, position + half))
+            -- Fire and Swing are alternate actions in the same last slot.
+            if OFFSETS[action] ~= WEAPON_OFFSET then
+                local half = Vector2.new(size / 2, size / 2)
+                table.insert(obstacles, Rect.new(position - half, position + half))
+            end
             -- Scale ratios also handle a UIScale on the CAS parent. Preserve AnchorPoint.
             local localPosition = position
                 - parent.AbsolutePosition
@@ -360,16 +372,22 @@ function Layout.HotbarObstacles(root: PlayerGui, bounds: Rect): ({ Rect }, { Ins
     end
     local size = math.max(44, diameter * 0.83)
     for _, action in ACTIONS do
+        if action == "BatSwing" then
+            continue -- The weapon slot below covers either equipped weapon.
+        end
         -- Synchronous cache read only: pending lookup in the mobile controls
         -- pass cannot block inventory, layout, input or Backpack takeover.
         local button = actionButtons[action]
+        if action == "IceShotgunFire" then
+            local swing = actionButtons.BatSwing
+            if swing and swing:IsDescendantOf(root) and inspect(swing) then
+                continue
+            end
+        end
         if button and button:IsDescendantOf(root) and inspect(button) then
             continue
         end
-        local offset = OFFSETS[action]
-        if action == "IceShotgunFire" and available.X > available.Y then
-            offset = Vector2.new(OFFSETS.ThrowHeld.X, -1.85)
-        end
+        local offset = preferredOffset(action, available)
         local position = place(center + offset * diameter, size, bounds, obstacles)
         if position then
             local half = Vector2.new(size / 2, size / 2)

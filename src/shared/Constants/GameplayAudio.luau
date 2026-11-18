@@ -8,6 +8,7 @@ return {
     IngredientPlantSoundId = PLIP,
     IngredientThrowSoundId = PLOP,
     BatSwingSoundId = BAT_SWING,
+    BatImpactSoundId = PLOP,
     CustomerHurtSoundId = "rbxassetid://126967734395019",
     MuncherRevealSoundId = "rbxassetid://137370579818072",
     SoundVolume = 0.7,

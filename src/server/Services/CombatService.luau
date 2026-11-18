@@ -7,7 +7,7 @@ local GameplaySfx = require(script.Parent.GameplaySfxService)
 local Knockback = require(script.Parent.BatKnockback)
 local CombatService = {}
 local deps: any
-type Weapon = { Tool: Tool, Scale: number }
+type Weapon = { Tool: Tool, LengthScale: number }
 type EquippedBat = {
     Character: Model?,
     Weapon: Weapon?,
@@ -111,49 +111,93 @@ local function removeWeapon(player: Player)
         weapon.Tool:Destroy()
     end
 end
--- Tool.Grip is inherited unchanged from the authored template; never rotate mesh/hitbox to fix grip.
--- Scale only the clone. Temporarily release constraints so resizing cannot move the character.
+local function stretch(position: Vector3, axis: Vector3, ratio: number): Vector3
+    return position + axis * (position:Dot(axis) * (ratio - 1))
+end
+
+local function localDirection(frame: CFrame, axis: Vector3): Vector3
+    return Vector3.new(axis:Dot(frame.RightVector), axis:Dot(frame.UpVector), -axis:Dot(frame.LookVector))
+end
+
+local function stretchSize(size: Vector3, axis: Vector3, ratio: number): Vector3
+    local x, y, z = math.abs(axis.X), math.abs(axis.Y), math.abs(axis.Z)
+    if x > y and x > z then
+        return Vector3.new(size.X * ratio, size.Y, size.Z)
+    elseif y > z then
+        return Vector3.new(size.X, size.Y * ratio, size.Z)
+    end
+    return Vector3.new(size.X, size.Y, size.Z * ratio)
+end
+
+-- Keep the Handle and Tool.Grip as the fixed pivot of the stretch.
 local function configure(weapon: Weapon, level: number)
     local tool = weapon.Tool
-    local scale = Config.Levels[level].Scale
-    local ratio = scale / weapon.Scale
+    local scale = Config.Levels[level].LengthScale
+    local ratio = scale / weapon.LengthScale
     local handle = tool:FindFirstChild("Handle") :: BasePart
+    local hitbox = tool:FindFirstChild("Hitbox") :: BasePart
+    local handleFrame = handle.CFrame
+    local hitboxOffset = handleFrame:ToObjectSpace(hitbox.CFrame)
+    local axis = hitboxOffset.LookVector
     local parts: { [BasePart]: CFrame } = {}
     local constraints: { WeldConstraint } = {}
     for _, object in tool:GetDescendants() do
         if object:IsA("BasePart") then
-            parts[object] = handle.CFrame:ToObjectSpace(object.CFrame)
+            parts[object] = handleFrame:ToObjectSpace(object.CFrame)
         elseif object:IsA("WeldConstraint") and object.Enabled then
             object.Enabled = false
             table.insert(constraints, object)
         end
     end
     for part, offset in parts do
-        part.Size *= ratio
-        part.CFrame = handle.CFrame * (CFrame.new(offset.Position * (ratio - 1)) * offset)
+        if part == hitbox then
+            local base = Config.HitboxSize
+            local length = base.Z * scale
+            local tip = if offset.Position:Dot(axis) >= 0 then axis else axis * -1
+            -- Keep the grip-side face fixed, including when the Studio asset has the old size.
+            local position = offset.Position + tip * ((length - part.Size.Z) / 2)
+            part.Size = Vector3.new(base.X, base.Y, length)
+            part.CFrame = handleFrame * (CFrame.new(position) * offset.Rotation)
+        elseif part ~= handle then
+            local localAxis = localDirection(offset, axis)
+            part.Size = stretchSize(part.Size, localAxis, ratio)
+            part.CFrame = handleFrame * (CFrame.new(stretch(offset.Position, axis, ratio)) * offset.Rotation)
+        end
         part.Anchored = false
         part.CanCollide = false
         part.CanTouch = false
         part.Massless = true
     end
     for _, object in tool:GetDescendants() do
-        if object:IsA("SpecialMesh") then
-            object.Scale *= ratio
-            object.Offset *= ratio
-        elseif object:IsA("Attachment") then
-            object.Position *= ratio
+        local parent = object.Parent
+        local offset = if parent and parent:IsA("BasePart") then parts[parent] else nil
+        if offset and object:IsA("SpecialMesh") then
+            local localAxis = localDirection(offset, axis)
+            object.Scale = stretchSize(object.Scale, localAxis, ratio)
+            object.Offset = stretch(object.Offset, localAxis, ratio)
+        elseif offset and object:IsA("Attachment") and parent ~= handle then
+            local localAxis = localDirection(offset, axis)
+            object.Position = stretch(object.Position, localAxis, ratio)
         elseif object:IsA("JointInstance") then
-            object.C0 = CFrame.new(object.C0.Position * ratio) * object.C0.Rotation
-            object.C1 = CFrame.new(object.C1.Position * ratio) * object.C1.Rotation
+            -- The joint origins follow the same stretch as their connected parts.
+            local part0, part1 = object.Part0, object.Part1
+            local offset0, offset1 = if part0 then parts[part0] else nil, if part1 then parts[part1] else nil
+            if offset0 then
+                local localAxis = localDirection(offset0, axis)
+                object.C0 = CFrame.new(stretch(object.C0.Position, localAxis, ratio)) * object.C0.Rotation
+            end
+            if offset1 then
+                local localAxis = localDirection(offset1, axis)
+                object.C1 = CFrame.new(stretch(object.C1.Position, localAxis, ratio)) * object.C1.Rotation
+            end
         end
     end
     for _, constraint in constraints do
         constraint.Enabled = true
     end
-    weapon.Scale = scale
+    weapon.LengthScale = scale
     tool:SetAttribute("BatLevel", level)
     tool.CanBeDropped = false
-    local hitbox = tool:FindFirstChild("Hitbox") :: BasePart
     hitbox.Transparency = 1
     hitbox.CanQuery = false
 end
@@ -202,7 +246,7 @@ function CombatService.RefreshPlayer(player: Player)
         end
         local created: Weapon = {
             Tool = clone,
-            Scale = 1,
+            LengthScale = 1,
         }
         local ok, problem = pcall(function(): string?
             configure(created, level)
@@ -253,19 +297,15 @@ local function swingRejection(player: Player, equipped: EquippedBat?): string?
     if not character then
         return "attacker not alive"
     end
-    equipped = equipped or resolveEquippedBat(player)
-    if not equipped.Weapon then
+    local resolved = equipped or resolveEquippedBat(player)
+    if not resolved.Weapon then
         return "no issued Bat"
     end
-    if equipped.Character ~= character or not equipped.IssuedValidation then
+    if resolved.Character ~= character or not resolved.IssuedValidation then
         return "issued Bat not equipped"
     end
-    if
-        not equipped.Handle
-        or not equipped.Handle:IsA("BasePart")
-        or not equipped.Hitbox
-        or not equipped.Hitbox:IsA("BasePart")
-    then
+    local handle, hitbox = resolved.Handle, resolved.Hitbox
+    if not handle or not handle:IsA("BasePart") or not hitbox or not hitbox:IsA("BasePart") then
         return "missing Handle/Hitbox"
     end
     if not Config.Levels[levelFor(player)] then
@@ -366,9 +406,9 @@ local function enemyRejection(attacker: Player, victim: Player): string?
     end
     return nil
 end
-local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels[1]))
+local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels[1])): boolean
     if enemyRejection(attacker, victim) then
-        return
+        return false
     end
     local duration = level.StunDuration
     local character = victim.Character :: Model
@@ -444,7 +484,39 @@ local function hit(attacker: Player, victim: Player, level: typeof(Config.Levels
     -- follows normal Humanoid death cleanup without recreating stun after Died.
     local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid
     CombatService.DamagePlayer(attacker, victim, character, humanoid.MaxHealth * level.DamageFraction)
+    return true
 end
+local function horizontal(vector: Vector3): Vector3
+    return Vector3.new(vector.X, 0, vector.Z)
+end
+
+local function facingDirection(root: BasePart, fallback: Vector3): Vector3
+    local facing = horizontal(root.CFrame.LookVector)
+    return if facing.Magnitude > 0.01 then facing.Unit else fallback
+end
+
+-- The box query is a broad phase. Use the part's bounds for reach so an arm can
+-- make tip contact even when the target's root is past the end of the swing.
+local function inSwing(part: BasePart, origin: Vector3, forward: Vector3, reach: number): boolean
+    local offset = origin - part.Position
+    local frame = part.CFrame
+    local half = part.Size / 2
+    local nearest = part.Position
+        - origin
+        + frame.RightVector * math.clamp(offset:Dot(frame.RightVector), -half.X, half.X)
+        + frame.UpVector * math.clamp(offset:Dot(frame.UpVector), -half.Y, half.Y)
+        + frame.LookVector * math.clamp(offset:Dot(frame.LookVector), -half.Z, half.Z)
+    local distance = horizontal(nearest).Magnitude
+    if distance > reach then
+        return false
+    end
+    if distance <= Config.CloseContactRadius then
+        return true
+    end
+    local direction = horizontal(part.Position - origin)
+    return forward:Dot(direction) >= direction.Magnitude * math.cos(math.rad(Config.SwingHalfAngle))
+end
+
 -- No target, level, duration or geometry is accepted from the requester.
 function CombatService.SwingBat(player: Player): boolean
     local trace = swingTrace(player)
@@ -465,7 +537,8 @@ function CombatService.SwingBat(player: Player): boolean
         )
     )
     local rejection = swingRejection(player, equipped)
-    if rejection or os.clock() < (attackAt[player] or 0) then
+    local _, startRoot = alive(player)
+    if rejection or not startRoot or os.clock() < (attackAt[player] or 0) then
         trace("SwingBat rejected: " .. (rejection or "cooldown"))
         return false
     end
@@ -477,10 +550,18 @@ function CombatService.SwingBat(player: Player): boolean
     local weapon = equipped.Weapon :: Weapon
     local tool = equipped.Tool :: Tool
     local hitbox = equipped.Hitbox :: BasePart
-    local _, root = alive(player)
+    local forward = facingDirection(startRoot, Vector3.new(0, 0, -1))
     local position = hitbox.Position
     GameplaySfx.Emit("BatSwing", position)
     local context = deps.TycoonService.GetRequestContext(player)
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { character }
+    params.RespectCanCollide = false
+    params.MaxParts = 0
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Exclude
+    ray.FilterDescendantsInstances = { character }
     local function sampleImpact(sample: number)
         if swings[player] ~= token then
             return
@@ -508,39 +589,25 @@ function CombatService.SwingBat(player: Player): boolean
             return
         end
         local level = Config.Levels[levelFor(player)]
-        -- Sample the exact issued clone at impact, including authored joints/animation.
-        -- configure() owns its size; clients never supply query geometry in the request.
-        local hitbox = currentEquipped.Hitbox :: BasePart
-        local size, at = hitbox.Size, hitbox.CFrame
-        local maxCenterDistance = Config.MaxRootDistance * level.Scale
-        local centerDistance = (at.Position - root.Position).Magnitude
-        local poseValid = centerDistance <= maxCenterDistance
-        trace(
-            string.format(
-                "Hitbox pose centerDistance=%.3f limit=%.3f valid=%s",
-                centerDistance,
-                maxCenterDistance,
-                tostring(poseValid)
-            )
-        )
-        -- Bound the observed Tool pose before querying the issued volume for contact.
-        if not poseValid then
-            trace("impact rejected: invalid Hitbox center distance")
-            swings[player] = nil
-            return
-        end
-        trace("Hitbox=" .. hitbox:GetFullName() .. " CFrame=" .. tostring(at) .. " Size=" .. tostring(size))
-        local params = OverlapParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { character :: Model }
-        params.RespectCanCollide = false
-        params.MaxParts = 0
+        local reach = Config.HitboxSize.Z * level.LengthScale
+        -- A sprinting turn can change direction during the windup or between samples.
+        forward = facingDirection(root, forward)
+        local origin = root.Position
+        local center = origin + forward * (reach / 2)
+        local at = CFrame.lookAt(center, center + forward)
+        local size = Vector3.new(2 * reach, Config.SwingHeight, reach)
+        trace(string.format("cone reach=%.2f CFrame=%s Size=%s", reach, tostring(at), tostring(size)))
         local overlaps = workspace:GetPartBoundsInBox(at, size, params)
         trace("overlap parts=" .. tostring(#overlaps))
         local closest: Model? = nil
+        local closestRoot: BasePart? = nil
         local closestDistance = math.huge
+        local bestAim = -math.huge
         local candidates: { [Model]: { Player: Player? } } = {}
         for _, part in overlaps do
+            if not inSwing(part, origin, forward, reach) then
+                continue
+            end
             local ancestor: Instance? = part
             while ancestor and ancestor ~= workspace do
                 if ancestor:IsA("Model") then
@@ -596,35 +663,38 @@ function CombatService.SwingBat(player: Player): boolean
             if target and targetRoot then
                 local direction = targetRoot.Position - root.Position
                 local targetRootDistance = direction.Magnitude
-                local forward = root.CFrame.LookVector:Dot(direction)
-                local ray = RaycastParams.new()
-                ray.FilterType = Enum.RaycastFilterType.Exclude
-                ray.FilterDescendantsInstances = { character :: Model }
+                local flat = horizontal(direction)
+                local front = forward:Dot(flat)
+                local aim = if flat.Magnitude > 0.01 then front / flat.Magnitude else 1
                 local obstruction = workspace:Raycast(root.Position, direction, ray)
                 local visible = not obstruction or obstruction.Instance:IsDescendantOf(target)
                 trace(
                     string.format(
-                        "candidate=%s rootDistance=%.3f forwardDot=%.3f forward=%s LOS=%s obstruction=%s",
+                        "candidate=%s rootDistance=%.3f aim=%.3f forward=%s LOS=%s obstruction=%s",
                         target.Name,
                         targetRootDistance,
-                        forward,
-                        tostring(forward >= 0),
+                        aim,
+                        tostring(front >= 0),
                         tostring(visible),
                         if obstruction then obstruction.Instance:GetFullName() else "none"
                     )
                 )
-                -- Overlap supplies contact. Root distance ranks eligible candidates.
-                if not enemyReason and targetRootDistance < closestDistance and forward >= 0 and visible then
-                    closest, closestDistance = target, targetRootDistance
+                if not enemyReason and front >= 0 and visible then
+                    if aim > bestAim or (aim == bestAim and targetRootDistance < closestDistance) then
+                        closest, closestRoot = target, targetRoot
+                        closestDistance, bestAim = targetRootDistance, aim
+                    end
                 end
             end
         end
         trace("selected=" .. (if closest then closest.Name else "no valid target"))
-        if closest then
+        if closest and closestRoot then
             swings[player] = nil
+            local impact = closestRoot.Position
+            local applied: boolean
             local victim = Players:GetPlayerFromCharacter(closest)
             if victim then
-                hit(player, victim, level)
+                applied = hit(player, victim, level)
                 trace(
                     "SetStunned result="
                         .. tostring(deps.MovementService.IsStunned(victim))
@@ -634,21 +704,23 @@ function CombatService.SwingBat(player: Player): boolean
                         .. tostring(victim:GetAttribute("StunnedUntil"))
                 )
             else
-                local targetRoot = closest:FindFirstChild("HumanoidRootPart") :: BasePart
                 local context = {
-                    Direction = Knockback.Direction(root, targetRoot),
+                    Direction = Knockback.Direction(root, closestRoot),
                     Duration = level.StunDuration,
                 }
                 if deps.JackedNoobService and deps.JackedNoobService.CanHit(player, closest) then
-                    deps.JackedNoobService.Hit(player, closest, context)
+                    applied = deps.JackedNoobService.Hit(player, closest, context)
                 else
-                    deps.CustomerService.HitCustomer(player, closest, context)
+                    applied = deps.CustomerService.HitCustomer(player, closest, context)
                 end
+            end
+            if applied then
+                GameplaySfx.Emit("BatImpact", impact)
             end
         end
     end
     -- Keep only one pending sample. Late callbacks expire instead of replaying
-    -- missed contacts, and each live sample reads the current Tool geometry.
+    -- missed contacts, and each sample follows the attacker's current position and facing.
     local deadline = os.clock() + Config.HitActiveEnd
     local sample = 0
     local function sampleNext()

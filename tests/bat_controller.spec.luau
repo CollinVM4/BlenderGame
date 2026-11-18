@@ -1,5 +1,36 @@
 -- Input contracts are independent of the separately tested touch layout.
-cache.MobileControlLayout = { Register = function() end }
+local mobileAction, mobileTitle
+local actions = {}
+cache.MobileControlLayout = { Register = function() end, Unregister = function() end }
+services.ContextActionService = {
+    BindAction = function(_, action, callback, touch, ...)
+        if action == "BatSwing" then
+            check(touch and select("#", ...) == 0, "Swing binds a touch button without capturing world input")
+            mobileAction = callback
+        end
+        actions[action] = callback
+    end,
+    UnbindAction = function(_, action)
+        actions[action] = nil
+        if action == "BatSwing" then
+            mobileAction = nil
+        end
+    end,
+    SetTitle = function(_, action, title)
+        if action == "BatSwing" then
+            mobileTitle = title
+        end
+    end,
+}
+local input = instance("UserInputService")
+input.InputBegan = signal()
+input.PreferredInput = "KeyboardAndMouse"
+function input:GetFocusedTextBox()
+    return nil
+end
+services.UserInputService = input
+services.GuiService = { MenuIsOpen = false }
+env.Enum.PreferredInput = { Touch = "Touch", KeyboardAndMouse = "KeyboardAndMouse" }
 -- Local presentation/input boundary. Combat authority lives in the combat integration suite.
 local config = loadModule("BatConfig")
 env.Enum.AnimationPriority = { Idle = "Idle", Action = "Action" }
@@ -16,7 +47,7 @@ function remote:FireServer(...)
 end
 local function character()
     local model = instance("Model")
-    model.ChildAdded = signal()
+    model.ChildAdded, model.ChildRemoved = signal(), signal()
     local humanoid = instance("Humanoid")
     humanoid.Parent, humanoid.Health, humanoid.Died = model, 100, signal()
     local animator = instance("Animator")
@@ -62,18 +93,6 @@ controller.Init()
 check(#tracks == 1 and not tracks[1].IsPlaying, "equipping prepares a single track without autoplay")
 local inputTrace = {}
 -- Model the input boundary: a passing carry action allows Roblox Tool activation.
-local carryAction
-services.ContextActionService = {
-    BindAction = function(_, _, callback)
-        carryAction = callback
-    end,
-    SetTitle = function() end,
-}
-services.UserInputService = {
-    GetFocusedTextBox = function()
-        return nil
-    end,
-}
 env.Enum.ContextActionResult = { Pass = "Pass", Sink = "Sink" }
 env.Enum.UserInputState = { Begin = "Begin" }
 env.Enum.UserInputType = { MouseButton1 = "MouseButton1" }
@@ -88,7 +107,7 @@ env.print = function(message)
     table.insert(inputTrace, message)
 end
 studio = true
-local carryResult = carryAction("ThrowHeld", "Begin")
+local carryResult = actions.ThrowHeld("ThrowHeld", "Begin")
 check(carryResult == "Pass", "Bat plus overhead ingredients passes primary input to Tool")
 if carryResult == "Pass" then
     tool.Activated:Fire()
@@ -326,4 +345,36 @@ controller.Destroy()
 fullHumanoid.Health = 100
 controller.Init()
 check(tracks[#tracks - 2].IsPlaying, "controller can initialize again after teardown")
+controller.Destroy()
+
+-- Touch swings are owned by the dedicated button across weapon and input swaps.
+input.TouchEnabled, input.PreferredInput = true, "Touch"
+controller.Init()
+check(mobileAction ~= nil and mobileTitle == "Swing", "touch cold-start equips the Swing button")
+local touchRequests = #requests
+late.Activated:Fire()
+check(#requests == touchRequests, "world touch cannot fire while the Swing button owns input")
+mobileAction("BatSwing", "Begin")
+mobileAction("BatSwing", "End")
+check(#requests == touchRequests + 1 and mobileTitle == "Wait", "one touch tap swings and shows cooldown")
+mobileAction("BatSwing", "Begin")
+check(#requests == touchRequests + 1, "touch cooldown blocks a second request")
+local ice = instance("Tool")
+ice.Name = "Ice Gun"
+ice:SetAttribute("IceGunWeapon", true)
+ice.Parent = fullCharacter
+fullCharacter.ChildAdded:Fire(ice)
+check(mobileAction == nil, "Ice Ray equip releases the shared Swing slot")
+ice.Parent = nil
+fullCharacter.ChildRemoved:Fire(ice)
+check(mobileAction ~= nil, "returning to Bat restores Swing")
+input.PreferredInput = "KeyboardAndMouse"
+input:GetPropertyChangedSignal("PreferredInput"):Fire()
+check(mobileAction == nil, "physical input change removes the touch button")
+input.PreferredInput = "Touch"
+input:GetPropertyChangedSignal("PreferredInput"):Fire()
+check(mobileAction ~= nil, "touch input change restores the Swing button")
+fullHumanoid.Health = 0
+fullHumanoid.Died:Fire()
+check(mobileAction == nil, "death removes the touch button")
 controller.Destroy()

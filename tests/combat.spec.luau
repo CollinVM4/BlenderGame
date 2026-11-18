@@ -74,7 +74,7 @@ end
 studio = true
 attacker:SetAttribute("BatDebugNextSwing", true)
 setup(combat.SwingBat(attacker), "enemy swing")
--- The impact pose can differ from the handle/template reconstruction (authored joints).
+-- The visual hitbox pose can differ from the server sweep at impact.
 local liveHitbox = bat:FindFirstChild("Hitbox")
 liveHitbox.CFrame = frame(0, 0, -1)
 advance(config.HitActiveStart + 0.000001)
@@ -87,9 +87,9 @@ check(
 )
 local batTrace = table.concat(traceLines, "\n")
 check(
-    string.find(batTrace, "Hitbox pose centerDistance=1.000 limit=8.000 valid=true", 1, true) ~= nil
+    string.find(batTrace, "cone reach=8.50", 1, true) ~= nil
         and string.find(batTrace, "candidate=" .. victim.Character.Name .. " rootDistance=3.000", 1, true) ~= nil,
-    "one-shot diagnostic distinguishes pose validation from candidate root distance"
+    "one-shot diagnostic distinguishes swing reach from candidate root distance"
 )
 check(
     string.find(batTrace, "runtimeTool=" .. bat:GetFullName(), 1, true) ~= nil
@@ -100,7 +100,14 @@ check(
         and string.find(batTrace, "issuedValidation=true", 1, true) ~= nil,
     "one-shot diagnostic reports runtime Tool hierarchy and issued validation"
 )
-check(queryFrame == liveHitbox.CFrame, "query samples actual equipped Hitbox at impact")
+check(
+    (queryFrame.Position - vec(0, 0, -4.25)).Magnitude < 0.0001 and (querySize - vec(17, 5, 8.5)).Magnitude < 0.0001,
+    "query uses the character-facing contact volume"
+)
+check(
+    #impactSounds == 1 and impactSounds[1] == victim.Character:FindFirstChild("HumanoidRootPart").Position,
+    "confirmed contact emits one impact at the victim"
+)
 check(
     queryParams.FilterDescendantsInstances[1] == attacker.Character
         and #queryParams.FilterDescendantsInstances == 1
@@ -205,7 +212,7 @@ check(not movement.IsStunned(victim), "post-stun immunity rejects chain stun")
 heartbeat()
 check(victimRoot.ImpulseCount == 1, "post-recovery immunity prevents another launch")
 advance(config.ImmunitySeconds)
--- Studio regression: authored contact can occur beyond gameplay Reach at level one.
+-- Contact can enter at any sample during the displayed swing.
 local firstSample = config.HitActiveStart
 local sampleStep = config.HitSampleInterval
 local windowRoot = victim.Character:FindFirstChild("HumanoidRootPart")
@@ -215,13 +222,9 @@ overlaps = {}
 setup(combat.SwingBat(attacker), "contact enters window on second sample")
 advance(firstSample)
 check(not movement.IsStunned(victim), "empty first sample does not hit")
-liveHitbox.CFrame = frame(0, 0, -2)
 overlaps = { windowRoot }
 advance(sampleStep + 0.000001)
-check(
-    movement.IsStunned(victim) and queryFrame == liveHitbox.CFrame,
-    "second sample uses live pose and hits new contact"
-)
+check(movement.IsStunned(victim), "second sample hits a target entering the swing")
 local queriesAfterHit = queryCount
 overlaps = { secondRoot }
 advance(sampleStep)
@@ -272,16 +275,12 @@ advance(config.HitActiveStart / 2)
 check(queryCount == beforeWindow and not movement.IsStunned(victim), "startup has no damaging query")
 overlaps = {}
 advance(config.HitActiveStart / 2 + 0.000001)
-for _ = 1, 7 do
+for _ = 1, 6 do
     advance(sampleStep + 0.000001)
 end
-liveHitbox.CFrame = frame(0, 0, -1.7)
 overlaps = { windowRoot }
 advance(sampleStep + 0.000001)
-check(
-    movement.IsStunned(victim) and queryFrame == liveHitbox.CFrame,
-    "late contact at roughly 0.40 seconds uses live Hitbox and hits"
-)
+check(movement.IsStunned(victim), "contact can still hit on the final active sample")
 local afterLateHit = queryCount
 overlaps = { secondRoot }
 advance(config.HitActiveEnd)
@@ -316,7 +315,6 @@ for _, cancellation in { "unequip", "death", "membership" } do
         combat.ApplyCharacter(attacker, attacker.Character)
         flush()
         bat = bats(attacker)[1]
-        liveHitbox = bat:FindFirstChild("Hitbox")
         equip(attacker)
     elseif cancellation == "membership" then
         setup(tycoon.JoinSession(teammate, attacker, tycoon.GetRequestContext(attacker)), "restore teammate")
@@ -324,14 +322,12 @@ for _, cancellation in { "unequip", "death", "membership" } do
     advance(config.SwingCooldown)
 end
 local contactRoot = victim.Character:FindFirstChild("HumanoidRootPart")
-local originalPose = liveHitbox.CFrame
-liveHitbox.CFrame = frame(0, 0, -4.5)
-contactRoot.Position = vec(2.3, 0, -8.05)
+contactRoot.Position = vec(2.3, 0, -9.5)
 local arm = part("Left Arm", victim.Character)
 arm.CFrame = frame(1, 0, -8.25)
 arm.Position = arm.CFrame.Position
 -- The query double reports an arm at the tip of the level-one box, with the root
--- beyond the former 8-stud cutoff. Actual Roblox overlap requires a Studio smoke test.
+-- beyond the 8.5-stud swing reach. Actual Roblox overlap requires a Studio smoke test.
 overlaps = { arm }
 victimHumanoid.Health = 100
 setup(combat.SwingBat(attacker), "level one edge contact beyond the former root cutoff")
@@ -340,12 +336,11 @@ check(movement.IsStunned(victim) and victimHumanoid.Health == 75, "arm overlap s
 local edgeHitQueries = queryCount
 advance(config.HitSampleInterval + 0.000001)
 check(victimHumanoid.Health == 75 and queryCount == edgeHitQueries, "one edge hit consumes the swing")
-liveHitbox.CFrame = originalPose
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
 victimHumanoid.Health = 100 -- Reset between independent geometry cases.
 contactRoot.Position = vec(0, 0, -2)
 overlaps = {}
-setup(combat.SwingBat(attacker), "close target outside authored volume")
+setup(combat.SwingBat(attacker), "close target outside the overlap query")
 advance(config.HitActiveStart + 0.000001)
 advance(config.SwingCooldown)
 check(
@@ -353,18 +348,50 @@ check(
     "close root distance never substitutes for Hitbox overlap"
 )
 overlaps = { contactRoot }
-for _, centerDistance in { 8.01, 100 } do
-    liveHitbox.CFrame = frame(0, 0, -centerDistance)
-    local queriesBeforeInvalidPose = queryCount
-    setup(combat.SwingBat(attacker), "out-of-bounds Hitbox pose at " .. centerDistance .. " studs")
+for _, outside in { vec(8, 0, -1), vec(0, 0, -10), vec(0, 0, 1) } do
+    contactRoot.Position = outside
+    local previousImpacts = #impactSounds
+    setup(combat.SwingBat(attacker), "outside-sweep target in broad-phase overlap")
     advance(config.HitActiveStart + 0.000001)
     check(
-        queryCount == queriesBeforeInvalidPose and not movement.IsStunned(victim) and victimHumanoid.Health == 100,
-        "invalid Hitbox pose rejects before a query double could report an overlap"
+        not movement.IsStunned(victim) and #impactSounds == previousImpacts,
+        "off-angle, out-of-reach and rear targets miss without a hit cue"
     )
     advance(config.SwingCooldown)
 end
-liveHitbox.CFrame = originalPose
+contactRoot.Position = vec(6, 0, -3)
+local visualHitbox = bats(attacker)[1]:FindFirstChild("Hitbox")
+visualHitbox.CFrame = frame(0, 0, -100)
+setup(combat.SwingBat(attacker), "front-side sweep while the visible pose drifts")
+advance(config.HitActiveStart + 0.000001)
+check(movement.IsStunned(victim), "65-degree front-side contact is inside the wider cone")
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+
+-- The cast follows sprint turns and movement within the same active swing.
+victimHumanoid.Health = 100
+local sprintRoot = attacker.Character:FindFirstChild("HumanoidRootPart")
+local previousPosition, previousFrame = sprintRoot.Position, sprintRoot.CFrame
+overlaps = {}
+setup(combat.SwingBat(attacker), "sprint turn during a swing")
+advance(config.HitActiveStart + 0.000001)
+check(not movement.IsStunned(victim), "first sprint sample misses before the turn")
+sprintRoot.Position = vec(0, 0, -3)
+sprintRoot.CFrame = env.CFrame.lookAt(sprintRoot.Position, vec(1, 0, -3))
+contactRoot.Position = vec(5, 0, -2)
+secondRoot.Position = vec(-2, 0, -5)
+overlaps = { contactRoot, secondRoot }
+advance(config.HitSampleInterval + 0.000001)
+check(
+    movement.IsStunned(victim) and not movement.IsStunned(secondVictim),
+    "swing follows the sprint turn and hits the target ahead of the new heading only"
+)
+check(
+    (queryFrame.Position - vec(4.25, 0, -3)).Magnitude < 0.0001,
+    "the cone follows the updated sprint position and facing"
+)
+sprintRoot.Position, sprintRoot.CFrame = previousPosition, previousFrame
+secondRoot.Position = vec(0, 0, -4)
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
 -- Each kind of overlapping descendant resolves through nested Models to the real owner.
 for _, name in { "HumanoidRootPart", "Torso", "Left Arm", "Accessory" } do
     victimHumanoid.Health = 100 -- Independent geometry cases, not a continuous duel.
@@ -655,11 +682,15 @@ studio = false
 env.print = previousPrint
 advance(config.SwingCooldown)
 victimHumanoid.Health = 100
-local farther = fighter(-4)
+local farther = fighter(-2)
+farther.Character:FindFirstChild("HumanoidRootPart").Position = vec(1, 0, -2)
 overlaps = { farther.Character:FindFirstChild("HumanoidRootPart"), victim.Character:FindFirstChild("HumanoidRootPart") }
-setup(combat.SwingBat(attacker), "nearest enemy swing")
+setup(combat.SwingBat(attacker), "centered versus closer enemy swing")
 advance(config.HitActiveStart + 0.000001)
-check(movement.IsStunned(victim) and not movement.IsStunned(farther), "one swing hits closest valid enemy only")
+check(
+    movement.IsStunned(victim) and not movement.IsStunned(farther),
+    "one swing favors the centered enemy over a closer off-angle enemy"
+)
 -- Stunned ownership does not permit swinging; stale timers cannot clear a new character's stun.
 tycoon.SetCash(victim, 1000000)
 setup(tycoon.PurchaseUpgrade(victim, "Bat", 2, tycoon.GetRequestContext(victim)), "victim owns bat")
@@ -776,49 +807,33 @@ movement.SetStunned(departing, false)
 check(realWorldUtil.Near(departing, nearby, 10), "proximity gate works again after unstun")
 cache.WorldUtil = utility
 
--- Exercise sequential upgrades and the first grant into an existing higher-tier session.
+-- Sequential upgrades and a fresh grant produce the same grip-relative geometry.
 do
-    local expectedHitboxSize = vec(3.087, 2.35, 8.118)
-    local expectedParts = {
-        { Name = "Handle", Size = vec(1, 2, 1), Offset = vec(0, 0, 0) },
-        { Name = "BatMesh", Size = vec(1, 4, 1), Offset = vec(-0.15, 0.2, -1.1) },
-        { Name = "Hitbox", Size = expectedHitboxSize, Offset = vec(0.25, 0.1, -2.35) },
-    }
     local function assertGeometry(tool, scale, context)
-        local pivot = tool:FindFirstChild("Handle").CFrame
-        for _, expected in expectedParts do
-            local object = tool:FindFirstChild(expected.Name)
-            local offset = pivot:ToObjectSpace(object.CFrame).Position
-            check(
-                (object.Size - expected.Size * scale).Magnitude < 0.0001
-                    and (offset - expected.Offset * scale).Magnitude < 0.0001,
-                context .. " scales size and offset on all axes for " .. expected.Name
-            )
-        end
-        check(tool.Grip == authoredGrip, context .. " preserves the authored Tool grip")
-    end
-    local function assertQueryGeometry(owner, scale, poseLimit)
-        equip(owner)
-        local equippedHitbox = bats(owner)[1]:FindFirstChild("Hitbox")
-        local authoredPose = equippedHitbox.CFrame
-        equippedHitbox.CFrame = frame(0, 0, -poseLimit)
-        local before = queryCount
-        setup(combat.SwingBat(owner), "scaled Hitbox swing at the pose limit")
-        advance(config.HitActiveStart + 0.000001)
+        local pivot = tool:FindFirstChild("Handle")
+        local meshPart = tool:FindFirstChild("BatMesh")
+        local hitboxPart = tool:FindFirstChild("Hitbox")
+        local meshOffset = pivot.CFrame:ToObjectSpace(meshPart.CFrame).Position
+        local hitboxOffset = pivot.CFrame:ToObjectSpace(hitboxPart.CFrame).Position
+        check((pivot.Size - handle.Size).Magnitude < 0.0001 and tool.Grip == authoredGrip, context .. " keeps the grip")
         check(
-            queryCount == before + 1
-                and queryFrame == equippedHitbox.CFrame
-                and (querySize - expectedHitboxSize * scale).Magnitude < 0.0001,
-            "the query samples all three issued Hitbox dimensions within the tier pose limit"
+            (meshPart.Size - vec(1, 1, 4 * scale)).Magnitude < 0.0001
+                and (meshOffset - vec(-0.15, 0.2, -1.1 * scale)).Magnitude < 0.0001,
+            context .. " stretches visual length and offset only"
         )
-        advance(config.SwingCooldown)
-        equippedHitbox.CFrame = authoredPose
+        local length = 8.5 * scale
+        check(
+            (hitboxPart.Size - vec(3.75, 3, length)).Magnitude < 0.0001
+                and math.abs(hitboxOffset.Z + length / 2 - (-2.35 + 8.118 / 2)) < 0.0001,
+            context .. " uses the specified dimensions with the grip-side face fixed"
+        )
     end
 
     local owner = fighter(0)
+    local target, targetHuman = fighter(-10)
+    local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
     tycoon.SetCash(owner, 1000000)
-    overlaps = {}
-    for level, scale in { 1, 1.25, 1.50 } do
+    for level, scale in { 1, 1.40, 1.80 } do
         setup(tycoon.PurchaseUpgrade(owner, "Bat", level + 1, tycoon.GetRequestContext(owner)), "buy geometry tier")
         local tool = bats(owner)[1]
         assertGeometry(tool, scale, "tier " .. level)
@@ -826,15 +841,26 @@ do
         combat.RefreshPlayer(owner)
         check(#bats(owner) == 1 and bats(owner)[1] == tool, "repeated refresh keeps the issued Tool")
         assertGeometry(tool, scale, "refreshed tier " .. level)
-        assertQueryGeometry(owner, scale, 8 * scale)
+        equip(owner)
+        for _, distance in { 10, 13.5, 17 } do
+            targetRoot.Position = vec(0, 0, -distance)
+            targetHuman.Health = 100
+            overlaps = { targetRoot }
+            setup(combat.SwingBat(owner), "measure reach at " .. distance)
+            advance(config.HitActiveStart + 0.000001)
+            local canReach = distance - targetRoot.Size.Z / 2 <= 8.5 * scale
+            check(movement.IsStunned(target) == canReach, "each tier adds reach at its tip")
+            advance(config.SwingCooldown + config.Levels[level].StunDuration + config.ImmunitySeconds)
+        end
     end
-
     local newcomer = fighter(0)
     tycoon.RemovePlayer(newcomer)
     setup(#bats(newcomer) == 0, "joining player has never been issued a Bat")
     setup(tycoon.JoinSession(newcomer, owner, tycoon.GetRequestContext(owner)), "join a tier-three session")
     check(#bats(newcomer) == 1, "existing tier-three session grants one fresh Bat")
-    assertGeometry(bats(newcomer)[1], 1.50, "fresh tier three")
-    assertQueryGeometry(newcomer, 1.50, 12)
-    assertGeometry(template, 1, "stored template")
+    assertGeometry(bats(newcomer)[1], 1.80, "fresh tier three")
+    check(
+        (hitbox.Size - vec(3.087, 2.35, 8.118)).Magnitude < 0.0001 and template.Grip == authoredGrip,
+        "stored template is unchanged"
+    )
 end
