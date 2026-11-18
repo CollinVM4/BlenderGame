@@ -1,6 +1,12 @@
 --!strict
 -- Standalone Framewisp artwork. No generated hierarchy, scripts or text scaler.
 local Gui = {}
+local PADDING = 4
+local GAP = 6
+local LANDSCAPE_PADDING_X = 2
+local LANDSCAPE_GAP = 2
+local LANDSCAPE_MIN_SLOT_WIDTH = 44
+local LANDSCAPE_TARGET_SLOTS = 9
 Gui.Name = "BlenderHotbar"
 Gui.Art = {
     Background = "rbxassetid://131076681805409",
@@ -9,7 +15,6 @@ Gui.Art = {
     Ice = "rbxassetid://114860674836321",
     Generic = "rbxassetid://136789729873472",
 }
-Gui.Gap, Gui.Padding = 6, 4
 export type Slot = {
     Button: ImageButton,
     Label: TextLabel,
@@ -24,7 +29,10 @@ export type View = {
     Bar: Frame,
     Scroll: ScrollingFrame,
     Template: ImageButton,
-    SlotSize: number,
+    SlotWidth: number,
+    SlotHeight: number,
+    Gap: number,
+    PaddingX: number,
     Width: number,
     CanvasWidth: number,
 }
@@ -44,9 +52,13 @@ local function text(name: string, parent: Instance, size: number): TextLabel
     object.Font = Enum.Font.FredokaOne
     object.TextSize, object.TextScaled, object.TextWrapped = size, false, false
     object.TextColor3 = Color3.new(1, 1, 1)
-    object.TextStrokeTransparency = 0.5
     object.TextTruncate = Enum.TextTruncate.AtEnd
     object.ZIndex = 5
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    stroke.Color = Color3.new(0, 0, 0)
+    stroke.Thickness = 1.5
+    stroke.Parent = object
     object.Parent = parent
     return object
 end
@@ -80,8 +92,8 @@ function Gui.Create(playerGui: PlayerGui): View
     image("Background", Gui.Art.Background, template, 1)
     image("Selected", Gui.Art.Selected, template, 2).Visible = false
     local icon = image("Icon", Gui.Art.Generic, template, 3)
-    icon.AnchorPoint, icon.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 4)
-    icon.Size = UDim2.new(1, -12, 1, -24)
+    icon.AnchorPoint, icon.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 2)
+    icon.Size = UDim2.new(1, -8, 1, -18)
     local label = text("Label", template, 11)
     label.Position, label.Size = UDim2.new(0, 4, 1, -17), UDim2.new(1, -8, 0, 14)
     local number = text("Number", template, 13)
@@ -93,7 +105,10 @@ function Gui.Create(playerGui: PlayerGui): View
         Bar = bar,
         Scroll = scroll,
         Template = template,
-        SlotSize = 64,
+        SlotWidth = 64,
+        SlotHeight = 64,
+        Gap = GAP,
+        PaddingX = PADDING,
         Width = 0,
         CanvasWidth = 0,
     }
@@ -110,6 +125,15 @@ function Gui.NewSlot(view: View): Slot
         Background = button:FindFirstChild("Background") :: ImageLabel,
     }
 end
+local function slotX(view: View, index: number): number
+    return view.PaddingX + (index - 1) * (view.SlotWidth + view.Gap)
+end
+function Gui.PlaceSlot(view: View, slot: Slot, index: number)
+    slot.Button.Size = UDim2.fromOffset(view.SlotWidth, view.SlotHeight)
+    slot.Button.Position = UDim2.fromOffset(slotX(view, index), PADDING)
+    local backingScale = if view.SlotWidth == view.SlotHeight then Enum.ScaleType.Fit else Enum.ScaleType.Stretch
+    slot.Background.ScaleType, slot.Selected.ScaleType = backingScale, backingScale
+end
 -- Mounted safe bounds already include device/core insets. Obstacles use the
 -- same absolute coordinate space; never subtract GetGuiInset a second time.
 function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect }): boolean?
@@ -118,13 +142,18 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
         return nil -- retain an established layout through rotation's zero bounds
     end
     local maximum = math.min(960, size.X - 24)
-    if maximum < 48 + Gui.Padding * 2 then
+    if maximum < 48 + PADDING * 2 then
         return false
     end
-    local slotSize = math.min(math.clamp(math.floor(size.Y * 0.08), 56, 72), maximum - Gui.Padding * 2)
-    local height = slotSize + Gui.Padding * 2 + 4
-    local canvas = Gui.Padding * 2 + count * slotSize + math.max(0, count - 1) * Gui.Gap
-    local minimum = math.min((if count > 1 then 2 * slotSize + Gui.Gap else slotSize) + Gui.Padding * 2, maximum)
+    local slotHeight = math.min(math.clamp(math.floor(size.Y * 0.08), 56, 72), maximum - PADDING * 2)
+    local height = slotHeight + PADDING * 2 + 4
+    local landscape = touch and size.X > size.Y
+    local paddingX = if landscape then LANDSCAPE_PADDING_X else PADDING
+    local slotGap = if landscape then LANDSCAPE_GAP else GAP
+    local minSlotWidth = if landscape then LANDSCAPE_MIN_SLOT_WIDTH else slotHeight
+    -- A usable landscape dock is independent of inventory size. Extra items scroll in place.
+    local minimum =
+        math.min(2 * paddingX + (if landscape or count <= 1 then minSlotWidth else 2 * minSlotWidth + slotGap), maximum)
     if size.Y < height + 24 then
         return false
     end
@@ -135,35 +164,55 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
         end
     end
     table.sort(candidates)
-    local width, bottom = 0, 12
+    local width, bottom, offset = 0, 12, 0
+    local slotWidth, canvas = slotHeight, 0
     local center = origin.X + size.X / 2
     for _, candidate in candidates do
         if candidate + height > size.Y - 8 then
             continue
         end
-        local available = maximum
+        local left, right = origin.X + 12, origin.X + size.X - 12
         local top, foot = origin.Y + size.Y - candidate - height, origin.Y + size.Y - candidate
         if touch then
             for _, obstacle in obstacles do
                 if obstacle.Max.Y + 8 > top and obstacle.Min.Y - 8 < foot then
-                    local clearance = if (obstacle.Min.X + obstacle.Max.X) / 2 < center
-                        then center - obstacle.Max.X - 8
-                        else obstacle.Min.X - center - 8
-                    available = math.min(available, 2 * clearance)
+                    if (obstacle.Min.X + obstacle.Max.X) / 2 < center then
+                        left = math.max(left, obstacle.Max.X + 8)
+                    else
+                        right = math.min(right, obstacle.Min.X - 8)
+                    end
                 end
             end
         end
-        if available >= minimum then
-            width, bottom = math.floor(math.min(available, math.max(slotSize + Gui.Padding * 2, canvas))), candidate
-            break
+        local gap = if landscape then right - left else 2 * math.min(center - left, right - center)
+        local available = math.min(maximum, gap)
+        if available < minimum then
+            continue
         end
+        width, bottom = math.floor(available), candidate
+        if landscape then
+            -- Keep the slot height and use the widest touch targets that fit the
+            -- target count at this dock.
+            local rowWidth = width - 2 * paddingX + slotGap
+            local target = math.min(LANDSCAPE_TARGET_SLOTS, math.floor(rowWidth / (minSlotWidth + slotGap)))
+            slotWidth = math.min(slotHeight, math.floor(rowWidth / target) - slotGap)
+            local pitch = slotWidth + slotGap
+            width = 2 * paddingX - slotGap + math.floor(rowWidth / pitch) * pitch
+        end
+        canvas = 2 * paddingX + count * slotWidth + math.max(0, count - 1) * slotGap
+        width = math.min(width, math.max(2 * paddingX + slotWidth, canvas))
+        if landscape then
+            offset = math.clamp(center, left + width / 2, right - width / 2) - center
+        end
+        break
     end
     if width == 0 then
         return false
     end
-    view.SlotSize, view.Width = slotSize, width
-    view.CanvasWidth = canvas
-    view.Bar.Position = UDim2.new(0.5, 0, 1, -bottom)
+    view.SlotWidth, view.SlotHeight = slotWidth, slotHeight
+    view.Gap, view.PaddingX = slotGap, paddingX
+    view.Width, view.CanvasWidth = width, canvas
+    view.Bar.Position = UDim2.new(0.5, offset, 1, -bottom)
     view.Bar.Size = UDim2.fromOffset(width, height)
     view.Scroll.CanvasSize = UDim2.fromOffset(view.CanvasWidth, 0)
     Gui.Clamp(view)
@@ -176,12 +225,12 @@ function Gui.Clamp(view: View)
     end
 end
 function Gui.Reveal(view: View, index: number)
-    local left = Gui.Padding + (index - 1) * (view.SlotSize + Gui.Gap)
+    local left = slotX(view, index)
     local x = view.Scroll.CanvasPosition.X
     if left < x then
         x = left
-    elseif left + view.SlotSize > x + view.Width then
-        x = left + view.SlotSize - view.Width
+    elseif left + view.SlotWidth > x + view.Width then
+        x = left + view.SlotWidth - view.Width
     end
     view.Scroll.CanvasPosition = Vector2.new(math.clamp(x, 0, math.max(0, view.CanvasWidth - view.Width)), 0)
 end

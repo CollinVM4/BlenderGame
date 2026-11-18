@@ -463,6 +463,14 @@ local ingredientViewport = {
     end,
 }
 local debugSignal = signal()
+local contentProvider = {
+    GetAssetFetchStatus = function()
+        return Enum.AssetFetchStatus.Success
+    end,
+    PreloadAsync = function()
+        error("unexpected preload for a cached asset")
+    end,
+}
 local debugMessages = {}
 local textChat = new("TextChatService")
 local textChannels = new("Folder", "TextChannels", textChat)
@@ -475,6 +483,7 @@ local services = {
     ContextActionService = cas,
     UserInputService = uis,
     GuiService = guiService,
+    ContentProvider = contentProvider,
     Players = new("Players", "Players"),
     ServerStorage = new("ServerStorage", "ServerStorage"),
     RunService = {
@@ -500,7 +509,7 @@ function guiService:GetInsetArea()
 end
 services.ReplicatedStorage.Shared = new("Folder", "Shared", services.ReplicatedStorage)
 services.ReplicatedStorage.Shared.IngredientPreviewGeometry = "Geometry"
-services.ReplicatedStorage.Shared.Constants = { IceGunConfig = "IceGunConfig" }
+services.ReplicatedStorage.Shared.Constants = { IceGunConfig = "IceGunConfig", MuncherArtwork = "MuncherArtwork" }
 iceGunTemplate(new, new("Folder", "Weapons", services.ServerStorage))
 local debugFolder = new("Folder", "Events", services.ReplicatedStorage.Shared)
 local debugRemote = new("RemoteEvent", "HotbarDebug", debugFolder)
@@ -528,6 +537,7 @@ local function requireModule(name)
             return "Player.PlayerScripts.Client.Controllers.HotbarController"
         end,
         Parent = {
+            Muncher = "Muncher",
             StudioIceGunEntitlement = "StudioIceGunEntitlement",
             UIRegistry = "UIRegistry",
             Parent = {
@@ -589,6 +599,7 @@ local function requireModule(name)
     return modules[name]
 end
 local Gui = requireModule("HotbarGui")
+local Artwork = requireModule("MuncherArtwork")
 local Controller = requireModule("Controller")
 local MobileLayout = requireModule("MobileControlLayout")
 local IceGunService = requireModule("IceGunService")
@@ -733,10 +744,12 @@ for _, dimensions in { { 390, 844 }, { 844, 390 }, { 320, 568 }, { 740, 360 }, {
                     "standalone startup presents one Ice Gun without export or timers"
                 )
                 check(named(slots[1], "Icon").Image == Gui.Art.Ice, "direct Ice Gun artwork")
-                check(
-                    slots[1].AbsoluteSize.X >= 48 and slots[1].AbsoluteSize.X == slots[1].AbsoluteSize.Y,
-                    "square touch target"
-                )
+                local slotSize = slots[1].AbsoluteSize
+                if dimensions[1] > dimensions[2] then
+                    check(slotSize.X >= 44 and slotSize.Y >= 48, "compact touch target is large enough to tap")
+                else
+                    check(slotSize.X >= 48 and slotSize.X == slotSize.Y, "square portrait touch target")
+                end
                 check(f.Bar.AbsoluteSize.X <= f.Safe.AbsoluteSize.X, "mounted safe width")
                 slots[1].Activated:Fire()
                 flush()
@@ -766,7 +779,7 @@ run("startup", "optional preview may suspend without blocking takeover", functio
         return nil
     end
     local f = fixture(390, 844, true)
-    f.Tool("Ingredient", 1)
+    f.Tool("Ingredient", 1):SetAttribute("IngredientId", "Unmapped")
     f.Start()
     check(suspended ~= nil and not core.Enabled and f.Bar.Visible, "preview suspension cannot hold handoff")
     check(named(f.Slots()[1], "Icon").Image == Gui.Art.Generic, "fallback remains available while preview loads")
@@ -776,6 +789,38 @@ run("startup", "optional preview may suspend without blocking takeover", functio
     f.Stop()
     check(coroutine.resume(suspended), "stale preview may finish after teardown")
     ingredientViewport.Create = original
+end)
+run("startup", "Muncher thumbnail can load during takeover and later pickups", function()
+    local uri = Artwork.GetMuncherIngredient("Strawberry")
+    check(uri ~= "", "test ingredient is in the Muncher artwork catalog")
+    local originalStatus, originalPreload = contentProvider.GetAssetFetchStatus, contentProvider.PreloadAsync
+    local suspended
+    contentProvider.GetAssetFetchStatus = function()
+        return Enum.AssetFetchStatus.None
+    end
+    contentProvider.PreloadAsync = function(_, uris, loaded)
+        check(uris[1] == uri, "the hotbar requests theme artwork by ingredient ID")
+        suspended = coroutine.running()
+        coroutine.yield()
+        loaded(uri, Enum.AssetFetchStatus.Success)
+    end
+    local f = fixture(844, 390, true)
+    local ingredient = f.Tool("Ingredient", 1, "Renamed Ingredient")
+    f.Start()
+    local slot = f.Slots()[1]
+    local icon = named(slot, "Icon")
+    check(suspended ~= nil and icon.Image == Gui.Art.Generic, "generic artwork remains while thumbnail loads")
+    check(not core.Enabled and f.Bar.Visible, "artwork cannot hold Backpack takeover")
+    f.Tool("Ice")
+    flush()
+    check(#f.Slots() == 2 and f.Slots()[2] == slot, "late Ice Gun appears while artwork loads")
+    slot.Activated:Fire()
+    flush()
+    check(ingredient.Parent == f.Character, "the ingredient is tappable before artwork loads")
+    check(coroutine.resume(suspended), "thumbnail preload completes")
+    check(icon.Image == uri and selected(slot) and writes(false) == 1, "thumbnail keeps selection and ownership")
+    f.Stop()
+    contentProvider.GetAssetFetchStatus, contentProvider.PreloadAsync = originalStatus, originalPreload
 end)
 run("input", "classification ordering and identity through equip", function()
     local f = fixture()
@@ -938,6 +983,84 @@ run("overflow", "nine slots remain swipeable while first equipped", function()
     flush()
     check(f.Scroll.CanvasPosition.X == 0, "smaller inventory clamps old scroll range")
     f.Stop()
+end)
+run("overflow", "landscape inventory growth stays bottom-docked between touch controls", function()
+    local f = fixture(740, 360, true)
+    local touch = new("ScreenGui", "TouchGui", f.PlayerGui)
+    local thumbstick = new("Frame", "DynamicThumbstickFrame", touch)
+    thumbstick.ScreenPosition, thumbstick.Pixels = v(0, 230), v(290, 130)
+    local tools = {}
+    for i = 1, 2 do
+        tools[i] = f.Tool("Ingredient", i)
+    end
+    f.Start()
+    local lowestY = f.Bar.AbsolutePosition.Y
+    for i = 3, 9 do
+        tools[i] = f.Tool("Ingredient", i)
+        flush()
+        check(f.Bar.AbsolutePosition.Y == lowestY, string.format("pickup %d keeps the bottom dock", i))
+        check(f.Bar.AbsolutePosition.X >= 298, "the row clears the thumbstick horizontally")
+        if i <= 5 then
+            check(f.Bar.AbsoluteSize.X == f.Scroll.CanvasSize.X.Offset, "the clear bottom gap fits five items")
+        end
+    end
+    local slots = f.Slots()
+    local width = f.Bar.AbsoluteSize.X
+    local maxScroll = f.Scroll.CanvasSize.X.Offset - width
+    check(maxScroll > 0, "excess items use horizontal scrolling")
+    local right = f.Bar.AbsolutePosition.X + width
+    check(slots[5].AbsolutePosition.X + slots[5].AbsoluteSize.X <= right, "five slots are fully visible")
+    check(slots[6].AbsolutePosition.X >= right, "the sixth slot is fully offscreen at rest")
+    check(slots[5].AbsoluteSize.X >= 44, "compact slots have at least 44 pixels of touch width")
+    f.Scroll.CanvasPosition = v(maxScroll, 0)
+    local last = slots[9]
+    check(
+        last.AbsolutePosition.X + last.AbsoluteSize.X <= f.Bar.AbsolutePosition.X + width,
+        "last slot can scroll fully into view"
+    )
+    last.Activated:Fire()
+    flush()
+    check(tools[9].Parent == f.Character and f.Bar.AbsolutePosition.Y == lowestY, "the last slot equips at the bottom")
+    for i = 3, 9 do
+        tools[i]:Destroy()
+    end
+    flush()
+    check(f.Bar.AbsolutePosition.Y == lowestY and f.Scroll.CanvasPosition.X == 0, "shrinking inventory stays docked")
+    check(not core.Enabled and writes(false) == 1, "layout growth keeps the one-time handoff")
+    f.Stop()
+end)
+run("overflow", "landscape fits more full slots as the bottom gap widens", function()
+    local f = fixture(740, 360, true)
+    local view = Gui.Create(f.PlayerGui)
+    for _, case in { { 188, 4 }, { 278, 6 }, { 416, 9 } } do
+        local width, count = case[1], case[2]
+        local halfGap = width / 2 + 8
+        local obstacles = {
+            { Min = v(0, 230), Max = v(370 - halfGap, 360) },
+            { Min = v(370 + halfGap, 230), Max = v(740, 360) },
+        }
+        check(Gui.Layout(view, count, true, obstacles), "the lane is usable")
+        check(view.Width == view.CanvasWidth, string.format("%d slots fit in the %d-pixel gap", count, width))
+        local dock = view.Bar.AbsolutePosition.Y
+        check(dock + view.Bar.AbsoluteSize.Y == 348, "the compact bar stays at the bottom")
+        check(Gui.Layout(view, count + 1, true, obstacles), "overflow stays usable")
+        check(view.Width < view.CanvasWidth and view.Bar.AbsolutePosition.Y == dock, "overflow keeps the dock")
+    end
+    view.Root:Destroy()
+end)
+run("overflow", "landscape lifts only when there is no room for one full slot at the bottom", function()
+    local f = fixture(740, 360, true)
+    local view = Gui.Create(f.PlayerGui)
+    local obstacles = {
+        { Min = v(0, 230), Max = v(340, 360) },
+        { Min = v(400, 230), Max = v(740, 360) },
+    }
+    check(Gui.Layout(view, 1, true, obstacles), "the single item finds a clear row")
+    local foot = view.Bar.AbsolutePosition.Y + view.Bar.AbsoluteSize.Y
+    check(foot <= 222, "the row clears the controls by eight pixels")
+    check(Gui.Layout(view, 9, true, obstacles), "nine items use the same viable lane")
+    check(view.Bar.AbsolutePosition.Y + view.Bar.AbsoluteSize.Y == foot, "inventory count cannot lift the clear row")
+    view.Root:Destroy()
 end)
 run("lifecycle", "same root across empty inventory respawn and new Backpack", function()
     local f = fixture(390, 844, true)
@@ -1192,6 +1315,13 @@ run("startup", "safe-area origin and bounds apply insets once", function()
 end)
 run("startup", "late ingredient preview preserves an already usable slot", function()
     local original = ingredientViewport.Create
+    local originalStatus, originalPreload = contentProvider.GetAssetFetchStatus, contentProvider.PreloadAsync
+    contentProvider.GetAssetFetchStatus = function()
+        return Enum.AssetFetchStatus.Failure
+    end
+    contentProvider.PreloadAsync = function(_, uris, loaded)
+        loaded(uris[1], Enum.AssetFetchStatus.Failure)
+    end
     ingredientViewport.Create = function()
         return nil
     end
@@ -1214,6 +1344,7 @@ run("startup", "late ingredient preview preserves an already usable slot", funct
     )
     check(writes(false) == 1, "preview arrival does not repeat handoff")
     f.Stop()
+    contentProvider.GetAssetFetchStatus, contentProvider.PreloadAsync = originalStatus, originalPreload
 end)
 run("fallback", "failed native restoration retries without stale-session takeover", function()
     local f = fixture()

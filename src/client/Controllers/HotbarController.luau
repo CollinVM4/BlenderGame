@@ -5,6 +5,7 @@ local StarterGui = game:GetService("StarterGui")
 local CAS = game:GetService("ContextActionService")
 local UIS = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
+local ContentProvider = game:GetService("ContentProvider")
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Gui = require(script.Parent.Parent.UI.HotbarGui)
 local MobileLayout = require(script.Parent.Parent.UI.MobileControlLayout)
@@ -33,7 +34,7 @@ type Binding = {
     Index: number,
     Connection: RBXScriptConnection,
     Dispose: (() -> ())?,
-    PreviewAttempted: boolean,
+    PreviewState: "unstarted" | "pending" | "ready" | "failed",
 }
 local function disconnect(list: { RBXScriptConnection })
     for _, connection in list do
@@ -41,6 +42,26 @@ local function disconnect(list: { RBXScriptConnection })
     end
     table.clear(list)
 end
+
+local function ingredientImage(id: string): string?
+    local ok, image = pcall(function(): string?
+        local artwork = require(Shared.Constants.MuncherArtwork)
+        local uri = artwork.GetMuncherIngredient(id)
+        if uri == "" then
+            return nil
+        end
+        if ContentProvider:GetAssetFetchStatus(uri) == Enum.AssetFetchStatus.Success then
+            return uri
+        end
+        local loaded = false
+        ContentProvider:PreloadAsync({ uri }, function(_, status)
+            loaded = status == Enum.AssetFetchStatus.Success
+        end)
+        return if loaded then uri else nil
+    end)
+    return if ok then image else nil
+end
+
 function Controller.Classify(tool: Tool): (string?, string?, string?, number?)
     if tool:GetAttribute("IceGunWeapon") == true then
         return "Ice", "Ice Gun", nil, 4
@@ -297,26 +318,39 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         binding.Slot.Button:Destroy()
     end
     local function preview(binding: Binding)
-        if binding.PreviewAttempted or binding.Dispose then
+        if binding.PreviewState ~= "unstarted" or (binding.Kind ~= "Ingredient" and binding.Kind ~= "Smoothie") then
             return
         end
-        binding.PreviewAttempted = true
+        binding.PreviewState = "pending"
         -- Optional art never gates layout, input, or CoreGui ownership. Even a
         -- suspended preview cannot suspend the controller's update path.
         task.defer(function()
             if stopped or bindings[binding.Tool] ~= binding then
                 return
             end
+            local id = binding.Id
+            if binding.Kind == "Ingredient" and id then
+                local image = ingredientImage(id)
+                if stopped or bindings[binding.Tool] ~= binding then
+                    return
+                end
+                if image then
+                    binding.Slot.Icon.Image = image
+                    binding.PreviewState = "ready"
+                    return
+                end
+            end
             local ok, dispose = pcall(function(): (() -> ())?
-                if binding.Kind == "Ingredient" and binding.Id then
+                if binding.Kind == "Ingredient" and id then
                     local renderer = require(script.Parent.Parent.UI.IngredientViewport)
-                    return renderer.Create(binding.Slot.Icon, binding.Id)
+                    return renderer.Create(binding.Slot.Icon, id)
                 elseif binding.Kind == "Smoothie" then
                     return visual(binding.Tool, binding.Slot.Icon)
                 end
                 return nil
             end)
             if not ok or not dispose then
+                binding.PreviewState = "failed"
                 return
             end
             if stopped or bindings[binding.Tool] ~= binding then
@@ -324,6 +358,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 return
             end
             binding.Dispose = dispose
+            binding.PreviewState = "ready"
             for _, child in binding.Slot.Button:GetChildren() do
                 if child:IsA("ViewportFrame") and child.Name == "IngredientPreview" then
                     child.Size, child.Position, child.AnchorPoint =
@@ -337,8 +372,8 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     end
     local function refreshPreviews()
         for _, binding in bindings do
-            if not binding.Dispose then
-                binding.PreviewAttempted = false
+            if binding.PreviewState == "failed" then
+                binding.PreviewState = "unstarted"
             end
         end
         schedule()
@@ -468,7 +503,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                         selectTool(item.Tool)
                     end),
                     Dispose = nil,
-                    PreviewAttempted = false,
+                    PreviewState = "unstarted",
                 }
                 bindings[item.Tool] = binding
                 slot.Icon.Image = if item.Kind == "Bat"
@@ -527,9 +562,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         local usable = if mounted then Gui.Layout(view, #items, UIS.TouchEnabled, obstacles()) else false
         for index, binding in ordered do
-            binding.Slot.Button.Size = UDim2.fromOffset(view.SlotSize, view.SlotSize)
-            binding.Slot.Button.Position =
-                UDim2.fromOffset(Gui.Padding + (index - 1) * (view.SlotSize + Gui.Gap), Gui.Padding)
+            Gui.PlaceSlot(view, binding.Slot, index)
         end
         if usable == false or not valid then
             requestCore(true, if not valid then "waiting for valid Tool attributes" else "custom view unavailable")

@@ -24,6 +24,8 @@ paths = {
     "HotbarGui": "src/client/UI/HotbarGui.luau",
     "MobileControlLayout": "src/client/UI/MobileControlLayout.luau",
     "Controller": "src/client/Controllers/HotbarController.luau",
+    "MuncherArtwork": "src/shared/Constants/MuncherArtwork.luau",
+    "Muncher": "src/shared/Constants/Muncher.luau",
     "IceGunService": "src/server/Services/IceGunService.luau",
     "IceGunConfig": "src/shared/Constants/IceGunConfig.luau",
     "StudioIceGunEntitlement": "src/server/Services/StudioIceGunEntitlement.luau",
