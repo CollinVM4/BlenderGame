@@ -29,6 +29,8 @@ local started, generation = false, 0
 local shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 local feedback: ScreenGui? = nil
 local feedbackUntil = 0
+local casterSurge: ScreenGui? = nil
+local casterSurgeUntil = 0
 
 local function mobile(): boolean
     return UserInputService.PreferredInput == Enum.PreferredInput.Touch
@@ -141,6 +143,59 @@ local function clearFeedback()
     end
     feedback = nil
 end
+local function clearCasterSurge()
+    if casterSurge then
+        casterSurge:Destroy()
+    end
+    casterSurge = nil
+end
+-- A world sphere is hard to read once the camera is inside it. This hollow
+-- screen-space shockwave confirms the caster's surge even when nothing was hit.
+local function showCasterSurge(result: Result, camera: Camera)
+    if result.Stage ~= "Surge" or result.ShooterUserId ~= Players.LocalPlayer.UserId then
+        return
+    end
+    local gui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    local viewport = camera.ViewportSize
+    if not gui or viewport.X <= 0 or viewport.Y <= 0 then
+        return
+    end
+    clearCasterSurge()
+    local screen = Instance.new("ScreenGui")
+    screen.Name, screen.ResetOnSpawn, screen.IgnoreGuiInset = "IceRayCasterSurge", true, true
+    screen.DisplayOrder = 8
+    local shortEdge = math.min(viewport.X, viewport.Y)
+    local startDiameter = shortEdge * Config.CasterSurgeStartScale
+    local endDiameter = viewport.Magnitude * 1.1
+    local ring = Instance.new("Frame")
+    ring.Name, ring.BackgroundTransparency, ring.BorderSizePixel = "SurgeRing", 1, 0
+    ring.Active, ring.AnchorPoint = false, Vector2.new(0.5, 0.5)
+    ring.Position, ring.Size = UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(startDiameter, startDiameter)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius, corner.Parent = UDim.new(0.5, 0), ring
+    local stroke = Instance.new("UIStroke")
+    stroke.Color, stroke.Thickness, stroke.Transparency = Config.Blue, Config.CasterSurgeStroke, 0.15
+    stroke.Parent, ring.Parent = ring, screen
+    tween(ring, Config.CasterSurgeSeconds, { Size = UDim2.fromOffset(endDiameter, endDiameter) })
+    tween(stroke, Config.CasterSurgeSeconds, { Transparency = 1, Thickness = 1 })
+    for index = 1, Config.CasterSurgeStreakCount do
+        local angle = (index - 0.5) * math.pi * 2 / Config.CasterSurgeStreakCount
+        local x, y = math.cos(angle), math.sin(angle)
+        local streak = Instance.new("Frame")
+        streak.Name, streak.Active, streak.BorderSizePixel = "SurgeStreak", false, 0
+        streak.BackgroundColor3, streak.BackgroundTransparency = Config.White, 0.3
+        streak.AnchorPoint, streak.Rotation = Vector2.new(0.5, 0.5), math.deg(angle)
+        streak.Size = UDim2.fromOffset(shortEdge * 0.07, 2)
+        streak.Position = UDim2.new(0.5, x * startDiameter * 0.75, 0.5, y * startDiameter * 0.75)
+        streak.Parent = screen
+        tween(streak, Config.CasterSurgeSeconds, {
+            Position = UDim2.new(0.5, x * endDiameter * 0.5, 0.5, y * endDiameter * 0.5),
+            BackgroundTransparency = 1,
+        })
+    end
+    screen.Parent = gui
+    casterSurge, casterSurgeUntil = screen, os.clock() + Config.CasterSurgeSeconds
+end
 local function showFeedback(result: Result)
     local player = Players.LocalPlayer
     local gui = player:FindFirstChildOfClass("PlayerGui")
@@ -196,12 +251,19 @@ local function prune()
     if feedback and (now >= feedbackUntil or not feedback.Parent) then
         clearFeedback()
     end
+    if casterSurge and (now >= casterSurgeUntil or not casterSurge.Parent) then
+        clearCasterSurge()
+    end
 end
 function Controller.Play(result: any): boolean
     if not started or not valid(result) then
         return false
     end
     local camera, isMobile = workspace.CurrentCamera, mobile()
+    if camera then
+        -- Independent of distance culling and other players' world-effect budget.
+        showCasterSurge(result, camera)
+    end
     local distance = if isMobile then Config.MobileViewDistance else Config.ViewDistance
     if not camera or (camera.CFrame.Position - result.Origin).Magnitude > distance then
         return false
@@ -262,6 +324,7 @@ function Controller.Init()
     local token = generation
     table.insert(connections, RunService.Heartbeat:Connect(prune))
     table.insert(connections, Players.LocalPlayer.CharacterRemoving:Connect(clearFeedback))
+    table.insert(connections, Players.LocalPlayer.CharacterRemoving:Connect(clearCasterSurge))
     task.spawn(function()
         local remote = ReplicatedStorage.Shared.Events:WaitForChild("IceShotgunResult")
         if started and generation == token and remote:IsA("RemoteEvent") then
@@ -299,6 +362,7 @@ function Controller.Destroy()
     table.clear(active)
     table.clear(held)
     clearFeedback()
+    clearCasterSurge()
     shotSound, frostTexture = Config.FallbackSoundId, Config.FallbackTexture
 end
 return Controller

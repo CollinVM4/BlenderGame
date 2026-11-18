@@ -16,9 +16,11 @@ check(#childrenNamed(workspaceFake, "IceShotgunBlast") == 0, "initialization nev
 local unknown = shot()
 unknown.Stage = "Unknown"
 check(not vfx.Play(unknown), "unknown stage is rejected")
+check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "invalid events cannot show a caster surge cue")
 local init = shot()
 init.Stage, init.Radius = "Init", config.InitBlastRadius
 setup(vfx.Play(init), "init visual")
+check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "initial charge never shows the surge cue")
 local heldBlast = childrenNamed(workspaceFake, "IceShotgunBlast")[1]
 local replaced = heldBlast
 setup(vfx.Play(init), "replacement init")
@@ -175,4 +177,50 @@ vfx.Init()
 flush()
 check(vfx.Play(shot()), "preload exceptions cannot prevent confirmed visuals")
 vfx.Destroy()
+
+-- The caster can see the surge from inside its sphere, even on a miss and
+-- when nearby players have exhausted the world-effect allocation budget.
+vfx.Init()
+flush()
+for index = 1, presentationConfig.MobileMaxActiveBlasts do
+    local other = shot()
+    other.ShooterUserId += index
+    setup(vfx.Play(other), "remote blast fills mobile budget")
+end
+check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "other players never trigger the caster cue")
+check(not vfx.Play(shot()), "world blast budget remains enforced")
+local cue = playerGui:FindFirstChild("IceRayCasterSurge")
+check(cue ~= nil, "confirmed local surge remains visible inside its sphere on a miss at full world budget")
+local ring = cue:FindFirstChild("SurgeRing")
+check(
+    ring.BackgroundTransparency == 1
+        and ring.Active == false
+        and playerGui:FindFirstChild("IceShotgunHitFeedback") == nil,
+    "surge cue leaves the view clear and does not imply a confirmed hit"
+)
+local streaks = childrenNamed(cue, "SurgeStreak")
+check(#streaks == presentationConfig.CasterSurgeStreakCount, "bounded outward streaks accompany the ring")
+for _, streak in streaks do
+    check(not streak.Active, "surge streaks never intercept mobile controls")
+end
+advance(presentationConfig.CasterSurgeSeconds + 0.01)
+check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "caster cue expires after its brief surge")
+advance(presentationConfig.Lifetime)
+for _, viewport in { vec(390, 844, 0), vec(844, 390, 0) } do
+    workspaceFake.CurrentCamera.ViewportSize = viewport
+    setup(vfx.Play(shot()), "surge in mobile orientation")
+    cue = playerGui:FindFirstChild("IceRayCasterSurge")
+    ring = cue:FindFirstChild("SurgeRing")
+    check(
+        ring.Size.X.Offset == math.min(viewport.X, viewport.Y) * presentationConfig.CasterSurgeStartScale
+            and ring.Size.X.Offset == ring.Size.Y.Offset,
+        "caster ring stays circular and sized to the current portrait or landscape viewport"
+    )
+    localPlayer.CharacterRemoving:Fire(localPlayer.Character)
+    check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "respawn clears the caster surge cue")
+    advance(presentationConfig.Lifetime)
+end
+setup(vfx.Play(shot()), "surge before teardown")
+vfx.Destroy()
+check(playerGui:FindFirstChild("IceRayCasterSurge") == nil, "teardown clears the caster surge cue")
 print("PASS: Ice Ray client presentation and mobile budgets")

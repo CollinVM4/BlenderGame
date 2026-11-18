@@ -8,6 +8,11 @@ return table.freeze({
     PulseGrowSeconds = 0.11,
     PulseFadeSeconds = 0.24,
     PulseStartTransparency = 0.25,
+    -- Caster-only surge cue remains visible from inside the world sphere.
+    CasterSurgeSeconds = 0.35,
+    CasterSurgeStartScale = 0.3, -- Diameter relative to the shorter viewport edge.
+    CasterSurgeStroke = 4,
+    CasterSurgeStreakCount = 8,
     ViewDistance = 100,
     MobileViewDistance = 70,
     MaxActiveBlasts = 4,
