@@ -5,7 +5,7 @@ flush()
 local function shot(hits, origin)
     return {
         Origin = origin or vec(0, 1, -2),
-        Radius = 22,
+        Radius = config.BlastRadius,
         Stage = "Surge",
         ShooterUserId = localPlayer.UserId,
         ServerTime = workspaceFake:GetServerTimeNow(),
@@ -17,7 +17,7 @@ local unknown = shot()
 unknown.Stage = "Unknown"
 check(not vfx.Play(unknown), "unknown stage is rejected")
 local init = shot()
-init.Stage, init.Radius = "Init", 8
+init.Stage, init.Radius = "Init", config.InitBlastRadius
 setup(vfx.Play(init), "init visual")
 local heldBlast = childrenNamed(workspaceFake, "IceShotgunBlast")[1]
 local replaced = heldBlast
@@ -30,7 +30,10 @@ check(
 local heldPulse = heldBlast:FindFirstChild("IceRadialPulse")
 check(heldPulse.Material == "Ice" and heldPulse.Transparency == 0.25, "icy pulse material and opacity")
 advance(0.5)
-check(heldPulse.Size.X == 16 and heldPulse.Transparency == 0.25, "small sphere holds through charge")
+check(
+    heldPulse.Size.X == config.InitBlastRadius * 2 and heldPulse.Transparency == 0.25,
+    "small sphere holds through charge"
+)
 -- Fill every remaining slot before surge: reuse must bypass allocation budget.
 for i = 2, presentationConfig.MaxActiveBlasts do
     local other = shot()
@@ -45,7 +48,7 @@ check(
 )
 check(heldPulse.CFrame.Position.X == 3, "reused surge moves to current server origin")
 advance(0.11)
-check(heldPulse.Size.X == 44, "surge expands reused sphere to full diameter")
+check(heldPulse.Size.X == config.BlastRadius * 2, "surge expands reused sphere to full diameter")
 advance(0.24)
 check(heldPulse.Transparency == 1, "surge fades after expansion")
 advance(0.31)
@@ -99,7 +102,7 @@ check(
 advance(0.12)
 local pulse = blast:FindFirstChild("IceRadialPulse")
 check(pulse.Size.Magnitude > 5 and pulse.Transparency < 1, "pulse rapidly expands while still translucent")
-check(pulse.Size.X == 44, "pulse diameter is exactly twice the server blast radius")
+check(pulse.Size.X == config.BlastRadius * 2, "pulse diameter is exactly twice the server blast radius")
 advance(0.24)
 check(
     pulse.Transparency == 1 and playerGui:FindFirstChild("IceShotgunHitFeedback") == nil,

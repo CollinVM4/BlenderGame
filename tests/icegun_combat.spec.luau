@@ -10,8 +10,8 @@ freeze.Init(deps)
 shotgun.Init(deps)
 gun.Init(deps)
 check(
-    authoredConfig.BlastRadius == 22
-        and authoredConfig.InitBlastRadius == 8
+    authoredConfig.BlastRadius == 29.7
+        and authoredConfig.InitBlastRadius == 10.8
         and authoredConfig.SurgeChargeSeconds == 0.5
         and authoredConfig.ConeAngleDegrees == nil
         and authoredConfig.ShotCooldown == 4.5
@@ -46,9 +46,9 @@ local left, leftH = target("C", vec(-15, 0, 0))
 local right, rightH = target("D", vec(15, 0, 0))
 local above, aboveH = target("E", vec(0, 15, 0))
 local below, belowH = target("I", vec(0, -10, 0))
-local edge, edgeH = target("F", vec(22, 0, 0))
-local beyond, beyondH = target("G", vec(0, 0, 22.01))
-local far, farH = target("H", vec(-22.01, 0, 0))
+local edge, edgeH = target("F", vec(config.BlastRadius, 0, 0))
+local beyond, beyondH = target("G", vec(0, 0, config.BlastRadius + 0.01))
+local far, farH = target("H", vec(-config.BlastRadius - 0.01, 0, 0))
 local behind, behindH = target("J", vec(0, 0, 15))
 local ally, allyH = target("A", vec(-7, 0, -7))
 local teammate, teammateH = target("K", vec(7, 0, 7))

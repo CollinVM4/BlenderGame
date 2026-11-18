@@ -41,12 +41,17 @@ end
 local aim = vec(0, 1, -100)
 setup(shotgun.Fire(shooter, aim), "accepted result shot")
 check(
-    #results == 1 and results[1].Stage == "Init" and results[1].Radius == 8 and #results[1].Hits == 0,
+    #results == 1
+        and results[1].Stage == "Init"
+        and results[1].Radius == config.InitBlastRadius
+        and #results[1].Hits == 0,
     "init payload carries small authoritative radius"
 )
 advance(config.SurgeChargeSeconds)
 check(
-    results[2].Stage == "Surge" and results[2].Radius == 22 and results[2].ServerTime > results[1].ServerTime,
+    results[2].Stage == "Surge"
+        and results[2].Radius == config.BlastRadius
+        and results[2].ServerTime > results[1].ServerTime,
     "surge payload has fresh timestamp and full radius"
 )
 check(
@@ -56,7 +61,7 @@ check(
 check(
     results[1].Origin.X == 0
         and results[1].Origin.Z == 0
-        and results[2].Radius == 22
+        and results[2].Radius == config.BlastRadius
         and results[1].Angle == nil
         and results[1].Direction == nil
         and results[1].ShooterUserId == shooter.UserId,
