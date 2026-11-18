@@ -9,9 +9,12 @@ local RunService = game:GetService("RunService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
 local Controller = {}
 local player = Players.LocalPlayer
+local PORTRAIT_BILLBOARD_WIDTH = 14
+local PORTRAIT_BILLBOARD_HEIGHT = 6.4
+local PORTRAIT_SIZE = 4.5
 local portraits: { [number]: string } = {}
 local pending: { [number]: boolean } = {}
-local displays: { [Instance]: BillboardGui } = {}
+local displays: { [Instance]: { Actions: BillboardGui, Portraits: BillboardGui } } = {}
 local padLabels: { [Instance]: BillboardGui } = {}
 local initialized = false
 local function portrait(id: number): string
@@ -27,21 +30,33 @@ local function portrait(id: number): string
     end
     return portraits[id] or ""
 end
-local function label(parent: Instance, text: string, y: number): TextLabel
+local function label(parent: Instance, text: string, size: UDim2, position: UDim2): TextLabel
     local result = Instance.new("TextLabel")
     result.BackgroundTransparency = 1
-    result.Size = UDim2.new(1, 0, 0, 28)
-    result.Position = UDim2.fromOffset(0, y)
-    TextStyle.Apply(result, 17, if parent:IsA("BillboardGui") then parent else nil)
-    if parent:IsA("BillboardGui") then
-        local canvasHeight = if parent.Name == "PlotIdentity" then 200 else 32
-        result.Size = UDim2.fromScale(1, 28 / canvasHeight)
-        result.Position = UDim2.fromScale(0, y / canvasHeight)
-        result.TextScaled = true
-    end
+    result.Size, result.Position = size, position
+    local billboard = if parent:IsA("BillboardGui") then parent else nil
+    TextStyle.Apply(result, 17, billboard)
+    result.TextScaled = billboard ~= nil
     result.Text = text
     result.Parent = parent
     return result
+end
+local function addPortrait(display: BillboardGui, centerX: number, image: string, name: string)
+    local head = Instance.new("ImageLabel")
+    head.AnchorPoint = Vector2.new(0.5, 0)
+    head.Size = UDim2.fromScale(PORTRAIT_SIZE / PORTRAIT_BILLBOARD_WIDTH, PORTRAIT_SIZE / PORTRAIT_BILLBOARD_HEIGHT)
+    head.Position = UDim2.fromScale(centerX, 0.04)
+    head.Image = image
+    head.BackgroundColor3 = TextStyle.Dark
+    head.BackgroundTransparency = 0
+    head.Active = false
+    head.Parent = display
+    Instance.new("UICorner", head).CornerRadius = UDim.new(0.5, 0)
+
+    local nameLabel = label(display, name, UDim2.fromScale(0.48, 0.19), UDim2.fromScale(centerX, 0.77))
+    nameLabel.AnchorPoint = Vector2.new(0.5, 0)
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.Active = false
 end
 local function button(parent: Instance, text: string, y: number, callback: () -> ()): TextButton
     local result = Instance.new("TextButton")
@@ -81,7 +96,7 @@ function Controller.Init()
     local gui = Instance.new("ScreenGui")
     gui.Name, gui.ResetOnSpawn = "PlotStatus", false
     gui.Parent = player:WaitForChild("PlayerGui")
-    local status = label(gui, "", 70)
+    local status = label(gui, "", UDim2.new(1, 0, 0, 28), UDim2.fromOffset(0, 70))
     local function context(plot: Instance): any
         return {
             PlotSessionId = plot:GetAttribute("PlotSessionId"),
@@ -129,7 +144,12 @@ function Controller.Init()
                             )
                             created.Active = false
                             created.Adornee, created.Parent = labelOrigin, gui
-                            label(created, if role == "Claim" then "CLAIM PLOT" else "JOIN STAND", 0)
+                            label(
+                                created,
+                                if role == "Claim" then "CLAIM PLOT" else "JOIN STAND",
+                                UDim2.fromScale(1, 28 / 32),
+                                UDim2.fromScale(0, 0)
+                            )
                             padLabels[labelOrigin] = created
                             display = created
                         end
@@ -147,75 +167,82 @@ function Controller.Init()
                 continue
             end
             live[plot] = true
-            if not displays[plot] then
-                local display = Instance.new("BillboardGui")
-                display.Name = "PlotIdentity"
+            local display = displays[plot]
+            if not display then
+                local actions = Instance.new("BillboardGui")
+                actions.Name = "PlotIdentity"
                 BillboardStyle.ApplyBillboard(
-                    display,
+                    actions,
                     { WidthStuds = 9, HeightStuds = 6.36, MaxDistance = 60, ResetOnSpawn = true }
                 )
-                display.ClipsDescendants = false -- Allow proportional member columns around the existing action footprint.
-                display.Active = true
-                display.Parent = gui
+                actions.Parent = gui
+
+                local marker = Instance.new("BillboardGui")
+                marker.Name = "PlotPortraits"
+                BillboardStyle.ApplyBillboard(marker, {
+                    WidthStuds = PORTRAIT_BILLBOARD_WIDTH,
+                    HeightStuds = PORTRAIT_BILLBOARD_HEIGHT,
+                    MaxDistance = 180,
+                    AlwaysOnTop = true, -- Keep the base landmark readable over map geometry.
+                    ResetOnSpawn = true,
+                })
+                marker.StudsOffsetWorldSpace = Vector3.new(0, 3.6, 0)
+                marker.Active = false
+                marker.Parent = gui
+                display = { Actions = actions, Portraits = marker }
                 displays[plot] = display
             end
-            local display = displays[plot]
-            display.Adornee = origin
+            local actions, marker = display.Actions, display.Portraits
+            actions.Adornee, marker.Adornee = origin, origin
             local owner = plot:GetAttribute("OwnerUserId")
             local teammate = plot:GetAttribute("TeammateUserId")
-            display.MaxDistance = 60
+            marker.Enabled = type(owner) == "number"
+            if type(owner) == "number" then
+                local ownerName = tostring(plot:GetAttribute("PlotOwnerName") or "")
+                local teammateName = tostring(plot:GetAttribute("PlotTeammateName") or "")
+                local ownerImage = portrait(owner)
+                local teammateImage = if type(teammate) == "number" then portrait(teammate) else ""
+                local signature = `{owner}:{teammate}:{ownerName}:{teammateName}:{ownerImage}:{teammateImage}`
+                if marker:GetAttribute("Signature") ~= signature then
+                    Profile.Count("displayRebuilds", 1)
+                    marker:SetAttribute("Signature", signature)
+                    marker:ClearAllChildren()
+                    addPortrait(marker, if type(teammate) == "number" then 0.25 else 0.5, ownerImage, ownerName)
+                    if type(teammate) == "number" then
+                        addPortrait(marker, 0.75, teammateImage, teammateName)
+                    end
+                end
+            end
+
             local position = if origin:IsA("Attachment") then origin.WorldPosition else (origin :: BasePart).Position
             local nearby = root and root:IsA("BasePart") and (root.Position - position).Magnitude <= 32
-            local action = if not nearby then nil elseif teammate == player.UserId then "LEAVE TEAM" else nil
-            local signature = tostring(owner)
-                .. tostring(teammate)
-                .. tostring(plot:GetAttribute("PlotMembershipRevision"))
-                .. tostring(plot:GetAttribute("PlotClaimRevision"))
-                .. tostring(action)
-                .. (if type(owner) == "number" then portrait(owner) else "")
-                .. (if type(teammate) == "number" then portrait(teammate) else "")
-            if display:GetAttribute("Signature") ~= signature then
-                Profile.Count("displayRebuilds", 1)
-                display:SetAttribute("Signature", signature)
-                display:ClearAllChildren()
-                if type(owner) == "number" then
-                    local function member(id: number, name: string, x: number, role: string)
-                        local head = Instance.new("ImageLabel")
-                        head.Size, head.Position = UDim2.fromScale(64 / 280, 64 / 200), UDim2.fromScale(x / 280, 0)
-                        head.Image, head.BackgroundTransparency, head.Parent = portrait(id), 1, display
-                        Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
-                        local nameLabel = label(display, name, 72)
-                        nameLabel.TextSize = 24
-                        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-                        local width = if teammate then 260 else 420
-                        nameLabel.Size = UDim2.fromScale(width / 280, 32 / 200)
-                        nameLabel.Position = UDim2.fromScale((x + 32 - width / 2) / 280, 72 / 200)
-                        if role ~= "" then
-                            local roleLabel = label(display, role, 106)
-                            roleLabel.Size, roleLabel.Position =
-                                UDim2.fromScale(width / 280, 24 / 200),
-                                UDim2.fromScale((x + 32 - width / 2) / 280, 106 / 200)
-                            roleLabel.TextSize = 14
-                        end
-                    end
-                    member(owner, tostring(plot:GetAttribute("PlotOwnerName") or ""), if teammate then -32 else 108, "")
-                    if type(teammate) == "number" then
-                        member(teammate, tostring(plot:GetAttribute("PlotTeammateName") or ""), 248, "TEAMMATE")
-                    end
-                else
-                    label(display, "AVAILABLE PLOT", 68)
+            local canLeave = marker.Enabled and nearby == true and teammate == player.UserId
+            actions.Active = canLeave
+            actions.Enabled = canLeave or type(owner) ~= "number"
+            if actions.Enabled then
+                local captured = if canLeave then context(plot) else nil
+                local signature = if captured
+                    then `{captured.PlotSessionId}:{captured.MembershipRevision}:{captured.ClaimRevision}`
+                    else "Available"
+                if actions:GetAttribute("Signature") == signature then
+                    continue
                 end
-                if action then
-                    local captured = context(plot)
-                    button(display, action, 132, function()
+                Profile.Count("displayRebuilds", 1)
+                actions:SetAttribute("Signature", signature)
+                actions:ClearAllChildren()
+                if captured then
+                    button(actions, "LEAVE TEAM", 132, function()
                         send(plot, "LeaveTeam", nil, captured)
                     end)
+                else
+                    label(actions, "AVAILABLE PLOT", UDim2.fromScale(1, 28 / 200), UDim2.fromScale(0, 68 / 200))
                 end
             end
         end
         for plot, display in displays do
             if not live[plot] then
-                display:Destroy()
+                display.Actions:Destroy()
+                display.Portraits:Destroy()
                 displays[plot] = nil
             end
         end

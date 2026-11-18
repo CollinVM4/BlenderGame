@@ -99,6 +99,14 @@ local function findText(text)
     end
     return nil
 end
+local function findPortrait(image)
+    for _, object in playerGui:GetDescendants() do
+        if object.ClassName == "ImageLabel" and object.Image == image and object.Parent.Enabled then
+            return object
+        end
+    end
+    return nil
+end
 tick()
 tick()
 check(not findText("Claim an available PLOT!"), "unassigned player has no startup claim instruction")
@@ -109,21 +117,68 @@ for _, object in playerGui:GetDescendants() do
 end
 check(findText("CLAIM PLOT") and findText("CLAIM PLOT").ClassName == "TextLabel", "claim pad label has no click action")
 check(findText("JOIN STAND") and findText("JOIN STAND").ClassName == "TextLabel", "join pad is label only")
+check(findText("AVAILABLE PLOT"), "unclaimed plots keep their availability label")
+local soloPortrait = findPortrait("portrait:" .. owner.UserId)
+check(soloPortrait and soloPortrait.Position.X.Scale == 0.5, "a solo portrait is centered over its plot")
 local snapshot = t.GetRequestContext(owner)
 t.JoinSession(viewer, owner, snapshot)
 tick()
+tick()
+local ownerPortrait = findPortrait("portrait:" .. owner.UserId)
+local teammatePortrait = findPortrait("portrait:" .. viewer.UserId)
+check(ownerPortrait and teammatePortrait, "both player portraits are visible after joining a team")
+local marker = ownerPortrait.Parent
+check(
+    marker == teammatePortrait.Parent and marker.Adornee == occupied:FindFirstChild("PlotIdentityOrigin"),
+    "both team portraits share their base's billboard and world origin"
+)
+local width, height = marker.Size.X.Scale, marker.Size.Y.Scale
+local leftSize, rightSize = ownerPortrait.Size.X.Scale, teammatePortrait.Size.X.Scale
+local left, right = ownerPortrait.Position.X.Scale, teammatePortrait.Position.X.Scale
+check(
+    leftSize * width >= 4 and math.abs(leftSize * width - ownerPortrait.Size.Y.Scale * height) < 0.01,
+    "portraits are at least four studs wide and square"
+)
+check(
+    left + right == 1
+        and left - leftSize / 2 >= 0
+        and left + leftSize / 2 < right - rightSize / 2
+        and right + rightSize / 2 <= 1
+        and ownerPortrait.Size.X.Offset == 0
+        and teammatePortrait.Size.X.Offset == 0
+        and ownerPortrait.Position.X.Offset == 0
+        and teammatePortrait.Position.X.Offset == 0,
+    "the two portraits fit within one centered, proportional row"
+)
+check(
+    marker.MaxDistance > 60 and marker.AlwaysOnTop and not marker.Active,
+    "portraits are long-range, passive landmarks"
+)
+check(not findText("TEAMMATE"), "the team role caption is removed")
 check(findText("LEAVE TEAM"), "teammate sees leave, no new claim")
 findText("LEAVE TEAM").Activated:Fire()
 check(
     requests[1][1] == "LeaveTeam" and requests[1][4].PlotSessionId == t.GetSessionId(viewer),
     "leave submits expected session"
 )
-viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(1000, 0, 0)
+viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(100, 0, 0)
 tick()
 check(not findText("LEAVE TEAM"), "teammate leave presentation remains nearby-only")
+check(
+    findPortrait("portrait:" .. owner.UserId) == ownerPortrait
+        and findPortrait("portrait:" .. viewer.UserId) == teammatePortrait
+        and ownerPortrait.Position.X.Scale == left
+        and teammatePortrait.Position.X.Scale == right,
+    "leaving action range keeps both portraits at the same offsets in their shared marker"
+)
 viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, 0)
 t.RemovePlayer(owner)
 tick()
+local promotedPortrait = findPortrait("portrait:" .. viewer.UserId)
+check(
+    promotedPortrait and promotedPortrait.Position.X.Scale == 0.5 and not findPortrait("portrait:" .. owner.UserId),
+    "owner departure leaves one centered portrait for the promoted player"
+)
 check(not findText("MANAGE PLOT") and not findText("LEAVE TEAM"), "owner has no billboard management action")
 check(playerGui:FindFirstChild("PlotStatus"), "status-only host retained")
 remote.OnClientEvent:Fire("PlotRequestResult", { success = false })
