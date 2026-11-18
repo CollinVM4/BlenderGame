@@ -269,23 +269,29 @@ marketTarget("JUMP1HIGHLIGHT", vec(400, 30, 0))
 root.Position = vec(-100, 0, 0)
 advance(7)
 check(p:GetAttribute("TutorialStage") == "Market", "elapsed time alone cannot complete a present market objective")
-root.Position = vec(-71, 0, 0)
+root.Position = vec(155, 0, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Market", "market zone excludes positions beyond 250 studs from its bounds")
-root.Position = vec(-70, 0, 0)
+check(p:GetAttribute("TutorialStage") == "Market", "jump guidance waits until the player is near the market")
+root.Position = vec(156, 0, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "market activates 250 studs before the target edge")
-root.Position = vec(400, 83, 0)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "jump guidance activates 24 studs from the market edge")
+root.Position = vec(400, 39, 0)
+advance(60)
+check(
+    p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
+    "a present jump target does not time out seven studs above the platform"
+)
+root.Position = vec(400, 27, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "jump zone also checks vertical distance")
-root.Position = vec(400, 82, 0)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "passing below the top of the platform does not count")
+root.Position = vec(400, 38, 0)
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
-    "entering the fifty-stud jump zone completes immediately without a seven-second minimum"
+    "reaching within six studs above the platform completes after the hint has had time to display"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
--- A present jump target can never complete merely because time passes.
+-- Fast players can cross the market and reach the jump platform before the handoff.
 progress(p).Complete = false
 tutorial.RemovePlayer(p)
 tutorial.AddPlayer(p)
@@ -295,15 +301,18 @@ root.Position = vec(200, 0, 0)
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 advance(2)
+check(p:GetAttribute("TutorialStage") == "Market", "arrival holds the market hint for its reading window")
+root.Position = vec(400, 36, 0)
 advance(7)
-advance(60)
 check(
     p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "jump target never times out outside its zone"
+    "an early market visit advances to a visible jump hint even if the player is already at the platform"
 )
-root.Position = vec(400, 30, 0)
-heartbeat:Fire(0.1)
-check(progress(p).Complete, "jump zone completes after waiting without requiring a purchase or serve")
+root.Position = vec(450, 36, 0)
+advance(3.9)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "early arrival keeps the jump hint active for four seconds")
+advance(0.2)
+check(progress(p).Complete, "a brief platform visit counts after the hint window even if the player moves on")
 market:Destroy() -- Later scenarios retain coverage of the missing-scenery timer fallback.
 tutorial.ApplyCharacter(p, p.Character)
 flush()

@@ -62,13 +62,12 @@ StyLua, Rojo build and whitespace checks pass. Focused Roblox-aware typecheck re
 
 ## Market send-off and progressive farm guidance
 
-After all three tutorial orders are served and the next regular order is taken,
-`TutorialStage` becomes `Market` and
-`TutorialActive` remains true. The shared hint reads "Collect more from the Central
-Market!" and the existing gleam/beam points to
-`Workspace/Central Market/CentralMarketBase` (BasePart). Entering its 125-stud radius
-sets the session's `ReachedMarket` milestone and begins MarketJump (see addendum).
-Missing market scenery sets that milestone immediately so progress stays unblocked.
+After the first tutorial order is served, the upgrade recommendation and next
+customer interaction lead to `TutorialStage = Market`. `TutorialActive` stays
+true. The hint reads "Visit the MARKET for more ingredients!" and the beam points to
+`Workspace/Central Market/CentralMarketBase` (BasePart). Approaching within 24 studs
+of its bounds counts as arrival and begins MarketJump after the market hint's
+seven-second window (see addendum). Missing market scenery uses the same window.
 Market presentation explicitly bypasses the first-order instruction retirement.
 
 Once opening onboarding is complete, the first server refresh observing the session
@@ -102,18 +101,20 @@ be run.
 
 ## Market/farm addendum
 
-After the third tutorial serve, `NextCustomer` waits for the first regular customer
-with an untaken order. `TutorialCustomerTarget` publishes its model; departures
-retarget the next waiting customer. The hint is "See what the next customer wants!".
-Taking that order starts Market. Client presentation holds its hint and beam for
-`ORDER_READ_SECONDS = 2.5`, shared with the first order's Stash delay, once per
-session. NextCustomer, Market, and MarketJump bypass opening instruction retirement.
+After the first tutorial serve and upgrade recommendation, `NextCustomer` waits
+for the next customer interaction. `TutorialCustomerTarget` publishes its model.
+The hint is "See what the next customer wants!". Taking the order starts a
+two-second server reading pause before Market. NextCustomer, Market, and
+MarketJump bypass opening instruction retirement.
 
-`MARKET_REACH_RADIUS = 125` studs from CentralMarketBase completes Market.
-MarketJump then flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart) with
-"Jump higher for valuable ingredients!". `MARKET_JUMP_REACH_RADIUS = 12` completes
-that step. Both tuning constants live in TutorialService. Missing market/jump
-scenery advances without blocking. Add/retain that exact highlight part in Studio.
+The server records arrival within 24 studs of `CentralMarketBase` and shows
+MarketJump once the market hint has been active for seven seconds. MarketJump
+flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart), with "JUMP HIGHER to
+reach better ingredients!". A living player within six studs of the platform's
+bounds and at or above its top surface registers a visit. The hint stays active
+for at least four seconds, including when the visit registers at handoff. A
+missing jump target advances after seven seconds. Keep the exact highlight part
+in Studio, aligned with the first raised platform.
 
 Farm guidance now follows BuyRow -> Plant -> quiet growth -> Harvest -> Done.
 FarmService's READY state and copied Products identify completed growth. It
@@ -124,9 +125,10 @@ references are unavailable, with "Harvest your ingredients!". The existing
 FarmService EMPTY transition after the last product removal completes Harvest.
 NextCustomer and Harvest wording remain placeholders for Collin to confirm.
 
-Studio acceptance: serve the third tutorial customer, wait for a regular arrival,
-take its order, and verify the unobstructed 2.5-second reading interval. Approach
-at 130 then 100 studs, reach the jump highlight, buy Row 1 at $20K, plant, wait for
+Studio acceptance starts by serving the first tutorial customer, taking the next
+order, and checking the reading interval. Approach the market, pass below
+the jump highlight, then land on the raised platform. Repeat with a fast arrival
+and confirm the jump hint still appears. Buy Row 1 at $20K, plant, wait for
 growth, and collect all three highlighted products. Automated doubles do not
 replace this live replication/navigation check.
 

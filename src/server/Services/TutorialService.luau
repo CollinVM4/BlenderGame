@@ -23,16 +23,21 @@ type State = {
     RowPurchasedAt: number?,
     GuidanceStartedAt: number?,
     MarketStartedAt: number?,
+    MarketReached: boolean?,
     JumpStartedAt: number?,
+    JumpReached: boolean?,
     NextCustomerInteractedAt: number?,
 }
 local states: { [Player]: State } = {}
-local MARKET_ZONE_PADDING = 250
-local MARKET_JUMP_ZONE_PADDING = 50
-local function reachedMarketTarget(player: Player, stage: string): boolean
+local MARKET_ZONE_PADDING = 24
+local MARKET_HINT_SECONDS = 7
+local MARKET_JUMP_ZONE_PADDING = 6
+local MARKET_JUMP_HINT_SECONDS = 4
+local MISSING_JUMP_HINT_SECONDS = 7
+local function reachedMarketTarget(player: Player, stage: string): boolean?
     local target = Targets.GetRoots(nil, stage)[1]
     if not target or not target:IsA("BasePart") then
-        return true -- Missing scenery retains timed progression.
+        return nil
     end
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
@@ -43,6 +48,9 @@ local function reachedMarketTarget(player: Player, stage: string): boolean
     -- Measure from the authored bounds, including rotated and elevated targets.
     local point = target.CFrame:PointToObjectSpace(root.Position)
     local half = target.Size * 0.5
+    if stage == "MarketJump" and point.Y < half.Y then
+        return false -- Passing underneath or alongside the platform is not a climb.
+    end
     local nearest = Vector3.new(
         math.clamp(point.X, -half.X, half.X),
         math.clamp(point.Y, -half.Y, half.Y),
@@ -226,22 +234,31 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
             return "NextCustomerRead", nil, nil
         end
     end
-    state.MarketStartedAt = state.MarketStartedAt or os.clock()
-    if
-        not state.JumpStartedAt
-        and (os.clock() - (state.MarketStartedAt :: number) < 7 or not reachedMarketTarget(player, "Market"))
-    then
-        return "Market", nil, nil
+    local now = os.clock()
+    if not state.JumpStartedAt then
+        local marketStartedAt = state.MarketStartedAt or now
+        state.MarketStartedAt = marketStartedAt
+        local reachedMarket = reachedMarketTarget(player, "Market")
+        if reachedMarket then
+            state.MarketReached = true
+        end
+        if now - marketStartedAt < MARKET_HINT_SECONDS or (reachedMarket == false and not state.MarketReached) then
+            return "Market", nil, nil
+        end
+        state.JumpStartedAt = now
     end
-    state.JumpStartedAt = state.JumpStartedAt or os.clock()
-    local jumpTargetMissing = #Targets.GetRoots(nil, "MarketJump") == 0
-    if
-        not reachedMarketTarget(player, "MarketJump")
-        or (jumpTargetMissing and os.clock() - (state.JumpStartedAt :: number) < 7)
-    then
-        return "MarketJump", nil, nil
+    local reachedJump = reachedMarketTarget(player, "MarketJump")
+    if reachedJump then
+        state.JumpReached = true
     end
-    return "Complete", nil, nil
+    local jumpElapsed = now - (state.JumpStartedAt :: number)
+    if
+        (state.JumpReached and jumpElapsed >= MARKET_JUMP_HINT_SECONDS)
+        or (reachedJump == nil and jumpElapsed >= MISSING_JUMP_HINT_SECONDS)
+    then
+        return "Complete", nil, nil
+    end
+    return "MarketJump", nil, nil
 end
 -- Ordered, server-owned follow-up steps. Opening presentation completion is independent.
 local farmSteps = {
@@ -306,6 +323,7 @@ local function refresh(player: Player, state: State)
         state.Milestones = {}
         state.BatchOrders = {}
         state.GuidanceStartedAt, state.MarketStartedAt, state.JumpStartedAt = nil, nil, nil
+        state.MarketReached, state.JumpReached = nil, nil
         state.NextCustomerInteractedAt = nil
         state.NextCustomer = nil
         state.FarmStep, state.RowPurchasedAt = 0, nil
