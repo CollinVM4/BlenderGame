@@ -56,6 +56,7 @@ local tycoon = {
 local function fighter(session)
     local p = env.Instance.new("Player")
     p.Parent, p.Name, p.UserId, p.Neutral = services.Players, "Fighter", #roster + 1, true
+    p.CameraMaxZoomDistance = 128
     p.Character = env.Instance.new("Model")
     p.Character.Parent = workspaceFake
     local h = env.Instance.new("Humanoid")

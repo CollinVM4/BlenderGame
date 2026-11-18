@@ -8,12 +8,21 @@ return table.freeze({
     PulseGrowSeconds = 0.11,
     PulseFadeSeconds = 0.24,
     PulseStartTransparency = 0.25,
-    ViewDistance = 100,
-    MobileViewDistance = 70,
+    -- Caster-only surge cue remains visible from inside the world sphere.
+    CasterSurgeSeconds = 0.4,
+    CasterSurgeStartScale = 0.08, -- Tight burst from the player; relative to the shorter viewport edge.
+    CasterSurgeStroke = 6,
+    CasterSurgeStreakCount = 12,
+    -- Cross-map world pulses use the same range on desktop and mobile.
+    -- Mobile keeps its smaller particle, impact, and simultaneous-blast budgets.
+    ViewDistance = 2048,
+    MobileViewDistance = 2048,
     MaxActiveBlasts = 4,
     MobileMaxActiveBlasts = 2,
     FrostCount = 24,
     MobileFrostCount = 12,
+    SurgeFrostCount = 36,
+    MobileSurgeFrostCount = 18,
     ShardCount = 4,
     MobileShardCount = 2,
     MaxImpactEffects = 4,

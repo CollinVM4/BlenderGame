@@ -258,7 +258,7 @@ fireInput(lateTool)
 rejectCooldown(deadline)
 local message = feedback()
 check(
-    message.Visible and message.Text == "Cooldown... 3.2s left",
+    message.Visible and message.Text == "Cooldown... 1.7s left",
     "server deadline supplies accurate remaining time before attribute replication"
 )
 check(
@@ -269,7 +269,7 @@ advance(0.2)
 fireInput(lateTool)
 rejectCooldown(deadline)
 check(
-    feedback() == message and message.Text == "Cooldown... 3.0s left" and message.TextTransparency == 0,
+    feedback() == message and message.Text == "Cooldown... 1.5s left" and message.TextTransparency == 0,
     "repeated attempts refresh one message and restart animation"
 )
 advance(0.4)
@@ -299,6 +299,19 @@ local function noRadial(object)
     end
 end
 noRadial(gui)
+local savedZoom, savedRay = viewer.CameraMaxZoomDistance, cameraRay
+viewer.CameraMaxZoomDistance = 400
+cameraRay = { Origin = vec(0, 1, 400), Direction = vec(0, 0, -1) }
+fireInput(lateTool)
+rejectCooldown(workspaceFake:GetServerTimeNow() + 3.2)
+check(
+    feedback().Visible
+        and feedback().Text == "Cooldown... 3.2s left"
+        and feedback().TextSize == 18
+        and gui:FindFirstChild("IceGunReticle"):IsA("ScreenGui"),
+    "cooldown hint stays screen-space and readable at maximum player zoom"
+)
+viewer.CameraMaxZoomDistance, cameraRay = savedZoom, savedRay
 setInput("Touch")
 local shotsBeforeTouch = attempted
 lateTool.Activated:Fire()

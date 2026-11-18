@@ -68,4 +68,18 @@ check(not fire(vec(0, 1, -10), cameraOrigin, nil), "partial camera payload rejec
 -- successful blast's cooldown, so clear that cooldown before the final shot.
 advance(config.ShotCooldown)
 check(fire(vec(0, 1, -10), cameraOrigin, cameraDirection), "valid intent fires after rejected intents")
+advance(config.ShotCooldown)
+player.CameraMaxZoomDistance = 400
+local zoomedOrigin = playerRoot.Position + vec(0, 0, player.CameraMaxZoomDistance)
+check(fire(vec(0, 1, -10), zoomedOrigin, cameraDirection), "fully zoomed-out camera can fire a radial blast")
+advance(0.11)
+local accepted, reason = fire(vec(0, 1, -10), zoomedOrigin, cameraDirection)
+check(not accepted and reason == "shot cooldown", "full zoom returns cooldown feedback rather than invalid camera")
+advance(0.11)
+accepted, reason = fire(
+    vec(0, 1, -10),
+    playerRoot.Position + vec(0, 0, player.CameraMaxZoomDistance + config.CameraRayOriginPadding + 1),
+    cameraDirection
+)
+check(not accepted and reason == "invalid camera ray", "camera intent still rejects origins beyond the allowed zoom")
 print("PASS: Ice Ray radial aim/camera intent validation")

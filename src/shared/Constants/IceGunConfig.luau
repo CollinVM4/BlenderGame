@@ -3,8 +3,9 @@ return table.freeze({
     IceGunGamePassId = 2022020489, -- Creator Hub pass ID, not the asset ID. Fail closed until configured.
     StudioGamePassSimulation = true, -- Explicit opt-in; server + Studio + negative UserId only.
     DebugLogging = false, -- Opt-in, Studio-only, rate-limited lifecycle/fire diagnostics.
-    MaximumCameraDistance = 128, -- Bounds untrusted third-person camera intent.
-    ShotCooldown = 4.5,
+    MaximumCameraDistance = 128, -- Minimum camera-intent bound; also respect the player's server-authored zoom limit.
+    CameraRayOriginPadding = 16, -- Allow the viewport-ray origin and third-person camera offset at maximum zoom.
+    ShotCooldown = 3,
     DirectDamage = 5,
     FreezeSeconds = 4,
     CustomerRagdollSeconds = 2.5,
@@ -14,8 +15,8 @@ return table.freeze({
     -- to each target root. The client pulse is sized to exactly this radius,
     -- so the visible blast and the actual hit area are the same sphere.
     -- There is no cone angle: direction and line of sight do not gate hits.
-    BlastRadius = 22,
-    InitBlastRadius = 8,
+    BlastRadius = 29.7,
+    InitBlastRadius = 10.8,
     SurgeChargeSeconds = 0.5,
     ProjectileLifetime = 110 / 70, -- Retained for the unused imported cosmetic projectile helper.
     TeamDamage = false, -- Server-only opt-in bypasses shared-plot and Roblox-team protection for ice shots.

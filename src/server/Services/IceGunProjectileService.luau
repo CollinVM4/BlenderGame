@@ -213,6 +213,11 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
     -- derive a direction, an aim distance, or world occlusion: the crosshair
     -- is activation intent only, and the server hit area is the caster sphere.
     if cameraOrigin ~= nil or cameraDirection ~= nil then
+        -- A fixed 128-stud limit rejects legitimate fully zoomed-out shots
+        -- before they can return cooldown feedback. This property is read
+        -- from the server's Player, never from a client-supplied zoom value.
+        local cameraLimit = math.max(Config.MaximumCameraDistance, player.CameraMaxZoomDistance)
+            + Config.CameraRayOriginPadding
         if
             typeof(cameraOrigin) ~= "Vector3"
             or typeof(cameraDirection) ~= "Vector3"
@@ -222,7 +227,7 @@ function Service.Fire(player: Player, aim: any, cameraOrigin: any?, cameraDirect
             or not finite(cameraDirection.X)
             or not finite(cameraDirection.Y)
             or not finite(cameraDirection.Z)
-            or (cameraOrigin - root.Position).Magnitude > Config.MaximumCameraDistance
+            or (cameraOrigin - root.Position).Magnitude > cameraLimit
             or math.abs(cameraDirection.Magnitude - 1) > 0.01
         then
             return reject("invalid camera ray")

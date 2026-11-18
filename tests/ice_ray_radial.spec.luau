@@ -34,9 +34,9 @@ local east, eastH = target("D", vec(12, 0, 0))
 local west, westH = target("E", vec(-12, 0, 0))
 local up, upH = target("F", vec(0, 12, 0))
 local down, downH = target("G", vec(0, -12, 0))
-local nearEdge, nearEdgeH = target("H", vec(21.9, 0, 0))
-local atEdge, atEdgeH = target("I", vec(0, 0, -22))
-local pastEdge, pastEdgeH = target("J", vec(0, 0, 22.01))
+local nearEdge, nearEdgeH = target("H", vec(config.BlastRadius - 0.1, 0, 0))
+local atEdge, atEdgeH = target("I", vec(0, 0, -config.BlastRadius))
+local pastEdge, pastEdgeH = target("J", vec(0, 0, config.BlastRadius + 0.01))
 -- A target that moves between blasts: position at fire time is what counts.
 local mover, moverH = target("K", vec(30, 0, 0))
 check(shotgun.Fire(shooter, aim), "radial blast fires")
@@ -122,9 +122,9 @@ check(npcHits[npcIn] == 1, "init customer is not reacted again at surge")
 
 -- Each stage snapshots current positions; a paid activation survives unequipping.
 advance(config.ShotCooldown + config.FreezeSeconds + config.ImmunitySeconds)
-local close, closeH = target("Close", vec(8, 0, 0))
+local close, closeH = target("Close", vec(config.InitBlastRadius, 0, 0))
 local mid, midH = target("Mid", vec(15, 0, 0))
-local far, farH = target("Far", vec(23, 0, 0))
+local far, farH = target("Far", vec(config.BlastRadius + 1, 0, 0))
 local entrant, entrantH = target("Entrant", vec(40, 0, 0))
 local results = {}
 local remote = shared.Events:FindFirstChild("IceShotgunResult")
@@ -157,7 +157,7 @@ check(
 )
 check(results[1].Origin.X == 0 and results[2].Origin.X == 1, "init origin stays put while surge follows caster")
 check(shooter:GetAttribute("IceGunCooldownEnd") == deadline, "surge does not refresh cooldown")
--- Stationary far target was outside 22 at activation and is inside at moved surge.
+-- Stationary far target was outside the surge radius at activation and is inside at moved surge.
 -- Cancellation preserves init hits and the consumed cooldown.
 tool.Parent = shooter.Character
 for _, mode in { "death", "removed", "replacement", "leaving", "root removed" } do
