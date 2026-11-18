@@ -27,11 +27,11 @@ local hints: { [string]: string } = {
 }
 function Text.Get(stage: string, preferred: Enum.PreferredInput, button: string): string?
     if stage == "Upgrades" then
-        return "Open " .. keyword("UPGRADES") .. ": buy " .. keyword("JUMP 1") .. " and " .. keyword("BAT 1") .. "!"
+        return "Open " .. keyword("UPGRADES") .. ": buy " .. keyword("JUMP 1") .. " and " .. keyword("BAT") .. "!"
     elseif stage == "UpgradeJump" then
         return "Buy " .. keyword("JUMP 1") .. " in " .. keyword("UPGRADES") .. "!"
     elseif stage == "UpgradeBat" then
-        return "Buy " .. keyword("BAT 1") .. " in " .. keyword("UPGRADES") .. "!"
+        return "Buy " .. keyword("BAT") .. " in " .. keyword("UPGRADES") .. "!"
     end
     if stage == "Blender" then
         if preferred == Enum.PreferredInput.Touch then
