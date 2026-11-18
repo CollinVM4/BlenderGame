@@ -22,8 +22,8 @@ return {
         SpawnRadius = 2,
         SpawnHeight = 1,
     },
-    -- Loose anti-exploit radius, scaled by the purchased level's Scale.
-    -- Contact still requires authored Hitbox overlap; Reach is not a root-distance veto.
+    -- Maximum distance from the attacker root to the equipped Hitbox center before scaling.
+    -- Contact comes from overlap with the issued Hitbox.
     MaxRootDistance = 8,
     Levels = {
         -- Independent horizontal/upward velocity changes in studs/sec, mass-scaled at impact.
@@ -36,7 +36,7 @@ return {
             DamageFraction = 0.25,
         },
         {
-            Scale = 1.12,
+            Scale = 1.25,
             Reach = 5.75,
             StunDuration = 2.25,
             HorizontalKnockback = 48,
@@ -44,7 +44,7 @@ return {
             DamageFraction = 0.34,
         },
         {
-            Scale = 1.25,
+            Scale = 1.50,
             Reach = 6.5,
             StunDuration = 3,
             HorizontalKnockback = 75,

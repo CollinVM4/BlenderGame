@@ -494,6 +494,10 @@ local services = {
     ReplicatedStorage = new("ReplicatedStorage", "ReplicatedStorage"),
     TextChatService = textChat,
 }
+function guiService:GetInsetArea()
+    local playerGui = services.Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    return { Min = v(0, 0), Max = playerGui.AbsoluteSize }
+end
 services.ReplicatedStorage.Shared = new("Folder", "Shared", services.ReplicatedStorage)
 services.ReplicatedStorage.Shared.IngredientPreviewGeometry = "Geometry"
 services.ReplicatedStorage.Shared.Constants = { IceGunConfig = "IceGunConfig" }
@@ -586,6 +590,7 @@ local function requireModule(name)
 end
 local Gui = requireModule("HotbarGui")
 local Controller = requireModule("Controller")
+local MobileLayout = requireModule("MobileControlLayout")
 local IceGunService = requireModule("IceGunService")
 IceGunService.Init({
     IceGunEffects = { Inert = function() end },
@@ -1134,6 +1139,10 @@ run("startup", "live mobile controls have clear lane and late mounting adjusts i
         cas.Buttons.SprintHeld = button("Sprint", w - 190, h - 90, 70, 70)
         cas.Buttons.ThrowHeld = button("Throw", w - 160, h - 180, 70, 70)
         cas.Buttons.IceShotgunFire = button("Fire", w - 100, h - 260, 70, 70)
+        services.Players.LocalPlayer = f.Player
+        for _, action in { "SprintHeld", "ThrowHeld", "IceShotgunFire" } do
+            MobileLayout.Register(action)
+        end
         flush()
         local a = f.Bar.AbsolutePosition
         local b = v(a.X + f.Bar.AbsoluteSize.X, a.Y + f.Bar.AbsoluteSize.Y)
@@ -1146,6 +1155,8 @@ run("startup", "live mobile controls have clear lane and late mounting adjusts i
         end
         check(f.Root == original and writes(false) == 1, "late controls adjust same bar without another disable")
         f.Stop()
+        MobileLayout.Destroy()
+        flush()
     end
 end)
 run("startup", "zero initial safe area waits for mounted bounds", function()
@@ -1517,6 +1528,161 @@ run("diagnostic", "snapshot detects stale Backpack before lifecycle event delive
     added:Fire(f.Backpack)
     flush()
     check(#f.Slots() == 1 and not core.Enabled, "normal Backpack event binds and reconciles existing children")
+    f.Stop()
+end)
+-- The real mobile layout lookup suspends, while the hotbar consumes only its
+-- cached references/predictions. No rotation, diagnostic command or timer fires.
+for _, bounds in { { 390, 844 }, { 844, 390 } } do
+    for _, kind in { "Ice", "Ingredient" } do
+        run(
+            "lookup",
+            string.format("%dx%d %s arrives during suspended touch lookup", bounds[1], bounds[2], kind),
+            function()
+                local f = fixture(bounds[1], bounds[2], true)
+                services.Players.LocalPlayer = f.Player
+                local controls = new("ScreenGui", "ActionControls", f.PlayerGui)
+                local button = new("ImageButton", "PendingSprint", controls)
+                button.Pixels = v(70, 70)
+                cas.Buttons.SprintHeld = button
+                local originalLookup = cas.GetButton
+                local held = {}
+                cas.GetButton = function(self, action)
+                    if action == "SprintHeld" then
+                        table.insert(held, coroutine.running())
+                        coroutine.yield()
+                    end
+                    return originalLookup(self, action)
+                end
+                MobileLayout.Register("SprintHeld")
+                f.Start()
+                check(#held > 0 and coroutine.status(held[1]) == "suspended", "touch lookup is held outside hotbar")
+                check(core.Enabled and #f.Slots() == 0, "empty join retains native while controls lookup waits")
+                local tool = if kind == "Ice" then f.GrantIce() else f.Tool("Ingredient", 1)
+                flush()
+                check(
+                    not core.Enabled and f.Bar.Visible and #f.Slots() == 1,
+                    "inventory populates and takes over before lookup returns"
+                )
+                f.Slots()[1].Activated:Fire()
+                flush()
+                check(tool.Parent == f.Character, "tap equip works during suspended lookup")
+                local later = if kind == "Ice" then f.Tool("Ingredient", 2) else f.GrantIce()
+                flush()
+                check(#f.Slots() == 2 and writes(false) == 1, "late pickup updates the existing owner during lookup")
+                local laterButton = f.Slots()[if kind == "Ice" then 2 else 1]
+                laterButton.Activated:Fire()
+                flush()
+                check(later.Parent == f.Character, "late pickup remains tappable")
+                -- No GUI event accompanies lookup completion: cache publication must
+                -- notify the bar so it can clear these previously unknown bounds.
+                local position = f.Bar.AbsolutePosition
+                button.ScreenPosition = v(position.X, position.Y)
+                cas.GetButton = originalLookup
+                for _, thread in held do
+                    check(coroutine.resume(thread), "lookup completes")
+                end
+                flush()
+                local p, size, b = f.Bar.AbsolutePosition, f.Bar.AbsoluteSize, button.AbsolutePosition
+                check(
+                    p.X + size.X <= b.X or p.X >= b.X + 70 or p.Y + size.Y <= b.Y or p.Y >= b.Y + 70,
+                    "completed lookup replaces predicted bounds with cached actual bounds"
+                )
+                check(#f.Slots() == 2 and writes(false) == 1, "cache completion keeps slots and successful handoff")
+                f.Stop()
+                MobileLayout.Destroy()
+                flush()
+            end
+        )
+    end
+end
+run("updates", "Tool events during a held update run after the current pass", function()
+    local f = fixture(390, 844, true)
+    local original = Gui.Layout
+    local held
+    Gui.Layout = function(...)
+        held = coroutine.running()
+        coroutine.yield()
+        return original(...)
+    end
+    f.Start()
+    check(held ~= nil and core.Enabled, "test holds the first update after its inventory snapshot")
+    local ice = f.GrantIce()
+    local ingredient = f.Tool("Ingredient", 1)
+    ingredient.Name = "Late Strawberry"
+    flush()
+    Gui.Layout = original
+    check(coroutine.resume(held), "current pass finishes")
+    flush()
+    check(
+        #f.Slots() == 2 and f.Bar.Visible and not core.Enabled,
+        "one pending pass reconciles all arrivals without another event"
+    )
+    f.Slots()[1].Activated:Fire()
+    flush()
+    check(
+        ice.Parent == f.Character and writes(false) == 1,
+        "pending inventory participates in normal equip and one handoff"
+    )
+    f.Slots()[2].Activated:Fire()
+    flush()
+    check(ingredient.Parent == f.Character, "pending ingredient identity is selectable")
+    f.Stop()
+end)
+run("updates", "Tool removal and classification changes during update are preserved", function()
+    local f = fixture(844, 390, true)
+    local ice = f.Tool("Ice")
+    f.Start()
+    local original = Gui.Layout
+    local injected = false
+    local ingredient
+    Gui.Layout = function(...)
+        if not injected then
+            injected = true
+            ice.Parent = nil
+            ingredient = f.Tool("Ingredient", 1)
+            ingredient:SetAttribute("CarryItemId", 2)
+            ingredient.Name = "Fresh pickup"
+        end
+        return original(...)
+    end
+    f.Resize(820, 390)
+    Gui.Layout = original
+    check(
+        #f.Slots() == 1 and named(f.Slots()[1], "Label").Text == "Fresh pickup",
+        "followup removes stale Tool and accepts changed ingredient"
+    )
+    f.Slots()[1].Activated:Fire()
+    flush()
+    check(
+        ingredient.Parent == f.Character and writes(false) == 1,
+        "existing custom ownership survives in-pass inventory changes"
+    )
+    f.Stop()
+end)
+run("updates", "classification arriving during update triggers takeover", function()
+    local f = fixture(390, 844, true)
+    local tool = f.Tool("Unknown", nil, "IcicleGun")
+    local original = Gui.Layout
+    local classified = false
+    Gui.Layout = function(...)
+        if not classified then
+            classified = true
+            tool:SetAttribute("IceGunWeapon", true)
+        end
+        return original(...)
+    end
+    f.Start()
+    Gui.Layout = original
+    check(
+        #f.Slots() == 1 and f.Bar.Visible and not core.Enabled,
+        "in-pass classification creates the first eligible slot without another event"
+    )
+    f.Slots()[1].Activated:Fire()
+    flush()
+    check(
+        tool.Parent == f.Character and writes(false) == 1,
+        "late classification retains normal tap equip and one owner"
+    )
     f.Stop()
 end)
 check(cases > 0, "requested group ran")

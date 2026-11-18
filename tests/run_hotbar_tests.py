@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(__doc__)
 parser.add_argument("--luau", default="luau")
 parser.add_argument(
     "--case",
-    choices=("all", "startup", "input", "lifecycle", "overflow", "fallback", "discovery", "diagnostic"),
+    choices=("all", "startup", "input", "lifecycle", "overflow", "fallback", "discovery", "diagnostic", "lookup", "updates"),
     default="all",
 )
 parser.add_argument(

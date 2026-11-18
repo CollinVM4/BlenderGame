@@ -8,19 +8,19 @@ access, and respawn reconstructs one Tool from the session. No persistence was
 added; plot upgrades retain the existing in-memory lifetime.
 
 Prices are **1500 / 4500 / 9000** in `src/shared/Constants/Upgrades.luau` (`Bat`).
-Combat tuning lives in `src/shared/Constants/BatConfig.luau`:
+Combat tuning lives in `src/shared/Constants/BatConfig.luau`.
 
-Contact requires overlap with the equipped server-configured Hitbox. `Reach` is
-not a strict root-distance gate. `MaxRootDistance = 8`, multiplied by level Scale,
-bounds both victim root distance and observed Hitbox center distance from the
-attacker (8 / 8.96 / 10 studs). This is an anti-exploit sanity bound, not a larger
-query volume. Authored Hitbox geometry remains unchanged.
+Contact requires the server's overlap query against the live equipped Hitbox.
+`MaxRootDistance = 8`, multiplied by the purchased tier's scale, limits the
+distance from the attacker root to the Hitbox center before the server queries
+the box. An overlapping body part can qualify with the target root beyond that
+limit. The server uses target-root distance to select the nearest eligible target.
 
-| Level | Visible scale | Reach (studs) | Stun (seconds) |
-|---|---:|---:|---:|
-| 1 | 1.00 | 5.0 | 1.5 |
-| 2 | 1.12 | 5.75 | 2.25 |
-| 3 | 1.25 | 6.5 | 3.0 |
+| Level | Uniform scale | Hitbox-center limit (studs) | Example Hitbox size (X × Y × Z, studs) | Stun (seconds) |
+|---|---:|---:|---|---:|
+| 1 | 1.00 | 8 | 3.087 × 2.350 × 8.118 | 1.5 |
+| 2 | 1.25 | 10 | 3.85875 × 2.9375 × 10.1475 | 2.25 |
+| 3 | 1.50 | 12 | 4.6305 × 3.525 × 12.177 | 3.0 |
 
 Cooldown is 1.1 seconds, and immunity after stun is
 2.5 seconds. Misses consume the swing cooldown. The gameplay request adapter
@@ -33,7 +33,6 @@ without replaying contacts missed during server delays. Each sample reads the
 live equipped Hitbox CFrame and Size. The first valid victim consumes the swing.
 Eligibility and captured membership context are revalidated on every sample;
 unequipping invalidates the swing even if the same Tool is immediately re-equipped.
-All spatial checks remain unchanged; this is discrete sampling, not a swept volume.
 The obsolete ImpactDelay/ImpactWindow settings and three-sample scheduler were removed.
 
 ## Studio setup
@@ -54,11 +53,12 @@ ServerStorage
 
 No Tools folder is needed. Weld every visible BasePart and Hitbox to Handle
 (WeldConstraints recommended). Keep parts unanchored, noncolliding and massless.
-Preserve the authored Tool.Grip and Hitbox dimensions/transform. The current
-baseline is approximately **0.867 x 0.597 x 4.703**; these numbers are not hardcoded.
-Level 1 preserves that baseline, while levels 2/3 scale parts and local offsets by
-1.12/1.25. Make the template, Handle and Hitbox Archivable, and keep embedded
-gameplay scripts out of the asset. Runtime changes only cloned parts.
+Preserve the authored Tool.Grip and Hitbox dimensions and transform. The current
+Edit-mode Hitbox is approximately **3.087 × 2.350 × 8.118**. Fresh grants read the
+current template. Upgrades resize the issued Tool by the new scale divided by its
+previous scale. Visible parts, the Hitbox, and local offsets scale together on all
+three axes. Make the template, Handle and Hitbox Archivable, and keep embedded
+gameplay scripts out of the asset. Runtime changes apply to clones only.
 
 Missing/malformed assets warn and skip granting. Clone configuration failures are
 isolated from shared purchase transactions; Sprint/Jump state and upgrade receipts
@@ -74,16 +74,14 @@ configuration. Existing plot/session tags and attributes continue unchanged.
 - `BatController` sends only `GameplayRequest("SwingBat")` on Tool activation.
   The server requires a living active plot member, authoritative purchased level,
   the exact issued equipped Tool, no stun, and an elapsed cooldown.
-- After the impact delay, the server rechecks character, Tool, membership revision
-  and eligibility. It calls `GetPartBoundsInBox` repeatedly across the active window. Each query follows
-  the server-observed issued Tool's actual Hitbox CFrame and Size at impact.
-  The server configures the clone's scale; request payloads cannot supply geometry.
-  The independent root-distance, forward-facing and
-  line-of-sight checks below bound the observed pose's effective reach.
-- Only the nearest living enemy whose character intersects the volume qualifies.
-  Root distance, forward direction and a line-of-sight ray also gate hits. Self,
-  shared plot members, non-neutral Roblox teammates, stunned players and immune
-  players are excluded. One swing can apply at most one stun, with no damage.
+- During the active window, the server rechecks character, Tool, membership
+  revision, eligibility, and the Hitbox-center pose limit. It calls
+  `GetPartBoundsInBox` with the issued Tool's observed Hitbox CFrame and
+  server-configured Size.
+- Among overlapping, eligible targets in front of the attacker with clear line of
+  sight, the nearest root wins. Player eligibility excludes self, shared plot
+  members, non-neutral Roblox teammates, and protected, stunned or immune players.
+  Each swing can hit one target.
 - `MovementService.SetStunned` owns the server stun flag and jump restriction.
   Its change signal makes SprintService stop sprinting and resolve WalkSpeed.
   Recovery uses current purchased movement/jump values; sprint requires fresh
@@ -123,8 +121,8 @@ The existing customer-request edits were preserved.
 The old impact path reconstructed the volume from Handle.CFrame and the template's
 cached local offset rather than sampling the equipped Hitbox. This has been
 corrected. The subsequent Studio trace confirmed actual overlap at root distance
-5.807 was vetoed by the old Level 1 Reach of 5. The strict Reach veto is now replaced
-by the scaled sanity bound above; forward, LOS, plot/team and immunity rules remain.
+5.807 was vetoed by the old Level 1 Reach of 5. Current swings use overlap for
+contact, with the scaled Hitbox-center pose check described above.
 Separate claims generate unique session GUIDs; neutral players are not protected
 merely because they share a default Team. Avatar roots are queryable; cosmetic
 accessories normalized by CharacterPhysicsService are deliberately not queryable.
@@ -140,19 +138,19 @@ game:GetService("Players"):FindFirstChild("ATTACKER_NAME"):SetAttribute("BatDebu
 
 Activate the Tool once from that player's client. Server `[Bat]` output reports
 request rejection/acceptance, authoritative level and equipped Tool validation,
-impact callback, live Hitbox path/CFrame/Size, overlap count, candidate part/model/
-player names, session IDs and protection rejection, root distance, forward dot,
+impact callback, Hitbox-center distance, pose limit and validity, live Hitbox
+path/CFrame/Size, overlap count, candidate part/model/player names, session IDs
+and protection rejection, candidate root distance for ranking, forward dot,
 LOS obstruction, selected player, and resulting `Stunned`/`StunnedUntil` attributes.
 The flag clears after one request (including adapter throttle/stun rejection),
 and logging is disabled outside Studio. Re-arm only when another trace is needed.
 
-The focused combat suite verifies live transform sampling and point-blank body/
-nested accessory ownership, stun and drops, smoothie retention, teammate immunity,
-behind/reach/wall rejection, one victim, cooldown and immunity using engine doubles.
-Actual multi-client contact, an enemy just outside the authored volume, and real
-wall rays remain Studio checks. Retest the observed 5.807-stud contact after sync
-and restart. Temporary logging remains until this fix is confirmed in Studio;
-then remove the client/adapter/combat diagnostic logging and its trace-only tests.
+The combat and protection suites use query doubles to exercise live transform
+sampling, edge candidates beyond the former root cutoff, empty overlaps, invalid
+poses, body/accessory ownership, stun and drops, smoothie retention, protection,
+facing, wall rejection, nearest-target selection, cooldown and immunity.
+Multi-client overlap, weld alignment and wall rays require Studio. After Studio
+confirmation, remove the temporary diagnostics and their trace-only tests.
 
 ### When a swing produces no `[Bat]` output
 
@@ -210,13 +208,19 @@ throttle/stun rejection, and preservation of the flag through combat dispatch.
 
 ## Studio-only verification
 
-CLI tests double Roblox spatial queries, timers and physics. Verify in a
-multi-client Studio session: authored Tool grip/welds and modest resizing;
-all three purchase levels; respawn and owner promotion; enemies at volume edges
-and behind walls; teammate immunity; movement/jump/sprint recovery; ingredient
-pickup and return to an enemy stash; smoothie preservation; and behavior under
-latency. Test both R6/R15 if both are supported. One optional local swing animation is supported. No sound, particles, camera
-effects, floating text or custom combat UI were added.
+Keep the enlarged `ServerStorage.Bat.Hitbox` welded to `Handle` in Edit mode.
+After Rojo sync, start a fresh two-client server so each player receives a clone
+from the current template.
+
+- Check point-blank, side and tip contacts at all three tiers. Verify the grip,
+  visible geometry and Hitbox stay aligned through upgrades.
+- Land an outer-edge hit on a target whose root lies beyond the former tier cutoff.
+  Try a nearby target outside the Hitbox and confirm it misses.
+- Confirm walls, targets behind the attacker, teammates and protected targets block
+  hits. Include an eligible NPC or a third client to overlap two targets and
+  confirm only the nearest takes the hit.
+- Respawn at an upgraded tier and join a session with a tier already purchased.
+  Verify each grants one correctly sized Bat.
 
 ## Upgrade Loading diagnosis and fix
 
@@ -347,9 +351,9 @@ Studio still needs floor-penetration/recovery and broader-window gameplay verifi
 
 ## Customer hits
 
-The existing live Hitbox samples choose one nearest eligible player or customer per
-swing, using the same distance, facing and line-of-sight checks. CustomerService
-accepts only active, unserved customers in the attacker's current plot session.
+The live Hitbox samples use the same pose, overlap, facing and line-of-sight checks
+for NPCs and players, then choose one nearest eligible target. CustomerService
+validates customer registration and eligibility.
 Customers use the purchased bat's recovery duration and the shared BatKnockback
 impulse, without player stun, inventory drops or damage. Accepted customer hits emit
 CustomerHurt (`126967734395019`) through the existing positional audio event.

@@ -99,13 +99,15 @@ local function advance(seconds)
 end
 local template = instance("Tool")
 template.Name, template.Parent = "Bat", storage
-template.Grip = frame(0.1, -0.3, 0.2)
+local authoredGrip = frame(0.1, -0.3, 0.2)
+template.Grip = authoredGrip
 local handle = part("Handle", template)
 handle.Size = vec(1, 2, 1)
 local mesh = part("BatMesh", template)
 mesh.Size = vec(1, 4, 1)
+mesh.CFrame = frame(-0.15, 0.2, -1.1)
 local hitbox = part("Hitbox", template)
-hitbox.Size = vec(0.867, 0.597, 4.703)
+hitbox.Size = vec(3.087, 2.35, 8.118)
 hitbox.CFrame = frame(0.25, 0.1, -2.35)
 local roster = {}
 services.Players.GetPlayers = function()
@@ -168,6 +170,7 @@ tycoon.Init({
 })
 local querySize, queryFrame, queryParams, queryCount = nil, nil, nil, 0
 local overlaps = {}
+-- Spatial query double: each case supplies candidates explicitly.
 workspaceFake.GetPartBoundsInBox = function(_, at, size, params)
     querySize, queryCount = size, queryCount + 1
     queryFrame, queryParams = at, params

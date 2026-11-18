@@ -145,15 +145,22 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local coreDone, retryQueued = false, false
     local reason = "waiting for first Tool"
     local inventoryTrigger: string? = "startup"
+    local inventoryPending = false
     local inventoryUpdates, inventoryAccepted = 0, 0
     local inventoryReason, inventoryAt = "not updated", os.clock()
     local writeError, readError = "", ""
     local externallyHidden = false
     local schedule: () -> ()
+    local function requestInventory(why: string)
+        inventoryTrigger = why
+        if mutating then
+            inventoryPending = true
+        end
+        schedule()
+    end
     local function inventoryChanged(why: string): () -> ()
         return function()
-            inventoryTrigger = why
-            schedule()
+            requestInventory(why)
         end
     end
     local function coreState(): boolean?
@@ -434,10 +441,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         return result
     end
     local function update()
+        local trigger = inventoryTrigger
+        inventoryTrigger = nil
         local valid = collect()
         inventoryUpdates += 1
-        inventoryReason, inventoryAt, inventoryAccepted = inventoryTrigger or "view/input", os.clock(), #items
-        inventoryTrigger = nil
+        inventoryReason, inventoryAt, inventoryAccepted = trigger or "view/input", os.clock(), #items
         local wanted: { [Tool]: boolean } = {}
         local ordered: { Binding } = {}
         local nextEquipped: Tool? = nil
@@ -568,8 +576,13 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
                 warn("HotbarController: " .. tostring(message))
             end
             mutating = false
+            if inventoryPending then
+                inventoryPending = false
+                schedule()
+            end
         end)
     end
+    local stopButtonObserver = MobileLayout.ObserveButtons(schedule)
     local function watchContainers(why: string)
         disconnect(containers)
         backpack = player:FindFirstChildOfClass("Backpack")
@@ -581,8 +594,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             table.insert(containers, character.ChildAdded:Connect(inventoryChanged("Character child added")))
             table.insert(containers, character.ChildRemoved:Connect(inventoryChanged("Character child removed")))
         end
-        inventoryTrigger = why
-        schedule()
+        requestInventory(why)
     end
     table.insert(
         connections,
@@ -822,6 +834,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         end
         stopped = true
         mutating = true
+        stopButtonObserver()
         disconnect(connections)
         if debugConnection then
             debugConnection:Disconnect()

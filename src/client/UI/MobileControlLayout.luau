@@ -12,6 +12,9 @@ local ACTIONS = { "SprintHeld", "ThrowHeld", "IceShotgunFire" }
 local PADDING = 8
 local GAP = 2
 local registered: { [string]: boolean } = {}
+local actionButtons: { [string]: GuiButton? } = {}
+local buttonObservers: { [number]: () -> () } = {}
+local observerSerial = 0
 local connections: { RBXScriptConnection } = {}
 local guiConnections: { RBXScriptConnection } = {}
 local observed: { [Instance]: { RBXScriptConnection } } = {}
@@ -19,6 +22,29 @@ local playerGui: PlayerGui? = nil
 local started = false
 local queued = false
 local generation = 0
+
+local function buttonsChanged()
+    for _, callback in buttonObservers do
+        callback()
+    end
+end
+
+local function cacheButton(action: string, button: GuiButton?)
+    if actionButtons[action] ~= button then
+        actionButtons[action] = button
+        buttonsChanged()
+    end
+end
+
+-- Observers only schedule their own work. They never perform button discovery.
+function Layout.ObserveButtons(callback: () -> ()): () -> ()
+    observerSerial += 1
+    local id = observerSerial
+    buttonObservers[id] = callback
+    return function()
+        buttonObservers[id] = nil
+    end
+end
 
 local function disconnect(list: { RBXScriptConnection })
     for _, connection in list do
@@ -146,12 +172,17 @@ local function relevant(object: Instance)
 end
 
 update = function()
+    local version = generation
     local player = Players.LocalPlayer
     local root = if UserInputService.TouchEnabled then player:FindFirstChildOfClass("PlayerGui") else nil
     if root ~= playerGui then
         disconnect(guiConnections)
         clearUnused({})
         playerGui = root
+        if next(actionButtons) then
+            table.clear(actionButtons)
+            buttonsChanged()
+        end
         if root then
             table.insert(guiConnections, root:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(schedule))
             table.insert(guiConnections, root.DescendantAdded:Connect(relevant))
@@ -217,6 +248,15 @@ update = function()
             continue
         end
         local button = ContextActionService:GetButton(action)
+        -- Lookup may suspend. A retired controls pass must not publish a stale
+        -- button after teardown, PlayerGui replacement or action unbinding.
+        if version ~= generation or not started or player:FindFirstChildOfClass("PlayerGui") ~= root then
+            return
+        end
+        if not registered[action] then
+            continue
+        end
+        cacheButton(action, if button and button:IsDescendantOf(root) then button else nil)
         if not button or not button:IsDescendantOf(root) then
             continue
         end
@@ -320,7 +360,9 @@ function Layout.HotbarObstacles(root: PlayerGui, bounds: Rect): ({ Rect }, { Ins
     end
     local size = math.max(44, diameter * 0.83)
     for _, action in ACTIONS do
-        local button = ContextActionService:GetButton(action)
+        -- Synchronous cache read only: pending lookup in the mobile controls
+        -- pass cannot block inventory, layout, input or Backpack takeover.
+        local button = actionButtons[action]
         if button and button:IsDescendantOf(root) and inspect(button) then
             continue
         end
@@ -346,10 +388,13 @@ function Layout.Destroy()
     clearUnused({})
     playerGui = nil
     table.clear(registered)
+    table.clear(actionButtons)
+    buttonsChanged()
 end
 
 function Layout.Unregister(action: string)
     registered[action] = nil
+    cacheButton(action, nil)
     schedule()
 end
 

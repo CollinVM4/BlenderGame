@@ -512,10 +512,20 @@ function CombatService.SwingBat(player: Player): boolean
         -- configure() owns its size; clients never supply query geometry in the request.
         local hitbox = currentEquipped.Hitbox :: BasePart
         local size, at = hitbox.Size, hitbox.CFrame
-        local maxRootDistance = Config.MaxRootDistance * level.Scale
-        -- Replicated Tool poses are observations, not authority to hit across the map.
-        if not ((at.Position - root.Position).Magnitude <= maxRootDistance) then
-            trace("impact rejected: Hitbox pose exceeds sanity distance")
+        local maxCenterDistance = Config.MaxRootDistance * level.Scale
+        local centerDistance = (at.Position - root.Position).Magnitude
+        local poseValid = centerDistance <= maxCenterDistance
+        trace(
+            string.format(
+                "Hitbox pose centerDistance=%.3f limit=%.3f valid=%s",
+                centerDistance,
+                maxCenterDistance,
+                tostring(poseValid)
+            )
+        )
+        -- Bound the observed Tool pose before querying the issued volume for contact.
+        if not poseValid then
+            trace("impact rejected: invalid Hitbox center distance")
             swings[player] = nil
             return
         end
@@ -528,7 +538,7 @@ function CombatService.SwingBat(player: Player): boolean
         local overlaps = workspace:GetPartBoundsInBox(at, size, params)
         trace("overlap parts=" .. tostring(#overlaps))
         local closest: Model? = nil
-        local distance = math.huge
+        local closestDistance = math.huge
         local candidates: { [Model]: { Player: Player? } } = {}
         for _, part in overlaps do
             local ancestor: Instance? = part
@@ -585,7 +595,7 @@ function CombatService.SwingBat(player: Player): boolean
             end
             if target and targetRoot then
                 local direction = targetRoot.Position - root.Position
-                local separation = direction.Magnitude
+                local targetRootDistance = direction.Magnitude
                 local forward = root.CFrame.LookVector:Dot(direction)
                 local ray = RaycastParams.new()
                 ray.FilterType = Enum.RaycastFilterType.Exclude
@@ -594,24 +604,18 @@ function CombatService.SwingBat(player: Player): boolean
                 local visible = not obstruction or obstruction.Instance:IsDescendantOf(target)
                 trace(
                     string.format(
-                        "candidate=%s rootDistance=%.3f sanityDistance=%s forwardDot=%.3f forward=%s LOS=%s obstruction=%s",
+                        "candidate=%s rootDistance=%.3f forwardDot=%.3f forward=%s LOS=%s obstruction=%s",
                         target.Name,
-                        separation,
-                        tostring(separation <= maxRootDistance),
+                        targetRootDistance,
                         forward,
                         tostring(forward >= 0),
                         tostring(visible),
                         if obstruction then obstruction.Instance:GetFullName() else "none"
                     )
                 )
-                if
-                    not enemyReason
-                    and separation <= maxRootDistance
-                    and separation < distance
-                    and forward >= 0
-                    and visible
-                then
-                    closest, distance = target, separation
+                -- Overlap supplies contact. Root distance ranks eligible candidates.
+                if not enemyReason and targetRootDistance < closestDistance and forward >= 0 and visible then
+                    closest, closestDistance = target, targetRootDistance
                 end
             end
         end

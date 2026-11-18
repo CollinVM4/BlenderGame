@@ -46,7 +46,7 @@ local function advance(seconds)
         end
     end
 end
-local overlaps = { targetRoot, targetHead, targetRoot }
+local overlaps = {}
 workspaceFake.GetPartBoundsInBox = function()
     return overlaps
 end
@@ -95,13 +95,11 @@ local issued = backpack:FindFirstChild("Bat")
 setup(issued ~= nil, "server issued bat")
 issued.Parent = attacker.Character
 check(hits == 0, "mere bat proximity cannot dispatch a reaction")
-for _, rejection in { "authority", "distance", "behind", "wall", "none" } do
+for _, rejection in { "authority", "no overlap", "behind", "wall", "none" } do
     advance(config.SwingCooldown)
     eligible = rejection ~= "authority"
-    targetRoot.Position = if rejection == "distance"
-        then vec(0, 0, -100)
-        elseif rejection == "behind" then vec(0, 0, 2)
-        else vec(0, 0, -2)
+    targetRoot.Position = if rejection == "behind" then vec(0, 0, 2) else vec(0, 0, -2)
+    overlaps = if rejection == "no overlap" then {} else { targetRoot, targetHead, targetRoot }
     workspaceFake.Raycast = function()
         return if rejection == "wall" then { Instance = instance("Part") } else nil
     end
