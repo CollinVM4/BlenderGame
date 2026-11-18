@@ -1,6 +1,7 @@
 --!strict
 -- Standalone Framewisp artwork. No generated hierarchy, scripts or text scaler.
 local Gui = {}
+local LANDSCAPE_VISIBLE_SLOTS = 7
 Gui.Name = "BlenderHotbar"
 Gui.Art = {
     Background = "rbxassetid://131076681805409",
@@ -44,9 +45,13 @@ local function text(name: string, parent: Instance, size: number): TextLabel
     object.Font = Enum.Font.FredokaOne
     object.TextSize, object.TextScaled, object.TextWrapped = size, false, false
     object.TextColor3 = Color3.new(1, 1, 1)
-    object.TextStrokeTransparency = 0.5
     object.TextTruncate = Enum.TextTruncate.AtEnd
     object.ZIndex = 5
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    stroke.Color = Color3.new(0, 0, 0)
+    stroke.Thickness = 1.5
+    stroke.Parent = object
     object.Parent = parent
     return object
 end
@@ -80,8 +85,8 @@ function Gui.Create(playerGui: PlayerGui): View
     image("Background", Gui.Art.Background, template, 1)
     image("Selected", Gui.Art.Selected, template, 2).Visible = false
     local icon = image("Icon", Gui.Art.Generic, template, 3)
-    icon.AnchorPoint, icon.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 4)
-    icon.Size = UDim2.new(1, -12, 1, -24)
+    icon.AnchorPoint, icon.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 2)
+    icon.Size = UDim2.new(1, -8, 1, -18)
     local label = text("Label", template, 11)
     label.Position, label.Size = UDim2.new(0, 4, 1, -17), UDim2.new(1, -8, 0, 14)
     local number = text("Number", template, 13)
@@ -124,7 +129,12 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
     local slotSize = math.min(math.clamp(math.floor(size.Y * 0.08), 56, 72), maximum - Gui.Padding * 2)
     local height = slotSize + Gui.Padding * 2 + 4
     local canvas = Gui.Padding * 2 + count * slotSize + math.max(0, count - 1) * Gui.Gap
-    local minimum = math.min((if count > 1 then 2 * slotSize + Gui.Gap else slotSize) + Gui.Padding * 2, maximum)
+    local oneSlot = slotSize + Gui.Padding * 2
+    local pitch = slotSize + Gui.Gap
+    local minimum = math.min(if count > 1 then oneSlot + pitch else oneSlot, maximum)
+    local landscape = touch and size.X > size.Y
+    local requestedWidth = math.max(oneSlot, canvas)
+    local preferred = math.min(requestedWidth, oneSlot + (LANDSCAPE_VISIBLE_SLOTS - 1) * pitch)
     if size.Y < height + 24 then
         return false
     end
@@ -154,8 +164,17 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
             end
         end
         if available >= minimum then
-            width, bottom = math.floor(math.min(available, math.max(slotSize + Gui.Padding * 2, canvas))), candidate
-            break
+            local laneWidth = math.floor(math.min(available, requestedWidth))
+            if landscape and laneWidth < requestedWidth then
+                -- Align the resting width to a whole number of slots.
+                laneWidth = oneSlot + math.floor((laneWidth - oneSlot) / pitch) * pitch
+            end
+            if laneWidth > width then
+                width, bottom = laneWidth, candidate
+            end
+            if not landscape or width >= preferred then
+                break
+            end
         end
     end
     if width == 0 then
