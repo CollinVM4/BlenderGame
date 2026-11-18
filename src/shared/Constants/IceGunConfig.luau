@@ -5,7 +5,7 @@ return table.freeze({
     DebugLogging = false, -- Opt-in, Studio-only, rate-limited lifecycle/fire diagnostics.
     MaximumCameraDistance = 128, -- Minimum camera-intent bound; also respect the player's server-authored zoom limit.
     CameraRayOriginPadding = 16, -- Allow the viewport-ray origin and third-person camera offset at maximum zoom.
-    ShotCooldown = 4.5,
+    ShotCooldown = 3,
     DirectDamage = 5,
     FreezeSeconds = 4,
     CustomerRagdollSeconds = 2.5,

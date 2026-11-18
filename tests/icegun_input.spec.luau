@@ -258,7 +258,7 @@ fireInput(lateTool)
 rejectCooldown(deadline)
 local message = feedback()
 check(
-    message.Visible and message.Text == "Cooldown... 3.2s left",
+    message.Visible and message.Text == "Cooldown... 1.7s left",
     "server deadline supplies accurate remaining time before attribute replication"
 )
 check(
@@ -269,7 +269,7 @@ advance(0.2)
 fireInput(lateTool)
 rejectCooldown(deadline)
 check(
-    feedback() == message and message.Text == "Cooldown... 3.0s left" and message.TextTransparency == 0,
+    feedback() == message and message.Text == "Cooldown... 1.5s left" and message.TextTransparency == 0,
     "repeated attempts refresh one message and restart animation"
 )
 advance(0.4)

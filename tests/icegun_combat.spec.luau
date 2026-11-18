@@ -14,7 +14,7 @@ check(
         and authoredConfig.InitBlastRadius == 10.8
         and authoredConfig.SurgeChargeSeconds == 0.5
         and authoredConfig.ConeAngleDegrees == nil
-        and authoredConfig.ShotCooldown == 4.5
+        and authoredConfig.ShotCooldown == 3
         and authoredConfig.DirectDamage == 5,
     "central radial blast radius, cooldown and damage defaults, with no leftover cone angle"
 )
@@ -90,7 +90,7 @@ advance(0.11)
 check(shotgun.Fire(shooter, aim), "entitled equipped owner fires radial blast")
 check(
     shooter:GetAttribute("IceGunCooldownEnd") == workspaceFake:GetServerTimeNow() + config.ShotCooldown,
-    "accepted blast publishes the 4.5-second server deadline"
+    "accepted blast publishes the 3-second server deadline"
 )
 advance(config.SurgeChargeSeconds)
 for _, pair in
@@ -131,24 +131,24 @@ do
 end
 check(shooterHumanoid.Health == 100 and deadH.Health == 0, "self and dead targets remain untouched")
 check(npcH.Health == 100, "NPC models without a wired customer system are untouched by player combat")
-advance(config.FreezeSeconds)
-check(
-    centerH.Health == 95 and not movement.IsFrozen(center),
-    "blast uses existing freeze and has no delayed damage replay"
-)
 tool.Parent = shooter:FindFirstChildOfClass("Backpack")
 shotgun.ClearPlayer(shooter)
 tool.Parent = shooter.Character
-advance(config.ShotCooldown - config.FreezeSeconds - config.SurgeChargeSeconds - 0.01)
+advance(config.ShotCooldown - config.SurgeChargeSeconds - 0.01)
 local confirmedBeforeReject = shooter:GetAttribute("IceGunCooldownEnd")
 local accepted, reason = shotgun.Fire(shooter, aim)
 check(
     not accepted and reason == "shot cooldown",
-    "put-away/re-equip cannot bypass 4.5-second cooldown and returns specific rejection"
+    "put-away/re-equip cannot bypass 3-second cooldown and returns specific rejection"
 )
 check(
     shooter:GetAttribute("IceGunCooldownEnd") == confirmedBeforeReject,
     "rejected blast never starts or extends UI cooldown"
+)
+advance(math.max(0, config.FreezeSeconds + config.SurgeChargeSeconds - config.ShotCooldown + 0.01))
+check(
+    centerH.Health == 95 and not movement.IsFrozen(center),
+    "blast uses existing freeze and has no delayed damage replay"
 )
 advance(0.11)
 check(shotgun.Fire(shooter, aim), "blast eligible after server cooldown")
