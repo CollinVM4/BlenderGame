@@ -1,7 +1,6 @@
 --!strict
 -- Standalone Framewisp artwork. No generated hierarchy, scripts or text scaler.
 local Gui = {}
-local LANDSCAPE_VISIBLE_SLOTS = 7
 Gui.Name = "BlenderHotbar"
 Gui.Art = {
     Background = "rbxassetid://131076681805409",
@@ -131,10 +130,10 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
     local canvas = Gui.Padding * 2 + count * slotSize + math.max(0, count - 1) * Gui.Gap
     local oneSlot = slotSize + Gui.Padding * 2
     local pitch = slotSize + Gui.Gap
-    local minimum = math.min(if count > 1 then oneSlot + pitch else oneSlot, maximum)
     local landscape = touch and size.X > size.Y
+    -- A usable landscape dock is independent of inventory size. Extra items scroll in place.
+    local minimum = math.min(if landscape or count <= 1 then oneSlot else oneSlot + pitch, maximum)
     local requestedWidth = math.max(oneSlot, canvas)
-    local preferred = math.min(requestedWidth, oneSlot + (LANDSCAPE_VISIBLE_SLOTS - 1) * pitch)
     if size.Y < height + 24 then
         return false
     end
@@ -145,36 +144,35 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
         end
     end
     table.sort(candidates)
-    local width, bottom = 0, 12
+    local width, bottom, offset = 0, 12, 0
     local center = origin.X + size.X / 2
     for _, candidate in candidates do
         if candidate + height > size.Y - 8 then
             continue
         end
-        local available = maximum
+        local left, right = origin.X + 12, origin.X + size.X - 12
         local top, foot = origin.Y + size.Y - candidate - height, origin.Y + size.Y - candidate
         if touch then
             for _, obstacle in obstacles do
                 if obstacle.Max.Y + 8 > top and obstacle.Min.Y - 8 < foot then
-                    local clearance = if (obstacle.Min.X + obstacle.Max.X) / 2 < center
-                        then center - obstacle.Max.X - 8
-                        else obstacle.Min.X - center - 8
-                    available = math.min(available, 2 * clearance)
+                    if (obstacle.Min.X + obstacle.Max.X) / 2 < center then
+                        left = math.max(left, obstacle.Max.X + 8)
+                    else
+                        right = math.min(right, obstacle.Min.X - 8)
+                    end
                 end
             end
         end
+        local gap = if landscape then right - left else 2 * math.min(center - left, right - center)
+        local available = math.min(maximum, gap)
         if available >= minimum then
-            local laneWidth = math.floor(math.min(available, requestedWidth))
-            if landscape and laneWidth < requestedWidth then
+            width, bottom = math.floor(math.min(available, requestedWidth)), candidate
+            if landscape then
                 -- Align the resting width to a whole number of slots.
-                laneWidth = oneSlot + math.floor((laneWidth - oneSlot) / pitch) * pitch
+                width = oneSlot + math.floor((width - oneSlot) / pitch) * pitch
+                offset = math.clamp(center, left + width / 2, right - width / 2) - center
             end
-            if laneWidth > width then
-                width, bottom = laneWidth, candidate
-            end
-            if not landscape or width >= preferred then
-                break
-            end
+            break
         end
     end
     if width == 0 then
@@ -182,7 +180,7 @@ function Gui.Layout(view: View, count: number, touch: boolean, obstacles: { Rect
     end
     view.SlotSize, view.Width = slotSize, width
     view.CanvasWidth = canvas
-    view.Bar.Position = UDim2.new(0.5, 0, 1, -bottom)
+    view.Bar.Position = UDim2.new(0.5, offset, 1, -bottom)
     view.Bar.Size = UDim2.fromOffset(width, height)
     view.Scroll.CanvasSize = UDim2.fromOffset(view.CanvasWidth, 0)
     Gui.Clamp(view)

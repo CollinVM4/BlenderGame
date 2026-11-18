@@ -982,35 +982,60 @@ run("overflow", "nine slots remain swipeable while first equipped", function()
     check(f.Scroll.CanvasPosition.X == 0, "smaller inventory clamps old scroll range")
     f.Stop()
 end)
-run("overflow", "landscape widens above thumbstick and scrolls by whole slots when constrained", function()
+run("overflow", "landscape inventory growth stays bottom-docked between touch controls", function()
     local f = fixture(740, 360, true)
     local touch = new("ScreenGui", "TouchGui", f.PlayerGui)
     local thumbstick = new("Frame", "DynamicThumbstickFrame", touch)
     thumbstick.ScreenPosition, thumbstick.Pixels = v(0, 230), v(290, 130)
+    local tools = {}
     for i = 1, 2 do
-        f.Tool("Ingredient", i)
+        tools[i] = f.Tool("Ingredient", i)
     end
     f.Start()
     local lowestY = f.Bar.AbsolutePosition.Y
-    for i = 3, 7 do
-        f.Tool("Ingredient", i)
+    for i = 3, 9 do
+        tools[i] = f.Tool("Ingredient", i)
         flush()
-        check(f.Bar.AbsoluteSize.X == f.Scroll.CanvasSize.X.Offset, string.format("%d pickups fit without scroll", i))
+        check(f.Bar.AbsolutePosition.Y == lowestY, string.format("pickup %d keeps the bottom dock", i))
+        check(f.Bar.AbsolutePosition.X >= 298, "the row clears the thumbstick horizontally")
+        if i <= 4 then
+            check(f.Bar.AbsoluteSize.X == f.Scroll.CanvasSize.X.Offset, "the clear bottom gap fits four items")
+        end
     end
-    check(f.Bar.AbsolutePosition.Y < lowestY, "wider row clears the thumbstick when needed")
-    check(f.Bar.AbsolutePosition.Y + f.Bar.AbsoluteSize.Y <= thumbstick.AbsolutePosition.Y, "no thumbstick overlap")
+    local slots = f.Slots()
+    local width, slotSize = f.Bar.AbsoluteSize.X, slots[1].AbsoluteSize.X
+    local maxScroll = f.Scroll.CanvasSize.X.Offset - width
+    check(maxScroll > 0, "excess items use horizontal scrolling")
+    check((width - 2 * Gui.Padding + Gui.Gap) % (slotSize + Gui.Gap) == 0, "the resting row shows only full slots")
+    f.Scroll.CanvasPosition = v(maxScroll, 0)
+    local last = slots[9]
+    check(
+        last.AbsolutePosition.X + last.AbsoluteSize.X <= f.Bar.AbsolutePosition.X + width,
+        "last slot can scroll fully into view"
+    )
+    last.Activated:Fire()
+    flush()
+    check(tools[9].Parent == f.Character and f.Bar.AbsolutePosition.Y == lowestY, "the last slot equips at the bottom")
+    for i = 3, 9 do
+        tools[i]:Destroy()
+    end
+    flush()
+    check(f.Bar.AbsolutePosition.Y == lowestY and f.Scroll.CanvasPosition.X == 0, "shrinking inventory stays docked")
     check(not core.Enabled and writes(false) == 1, "layout growth keeps the one-time handoff")
     f.Stop()
-
+end)
+run("overflow", "landscape lifts only when there is no room for one full slot at the bottom", function()
+    local f = fixture(740, 360, true)
     local view = Gui.Create(f.PlayerGui)
     local obstacles = {
-        { Min = v(0, 230), Max = v(290, 360) },
-        { Min = v(0, 0), Max = v(127, 360) },
+        { Min = v(0, 230), Max = v(340, 360) },
+        { Min = v(400, 230), Max = v(740, 360) },
     }
-    check(Gui.Layout(view, 9, true, obstacles), "overflow still has a usable landscape lane")
-    check(view.CanvasWidth > view.Width and view.Width > 400, "overflow uses the wider lane")
-    local stride = view.SlotSize + Gui.Gap
-    check((view.Width - 2 * Gui.Padding + Gui.Gap) % stride == 0, "resting width shows only complete slots")
+    check(Gui.Layout(view, 1, true, obstacles), "the single item finds a clear row")
+    local foot = view.Bar.AbsolutePosition.Y + view.Bar.AbsoluteSize.Y
+    check(foot <= 222, "the row clears the controls by eight pixels")
+    check(Gui.Layout(view, 9, true, obstacles), "nine items use the same viable lane")
+    check(view.Bar.AbsolutePosition.Y + view.Bar.AbsoluteSize.Y == foot, "inventory count cannot lift the clear row")
     view.Root:Destroy()
 end)
 run("lifecycle", "same root across empty inventory respawn and new Backpack", function()
