@@ -145,7 +145,7 @@ for _, expiry in { "Forfeit", "Timeout" } do
     if expiry == "Forfeit" then
         protection.Forfeit(owner)
     else
-        advance(480)
+        advance(480.001) -- Step past expiry on the fractional test clock.
     end
     check(
         inventory.CanWithdraw(pickup, owner, 3) and combat.CanDamagePlayer(pickup, owner),

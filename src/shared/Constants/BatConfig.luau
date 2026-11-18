@@ -3,12 +3,13 @@ return {
     SwingCooldown = 1.1,
     -- Bat 1 dimensions in studs. The long axis of the authored Hitbox is local Z.
     HitboxSize = Vector3.new(3.75, 3, 8.5),
-    SwingHalfAngle = 55,
-    CloseContactRadius = 1.875,
+    SwingHalfAngle = 70,
+    SwingHeight = 5,
+    CloseContactRadius = 2.5,
     -- The server samples the front sweep during the contact portion of the animation.
-    HitActiveStart = 0.08,
+    HitActiveStart = 0.04,
     HitActiveEnd = 0.28,
-    HitSampleInterval = 0.04,
+    HitSampleInterval = 0.03,
     ImmunitySeconds = 2.5,
     Knockback = {
         HorizontalSpeed = 7, -- Legacy customer knockback; player hits use Levels below.

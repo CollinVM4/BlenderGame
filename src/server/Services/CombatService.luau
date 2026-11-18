@@ -490,6 +490,11 @@ local function horizontal(vector: Vector3): Vector3
     return Vector3.new(vector.X, 0, vector.Z)
 end
 
+local function facingDirection(root: BasePart, fallback: Vector3): Vector3
+    local facing = horizontal(root.CFrame.LookVector)
+    return if facing.Magnitude > 0.01 then facing.Unit else fallback
+end
+
 -- The box query is a broad phase. Use the part's bounds for reach so an arm can
 -- make tip contact even when the target's root is past the end of the swing.
 local function inSwing(part: BasePart, origin: Vector3, forward: Vector3, reach: number): boolean
@@ -545,11 +550,18 @@ function CombatService.SwingBat(player: Player): boolean
     local weapon = equipped.Weapon :: Weapon
     local tool = equipped.Tool :: Tool
     local hitbox = equipped.Hitbox :: BasePart
-    local facing = horizontal(startRoot.CFrame.LookVector)
-    local forward = if facing.Magnitude > 0.01 then facing.Unit else Vector3.new(0, 0, -1)
+    local forward = facingDirection(startRoot, Vector3.new(0, 0, -1))
     local position = hitbox.Position
     GameplaySfx.Emit("BatSwing", position)
     local context = deps.TycoonService.GetRequestContext(player)
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { character }
+    params.RespectCanCollide = false
+    params.MaxParts = 0
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Exclude
+    ray.FilterDescendantsInstances = { character }
     local function sampleImpact(sample: number)
         if swings[player] ~= token then
             return
@@ -578,16 +590,13 @@ function CombatService.SwingBat(player: Player): boolean
         end
         local level = Config.Levels[levelFor(player)]
         local reach = Config.HitboxSize.Z * level.LengthScale
+        -- A sprinting turn can change direction during the windup or between samples.
+        forward = facingDirection(root, forward)
         local origin = root.Position
         local center = origin + forward * (reach / 2)
         local at = CFrame.lookAt(center, center + forward)
-        local size = Vector3.new(2 * reach, Config.HitboxSize.Y, reach)
-        trace(string.format("sweep reach=%.2f CFrame=%s Size=%s", reach, tostring(at), tostring(size)))
-        local params = OverlapParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { character :: Model }
-        params.RespectCanCollide = false
-        params.MaxParts = 0
+        local size = Vector3.new(2 * reach, Config.SwingHeight, reach)
+        trace(string.format("cone reach=%.2f CFrame=%s Size=%s", reach, tostring(at), tostring(size)))
         local overlaps = workspace:GetPartBoundsInBox(at, size, params)
         trace("overlap parts=" .. tostring(#overlaps))
         local closest: Model? = nil
@@ -657,9 +666,6 @@ function CombatService.SwingBat(player: Player): boolean
                 local flat = horizontal(direction)
                 local front = forward:Dot(flat)
                 local aim = if flat.Magnitude > 0.01 then front / flat.Magnitude else 1
-                local ray = RaycastParams.new()
-                ray.FilterType = Enum.RaycastFilterType.Exclude
-                ray.FilterDescendantsInstances = { character :: Model }
                 local obstruction = workspace:Raycast(root.Position, direction, ray)
                 local visible = not obstruction or obstruction.Instance:IsDescendantOf(target)
                 trace(
@@ -714,7 +720,7 @@ function CombatService.SwingBat(player: Player): boolean
         end
     end
     -- Keep only one pending sample. Late callbacks expire instead of replaying
-    -- missed contacts, and movement carries the sweep origin with the attacker.
+    -- missed contacts, and each sample follows the attacker's current position and facing.
     local deadline = os.clock() + Config.HitActiveEnd
     local sample = 0
     local function sampleNext()

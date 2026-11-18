@@ -87,7 +87,7 @@ check(
 )
 local batTrace = table.concat(traceLines, "\n")
 check(
-    string.find(batTrace, "sweep reach=8.50", 1, true) ~= nil
+    string.find(batTrace, "cone reach=8.50", 1, true) ~= nil
         and string.find(batTrace, "candidate=" .. victim.Character.Name .. " rootDistance=3.000", 1, true) ~= nil,
     "one-shot diagnostic distinguishes swing reach from candidate root distance"
 )
@@ -101,7 +101,7 @@ check(
     "one-shot diagnostic reports runtime Tool hierarchy and issued validation"
 )
 check(
-    (queryFrame.Position - vec(0, 0, -4.25)).Magnitude < 0.0001 and (querySize - vec(17, 3, 8.5)).Magnitude < 0.0001,
+    (queryFrame.Position - vec(0, 0, -4.25)).Magnitude < 0.0001 and (querySize - vec(17, 5, 8.5)).Magnitude < 0.0001,
     "query uses the character-facing contact volume"
 )
 check(
@@ -275,7 +275,7 @@ advance(config.HitActiveStart / 2)
 check(queryCount == beforeWindow and not movement.IsStunned(victim), "startup has no damaging query")
 overlaps = {}
 advance(config.HitActiveStart / 2 + 0.000001)
-for _ = 1, 3 do
+for _ = 1, 6 do
     advance(sampleStep + 0.000001)
 end
 overlaps = { windowRoot }
@@ -359,12 +359,38 @@ for _, outside in { vec(8, 0, -1), vec(0, 0, -10), vec(0, 0, 1) } do
     )
     advance(config.SwingCooldown)
 end
-contactRoot.Position = vec(4, 0, -4)
+contactRoot.Position = vec(6, 0, -3)
 local visualHitbox = bats(attacker)[1]:FindFirstChild("Hitbox")
 visualHitbox.CFrame = frame(0, 0, -100)
 setup(combat.SwingBat(attacker), "front-side sweep while the visible pose drifts")
 advance(config.HitActiveStart + 0.000001)
-check(movement.IsStunned(victim), "side contact is independent of the observed visual pose")
+check(movement.IsStunned(victim), "65-degree front-side contact is inside the wider cone")
+advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
+
+-- The cast follows sprint turns and movement within the same active swing.
+victimHumanoid.Health = 100
+local sprintRoot = attacker.Character:FindFirstChild("HumanoidRootPart")
+local previousPosition, previousFrame = sprintRoot.Position, sprintRoot.CFrame
+overlaps = {}
+setup(combat.SwingBat(attacker), "sprint turn during a swing")
+advance(config.HitActiveStart + 0.000001)
+check(not movement.IsStunned(victim), "first sprint sample misses before the turn")
+sprintRoot.Position = vec(0, 0, -3)
+sprintRoot.CFrame = env.CFrame.lookAt(sprintRoot.Position, vec(1, 0, -3))
+contactRoot.Position = vec(5, 0, -2)
+secondRoot.Position = vec(-2, 0, -5)
+overlaps = { contactRoot, secondRoot }
+advance(config.HitSampleInterval + 0.000001)
+check(
+    movement.IsStunned(victim) and not movement.IsStunned(secondVictim),
+    "swing follows the sprint turn and hits the target ahead of the new heading only"
+)
+check(
+    (queryFrame.Position - vec(4.25, 0, -3)).Magnitude < 0.0001,
+    "the cone follows the updated sprint position and facing"
+)
+sprintRoot.Position, sprintRoot.CFrame = previousPosition, previousFrame
+secondRoot.Position = vec(0, 0, -4)
 advance(config.Levels[1].StunDuration + config.ImmunitySeconds)
 -- Each kind of overlapping descendant resolves through nested Models to the real owner.
 for _, name in { "HumanoidRootPart", "Torso", "Left Arm", "Accessory" } do

@@ -10,10 +10,10 @@ added; plot upgrades retain the existing in-memory lifetime.
 Prices are **1500 / 4500 / 9000** in `src/shared/Constants/Upgrades.luau` (`Bat`).
 Combat tuning lives in `src/shared/Constants/BatConfig.luau`.
 
-The server checks a 110° horizontal sweep in front of the attacker. The sweep
-starts at the character root, uses the direction at swing start, and follows
-the character's position during contact. Point-blank contact within the front
-half has extra angle tolerance. A body part can overlap the sweep even when
+The server checks a 140° forward cone with 5 studs of vertical coverage. Each
+sample starts at the character root and uses the current facing so the cone
+tracks a turn during a sprint. Point-blank contact within the front half has
+extra angle tolerance. A body part can overlap the cone even when
 the target's root is beyond its tip.
 
 | Level | Length scale | Issued Hitbox size (X × Y × Z, studs) | Sweep reach (studs) | Stun (seconds) |
@@ -26,7 +26,7 @@ Cooldown is 1.1 seconds, and immunity after stun is
 2.5 seconds. Misses consume the swing cooldown. The gameplay request adapter
 also retains its 0.15-second per-player request throttle.
 
-`HitActiveStart = 0.08`, `HitActiveEnd = 0.28`, and `HitSampleInterval = 0.04`
+`HitActiveStart = 0.04`, `HitActiveEnd = 0.28`, and `HitSampleInterval = 0.03`
 control the contact window. After each miss, the server schedules the next
 sample until the deadline. The first valid hit consumes the swing. Unequipping,
 death, and changes to the captured plot membership can invalidate it.
@@ -115,8 +115,8 @@ The existing customer-request edits were preserved.
 ### Phone and two-client smoke test
 
 After Rojo sync, start a fresh session with two separately claimed plots.
-Test point-blank contact, an opponent running across the front, and a limb
-overlap at the tip. Check all three tiers from the same stance, including a
+Test point-blank contact, sprinting straight and turning while swinging, and a
+limb overlap at the tip. Check all three tiers from the same stance, including a
 miss just beyond each tier, then test the wall, team and protection gates.
 Check grip alignment, the trail against the swing animation, and a fresh grant
 into a tier-three session. On a phone, cold-start in both orientations and
