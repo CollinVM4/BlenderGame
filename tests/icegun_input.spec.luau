@@ -299,6 +299,19 @@ local function noRadial(object)
     end
 end
 noRadial(gui)
+local savedZoom, savedRay = viewer.CameraMaxZoomDistance, cameraRay
+viewer.CameraMaxZoomDistance = 400
+cameraRay = { Origin = vec(0, 1, 400), Direction = vec(0, 0, -1) }
+fireInput(lateTool)
+rejectCooldown(workspaceFake:GetServerTimeNow() + 3.2)
+check(
+    feedback().Visible
+        and feedback().Text == "Cooldown... 3.2s left"
+        and feedback().TextSize == 18
+        and gui:FindFirstChild("IceGunReticle"):IsA("ScreenGui"),
+    "cooldown hint stays screen-space and readable at maximum player zoom"
+)
+viewer.CameraMaxZoomDistance, cameraRay = savedZoom, savedRay
 setInput("Touch")
 local shotsBeforeTouch = attempted
 lateTool.Activated:Fire()

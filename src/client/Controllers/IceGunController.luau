@@ -295,7 +295,9 @@ function Controller.Init()
         -- and does not use this aim point for hit detection. It is still sent
         -- so the server can reject malformed payloads, and the reticle and
         -- cooldown behavior below are unchanged.
-        local length = Config.BlastRadius + Config.MaximumCameraDistance
+        local length = Config.BlastRadius
+            + math.max(Config.MaximumCameraDistance, player.CameraMaxZoomDistance)
+            + Config.CameraRayOriginPadding
         local hit = workspace:Raycast(ray.Origin, ray.Direction * length, params)
         local aim = if hit then hit.Position else ray.Origin + ray.Direction * length
         local event = ReplicatedStorage:FindFirstChild("IceGunFire")

@@ -148,7 +148,19 @@ check(
 )
 advance(presentationConfig.Lifetime + 0.01)
 check(#childrenNamed(workspaceFake, "IceShotgunBlast") == 0, "mobile budget releases after effect expiry")
-check(not vfx.Play(shot(nil, vec(500, 1, 0))), "distant blasts are culled")
+-- Remote cast geometry is built from the event origin, even if the caster
+-- character is not streamed in on this client.
+for _, input in { "KeyboardAndMouse", "Touch" } do
+    services.UserInputService.PreferredInput = input
+    for _, stage in { "Init", "Surge" } do
+        local crossMap = shot(nil, vec(1500, 1, 0))
+        crossMap.ShooterUserId, crossMap.Stage = -999, stage
+        crossMap.Radius = if stage == "Init" then config.InitBlastRadius else config.BlastRadius
+        check(vfx.Play(crossMap), "both cross-map blast stages render on desktop and mobile without a caster model")
+    end
+    advance(presentationConfig.Lifetime + 0.01)
+    check(not vfx.Play(shot(nil, vec(2049, 1, 0))), "blasts past the extended draw range are still culled")
+end
 local stale = shot()
 stale.ServerTime -= 2
 check(not vfx.Play(stale), "late confirmed events do not replay obsolete effects")

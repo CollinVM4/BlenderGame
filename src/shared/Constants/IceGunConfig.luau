@@ -3,7 +3,8 @@ return table.freeze({
     IceGunGamePassId = 2022020489, -- Creator Hub pass ID, not the asset ID. Fail closed until configured.
     StudioGamePassSimulation = true, -- Explicit opt-in; server + Studio + negative UserId only.
     DebugLogging = false, -- Opt-in, Studio-only, rate-limited lifecycle/fire diagnostics.
-    MaximumCameraDistance = 128, -- Bounds untrusted third-person camera intent.
+    MaximumCameraDistance = 128, -- Minimum camera-intent bound; also respect the player's server-authored zoom limit.
+    CameraRayOriginPadding = 16, -- Allow the viewport-ray origin and third-person camera offset at maximum zoom.
     ShotCooldown = 4.5,
     DirectDamage = 5,
     FreezeSeconds = 4,

@@ -13,8 +13,10 @@ return table.freeze({
     CasterSurgeStartScale = 0.08, -- Tight burst from the player; relative to the shorter viewport edge.
     CasterSurgeStroke = 6,
     CasterSurgeStreakCount = 12,
-    ViewDistance = 100,
-    MobileViewDistance = 70,
+    -- Cross-map world pulses use the same range on desktop and mobile.
+    -- Mobile keeps its smaller particle, impact, and simultaneous-blast budgets.
+    ViewDistance = 2048,
+    MobileViewDistance = 2048,
     MaxActiveBlasts = 4,
     MobileMaxActiveBlasts = 2,
     FrostCount = 24,
