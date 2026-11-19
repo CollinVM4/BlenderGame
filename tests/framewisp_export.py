@@ -31,14 +31,17 @@ def load_prepared_export(section=None):
     if section == "Hotbar":
         assert not any(name(item) == "Hotbar" for item in tree.iter("Item")), "legacy hotbar must be absent"
     elif section == "Settings":
-        panel = child(desktop, "Settings")
-        plot = child(child(panel, "PLOT"), "PLOTContent")
-        music = child(child(panel, "MUSIC"), "MUSICContent")
+        def content_of(parent, wrapper):
+            return child(parent, wrapper) if any(name(item) == wrapper for item in parent.findall("Item")) else parent
+
+        panel = child(content_of(desktop, "Be a Blender! DesktopContent"), "Settings")
+        plot = content_of(child(panel, "PLOT"), "PLOTContent")
+        music = content_of(child(panel, "MUSIC"), "MUSICContent")
         for control in ("Open", "Friends", "Locked", "Rename", "Kick"):
             child(plot, control, {"TextButton", "ImageButton"})
         for control in ("MusicOn", "MusicOff"):
             child(music, control, {"TextButton", "ImageButton"})
-        child(child(music, "Slider"), "SliderBackground", {"ImageLabel"})
+        child(music, "Slider")
     elif section == "Upgrades":
         cards = child(child(child(desktop, "Upgrades"), "UpgradeScroll"), "UpgradeList")
         for name_ in ("JumpCard", "BatCard", "MovementSpeedCard", "CarryCapacityCard", "SprintStaminaCard"):

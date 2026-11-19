@@ -18,14 +18,11 @@ viewer.WaitForChild = viewer.FindFirstChild
 shared.Events.WaitForChild = shared.Events.FindFirstChild
 local remote = instance("RemoteEvent")
 remote.Name, remote.Parent, remote.OnClientEvent = "GameplayRequest", shared.Events, signal()
-local requests = {}
-remote.FireServer = function(_, ...)
-    table.insert(requests, { ... })
-end
 local thumbnails = 0
+local ownerThumbnailReady = false
 services.Players.GetUserThumbnailAsync = function(_, id)
     thumbnails += 1
-    return "portrait:" .. id
+    return "portrait:" .. id, id ~= owner.UserId or ownerThumbnailReady
 end
 viewer.IsFriendsWithAsync = function()
     return true
@@ -101,8 +98,8 @@ local function findText(text)
 end
 local function findPortrait(image)
     for _, object in playerGui:GetDescendants() do
-        if object.ClassName == "ImageLabel" and object.Image == image and object.Parent.Enabled then
-            return object
+        if object.ClassName == "ImageLabel" and object.Image == image and object.Parent.Parent.Enabled then
+            return object.Parent
         end
     end
     return nil
@@ -118,8 +115,29 @@ end
 check(findText("CLAIM PLOT") and findText("CLAIM PLOT").ClassName == "TextLabel", "claim pad label has no click action")
 check(findText("JOIN STAND") and findText("JOIN STAND").ClassName == "TextLabel", "join pad is label only")
 check(findText("AVAILABLE PLOT"), "unclaimed plots keep their availability label")
+local pendingFallback = findText("S")
+check(
+    pendingFallback and pendingFallback.Parent.Image == "" and thumbnails == 1,
+    "a pending thumbnail has a legible fallback and does not refetch immediately"
+)
+ownerThumbnailReady = true
+now += 10
+tick()
+tick()
 local soloPortrait = findPortrait("portrait:" .. owner.UserId)
 check(soloPortrait and soloPortrait.Position.X.Scale == 0.5, "a solo portrait is centered over its plot")
+local publicMarker = soloPortrait.Parent
+check(
+    publicMarker.Size.X.Scale > 0 and publicMarker.Size.X.Offset == 0 and publicMarker.MaxDistance == 240,
+    "other bases use world-sized portraits with their regular draw distance"
+)
+check(
+    pendingFallback.Parent.Parent == soloPortrait and pendingFallback.Visible and thumbnails == 2,
+    "retry fills the existing badge while the headshot image loads"
+)
+pendingFallback.Parent.IsLoaded = true
+tick()
+check(not pendingFallback.Visible, "the loaded headshot replaces the fallback")
 local snapshot = t.GetRequestContext(owner)
 t.JoinSession(viewer, owner, snapshot)
 tick()
@@ -132,44 +150,46 @@ check(
     marker == teammatePortrait.Parent and marker.Adornee == occupied:FindFirstChild("PlotIdentityOrigin"),
     "both team portraits share their base's billboard and world origin"
 )
-local width, height = marker.Size.X.Scale, marker.Size.Y.Scale
-local leftSize, rightSize = ownerPortrait.Size.X.Scale, teammatePortrait.Size.X.Scale
+local width = marker.Size.X.Offset
+local leftSize, rightSize = ownerPortrait.Size.X.Offset / width, teammatePortrait.Size.X.Offset / width
 local left, right = ownerPortrait.Position.X.Scale, teammatePortrait.Position.X.Scale
 check(
-    leftSize * width >= 4 and math.abs(leftSize * width - ownerPortrait.Size.Y.Scale * height) < 0.01,
-    "portraits are at least four studs wide and square"
+    marker.Size.X.Scale == 0
+        and marker.Size.Y.Scale == 0
+        and ownerPortrait.Size.X.Offset >= 48
+        and ownerPortrait.Size.X.Offset == ownerPortrait.Size.Y.Offset
+        and teammatePortrait.Size.X.Offset == ownerPortrait.Size.X.Offset,
+    "home portraits stay square and at least 48 screen pixels wide at distance"
 )
 check(
     left + right == 1
         and left - leftSize / 2 >= 0
         and left + leftSize / 2 < right - rightSize / 2
         and right + rightSize / 2 <= 1
-        and ownerPortrait.Size.X.Offset == 0
-        and teammatePortrait.Size.X.Offset == 0
         and ownerPortrait.Position.X.Offset == 0
         and teammatePortrait.Position.X.Offset == 0,
     "the two portraits fit within one centered, proportional row"
 )
 check(
-    marker.MaxDistance > 60 and marker.AlwaysOnTop and not marker.Active,
-    "portraits are long-range, passive landmarks"
+    marker.MaxDistance >= 360 and marker.AlwaysOnTop and not marker.Active,
+    "the home marker is a passive landmark with a longer draw distance"
+)
+check(not findText("YOUR BASE"), "home portraits have no extra base caption")
+check(
+    ownerPortrait.BackgroundColor3 == teammatePortrait.BackgroundColor3
+        and ownerPortrait.BackgroundColor3 ~= soloPortrait.BackgroundColor3,
+    "both portraits on the viewer's own base share its highlight"
 )
 check(not findText("TEAMMATE"), "the team role caption is removed")
-check(findText("LEAVE TEAM"), "teammate sees leave, no new claim")
-findText("LEAVE TEAM").Activated:Fire()
-check(
-    requests[1][1] == "LeaveTeam" and requests[1][4].PlotSessionId == t.GetSessionId(viewer),
-    "leave submits expected session"
-)
+check(not findText("LEAVE TEAM"), "teammates have no overhead leave button at close range")
 viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(100, 0, 0)
 tick()
-check(not findText("LEAVE TEAM"), "teammate leave presentation remains nearby-only")
 check(
     findPortrait("portrait:" .. owner.UserId) == ownerPortrait
         and findPortrait("portrait:" .. viewer.UserId) == teammatePortrait
         and ownerPortrait.Position.X.Scale == left
         and teammatePortrait.Position.X.Scale == right,
-    "leaving action range keeps both portraits at the same offsets in their shared marker"
+    "moving away keeps both portraits at the same offsets in their shared marker"
 )
 viewer.Character:FindFirstChild("HumanoidRootPart").Position = vec(0, 0, 0)
 t.RemovePlayer(owner)
@@ -205,3 +225,15 @@ check(
     not findText("Claim an available PLOT!") and not findText("Empty Slot"),
     "departure closes management and returns unassigned"
 )
+local beforeStudio = thumbnails
+occupied:SetAttribute("OwnerUserId", -1)
+occupied:SetAttribute("PlotOwnerName", "Player1")
+occupied:SetAttribute("TeammateUserId", -2)
+occupied:SetAttribute("PlotTeammateName", "Player2")
+tick()
+local studioOne, studioTwo = findText("P1"), findText("P2")
+check(
+    studioOne and studioTwo and studioOne.Parent.BackgroundColor3 ~= studioTwo.Parent.BackgroundColor3,
+    "Studio test players have distinct visible portrait badges"
+)
+check(thumbnails == beforeStudio, "Studio test players do not request nonexistent account headshots")

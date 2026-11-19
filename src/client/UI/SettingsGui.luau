@@ -12,6 +12,7 @@ export type View = {
     Status: TextLabel?,
     Rename: GuiButton?,
     Kick: GuiButton?,
+    KickLabel: TextLabel?,
     Track: GuiObject?,
     Thumb: GuiObject?,
     Fill: GuiObject?,
@@ -67,6 +68,7 @@ function Gui.Resolve(playerGui: PlayerGui): View?
     local track = child(musicContent, "Slider", { "Slider" }, "GuiObject")
     local thumb = child(track, "Knob", { "Knob" }, "GuiObject")
     local fill = child(track, "ProgressBar", { "ProgressBar" }, "GuiObject")
+    local kick = child(plotContent, "Kick", { "Kick", "Kick_button_smooth" }, "GuiButton") :: GuiButton?
     return {
         Root = root,
         Panel = panel :: GuiObject,
@@ -75,7 +77,8 @@ function Gui.Resolve(playerGui: PlayerGui): View?
         MusicOff = child(musicContent, "MusicOff", { "MusicOff", "MusicOff_button_smooth" }, "GuiButton") :: GuiButton?,
         Status = child(plotContent, "Title", { "Title" }, "TextLabel") :: TextLabel?,
         Rename = child(plotContent, "Rename", { "Rename", "Rename_button_smooth" }, "GuiButton") :: GuiButton?,
-        Kick = child(plotContent, "Kick", { "Kick", "Kick_button_smooth" }, "GuiButton") :: GuiButton?,
+        Kick = kick,
+        KickLabel = Registry.Child(kick, "BuyLabel", { "BuyLabel" }, "TextLabel") :: TextLabel?,
         Track = track :: GuiObject?,
         Thumb = thumb :: GuiObject?,
         Fill = fill :: GuiObject?,
@@ -157,7 +160,7 @@ function Gui.Observe(
     enabled: (boolean) -> (),
     volume: (number) -> number,
     rename: (() -> ())?,
-    kick: (() -> ())?
+    teamAction: (() -> ())?
 ): () -> ()
     local connections: { RBXScriptConnection } = {}
     local lifetime: { RBXScriptConnection } = {}
@@ -200,6 +203,7 @@ function Gui.Observe(
             and current.Status == previous.Status
             and current.Rename == previous.Rename
             and current.Kick == previous.Kick
+            and current.KickLabel == previous.KickLabel
             and current.Track == previous.Track
             and current.Thumb == previous.Thumb
             and current.Fill == previous.Fill
@@ -256,7 +260,7 @@ function Gui.Observe(
                 end
             end
             bindAction(current.Rename, rename)
-            bindAction(current.Kick, kick)
+            bindAction(current.Kick, teamAction)
             local function bindMusic(button: GuiButton?, value: boolean)
                 if button then
                     table.insert(
@@ -412,6 +416,7 @@ function Gui.Observe(
                     current.Outer,
                     current.Rename,
                     current.Kick,
+                    current.KickLabel,
                 }
                 for _, bound in optionalBindings do
                     if bound then

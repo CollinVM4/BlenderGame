@@ -198,25 +198,26 @@ check(
     "verified export sanitizes all three mode names"
 )
 check(view.Rename.Name == "Rename" and view.Kick.Name == "Kick", "verified export rename and kick names")
-check(view.Track.Name == "Slider" and view.Thumb == nil and view.Fill == nil, "shipped slider has no knob or fill")
+check(view.KickLabel and view.KickLabel.Name == "BuyLabel", "verified export has a reusable team action caption")
+check(view.Track.Name == "Slider" and view.Thumb and view.Fill, "shipped slider binds its knob and fill")
 check(view.Status == nil, "duplicate Title remains ambiguous")
 table.sort(view.Issues)
-check(table.concat(view.Issues, ",") == "Knob,ProgressBar,Title", "only shipped missing/ambiguous controls reported")
+check(table.concat(view.Issues, ",") == "Title", "only the shipped ambiguous heading is reported")
 check(
-    view.Modes.Open.Parent.Name == "PLOTContent" and view.MusicOn.Parent.Name == "MUSICContent",
-    "shipped wrappers bind"
+    view.Modes.Open.Parent.Name == "PLOT" and view.MusicOn.Parent.Name == "MUSIC",
+    "shipped plot and music sections bind"
 )
 local stopShipped = gui.Observe(playerGui, function() end, function(mode)
     check(mode == "Closed", "Locked emits canonical Closed mode")
 end, music.SetEnabled, music.SetVolume)
 local beforeVolume = music.GetVolume()
 view.Track.InputBegan:Fire({ UserInputType = "Touch", Position = { X = 100 } })
-check(music.GetVolume() == beforeVolume, "shipped incomplete slider is inert")
+check(music.GetVolume() == beforeVolume, "slider waits for layout bounds")
 view.Modes.Closed.Activated:Fire()
 view.MusicOff.Activated:Fire()
-check(not music.IsEnabled(), "shipped MusicOff works with incomplete slider")
+check(not music.IsEnabled(), "shipped MusicOff works")
 view.MusicOn.Activated:Fire()
-check(music.IsEnabled(), "shipped MusicOn works with incomplete slider")
+check(music.IsEnabled(), "shipped MusicOn works")
 stopShipped()
 load("SettingsController").Init()
 view.Modes.Closed.Activated:Fire()
@@ -226,7 +227,7 @@ check(gui.Resolve(playerGui).Status == nil, "controller handles feedback without
 for _, fn in delays do
     fn()
 end
--- Complete synthetic controls retain the independent slider geometry contracts.
+-- Give the shipped controls deterministic geometry for the slider checks.
 local plotContent = view.Modes.Open.Parent
 for _, label in plotContent:GetChildren() do
     if label.Name == "Title" then
@@ -240,13 +241,10 @@ local function geometry(object)
     object.AnchorPoint = { X = 0.5, Y = 0.5 }
     return object
 end
-geometry(instance("ImageLabel", "Knob", view.Track))
-geometry(instance("Frame", "ProgressBar", view.Track))
-geometry(instance("Frame", "OuterSlider", view.Track))
+geometry(view.Thumb)
+geometry(view.Fill)
+geometry(view.Outer)
 geometry(instance("Frame", "InnerSlider", view.Track))
-for _, button in view.Modes do
-    instance("Frame", "BuyBackground", button)
-end
 playerGui.DescendantAdded:Fire(view.Track)
 flush()
 view = assert(gui.Resolve(playerGui))
@@ -302,7 +300,7 @@ check(
     #sent == before and #editorPlots == 2 and editorPlots[2] == plot,
     "repeated rename opens existing editor each time"
 )
-check(kick.Active, "owner can kick the current teammate")
+check(kick.Active and view.KickLabel.Text == "KICK TEAM", "owner can kick the current teammate")
 kick.Activated:Fire()
 check(
     sent[#sent][1] == "KickTeammate" and sent[#sent][3] == 303 and sent[#sent][4].MembershipRevision == 7,
@@ -313,10 +311,22 @@ plot:SetAttribute("TeammateUserId", 101)
 player:SetAttribute("PlotSessionId", "session")
 plot:SetAttribute("OwnerUserId", 202)
 view.Modes.Open.Activated:Fire()
-kick.Activated:Fire()
 rename.Activated:Fire()
-check(#sent == before and #editorPlots == 2, "teammate controls cannot send or open editor")
-check(not view.Modes.Open.Active and not rename.Visible and not kick.Visible, "teammate plot is read-only")
+check(#sent == before and #editorPlots == 2, "teammates cannot send owner actions or open the editor")
+check(not view.Modes.Open.Active and not rename.Visible, "teammates cannot edit owner settings")
+check(kick.Visible and kick.Active and view.KickLabel.Text == "LEAVE TEAM", "teammates can leave from Settings")
+kick.Activated:Fire()
+local leave = sent[#sent]
+check(
+    #sent == before + 1
+        and leave[1] == "LeaveTeam"
+        and leave[2] == plot
+        and leave[3] == nil
+        and leave[4].PlotSessionId == "session"
+        and leave[4].MembershipRevision == 7,
+    "leave sends the same validated session request from Settings"
+)
+before = #sent
 check(friendsBackground.BackgroundColor3 == "45:159:123", "session teammate sees mode")
 local teammateTouch = { UserInputType = "Touch", Position = { X = 200 } }
 track.InputBegan:Fire(teammateTouch)
@@ -331,6 +341,7 @@ check(#sent == before and not view.Modes.Open.Active, "teammate fallback is iner
 plot:SetAttribute("TeammateUserId", nil)
 view.Modes.Open.Activated:Fire()
 check(#sent == before and friendsBackground.BackgroundColor3 == "43:56:70", "no plot is unselected and inert")
+check(not kick.Visible and not kick.Active, "leave action hides once replicated membership ends")
 plot:SetAttribute("OwnerUserId", 101)
 remote.OnClientEvent:Fire("PlotRequestResult", { success = false })
 check(string.find(view.Status.Text, "unavailable") ~= nil, "rejection surfaces feedback")
