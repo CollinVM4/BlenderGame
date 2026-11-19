@@ -244,7 +244,7 @@ function Controller.Init()
         end
         ProximityPromptService.PromptShown:Connect(function(prompt, shownInput)
             if prompt:GetAttribute("PlayerStashPrompt") ~= true then
-                hide()
+                -- Nearby world-item prompts must not dismiss stash controls.
                 return
             end
             hide()
@@ -283,9 +283,8 @@ function Controller.Init()
             end
         end)
         ProximityPromptService.PromptHidden:Connect(function(prompt)
-            if focused == prompt then
-                hide()
-            end
+            -- Native prompt exclusivity may hide the stash prompt while the
+            -- player is still in range. Heartbeat validates distance and state.
         end)
         UserInputService.LastInputTypeChanged:Connect(function(last)
             inputType = if last == Enum.UserInputType.Touch
