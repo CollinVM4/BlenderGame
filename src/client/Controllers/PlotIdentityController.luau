@@ -9,9 +9,9 @@ local RunService = game:GetService("RunService")
 local TextStyle = require(ReplicatedStorage.Shared.Constants.DialogueTextStyle)
 local Controller = {}
 local player = Players.LocalPlayer
-local PORTRAIT_BILLBOARD_WIDTH = 14
-local PORTRAIT_BILLBOARD_HEIGHT = 6.4
-local PORTRAIT_SIZE = 4.5
+local PORTRAIT_BILLBOARD_WIDTH = 16.5
+local PORTRAIT_BILLBOARD_HEIGHT = 8.2
+local PORTRAIT_SIZE = 5.75
 local THUMBNAIL_RETRY_SECONDS = 10
 type PortraitView = { Headshot: ImageLabel, Fallback: TextLabel }
 type PlotDisplay = { Available: BillboardGui, Portraits: BillboardGui, Owner: PortraitView?, Teammate: PortraitView? }
@@ -192,11 +192,11 @@ function Controller.Init()
                 BillboardStyle.ApplyBillboard(marker, {
                     WidthStuds = PORTRAIT_BILLBOARD_WIDTH,
                     HeightStuds = PORTRAIT_BILLBOARD_HEIGHT,
-                    MaxDistance = 180,
+                    MaxDistance = 240,
                     AlwaysOnTop = true, -- Keep the base landmark readable over map geometry.
                     ResetOnSpawn = true,
                 })
-                marker.StudsOffsetWorldSpace = Vector3.new(0, 3.6, 0)
+                marker.StudsOffsetWorldSpace = Vector3.new(0, 4.5, 0)
                 marker.Active = false
                 marker.Parent = gui
                 display = { Available = available, Portraits = marker }

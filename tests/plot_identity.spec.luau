@@ -149,8 +149,8 @@ local width, height = marker.Size.X.Scale, marker.Size.Y.Scale
 local leftSize, rightSize = ownerPortrait.Size.X.Scale, teammatePortrait.Size.X.Scale
 local left, right = ownerPortrait.Position.X.Scale, teammatePortrait.Position.X.Scale
 check(
-    leftSize * width >= 4 and math.abs(leftSize * width - ownerPortrait.Size.Y.Scale * height) < 0.01,
-    "portraits are at least four studs wide and square"
+    leftSize * width >= 5.5 and math.abs(leftSize * width - ownerPortrait.Size.Y.Scale * height) < 0.01,
+    "portraits are at least 5.5 studs wide and square"
 )
 check(
     left + right == 1
@@ -164,8 +164,8 @@ check(
     "the two portraits fit within one centered, proportional row"
 )
 check(
-    marker.MaxDistance > 60 and marker.AlwaysOnTop and not marker.Active,
-    "portraits are long-range, passive landmarks"
+    marker.MaxDistance >= 240 and marker.AlwaysOnTop and not marker.Active,
+    "portraits are passive landmarks visible up to at least 240 studs away"
 )
 check(
     ownerPortrait.BackgroundColor3 == teammatePortrait.BackgroundColor3
