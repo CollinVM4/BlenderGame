@@ -9,16 +9,6 @@ style.ApplyBillboard(
     { WidthStuds = 4, HeightStuds = 0.8, MaxDistance = 45, AlwaysOnTop = false, ResetOnSpawn = true }
 )
 check(not gui.AlwaysOnTop and gui.ResetOnSpawn, "direct callers can preserve authored visibility flags")
-style.ApplyBillboard(gui, { PixelSize = env.Vector2.new(152, 108), MaxDistance = 360 })
-check(
-    gui.Size.X.Scale == 0
-        and gui.Size.Y.Scale == 0
-        and gui.Size.X.Offset == 152
-        and gui.Size.Y.Offset == 108
-        and gui.MaxDistance == 360
-        and gui:GetAttribute("WorldHeightStuds") == nil,
-    "fixed-pixel landmarks use screen dimensions and clear old stud metadata"
-)
 local originalStudio = services.RunService.IsStudio
 services.RunService.IsStudio = function()
     return true
@@ -31,8 +21,6 @@ for _, settings in
         { WidthStuds = 7, HeightStuds = 1.4, MaxDistance = 0 },
         { WidthStuds = -1, HeightStuds = 1.4, MaxDistance = 25 },
         { WidthStuds = 7, HeightStuds = 0 / 0, MaxDistance = 25 },
-        { PixelSize = env.Vector2.new(0, 108), MaxDistance = 360 },
-        { WidthStuds = 7, HeightStuds = 1.4, PixelSize = env.Vector2.new(152, 108), MaxDistance = 360 },
     }
 do
     check(not pcall(style.ApplyBillboard, gui, settings), "invalid or legacy fields fail loudly in Studio")

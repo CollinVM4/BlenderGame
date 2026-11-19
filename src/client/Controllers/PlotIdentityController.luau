@@ -12,7 +12,6 @@ local player = Players.LocalPlayer
 local PORTRAIT_BILLBOARD_WIDTH = 16.5
 local PORTRAIT_BILLBOARD_HEIGHT = 8.2
 local PORTRAIT_SIZE = 5.75
-local HOME_PORTRAIT_PIXELS = 48
 local THUMBNAIL_RETRY_SECONDS = 10
 type PortraitView = { Headshot: ImageLabel, Fallback: TextLabel }
 type PlotDisplay = { Available: BillboardGui, Portraits: BillboardGui, Owner: PortraitView?, Teammate: PortraitView? }
@@ -68,10 +67,8 @@ local function addPortrait(
     local badge = Instance.new("Frame")
     badge.Name = "PortraitBadge"
     badge.AnchorPoint = Vector2.new(0.5, 0)
-    badge.Size = if ownBase
-        then UDim2.fromOffset(HOME_PORTRAIT_PIXELS, HOME_PORTRAIT_PIXELS)
-        else UDim2.fromScale(PORTRAIT_SIZE / PORTRAIT_BILLBOARD_WIDTH, PORTRAIT_SIZE / PORTRAIT_BILLBOARD_HEIGHT)
-    badge.Position = if ownBase then UDim2.new(centerX, 0, 0, 4) else UDim2.fromScale(centerX, 0.04)
+    badge.Size = UDim2.fromScale(PORTRAIT_SIZE / PORTRAIT_BILLBOARD_WIDTH, PORTRAIT_SIZE / PORTRAIT_BILLBOARD_HEIGHT)
+    badge.Position = UDim2.fromScale(centerX, 0.04)
     badge.BackgroundColor3 = if ownBase then TextStyle.Gold else TextStyle.White
     badge.BorderSizePixel = 0
     badge.Active = false
@@ -94,34 +91,11 @@ local function addPortrait(
     fallback.Active = false
     fallback.ZIndex = 2
 
-    local nameSize = if ownBase then UDim2.new(0.48, 0, 0, 16) else UDim2.fromScale(0.48, 0.19)
-    local namePosition = if ownBase then UDim2.new(centerX, 0, 0, 54) else UDim2.fromScale(centerX, 0.77)
-    local nameLabel = label(display, name, nameSize, namePosition)
+    local nameLabel = label(display, name, UDim2.fromScale(0.48, 0.19), UDim2.fromScale(centerX, 0.77))
     nameLabel.AnchorPoint = Vector2.new(0.5, 0)
     nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
     nameLabel.Active = false
     return { Headshot = head, Fallback = fallback }
-end
-local function addHomeCaption(marker: BillboardGui)
-    local caption = Instance.new("TextLabel")
-    caption.Name = "HomeCaption"
-    caption.AnchorPoint = Vector2.new(0.5, 0)
-    caption.Size = UDim2.fromOffset(118, 28)
-    caption.Position = UDim2.new(0.5, 0, 0, 74)
-    caption.BackgroundColor3 = TextStyle.Gold
-    caption.BorderSizePixel = 0
-    caption.Font = TextStyle.Font
-    caption.Text = "YOUR BASE"
-    caption.TextColor3 = TextStyle.Dark
-    caption.TextSize = 20
-    caption.Active = false
-    Instance.new("UICorner", caption).CornerRadius = UDim.new(0.5, 0)
-    local outline = Instance.new("UIStroke")
-    outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    outline.Color = TextStyle.Dark
-    outline.Thickness = 2
-    outline.Parent = caption
-    caption.Parent = marker
 end
 local function updatePortrait(view: PortraitView, id: number)
     local image = portrait(id)
@@ -215,6 +189,13 @@ function Controller.Init()
 
                 local marker = Instance.new("BillboardGui")
                 marker.Name = "PlotPortraits"
+                BillboardStyle.ApplyBillboard(marker, {
+                    WidthStuds = PORTRAIT_BILLBOARD_WIDTH,
+                    HeightStuds = PORTRAIT_BILLBOARD_HEIGHT,
+                    MaxDistance = 240,
+                    AlwaysOnTop = true, -- Keep the base landmark readable over map geometry.
+                    ResetOnSpawn = true,
+                })
                 marker.StudsOffsetWorldSpace = Vector3.new(0, 4.5, 0)
                 marker.Active = false
                 marker.Parent = gui
@@ -236,33 +217,11 @@ function Controller.Init()
                     marker:SetAttribute("Signature", signature)
                     marker:ClearAllChildren()
                     local ownBase = owner == player.UserId or teammate == player.UserId
-                    -- Only the player's base needs to keep its screen size for wayfinding.
-                    BillboardStyle.ApplyBillboard(
-                        marker,
-                        if ownBase
-                            then {
-                                PixelSize = Vector2.new(152, 108),
-                                MaxDistance = 360,
-                                AlwaysOnTop = true,
-                                ResetOnSpawn = true,
-                            }
-                            else {
-                                WidthStuds = PORTRAIT_BILLBOARD_WIDTH,
-                                HeightStuds = PORTRAIT_BILLBOARD_HEIGHT,
-                                MaxDistance = 240,
-                                AlwaysOnTop = true,
-                                ResetOnSpawn = true,
-                            }
-                    )
-                    marker.SizeOffset = Vector2.new(0, if ownBase then 0.25 else 0)
                     display.Owner =
                         addPortrait(marker, if type(teammate) == "number" then 0.25 else 0.5, owner, ownerName, ownBase)
                     display.Teammate = if type(teammate) == "number"
                         then addPortrait(marker, 0.75, teammate, teammateName, ownBase)
                         else nil
-                    if ownBase then
-                        addHomeCaption(marker)
-                    end
                 end
                 if display.Owner then
                     updatePortrait(display.Owner, owner)

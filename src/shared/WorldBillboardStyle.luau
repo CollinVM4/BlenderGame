@@ -3,9 +3,8 @@
 local Style = {}
 
 export type Settings = {
-    WidthStuds: number?,
-    HeightStuds: number?,
-    PixelSize: Vector2?,
+    WidthStuds: number,
+    HeightStuds: number,
     MaxDistance: number,
     AlwaysOnTop: boolean?,
     ResetOnSpawn: boolean?,
@@ -15,17 +14,12 @@ function Style.ApplyBillboard(gui: BillboardGui, settings: Settings)
     local function positive(value: number?): boolean
         return type(value) == "number" and value > 0 and value < math.huge
     end
-    local width, height, pixels = settings.WidthStuds, settings.HeightStuds, settings.PixelSize
-    local size: UDim2? = nil
-    if pixels then
-        if width == nil and height == nil and positive(pixels.X) and positive(pixels.Y) then
-            size = UDim2.fromOffset(pixels.X, pixels.Y)
-        end
-    elseif width and height and positive(width) and positive(height) then
-        size = UDim2.fromScale(width, height)
-    end
-    if not size or not positive(settings.MaxDistance) then
-        local message = "[WorldBillboardStyle] Valid stud dimensions or PixelSize and finite MaxDistance are required"
+    if
+        not positive(settings.WidthStuds)
+        or not positive(settings.HeightStuds)
+        or not positive(settings.MaxDistance)
+    then
+        local message = "[WorldBillboardStyle] WidthStuds, HeightStuds and finite MaxDistance are required"
         if game:GetService("RunService"):IsStudio() then
             error(message, 2)
         end
@@ -35,8 +29,8 @@ function Style.ApplyBillboard(gui: BillboardGui, settings: Settings)
         gui.Enabled = false
         return
     end
-    gui:SetAttribute("WorldHeightStuds", height)
-    gui.Size = size
+    gui:SetAttribute("WorldHeightStuds", settings.HeightStuds)
+    gui.Size = UDim2.fromScale(settings.WidthStuds, settings.HeightStuds)
     gui.AlwaysOnTop = settings.AlwaysOnTop ~= false
     gui.ResetOnSpawn = settings.ResetOnSpawn == true
     gui.MaxDistance = settings.MaxDistance

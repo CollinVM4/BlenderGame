@@ -126,14 +126,6 @@ tick()
 tick()
 local soloPortrait = findPortrait("portrait:" .. owner.UserId)
 check(soloPortrait and soloPortrait.Position.X.Scale == 0.5, "a solo portrait is centered over its plot")
-local publicMarker = soloPortrait.Parent
-check(
-    publicMarker.Size.X.Scale > 0
-        and publicMarker.Size.X.Offset == 0
-        and publicMarker.MaxDistance == 240
-        and not findText("YOUR BASE"),
-    "other bases use world-sized portraits and do not display the home caption"
-)
 check(
     pendingFallback.Parent.Parent == soloPortrait and pendingFallback.Visible and thumbnails == 2,
     "retry fills the existing badge while the headshot image loads"
@@ -153,34 +145,27 @@ check(
     marker == teammatePortrait.Parent and marker.Adornee == occupied:FindFirstChild("PlotIdentityOrigin"),
     "both team portraits share their base's billboard and world origin"
 )
-local width = marker.Size.X.Offset
-local leftSize, rightSize = ownerPortrait.Size.X.Offset / width, teammatePortrait.Size.X.Offset / width
+local width, height = marker.Size.X.Scale, marker.Size.Y.Scale
+local leftSize, rightSize = ownerPortrait.Size.X.Scale, teammatePortrait.Size.X.Scale
 local left, right = ownerPortrait.Position.X.Scale, teammatePortrait.Position.X.Scale
 check(
-    marker.Size.X.Scale == 0
-        and marker.Size.Y.Scale == 0
-        and ownerPortrait.Size.X.Offset >= 48
-        and ownerPortrait.Size.X.Offset == ownerPortrait.Size.Y.Offset
-        and teammatePortrait.Size.X.Offset == ownerPortrait.Size.X.Offset,
-    "home portraits stay square and at least 48 screen pixels wide at distance"
+    leftSize * width >= 5.5 and math.abs(leftSize * width - ownerPortrait.Size.Y.Scale * height) < 0.01,
+    "portraits are at least 5.5 studs wide and square"
 )
 check(
     left + right == 1
         and left - leftSize / 2 >= 0
         and left + leftSize / 2 < right - rightSize / 2
         and right + rightSize / 2 <= 1
+        and ownerPortrait.Size.X.Offset == 0
+        and teammatePortrait.Size.X.Offset == 0
         and ownerPortrait.Position.X.Offset == 0
         and teammatePortrait.Position.X.Offset == 0,
     "the two portraits fit within one centered, proportional row"
 )
 check(
-    marker.MaxDistance >= 360 and marker.AlwaysOnTop and not marker.Active,
-    "the home marker is a passive landmark with a longer draw distance"
-)
-local home = findText("YOUR BASE")
-check(
-    home and home.Parent == marker and home.TextSize >= 20 and not home.Active,
-    "a legible Your Base caption sits under the home portraits"
+    marker.MaxDistance >= 240 and marker.AlwaysOnTop and not marker.Active,
+    "portraits are passive landmarks visible up to at least 240 studs away"
 )
 check(
     ownerPortrait.BackgroundColor3 == teammatePortrait.BackgroundColor3
@@ -229,8 +214,8 @@ check(
 t.RemovePlayer(viewer)
 tick()
 check(
-    not findText("Claim an available PLOT!") and not findText("Empty Slot") and not findText("YOUR BASE"),
-    "departure removes the home marker and returns unassigned"
+    not findText("Claim an available PLOT!") and not findText("Empty Slot"),
+    "departure closes management and returns unassigned"
 )
 local beforeStudio = thumbnails
 occupied:SetAttribute("OwnerUserId", -1)

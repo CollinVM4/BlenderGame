@@ -24,9 +24,6 @@ Style.ApplyText(label, { TextScaled = true })
 - Frame dimensions are positive, finite **studs**, supplied as `WidthStuds` and
   `HeightStuds`. `ApplyBillboard` uses `UDim2.fromScale`; BillboardGui Scale units
   are world studs. The retired pixel `Width`/`Height` fields are not accepted.
-- The local player's base marker uses `PixelSize` in place of stud dimensions.
-  Its portraits and **YOUR BASE** caption keep their screen size while the player
-  navigates back to the base. Other plots use stud sizing.
 - `MaxDistance` is mandatory, positive and finite. Choose by purpose:
   interactions about 25, plot displays 40–60, transient feedback about 30 studs.
   Missing/invalid fields throw in Studio, warn and disable the view in production.
