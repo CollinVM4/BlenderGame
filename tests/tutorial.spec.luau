@@ -9,7 +9,9 @@ workspaceFake.FindFirstChild = function(_, name)
 end
 local timers = {}
 shared.TutorialTargets = "TutorialTargets"
-env.Enum.HumanoidStateType = { Climbing = "Climbing" }
+env.Enum.HumanoidStateType = { Climbing = "Climbing", Jumping = "Jumping" }
+env.Enum.HumanoidRigType = { R6 = "R6", R15 = "R15" }
+env.Enum.RaycastFilterType.Include = "Include"
 env.task.delay = function(seconds, fn)
     table.insert(timers, { At = now + seconds, Run = fn })
 end
@@ -154,29 +156,67 @@ truss.CFrame.PointToObjectSpace = function(self, point)
 end
 local humanoid = instance("Humanoid")
 humanoid.Parent, humanoid.Health = p.Character, 100
+humanoid.HipHeight, humanoid.RigType = 2, "R15"
 local movement = "Running"
 humanoid.GetState = function()
     return movement
 end
-tutorial.Mark(p, "TookStashItem")
-heartbeat:Fire(0.1)
-for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Strawberry" } } do
+for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Ice", "Banana" } } do
     carried = ids
     heartbeat:Fire(0.1)
-    check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
+    check(p:GetAttribute("TutorialStage") == "Stash", "one or two ingredients keep the gathering hint")
 end
-carried = { "Strawberry", "Cherries", "Apple" }
+ingredient, carried, flight = nil, {}, true
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Ladder", "any three red ingredients satisfy the ladder pickup objective")
+check(p:GetAttribute("TutorialStage") == "Stash", "a loose market throw cannot skip the ladder")
+ingredient, carried, flight = "Banana", { "Banana", "Ice", "Banana" }, false
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "a full market batch still teaches the ladder")
+batch = { AcceptedIngredientCount = 1, State = "LOADING", ProgressPercent = 0, ReadyToDispense = false }
+carried = { "Ice", "Banana" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "early ingestion goes directly to loading the rest of the batch")
+batch = nil
+carried = { "Strawberry", "Cherries", "Apple" }
+truss.Parent = nil
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "a ladder without a climbable truss does not block play")
+truss.Parent = ladder
+heartbeat:Fire(0.1)
+check(
+    p:GetAttribute("TutorialStage") == "Ladder" and not p:GetAttribute("TutorialTookStashItem"),
+    "a complete red set picked up away from the stash still guides to the ladder"
+)
+carried = { "Ice", "Banana", "Strawberry", "Cherries", "Apple" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "extra held ingredients still lead to the ladder")
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Ladder", "respawn retains unfinished ladder guidance")
+carried, flight = { "Cherries", "Apple" }, true
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "a toss without accepted ingestion cannot skip the ladder")
+carried, flight = { "Strawberry", "Cherries", "Apple" }, false
 movement, root.Position = "Climbing", vec(100, 0, 0)
 heartbeat:Fire(0.1)
+root.Position = vec(100, 3, 0)
+advance(0.5)
 check(p:GetAttribute("TutorialStage") == "Ladder", "climbing elsewhere cannot complete owned ladder guide")
 root.Position = vec(0, 0, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Blender", "actual nearby ladder climb advances to Glass")
+root.Position = vec(0, 2, 0)
+advance(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "brushing the ladder briefly cannot advance to Glass")
+movement = "Running"
+heartbeat:Fire(0.1)
+movement = "Climbing"
+heartbeat:Fire(0.1)
+root.Position = vec(0, 3.5, 0)
+advance(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "separate contacts cannot be added together")
+movement, root.Position = "Jumping", vec(4, 4, 0)
+advance(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "a short climb that ends with a jump advances to Glass")
 movement = "Running"
 carried = { "Cherries" }
 heartbeat:Fire(0.1)
@@ -259,60 +299,87 @@ market.Name, market.Parent = "Central Market", workspaceFake
 local function marketTarget(name, position)
     local target = instance("Part")
     target.Name, target.Parent, target.Position, target.Size = name, market, position, vec(40, 4, 40)
-    target.CFrame.PointToObjectSpace = function(_, point)
-        return point - position
-    end
+    target.CanQuery = true
     return target
 end
-marketTarget("CentralMarketBase", vec(200, 0, 0))
-marketTarget("JUMP1HIGHLIGHT", vec(400, 30, 0))
+local marketBase = marketTarget("CentralMarketBase", vec(200, 0, 0))
+marketBase.CanCollide = true
+local jumpTarget = marketTarget("JUMP1HIGHLIGHT", vec(400, 30, 0))
+jumpTarget.CanCollide, jumpTarget.CanTouch = false, false
+jumpTarget.Size = vec(4, 40, 40)
+function jumpTarget.CFrame:VectorToObjectSpace(direction)
+    return vec(direction.Y, -direction.X, direction.Z)
+end
+function jumpTarget.CFrame:PointToObjectSpace(point)
+    return self:VectorToObjectSpace(point - jumpTarget.Position)
+end
+function workspaceFake:Raycast(origin, direction, params)
+    local target = params.FilterDescendantsInstances[1]
+    if params.FilterType ~= "Include" or (target ~= marketBase and target ~= jumpTarget) or not target.CanQuery then
+        return nil
+    end
+    local offset = origin - target.Position
+    local surfaceDistance = offset.Y - 2
+    if
+        surfaceDistance >= 0
+        and surfaceDistance <= -direction.Y
+        and math.abs(offset.X) <= 20
+        and math.abs(offset.Z) <= 20
+    then
+        return { Instance = target, Normal = vec(0, 1, 0) }
+    end
+    return nil
+end
 root.Position = vec(-100, 0, 0)
-advance(7)
-check(p:GetAttribute("TutorialStage") == "Market", "elapsed time alone cannot complete a present market objective")
-root.Position = vec(155, 0, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Market", "jump guidance waits until the player is near the market")
-root.Position = vec(156, 0, 0)
+check(p:GetAttribute("TutorialStage") == "Market", "market guidance remains active away from the market")
+root.Position = vec(179, 5, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "jump guidance activates 24 studs from the market edge")
-root.Position = vec(400, 39, 0)
-advance(60)
+check(p:GetAttribute("TutorialStage") == "Market", "passing beside the market floor does not count as arrival")
+root.Position = vec(180, 5, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "first arrival on the market floor advances without waiting")
+root.Position = vec(400, 42, 0)
+heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "a present jump target does not time out seven studs above the platform"
+    "flying high over the platform does not count as reaching it"
 )
-root.Position = vec(400, 27, 0)
+root.Position = vec(400, 31, 0)
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "MarketJump", "passing below the top of the platform does not count")
-root.Position = vec(400, 38, 0)
+root.Position = vec(423, 35, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "jumping beside the platform does not count")
+root.Position = vec(419, 35, 0)
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
-    "reaching within six studs above the platform completes after the hint has had time to display"
+    "reaching the rotated platform completes on the next refresh with touch and collision disabled"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
--- Fast players can cross the market and reach the jump platform before the handoff.
+-- Fast players can reach the jump platform without first crossing the market floor.
 progress(p).Complete = false
 tutorial.RemovePlayer(p)
 tutorial.AddPlayer(p)
 p:SetAttribute("JumpPurchasedLevel", 1)
 p:SetAttribute("BatPurchasedLevel", 1)
-root.Position = vec(200, 0, 0)
+root.Position = vec(175, 5, 0)
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 advance(2)
-check(p:GetAttribute("TutorialStage") == "Market", "arrival holds the market hint for its reading window")
-root.Position = vec(400, 36, 0)
 advance(7)
+check(p:GetAttribute("TutorialStage") == "Market", "elapsed time alone cannot advance a present market target")
+jumpTarget.CanQuery = false
+root.Position = vec(400, 31, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Market", "the unqueryable rotated marker does not count from underneath")
+root.Position = vec(400, 35, 0)
+heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "an early market visit advances to a visible jump hint even if the player is already at the platform"
+    p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
+    "the rotated marker completes immediately even with spatial queries disabled and Market still showing"
 )
-root.Position = vec(450, 36, 0)
-advance(3.9)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "early arrival keeps the jump hint active for four seconds")
-advance(0.2)
-check(progress(p).Complete, "a brief platform visit counts after the hint window even if the player moves on")
 market:Destroy() -- Later scenarios retain coverage of the missing-scenery timer fallback.
 tutorial.ApplyCharacter(p, p.Character)
 flush()
@@ -348,8 +415,9 @@ check(
 )
 advance(2)
 check(p:GetAttribute("TutorialStage") == "Market", "preowned upgrades retain the two-second reading pause")
-advance(7)
-advance(7)
+advance(7.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "missing market floor retains the timed fallback")
+advance(7.1)
 check(progress(p).Complete, "preowned purchases also reach completion")
 -- An order accepted before the closing step skips it entirely.
 progress(p).Complete = false
@@ -359,8 +427,8 @@ tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "NextCustomerRead", "already-taken order skips customer hint")
 advance(2)
-advance(7)
-advance(7)
+advance(7.1)
+advance(7.1)
 check(progress(p).Complete, "an already-taken next order skips the closing hint")
 -- Keep owner-only farm guidance independent of optional upgrade recommendations.
 authority.SetCash(p, 19999)

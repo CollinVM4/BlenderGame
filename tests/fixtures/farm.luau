@@ -46,6 +46,7 @@ services.Players.GetPlayerFromCharacter = function(_, character)
 end
 local motions = {}
 env.Enum.EasingStyle, env.Enum.EasingDirection = { Back = "Back" }, { Out = "Out" }
+env.Enum.KeyCode = { E = "E", R = "R", ButtonX = "ButtonX", ButtonY = "ButtonY" }
 env.TweenInfo = {
     new = function(...)
         return { ... }

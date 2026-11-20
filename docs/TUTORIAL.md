@@ -1,12 +1,12 @@
 # Three-customer tutorial and arrival routing
 
-New plot sessions receive three ordinary scripted queue customers: Red immediately, Cold at about eight seconds, Yellow at about sixteen seconds. The existing three-place queue, movement, order prompts, serving, grading and payout remain authoritative. Regular scheduling resumes after insertion. Missing, dismissed or unfulfilled tutorial customers are replaced through that queue; removal and bat recovery cannot complete an order. Waiting customers may be accepted or served early, and completed requests reconcile in order.
+New plot sessions receive three scripted queue customers. Red arrives immediately, Cold around eight seconds, and CaseOh around sixteen seconds. A missing or dismissed customer is replaced through the queue. The Red delivery advances after any valid smoothie at the normal grade. Cold and CaseOh use normal fulfillment rules. Regular customer scheduling resumes after the scripted arrivals.
 
 `TutorialOrders.luau` contains canonical request IDs, slots, recipes and arrival offsets. InventoryService grants real ingredient records once per plot session, skipping occupied slots: slot 3 has Cherries, Cherries, Strawberry; slot 4 has three Ice; slot 5 has three Banana. Protected slots 1–2 remain untouched. Unprotected slots already support mixed ingredient records and normal TAKE, values, ripening and smoothie ingestion. Starter grants are never replenished during the session, including after theft or discarding. Replacement ingredients can be gathered and stored through normal gameplay; carrying or recovering a loose ingredient resumes Glass guidance.
 
-TutorialService publishes ClaimPlot -> Counter introduction -> Order (Take Order) -> Stash -> Ladder -> reactive Stash/Blender -> Turbine -> Dispenser -> Serve. After stash pickup, guidance stays on Stash until the player carries the current order's full ingredient multiset (including duplicate Cherries for Red). Wrong ingredients do not complete that set. Ladder then gleams until a living player actually climbs within six studs of an owned ladder TrussPart. This learning step is retained through respawn and does not repeat after each ingredient. Early accepted ingestion and dispensing still reconcile without forcing obsolete steps, and missing ladder geometry does not block Glass guidance. The ingredient/blending/serving sequence repeats for the three requests. It reads customer snapshots, real cup ownership and BlendService snapshots instead of client claims or sequential interaction flags. A cup already dispensed or stored before order acceptance is reconciled. Successful fulfilled service by either plot member advances the shared orders. Reassignment cleans old targets and reads the new session; respawn does not reset the batch or queue.
+TutorialService publishes ClaimPlot -> Counter introduction -> Order (Take Order) -> Stash -> Ladder -> reactive Stash/Blender -> Turbine -> Dispenser -> Serve. Guidance starts with the red stash ingredients. Three carried ingredients from any source can fill the blender and lead to the ladder hint. Ladder then gleams until the player climbs near their plot's truss for at least 0.15 seconds and rises half a stud. A jump directly out of that climb counts toward the rise. Stepping away resets the contact timer. A completed climb is retained through respawn. Early accepted ingestion and dispensing still reconcile without forcing obsolete steps, and missing ladder geometry does not block Glass guidance. The ingredient, blending and serving sequence teaches the first delivery using customer, inventory and blender snapshots. A valid carried cup or a matching stored cup can be recognized after order acceptance. A valid delivery by either plot member advances the shared Red order. Reassignment cleans old targets and reads the new session; respawn does not reset the batch or queue.
 
-Blender snapshots expose BatchId, AcceptedIngredientCount, ProgressPercent and ReadyToDispense. The count derives from the actual ingested ingredient list. The existing `READY` state means loaded enough to start blending; `COMPLETE` plus required progress and a result is the authoritative dispense-ready state. RequiredProgress is currently 65 physical progress units, so ProgressPercent normalizes those units to 100%. The tutorial preserves blending speed. Valid, fulfilled tutorial Red and Cold serves have minimum payouts of $10,000 and $20,000 respectively, applied before credit and shared payout feedback. Yellow and normal customers retain normal payouts; failed or invalid serves receive no floor. One/two accepted ingredients cannot enable Turbine; only a 100%-complete ready batch enables Dispenser. In-flight throws guide to Glass while moving; a settled missed throw returns to stash guidance without counting as ingestion.
+Blender snapshots expose BatchId, AcceptedIngredientCount, ProgressPercent and ReadyToDispense. The count derives from the actual ingested ingredient list. The existing `READY` state means loaded enough to start blending; `COMPLETE` plus required progress and a result is the authoritative dispense-ready state. RequiredProgress is currently 65 physical progress units, so ProgressPercent normalizes those units to 100%. The tutorial preserves blending speed. The first valid delivery to tutorial Red has a one-time $30,000 minimum, including C and D grades. The floor applies before shared payout feedback. Cold, CaseOh, and normal customers use their calculated payouts. One/two accepted ingredients cannot enable Turbine; only a 100%-complete ready batch enables Dispenser. In-flight throws guide to Glass while moving; a settled missed throw returns to stash guidance without counting as ingestion.
 
 See [tutorial hint polish](TUTORIAL_HINTS.md) for announcement-style text, input wording, old-batch recovery, changed files and the updated validation checklist.
 
@@ -45,14 +45,14 @@ The CLI tests model engine movement/overlap and do not prove authored asset plac
 ## Manual Studio verification
 
 1. Start two clients and claim separate plots. Confirm exact slots 3–5, untouched protected slots, immediate Counter guidance, RED/COLD/YELLOW arrivals at about 0/8/16 seconds, and all three queue positions occupied within a minute.
-2. Accept RED using TAKE ORDER. Confirm only slot 3 and its lowercase base gleam. Take one or two ingredients: Stash must keep gleaming without any Ladder flash. Carry both Cherries and the Strawberry together: Ladder should gleam next, then Glass after actual climbing. Partial carry after using the ladder or loading the blender still guides to Glass.
+2. Accept RED using TAKE ORDER. Take one or two ingredients and check that Stash still gleams. Carry three ingredients from the stash or market and check that Ladder gleams. Brush past the ladder, then climb it normally. Glass should gleam after the climb. Partial carry after using the ladder or loading the blender still guides to Glass.
 3. Throw one and then two ingredients into Glass. Glass/stash guidance must remain reactive; Turbine must wait for all three accepted units. Miss a throw and recover it normally; the miss must not increase the accepted count.
-4. Spin partially: Turbine continues gleaming. Complete to 100%: Turbine clears and Dispenser gleams. Dispense and verify the current customer gleams; serving grants the normal grade and at least $10,000 for tutorial Red, triggering the Jump alert.
-5. Buy Jump 1, then serve COLD from slot 4: its payout must be at least $20,000 and trigger the Bat alert. Buy the Bat, then serve YELLOW from slot 5 at normal rates. Skipping Jump leaves enough cash after Cold to buy both upgrades. After all three fulfilled serves, every guided gleam disappears and random customer scheduling continues.
+4. Spin partially: Turbine continues gleaming. Complete to 100%: Turbine clears and Dispenser gleams. Dispense and verify the current customer gleams; serving grants the actual grade and at least $30,000 for tutorial Red, followed by the upgrade hint.
+5. Check that Jump and Bat can be bought with the first payout. Interact with the Cold customer to proceed to the market guidance. Cold and CaseOh should use their ordinary calculated payouts.
 6. Reset/respawn while loading/blending, reinitialize the local controller, and join as a teammate. Verify no repeated grants/injections or stale gleams. Abandon/reclaim and check session targets reset without overwriting occupied stash slots.
-7. Dismiss/destroy a tutorial customer or serve a wrong recipe: the same request must return through the queue with no automatic tutorial completion. Steal/discard starters and gather replacements normally; no repeat grants should occur. Confirm other plots are never highlighted.
+7. Dismiss or destroy Red and confirm that a replacement arrives. Serve Red a valid off-recipe smoothie and confirm that the grade reflects the recipe, the payout reaches the floor, and Cold is next.
 
-## Ladder multiset gate and payout floor validation
+## Ladder and payout floor validation
 
 Run `python tests/run_state_tests.py --luau <luau.exe> --suite tutorial --suite tutorial-payout-serve --suite tutorial-gameplay --suite carry`.
 All four suites pass, covering incomplete/wrong/duplicate ingredients, real inventory and stash flow, payout eligibility, credited cash, result GUI and CustomerReaction payloads. The payout suites share `fixtures/customer_payout.luau` so legacy payout failures cannot prevent the tutorial cases from executing.
@@ -65,9 +65,9 @@ StyLua, Rojo build and whitespace checks pass. Focused Roblox-aware typecheck re
 After the first tutorial order is served, the upgrade recommendation and next
 customer interaction lead to `TutorialStage = Market`. `TutorialActive` stays
 true. The hint reads "Visit the MARKET for more ingredients!" and the beam points to
-`Workspace/Central Market/CentralMarketBase` (BasePart). Approaching within 24 studs
-of its bounds counts as arrival and begins MarketJump after the market hint's
-seven-second window (see addendum). Missing market scenery uses the same window.
+`Workspace/Central Market/CentralMarketBase` (BasePart). Reaching the floor
+begins MarketJump on the next server refresh. Missing market scenery uses a
+seven-second fallback.
 Market presentation explicitly bypasses the first-order instruction retirement.
 
 Once opening onboarding is complete, the first server refresh observing the session
@@ -107,14 +107,14 @@ The hint is "See what the next customer wants!". Taking the order starts a
 two-second server reading pause before Market. NextCustomer, Market, and
 MarketJump bypass opening instruction retirement.
 
-The server records arrival within 24 studs of `CentralMarketBase` and shows
-MarketJump once the market hint has been active for seven seconds. MarketJump
-flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart), with "JUMP HIGHER to
-reach better ingredients!". A living player within six studs of the platform's
-bounds and at or above its top surface registers a visit. The hint stays active
-for at least four seconds, including when the visit registers at handoff. A
-missing jump target advances after seven seconds. Keep the exact highlight part
-in Studio, aligned with the first raised platform.
+MarketJump flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart), with
+"JUMP HIGHER to reach better ingredients!". For both Market targets the server
+checks straight down to the surface from the player's root, using their avatar's
+standing height plus 1.5 studs. Non-collidable markers can fall back to their
+oriented bounds. Reaching the first raised platform completes the step on the
+next server refresh, including during the preceding Market hint. A missing jump
+target advances after seven seconds. Use the top of the first raised platform as
+`JUMP1HIGHLIGHT` in Studio.
 
 Farm guidance now follows BuyRow -> Plant -> quiet growth -> Harvest -> Done.
 FarmService's READY state and copied Products identify completed growth. It

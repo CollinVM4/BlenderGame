@@ -10,4 +10,6 @@ return {
     HarvestVerticalOffset = 0,
     HarvestPopDepth = 0.65,
     HarvestPopSeconds = 0.32,
+    ReplantPopUpSpeed = 22,
+    ReplantPopSideSpeed = 9,
 }

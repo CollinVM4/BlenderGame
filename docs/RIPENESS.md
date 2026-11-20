@@ -66,14 +66,17 @@ Player attribute `RipenessTutorialShown` changes from false to true after the
 first successful ingredient deposit in that player's session. It remains true
 through subsequent stores and plot changes. A client may observe that transition
 or consume the current true state if its controller starts late. Smoothie and
-failed stores do not trigger it. The upcoming tooltip text is:
+failed stores do not trigger it. The card stays visible for 12 seconds and can
+be dismissed early with GOT IT.
 
 ```text
-Ingredients can RIPEN while stored.
-RIPE Ingredients are worth +25%
+RIPEN INGREDIENTS
+Leave ingredients in the stash for 2 minutes.
+Ripe ingredients are worth 25% more.
 ```
 
-The client now shows the one-time tooltip and independent stash progress pips.
+The card highlights the wait and bonus and shows the same solid gold dot used
+by ripe ingredients on the stash.
 Each stash slot needs a Studio-authored `Attachment` named `StashRipenessOrigin`
 directly under the slot, alongside `StashPromptOrigin`, `base`, and `shine`.
 Place it horizontally centered above the pad, a few studs high, and tune its

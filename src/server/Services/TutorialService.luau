@@ -6,6 +6,7 @@ local Requests = require(Shared.Constants.CustomerRequests)
 local Evaluation = require(script.Parent.CustomerOrderEvaluation)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local Targets = require(Shared.TutorialTargets)
+local Economy = require(Shared.Constants.Economy)
 local FarmConfig = require(Shared.Constants.FarmConfig)
 local Tutorial = {}
 local deps: any
@@ -17,23 +18,49 @@ type State = {
     SessionId: string?,
     Version: number,
     OrderIndex: number?,
-    BatchOrders: { [number]: number },
     FarmStep: number,
     NextCustomer: Instance?,
     RowPurchasedAt: number?,
     GuidanceStartedAt: number?,
+    LadderClimb: { Character: Model, StartedAt: number, StartHeight: number }?,
     MarketStartedAt: number?,
-    MarketReached: boolean?,
     JumpStartedAt: number?,
-    JumpReached: boolean?,
     NextCustomerInteractedAt: number?,
 }
 local states: { [Player]: State } = {}
-local MARKET_ZONE_PADDING = 24
-local MARKET_HINT_SECONDS = 7
-local MARKET_JUMP_ZONE_PADDING = 6
-local MARKET_JUMP_HINT_SECONDS = 4
-local MISSING_JUMP_HINT_SECONDS = 7
+local LADDER_CONTACT_DISTANCE = 3
+local LADDER_CLIMB_SECONDS = 0.15
+local LADDER_CLIMB_HEIGHT = 0.5
+local MARKET_SURFACE_MARGIN = 1.5
+local MISSING_MARKET_TARGET_SECONDS = 7
+local marketProbe = RaycastParams.new()
+marketProbe.FilterType = Enum.RaycastFilterType.Include
+marketProbe.RespectCanCollide = false
+
+local function boundsInterval(position: number, direction: number, halfSize: number): (number, number)
+    if math.abs(direction) < 1e-5 then
+        if math.abs(position) > halfSize then
+            return math.huge, -math.huge
+        end
+        return -math.huge, math.huge
+    end
+    local a = (-halfSize - position) / direction
+    local b = (halfSize - position) / direction
+    return math.min(a, b), math.max(a, b)
+end
+
+local function reachedSurfaceBounds(target: BasePart, origin: Vector3, distance: number): boolean
+    -- A non-collidable marker can opt out of queries. Intersect its oriented bounds from above.
+    local point = target.CFrame:PointToObjectSpace(origin)
+    local down = target.CFrame:VectorToObjectSpace(Vector3.new(0, -1, 0))
+    local half = target.Size * 0.5
+    local xIn, xOut = boundsInterval(point.X, down.X, half.X)
+    local yIn, yOut = boundsInterval(point.Y, down.Y, half.Y)
+    local zIn, zOut = boundsInterval(point.Z, down.Z, half.Z)
+    local entry = math.max(xIn, yIn, zIn)
+    return entry >= 0 and entry <= distance and entry <= math.min(xOut, yOut, zOut)
+end
+
 local function reachedMarketTarget(player: Player, stage: string): boolean?
     local target = Targets.GetRoots(nil, stage)[1]
     if not target or not target:IsA("BasePart") then
@@ -42,54 +69,76 @@ local function reachedMarketTarget(player: Player, stage: string): boolean?
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
     local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-    if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+    if not character or not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
         return false
     end
-    -- Measure from the authored bounds, including rotated and elevated targets.
-    local point = target.CFrame:PointToObjectSpace(root.Position)
-    local half = target.Size * 0.5
-    if stage == "MarketJump" and point.Y < half.Y then
-        return false -- Passing underneath or alongside the platform is not a climb.
+    local distance = root.Size.Y * 0.5 + humanoid.HipHeight + MARKET_SURFACE_MARGIN
+    if humanoid.RigType == Enum.HumanoidRigType.R6 then
+        local leg = character:FindFirstChild("Left Leg")
+        if leg and leg:IsA("BasePart") then
+            distance += leg.Size.Y
+        end
     end
-    local nearest = Vector3.new(
-        math.clamp(point.X, -half.X, half.X),
-        math.clamp(point.Y, -half.Y, half.Y),
-        math.clamp(point.Z, -half.Z, half.Z)
-    )
-    local padding = if stage == "Market" then MARKET_ZONE_PADDING else MARKET_JUMP_ZONE_PADDING
-    return (point - nearest).Magnitude <= padding
+    if target.CanQuery or target.CanCollide then
+        marketProbe.FilterDescendantsInstances = { target }
+        local hit = workspace:Raycast(root.Position, Vector3.new(0, -distance, 0), marketProbe)
+        if hit and hit.Instance == target and hit.Normal.Y > 0 then
+            return true
+        end
+    end
+    return not target.CanCollide and reachedSurfaceBounds(target, root.Position, distance)
 end
-local function climbedOwnLadder(player: Player, plot: Instance?): boolean
-    local character = player.Character
-    local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
-    local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-    if
-        not humanoid
-        or humanoid.Health <= 0
-        or not root
-        or not root:IsA("BasePart")
-        or humanoid:GetState() ~= Enum.HumanoidStateType.Climbing
-    then
-        return false
-    end
-    for _, ladder in Targets.Resolve(plot, "Ladder") do
+local function getLadderTrusses(plot: Instance): { BasePart }
+    local trusses: { BasePart } = {}
+    for _, ladder in Targets.GetRoots(plot, "Ladder") do
         local parts = ladder:GetDescendants()
         table.insert(parts, ladder)
         for _, part in parts do
             if part:IsA("TrussPart") then
-                local point = part.CFrame:PointToObjectSpace(root.Position)
-                local half = part.Size * 0.5
-                local distance = (point - Vector3.new(
-                    math.clamp(point.X, -half.X, half.X),
-                    math.clamp(point.Y, -half.Y, half.Y),
-                    math.clamp(point.Z, -half.Z, half.Z)
-                )).Magnitude
-                if distance <= 6 then
-                    return true
-                end
+                table.insert(trusses, part)
             end
         end
     end
+    return trusses
+end
+local function climbedOwnLadder(player: Player, state: State, trusses: { BasePart }): boolean
+    local character = player.Character
+    local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+    local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+    if not character or not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+        state.LadderClimb = nil
+        return false
+    end
+    local now, height = os.clock(), root.Position.Y
+    local climb = state.LadderClimb
+    local confirmed = climb ~= nil
+        and climb.Character == character
+        and now - climb.StartedAt >= LADDER_CLIMB_SECONDS
+        and height - climb.StartHeight >= LADDER_CLIMB_HEIGHT
+    local movement = humanoid:GetState()
+    if confirmed and (movement == Enum.HumanoidStateType.Jumping or movement == Enum.HumanoidStateType.Freefall) then
+        return true
+    end
+    if movement ~= Enum.HumanoidStateType.Climbing then
+        state.LadderClimb = nil
+        return false
+    end
+    for _, part in trusses do
+        local point = part.CFrame:PointToObjectSpace(root.Position)
+        local half = part.Size * 0.5
+        local nearest = Vector3.new(
+            math.clamp(point.X, -half.X, half.X),
+            math.clamp(point.Y, -half.Y, half.Y),
+            math.clamp(point.Z, -half.Z, half.Z)
+        )
+        if (point - nearest).Magnitude <= LADDER_CONTACT_DISTANCE then
+            if not climb or climb.Character ~= character then
+                state.LadderClimb = { Character = character, StartedAt = now, StartHeight = height }
+            end
+            return confirmed
+        end
+    end
+    state.LadderClimb = nil
     return false
 end
 local function currentTarget(player: Player, state: State, plot: Instance): (string, number?, number?)
@@ -138,77 +187,45 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
                 break
             end
         end
-        local batch = deps.BlendService.GetSnapshot(player)
-        if
-            batch
-            and batch.BatchId
-            and batch.AcceptedIngredientCount > 0
-            and state.BatchOrders[batch.BatchId] == nil
-        then
-            state.BatchOrders[batch.BatchId] = index
-        end
         if request then
             for _, cup in deps.InventoryService.GetSmoothieInventory(player) do
                 local evaluation = Evaluation.Evaluate(SmoothieItem.Result(cup.Data), request)
-                if evaluation.IsValid and evaluation.IsFulfilled then
+                if evaluation.IsValid and (not cup.Slot or evaluation.IsFulfilled) then
                     return "Serve", index, slot
                 end
             end
         end
-        if batch and batch.BatchId and batch.AcceptedIngredientCount > 0 then
-            local batchOrder = state.BatchOrders[batch.BatchId]
-            if batchOrder ~= index then
-                local prepared = if request and batch.Ingredients
-                    then Evaluation.Evaluate(
-                        SmoothieItem.Result({ BlendId = tostring(batch.BatchId), Ingredients = batch.Ingredients }),
-                        request
-                    )
-                    else nil
-                if prepared and prepared.IsValid and prepared.IsFulfilled then
-                    state.BatchOrders[batch.BatchId] = index
-                else
-                    -- Clear an old full batch through normal gameplay without crediting
-                    -- its ingredients to the new order or stranding a full blender.
-                    if batch.State ~= "DISPENSED" then
-                        if batch.ReadyToDispense and batch.ProgressPercent >= 100 then
-                            return "DrainBatch", index, slot
-                        elseif batch.AcceptedIngredientCount >= 3 then
-                            return "FinishBatch", index, slot
-                        end
-                    end
-                    batch = nil
-                end
-            end
-        end
+        local batch = deps.BlendService.GetSnapshot(player)
         if batch and batch.ReadyToDispense and batch.ProgressPercent >= 100 then
             return "Dispenser", index, slot
         end
-        if batch and batch.AcceptedIngredientCount >= 3 and batch.State ~= "DISPENSED" then
+        if batch and batch.AcceptedIngredientCount >= Economy.MaxIngredients and batch.State ~= "DISPENSED" then
             return "Turbine", index, slot
         end
-        if deps.InventoryService.HasIngredientInFlight(player) then
-            return "Blender", index, slot
-        end
-        if deps.InventoryService.HasCarriedIngredient(player) then
-            if
-                state.Milestones.TookStashItem
-                and not state.Milestones.UsedLadder
-                and not state.Milestones.LoadedBlender
-                and (not batch or batch.AcceptedIngredientCount == 0)
-                and #Targets.Resolve(plot, "Ladder") > 0
-            then
-                local carried = deps.InventoryService.GetCarriedIngredientIds(player)
-                local prepared = if request
-                    then Evaluation.Evaluate(
-                        SmoothieItem.Result({ BlendId = "tutorial-carry", Ingredients = carried }),
-                        request
-                    )
-                    else nil
-                if not prepared or not prepared.IsValid or not prepared.IsFulfilled then
+        local inFlight = deps.InventoryService.HasIngredientInFlight(player)
+        local hasCarried = deps.InventoryService.HasCarriedIngredient(player)
+        local threwDuringLadder = state.Stage == "Ladder" and inFlight
+        if
+            (hasCarried or inFlight)
+            and not state.Milestones.UsedLadder
+            and not state.Milestones.LoadedBlender
+            and (not batch or batch.AcceptedIngredientCount == 0)
+        then
+            local trusses = getLadderTrusses(plot)
+            if #trusses > 0 then
+                if
+                    not threwDuringLadder
+                    and #deps.InventoryService.GetCarriedIngredientIds(player) < Economy.MaxIngredients
+                then
                     return "Stash", index, slot
                 end
-                return "Ladder", index, slot
+                if not climbedOwnLadder(player, state, trusses) then
+                    return "Ladder", index, slot
+                end
+                state.Milestones.UsedLadder = true
             end
+        end
+        if inFlight or hasCarried then
             return "Blender", index, slot
         end
         return "Stash", index, slot
@@ -235,27 +252,22 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         end
     end
     local now = os.clock()
+    local reachedJump = reachedMarketTarget(player, "MarketJump")
+    if reachedJump then
+        return "Complete", nil, nil
+    end
     if not state.JumpStartedAt then
         local marketStartedAt = state.MarketStartedAt or now
         state.MarketStartedAt = marketStartedAt
         local reachedMarket = reachedMarketTarget(player, "Market")
-        if reachedMarket then
-            state.MarketReached = true
-        end
-        if now - marketStartedAt < MARKET_HINT_SECONDS or (reachedMarket == false and not state.MarketReached) then
+        if
+            reachedMarket == false or (reachedMarket == nil and now - marketStartedAt < MISSING_MARKET_TARGET_SECONDS)
+        then
             return "Market", nil, nil
         end
         state.JumpStartedAt = now
     end
-    local reachedJump = reachedMarketTarget(player, "MarketJump")
-    if reachedJump then
-        state.JumpReached = true
-    end
-    local jumpElapsed = now - (state.JumpStartedAt :: number)
-    if
-        (state.JumpReached and jumpElapsed >= MARKET_JUMP_HINT_SECONDS)
-        or (reachedJump == nil and jumpElapsed >= MISSING_JUMP_HINT_SECONDS)
-    then
+    if reachedJump == nil and now - (state.JumpStartedAt :: number) >= MISSING_MARKET_TARGET_SECONDS then
         return "Complete", nil, nil
     end
     return "MarketJump", nil, nil
@@ -321,9 +333,8 @@ local function refresh(player: Player, state: State)
     local sessionId = deps.TycoonService.GetSessionId(player)
     if state.SessionId ~= sessionId then
         state.Milestones = {}
-        state.BatchOrders = {}
+        state.LadderClimb = nil
         state.GuidanceStartedAt, state.MarketStartedAt, state.JumpStartedAt = nil, nil, nil
-        state.MarketReached, state.JumpReached = nil, nil
         state.NextCustomerInteractedAt = nil
         state.NextCustomer = nil
         state.FarmStep, state.RowPurchasedAt = 0, nil
@@ -337,10 +348,10 @@ local function refresh(player: Player, state: State)
     if progress and progress.Complete then
         stage = "Complete"
     elseif plot then
-        if state.Stage == "Ladder" and climbedOwnLadder(player, plot) then
-            state.Milestones.UsedLadder = true
-        end
         stage, order, slot = currentTarget(player, state, plot)
+    end
+    if stage ~= "Ladder" then
+        state.LadderClimb = nil
     end
     if stage == "Complete" and plot then
         if progress then
@@ -401,7 +412,6 @@ function Tutorial.AddPlayer(player: Player)
         SessionId = nil,
         Version = 0,
         OrderIndex = nil,
-        BatchOrders = {},
         FarmStep = 0,
         RowPurchasedAt = nil,
     }

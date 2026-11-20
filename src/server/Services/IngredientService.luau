@@ -113,7 +113,7 @@ function IngredientService.Spawn(
         Claimable = claimable ~= false,
         Item = item,
         -- Server lifecycle state, deliberately separate from presentation/item metadata.
-        -- Consume retires this record on harvest; drop/throw spawn a fresh loose record.
+        -- Manual harvest retires this record. Replanting releases it in place.
         FarmManaged = options ~= nil and options.FarmManaged == true,
     }
     object.Destroying:Connect(function()
@@ -159,6 +159,31 @@ function IngredientService.ReleaseReservation(object: Instance, token: {})
     end
 end
 
+local function unfreeze(object: Instance)
+    local parts = object:GetDescendants()
+    table.insert(parts, object)
+    for _, part in parts do
+        if part:IsA("BasePart") then
+            part.Anchored = false
+        end
+    end
+    object:SetAttribute("FrozenUntilPickup", nil)
+end
+
+function IngredientService.ReleaseFarmProduct(object: Instance): BasePart?
+    local record = records[object]
+    if not record or not record.FarmManaged or not object:IsDescendantOf(workspace) then
+        return nil
+    end
+    record.FarmManaged = false
+    unfreeze(object)
+    local root = WorldUtil.Part(object)
+    if root and root:CanSetNetworkOwnership() then
+        root:SetNetworkOwner(nil)
+    end
+    return root
+end
+
 -- Pickup callers set pickedUp only after inventory authorization/reservation succeeds.
 -- Other removal paths (including cleanup) never release frozen physics.
 function IngredientService.Consume(object: Instance, pickedUp: boolean?, token: {}?): string?
@@ -170,21 +195,14 @@ function IngredientService.Consume(object: Instance, pickedUp: boolean?, token: 
     records[object] = nil
     reservations[object] = nil
     if pickedUp and object:GetAttribute("FrozenUntilPickup") == true then
-        local parts = object:GetDescendants()
-        table.insert(parts, object)
-        for _, part in parts do
-            if part:IsA("BasePart") then
-                part.Anchored = false
-            end
-        end
-        object:SetAttribute("FrozenUntilPickup", nil)
+        unfreeze(object)
     end
     object:Destroy()
     return record.Id
 end
 -- Snapshot the registry: removal callbacks may replenish spawn systems.
 -- Carry, stash and accepted blender contents have already left this registry.
--- Farm products stay registered for pickup, but belong to their row until consumed.
+-- Only farm products still in their row are exempt.
 function IngredientService.ClearLooseIngredients()
     local remove = {}
     for object, record in records do

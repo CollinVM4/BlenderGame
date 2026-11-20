@@ -135,6 +135,7 @@ check(
 )
 row:SetAttribute("FarmState", "GROWING")
 row:SetAttribute("FarmGrowEnd", now + 28)
+prompt.Enabled = false
 tick()
 check(
     not playerGui:FindFirstChild("FarmPlantDisplay") and display(origin):FindFirstChild("Detail").Text == "0:28",
@@ -153,7 +154,25 @@ check(
     display(origin):FindFirstChild("Title").Text == "READY!" and display(origin):FindFirstChild("Detail").Text == "",
     "ready replaces countdown"
 )
+prompt.Enabled = true
+prompt.KeyboardKeyCode, prompt.GamepadKeyCode = { Name = "R" }, { Name = "ButtonY" }
+prompts.PromptShown:Fire(prompt, "Keyboard")
+planting = playerGui:FindFirstChild("FarmPlantDisplay")
+check(
+    planting.Enabled and planting:FindFirstChild("Action").Text == "[R]" and not display(origin).Enabled,
+    "ready row shows planting with its own key and without overlapping status"
+)
+heldId = nil
+tick()
+check(not planting.Enabled and display(origin).Enabled, "ready row keeps ordinary status without an eligible seed")
+heldId = "Banana"
+prompts.PromptShown:Fire(prompt, "Touch")
+planting = playerGui:FindFirstChild("FarmPlantDisplay")
+planting:FindFirstChild("Action").InputBegan:Fire({ UserInputType = "Touch" })
+prompts.PromptHidden:Fire(prompt)
+check(begins == 2 and ends == 2, "ready row supports the same mobile plant tap")
 row:SetAttribute("FarmState", "LOCKED")
+prompt.Enabled = false
 pad.CanTouch = true
 tick()
 check(not display(origin).Enabled and display(pad).Enabled, "session reset restores pad and hides row")
