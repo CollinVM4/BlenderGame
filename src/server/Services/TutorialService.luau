@@ -26,19 +26,43 @@ type State = {
     GuidanceStartedAt: number?,
     LadderClimb: { Character: Model, StartedAt: number, StartHeight: number }?,
     MarketStartedAt: number?,
-    MarketReached: boolean?,
     JumpStartedAt: number?,
     NextCustomerInteractedAt: number?,
 }
 local states: { [Player]: State } = {}
 local LADDER_CONTACT_DISTANCE = 3
-local LADDER_CLIMB_SECONDS = 0.4
-local LADDER_CLIMB_HEIGHT = 1
-local MARKET_ZONE_PADDING = 24
-local MARKET_HINT_SECONDS = 7
-local MARKET_JUMP_EDGE_PADDING = 2
-local MARKET_JUMP_HEIGHT = 10
-local MISSING_JUMP_HINT_SECONDS = 7
+local LADDER_CLIMB_SECONDS = 0.15
+local LADDER_CLIMB_HEIGHT = 0.5
+local MARKET_SURFACE_MARGIN = 1.5
+local MISSING_MARKET_TARGET_SECONDS = 7
+local marketProbe = RaycastParams.new()
+marketProbe.FilterType = Enum.RaycastFilterType.Include
+marketProbe.RespectCanCollide = false
+
+local function boundsInterval(position: number, direction: number, halfSize: number): (number, number)
+    if math.abs(direction) < 1e-5 then
+        if math.abs(position) > halfSize then
+            return math.huge, -math.huge
+        end
+        return -math.huge, math.huge
+    end
+    local a = (-halfSize - position) / direction
+    local b = (halfSize - position) / direction
+    return math.min(a, b), math.max(a, b)
+end
+
+local function reachedSurfaceBounds(target: BasePart, origin: Vector3, distance: number): boolean
+    -- A non-collidable marker can opt out of queries. Intersect its oriented bounds from above.
+    local point = target.CFrame:PointToObjectSpace(origin)
+    local down = target.CFrame:VectorToObjectSpace(Vector3.new(0, -1, 0))
+    local half = target.Size * 0.5
+    local xIn, xOut = boundsInterval(point.X, down.X, half.X)
+    local yIn, yOut = boundsInterval(point.Y, down.Y, half.Y)
+    local zIn, zOut = boundsInterval(point.Z, down.Z, half.Z)
+    local entry = math.max(xIn, yIn, zIn)
+    return entry >= 0 and entry <= distance and entry <= math.min(xOut, yOut, zOut)
+end
+
 local function reachedMarketTarget(player: Player, stage: string): boolean?
     local target = Targets.GetRoots(nil, stage)[1]
     if not target or not target:IsA("BasePart") then
@@ -47,25 +71,24 @@ local function reachedMarketTarget(player: Player, stage: string): boolean?
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
     local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-    if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+    if not character or not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
         return false
     end
-    -- Measure from the authored bounds, including rotated and elevated targets.
-    local point = target.CFrame:PointToObjectSpace(root.Position)
-    local half = target.Size * 0.5
-    if stage == "MarketJump" then
-        local heightAbovePlatform = point.Y - half.Y
-        return heightAbovePlatform >= 0
-            and heightAbovePlatform <= MARKET_JUMP_HEIGHT
-            and math.abs(point.X) <= half.X + MARKET_JUMP_EDGE_PADDING
-            and math.abs(point.Z) <= half.Z + MARKET_JUMP_EDGE_PADDING
+    local distance = root.Size.Y * 0.5 + humanoid.HipHeight + MARKET_SURFACE_MARGIN
+    if humanoid.RigType == Enum.HumanoidRigType.R6 then
+        local leg = character:FindFirstChild("Left Leg")
+        if leg and leg:IsA("BasePart") then
+            distance += leg.Size.Y
+        end
     end
-    local nearest = Vector3.new(
-        math.clamp(point.X, -half.X, half.X),
-        math.clamp(point.Y, -half.Y, half.Y),
-        math.clamp(point.Z, -half.Z, half.Z)
-    )
-    return (point - nearest).Magnitude <= MARKET_ZONE_PADDING
+    if target.CanQuery or target.CanCollide then
+        marketProbe.FilterDescendantsInstances = { target }
+        local hit = workspace:Raycast(root.Position, Vector3.new(0, -distance, 0), marketProbe)
+        if hit and hit.Instance == target and hit.Normal.Y > 0 then
+            return true
+        end
+    end
+    return not target.CanCollide and reachedSurfaceBounds(target, root.Position, distance)
 end
 local function getLadderTrusses(plot: Instance): { BasePart }
     local trusses: { BasePart } = {}
@@ -84,14 +107,21 @@ local function climbedOwnLadder(player: Player, state: State, trusses: { BasePar
     local character = player.Character
     local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
     local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-    if
-        not character
-        or not humanoid
-        or humanoid.Health <= 0
-        or not root
-        or not root:IsA("BasePart")
-        or humanoid:GetState() ~= Enum.HumanoidStateType.Climbing
-    then
+    if not character or not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+        state.LadderClimb = nil
+        return false
+    end
+    local now, height = os.clock(), root.Position.Y
+    local climb = state.LadderClimb
+    local confirmed = climb ~= nil
+        and climb.Character == character
+        and now - climb.StartedAt >= LADDER_CLIMB_SECONDS
+        and height - climb.StartHeight >= LADDER_CLIMB_HEIGHT
+    local movement = humanoid:GetState()
+    if confirmed and (movement == Enum.HumanoidStateType.Jumping or movement == Enum.HumanoidStateType.Freefall) then
+        return true
+    end
+    if movement ~= Enum.HumanoidStateType.Climbing then
         state.LadderClimb = nil
         return false
     end
@@ -104,13 +134,10 @@ local function climbedOwnLadder(player: Player, state: State, trusses: { BasePar
             math.clamp(point.Z, -half.Z, half.Z)
         )
         if (point - nearest).Magnitude <= LADDER_CONTACT_DISTANCE then
-            local now, height = os.clock(), root.Position.Y
-            local climb = state.LadderClimb
             if not climb or climb.Character ~= character then
                 state.LadderClimb = { Character = character, StartedAt = now, StartHeight = height }
-                return false
             end
-            return now - climb.StartedAt >= LADDER_CLIMB_SECONDS and height - climb.StartHeight >= LADDER_CLIMB_HEIGHT
+            return confirmed
         end
     end
     state.LadderClimb = nil
@@ -284,15 +311,14 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         local marketStartedAt = state.MarketStartedAt or now
         state.MarketStartedAt = marketStartedAt
         local reachedMarket = reachedMarketTarget(player, "Market")
-        if reachedMarket then
-            state.MarketReached = true
-        end
-        if now - marketStartedAt < MARKET_HINT_SECONDS or (reachedMarket == false and not state.MarketReached) then
+        if
+            reachedMarket == false or (reachedMarket == nil and now - marketStartedAt < MISSING_MARKET_TARGET_SECONDS)
+        then
             return "Market", nil, nil
         end
         state.JumpStartedAt = now
     end
-    if reachedJump == nil and now - (state.JumpStartedAt :: number) >= MISSING_JUMP_HINT_SECONDS then
+    if reachedJump == nil and now - (state.JumpStartedAt :: number) >= MISSING_MARKET_TARGET_SECONDS then
         return "Complete", nil, nil
     end
     return "MarketJump", nil, nil
@@ -361,7 +387,6 @@ local function refresh(player: Player, state: State)
         state.BatchOrders = {}
         state.LadderClimb = nil
         state.GuidanceStartedAt, state.MarketStartedAt, state.JumpStartedAt = nil, nil, nil
-        state.MarketReached = nil
         state.NextCustomerInteractedAt = nil
         state.NextCustomer = nil
         state.FarmStep, state.RowPurchasedAt = 0, nil
