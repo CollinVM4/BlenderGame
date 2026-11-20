@@ -8,7 +8,6 @@ local Profile = require(Shared.ClaimProfile)
 local DisplayState = require(script.Parent.Parent.UI.RipenessDisplayState)
 local RadialProgress = require(script.Parent.Parent.UI.RadialProgress)
 local Tooltip = require(script.Parent.Parent.UI.TutorialTooltip)
-local TutorialText = require(script.Parent.Parent.UI.RipenessTutorialText)
 local RipenessStyle = require(Shared.Constants.RipenessPresentation)
 
 local Controller = {}
@@ -58,10 +57,6 @@ local function renderPip(view: Pip, amount: number, ripe: boolean)
     view.Ripe = ripe
 end
 
-local function showTutorial(playerGui: PlayerGui)
-    Tooltip.Show(playerGui, "RipenessTutorial", TutorialText.Rich())
-end
-
 function Controller.Init()
     if started then
         return
@@ -73,7 +68,7 @@ function Controller.Init()
     local function tutorial()
         if not tutorialShown and player:GetAttribute("RipenessTutorialShown") == true then
             tutorialShown = true
-            showTutorial(playerGui)
+            Tooltip.Show(playerGui)
         end
     end
     player:GetAttributeChangedSignal("RipenessTutorialShown"):Connect(tutorial)

@@ -1,12 +1,23 @@
 --!strict
+local Ripeness = require(game:GetService("ReplicatedStorage").Shared.Constants.Ripeness)
 local Text = {}
-Text.Copy = "Ingredients can RIPEN while stored.\nRIPE Ingredients are worth +25%"
+
+local seconds = Ripeness.RipenessSeconds
+local duration = if seconds == 60
+    then "1 minute"
+    elseif seconds % 60 == 0 then ("%g minutes"):format(seconds / 60)
+    else ("%g seconds"):format(seconds)
+local bonus = ("%g%% more"):format((Ripeness.RipenessValueMultiplier - 1) * 100)
+local message = "Leave ingredients in the stash for %s.\nRipe ingredients are worth %s."
+
+Text.Copy = message:format(duration, bonus)
+
+local function highlight(value: string): string
+    return '<font color="#FFDE73"><b>' .. value .. "</b></font>"
+end
 
 function Text.Rich(): string
-    local message = Text.Copy:gsub("RIPEN", '<font color="#FFDE73">RIPEN</font>')
-    message = message:gsub("RIPE Ingredients", '<font color="#FFDE73">RIPE</font> Ingredients')
-    message = message:gsub("%+25%%", '<font color="#FFDE73">+25%%</font>')
-    return message
+    return message:format(highlight(duration), highlight(bonus))
 end
 
 return Text

@@ -1,6 +1,7 @@
 local state = loadModule("RipenessDisplayState")
 local tutorial = loadModule("RipenessTutorialText")
 local style = loadModule("RipenessPresentation")
+local Color3 = env.Color3
 -- The lightweight CLI fixture only needs value constructors for this UI view.
 UDim = {
     new = function(scale, offset)
@@ -74,9 +75,9 @@ check(
     "ripeness resolves its own authored attachment independently of the value billboard"
 )
 check(
-    indicator.Size.X.Scale == 3.2
+    indicator.Size.X.Scale == 3.84
         and indicator.Size.X.Offset == 0
-        and indicator.Size.Y.Scale == 0.6
+        and indicator.Size.Y.Scale == 0.72
         and indicator.Size.Y.Offset == 0,
     "ripeness billboard keeps stud dimensions"
 )
@@ -84,8 +85,76 @@ check(indicator.MaxDistance == 35, "ripeness billboard keeps nearby visibility")
 display:Destroy()
 style.ConfigureIndicator(indicator, slot)
 check(indicator.Adornee == origin, "ripeness origin remains available without the value display")
-check(tutorial.Copy == "Ingredients can RIPEN while stored.\nRIPE Ingredients are worth +25%", "tutorial copy is exact")
+check(
+    tutorial.Copy == "Leave ingredients in the stash for 2 minutes.\nRipe ingredients are worth 25% more.",
+    "tutorial tells players where to ripen ingredients, how long it takes, and the benefit"
+)
 check(tutorial.Rich():gsub("<[^>]+>", "") == tutorial.Copy, "rich tooltip preserves copy while emphasizing key terms")
+check(
+    tutorial.Rich():find("<b>2 minutes</b>", 1, true) and tutorial.Rich():find("<b>25% more</b>", 1, true),
+    "tutorial highlights the wait and the bonus"
+)
+
+env.UDim2.new = function(xScale, xOffset, yScale, yOffset)
+    return { X = UDim.new(xScale, xOffset), Y = UDim.new(yScale, yOffset) }
+end
+env.Enum.PreferredInput = { Touch = "Touch", KeyboardAndMouse = "KeyboardAndMouse" }
+env.Enum.ScreenInsets = { CoreUISafeInsets = "CoreUISafeInsets" }
+env.Enum.TextXAlignment.Left = "Left"
+services.UserInputService = { PreferredInput = env.Enum.PreferredInput.Touch }
+local expiry = {}
+env.task.delay = function(seconds, callback)
+    table.insert(expiry, { Seconds = seconds, Callback = callback })
+end
+local player = instance("Player")
+local playerGui = instance("PlayerGui")
+playerGui.Name, playerGui.Parent = "PlayerGui", player
+player.WaitForChild = player.FindFirstChild
+services.Players.LocalPlayer = player
+services.CollectionService.GetInstanceAddedSignal = function()
+    return signal()
+end
+local function setTutorialAttribute(shown)
+    player:SetAttribute("RipenessTutorialShown", shown)
+    player:GetAttributeChangedSignal("RipenessTutorialShown"):Fire()
+end
+local function findHint()
+    return playerGui:FindFirstChild("RipenessTutorial")
+end
+
+loadModule("RipenessPresentationController").Init()
+check(findHint() == nil, "hint waits for the first ingredient store")
+setTutorialAttribute(true)
+local hint = findHint()
+local card = hint:FindFirstChild("Card")
+local dot = card:FindFirstChild("RipePip")
+local button = card:FindFirstChild("Dismiss")
+check(
+    hint.ScreenInsets == env.Enum.ScreenInsets.CoreUISafeInsets and card.AnchorPoint.Y == 0,
+    "touch hint uses the upper safe area"
+)
+check(card:FindFirstChild("Instructions").Text == tutorial.Rich(), "shown hint uses the highlighted copy")
+check(
+    dot.BackgroundColor3 == style.IndicatorGold and card:FindFirstChild("RipeLegend").Text == "Gold dot = ripe",
+    "card identifies the real ripe indicator"
+)
+check(expiry[1].Seconds == 12 and findHint() == hint, "hint grants a 12-second reading window")
+check(button.Text == "GOT IT" and button.Size.Y.Offset >= 44, "GOT IT has a full-size tap target")
+button.Activated:Fire()
+check(findHint() == nil, "GOT IT dismisses the hint")
+setTutorialAttribute(false)
+setTutorialAttribute(true)
+check(findHint() == nil, "later stores cannot reopen the one-time hint")
+
+services.UserInputService.PreferredInput = env.Enum.PreferredInput.KeyboardAndMouse
+loadModule("TutorialTooltip").Show(playerGui)
+hint = findHint()
+check(hint:FindFirstChild("Card").AnchorPoint.Y == 1, "desktop hint sits below the main tutorial")
+expiry[1].Callback()
+check(findHint() == hint, "the dismissed card's timer leaves a later card alone")
+expiry[2].Callback()
+check(findHint() == nil, "hint expires even if the player never presses GOT IT")
+
 local pad = instance("Part")
 pad:SetAttribute("RipenessSeconds", 120)
 pad:SetAttribute("StashCount", 1)
