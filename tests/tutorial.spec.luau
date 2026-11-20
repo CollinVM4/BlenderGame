@@ -158,25 +158,50 @@ local movement = "Running"
 humanoid.GetState = function()
     return movement
 end
-tutorial.Mark(p, "TookStashItem")
-heartbeat:Fire(0.1)
-for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Strawberry" } } do
+for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Ice", "Banana" } } do
     carried = ids
     heartbeat:Fire(0.1)
     check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
 end
 carried = { "Strawberry", "Cherries", "Apple" }
+truss.Parent = nil
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Ladder", "any three red ingredients satisfy the ladder pickup objective")
+check(p:GetAttribute("TutorialStage") == "Blender", "a ladder without a climbable truss does not block play")
+truss.Parent = ladder
+heartbeat:Fire(0.1)
+check(
+    p:GetAttribute("TutorialStage") == "Ladder" and not p:GetAttribute("TutorialTookStashItem"),
+    "a complete red set picked up away from the stash still guides to the ladder"
+)
+carried = { "Ice", "Banana", "Strawberry", "Cherries", "Apple" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "extra held ingredients do not hide a complete red set")
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Ladder", "respawn retains unfinished ladder guidance")
+carried, flight = { "Cherries", "Apple" }, true
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "a toss without accepted ingestion cannot skip the ladder")
+carried, flight = { "Strawberry", "Cherries", "Apple" }, false
 movement, root.Position = "Climbing", vec(100, 0, 0)
 heartbeat:Fire(0.1)
+root.Position = vec(100, 3, 0)
+advance(0.5)
 check(p:GetAttribute("TutorialStage") == "Ladder", "climbing elsewhere cannot complete owned ladder guide")
 root.Position = vec(0, 0, 0)
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Blender", "actual nearby ladder climb advances to Glass")
+root.Position = vec(0, 2, 0)
+advance(0.2)
+check(p:GetAttribute("TutorialStage") == "Ladder", "brushing the ladder briefly cannot advance to Glass")
+movement = "Running"
+heartbeat:Fire(0.1)
+movement = "Climbing"
+heartbeat:Fire(0.1)
+root.Position = vec(0, 3.5, 0)
+advance(0.25)
+check(p:GetAttribute("TutorialStage") == "Ladder", "separate contacts cannot be added together")
+advance(0.2)
+check(p:GetAttribute("TutorialStage") == "Blender", "sustained upward climbing advances to Glass")
 movement = "Running"
 carried = { "Cherries" }
 heartbeat:Fire(0.1)
@@ -278,10 +303,10 @@ root.Position = vec(156, 0, 0)
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "MarketJump", "jump guidance activates 24 studs from the market edge")
 root.Position = vec(400, 43, 0)
-advance(8)
+heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "a present jump target does not time out while the player is too high above the platform"
+    "being more than ten studs above the platform does not count"
 )
 root.Position = vec(400, 31, 0)
 heartbeat:Fire(0.1)
@@ -293,7 +318,7 @@ root.Position = vec(421, 41, 0)
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
-    "a jump over the platform edge completes on the next refresh with collision and touch disabled"
+    "a jump over the platform edge completes on the next refresh without a timer or contact events"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
 -- Fast players can cross the market and reach the jump platform before the handoff.
@@ -308,18 +333,11 @@ flush()
 advance(2)
 check(p:GetAttribute("TutorialStage") == "Market", "arrival holds the market hint for its reading window")
 root.Position = vec(400, 36, 0)
-advance(1)
-check(p:GetAttribute("TutorialStage") == "Market", "an early jump leaves the market hint visible until its window ends")
-root.Position = vec(450, 36, 0)
-advance(6)
+heartbeat:Fire(0.1)
 check(
-    p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "an early jump still allows the jump hint to display"
+    p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
+    "jumping onto the platform during Market completes immediately"
 )
-advance(1.9)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "early arrival keeps the jump hint visible for two seconds")
-advance(0.2)
-check(progress(p).Complete, "a brief platform visit counts after the hint window even if the player moves on")
 market:Destroy() -- Later scenarios retain coverage of the missing-scenery timer fallback.
 tutorial.ApplyCharacter(p, p.Character)
 flush()

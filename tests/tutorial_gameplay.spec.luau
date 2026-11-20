@@ -122,6 +122,12 @@ inventory.InitializeTutorialStash(p)
 check(slot(p, 1).Count == 0, "initialization cannot replace withdrawn tutorial ingredients")
 movement = "Climbing"
 heartbeat:Fire(0.1)
+advance(0.5)
+check(p:GetAttribute("TutorialStage") == "Ladder", "staying on the truss without ascending keeps ladder guidance")
+local root = p.Character:FindFirstChild("HumanoidRootPart")
+root.Position += vec(0, 2, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "ascending the ladder advances to blender guidance")
 movement = "Running"
 local input, wheel = references[p].BlenderInput, references[p].TurbineWheel
 for count = 1, 3 do
