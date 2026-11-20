@@ -1276,14 +1276,14 @@ function CustomerService.HitCustomer(
     return true
 end
 
--- Released/unfulfilled tutorial records get a replacement through this same queue.
+-- Intro orders that still need a delivery get a replacement through this queue.
 local function pendingTutorial(queue: any): (number?, boolean)
     if not queue.TutorialOrders then
         return nil, false
     end
     for index, order in IntroCustomers do
         local record = queue.TutorialOrders[index]
-        if record and record.TutorialFulfilled then
+        if record and record.TutorialOrderComplete then
             continue
         end
         if not record or not table.find(queue.Customers, record) or not record.Model.Parent then
@@ -1830,7 +1830,8 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
     local grade = evaluation.Grade
     local success = evaluation.IsFulfilled
     if record.TutorialIndex then
-        record.TutorialFulfilled = success and evaluation.IsValid
+        -- The first delivery teaches serving. The grade still reflects the actual recipe.
+        record.TutorialOrderComplete = evaluation.IsValid and (record.TutorialIndex == 1 or success)
     end
     local response = Presentation.Response(record.Request, if evaluation.IsWildcard then "A" else grade :: Types.Grade)
     local reaction = record.ForcedReaction
@@ -1847,7 +1848,7 @@ function CustomerService.Serve(player: Player, expectedModel: Model?, context: a
         deps.TycoonService.DebitTransaction(transaction, -payout)
     else
         payout, ingredientValue = CustomerService.CalculateOrderPayout(player, result, record.Request, evaluation)
-        if record.TutorialIndex and success and evaluation.IsValid then
+        if record.TutorialIndex and record.TutorialOrderComplete then
             local floor = IntroCustomers[record.TutorialIndex].PayoutFloor
             local owner = deps.TycoonService.GetSessionOwner(transaction)
             local progress = if owner then deps.PlayerDataService.GetTutorialState(owner) else nil
@@ -2047,7 +2048,7 @@ function CustomerService.GetTutorialSnapshot(player: Player): { any }?
         local present = record and table.find(queue.Customers, record) ~= nil and record.Model.Parent ~= nil
         snapshot[index] = {
             RequestId = order.RequestId,
-            Served = record ~= nil and record.TutorialFulfilled == true,
+            Served = record ~= nil and record.TutorialOrderComplete == true,
             OrderTaken = present and record.OrderTaken == true,
             Model = if present then record.Model else nil,
         }

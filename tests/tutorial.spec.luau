@@ -161,11 +161,22 @@ local movement = "Running"
 humanoid.GetState = function()
     return movement
 end
-for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Ice", "Banana" } } do
+for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Ice", "Banana" } } do
     carried = ids
     heartbeat:Fire(0.1)
-    check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
+    check(p:GetAttribute("TutorialStage") == "Stash", "one or two ingredients keep the gathering hint")
 end
+ingredient, carried, flight = nil, {}, true
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Stash", "a loose market throw cannot skip the ladder")
+ingredient, carried, flight = "Banana", { "Banana", "Ice", "Banana" }, false
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "a full market batch still teaches the ladder")
+batch = { AcceptedIngredientCount = 1, State = "LOADING", ProgressPercent = 0, ReadyToDispense = false }
+carried = { "Ice", "Banana" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "early ingestion goes directly to loading the rest of the batch")
+batch = nil
 carried = { "Strawberry", "Cherries", "Apple" }
 truss.Parent = nil
 heartbeat:Fire(0.1)
@@ -178,7 +189,7 @@ check(
 )
 carried = { "Ice", "Banana", "Strawberry", "Cherries", "Apple" }
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Ladder", "extra held ingredients do not hide a complete red set")
+check(p:GetAttribute("TutorialStage") == "Ladder", "extra held ingredients still lead to the ladder")
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Ladder", "respawn retains unfinished ladder guidance")
