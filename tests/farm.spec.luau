@@ -122,11 +122,9 @@ for n, object in spawned do
         "exact planted identity at authored grow marker"
     )
 end
-plantRow(1, owner)
-check(inventory.GetCarryCount(owner) == 1, "ready row blocks planting")
 setup(inventory.CarryWorldItem(peer, spawned[1]), "teammate harvest pickup")
 setup(inventory.CarryWorldItem(outsider, spawned[2]), "harvest uses normal public pickup rules")
-check(state(1) == "READY", "remaining harvest blocks replanting")
+check(state(1) == "READY", "row stays ready while a crop remains")
 check(#harvestReferences() == 1 and harvestReferences()[1] == spawned[3], "harvest targets retire collected products")
 spawned[3]:Destroy()
 check(
@@ -135,6 +133,71 @@ check(
 )
 check(state(1) == "EMPTY", "last legitimate removal empties row")
 check(#harvestReferences() == 0, "empty row has no stale harvest targets")
+
+-- Replant a row with a gap in its harvest, using the normal plant/pickup entry points.
+inventory.ClearHeld(owner)
+carry(owner, "Apple")
+table.clear(spawned)
+plantRow(1, owner)
+timers[#timers].Run()
+setup(inventory.CarryWorldItem(peer, spawned[2]), "harvest middle slot only")
+local readyPrompt = rows[1].Plant:FindFirstChild("FarmPlantPrompt")
+check(
+    readyPrompt.Enabled and readyPrompt.KeyboardKeyCode == "R" and readyPrompt.GamepadKeyCode == "ButtonY",
+    "ready row exposes planting separately from ordinary ingredient pickup"
+)
+local previousTimers = #timers
+carry(outsider, "Banana")
+plantRow(1, outsider)
+check(inventory.GetCarryCount(outsider) == 2, "outsider keeps their seed")
+plantRow(1, owner)
+check(
+    state(1) == "READY" and #timers == previousTimers and #harvestReferences() == 2,
+    "rejected planting keeps the remaining crops in their slots"
+)
+local leftovers = { spawned[1], spawned[3] }
+local priorItems = {}
+for index, object in leftovers do
+    local record = ingredients.GetRecord(object)
+    check(record.FarmManaged and object.Anchored, "leftover stays protected and anchored until successful planting")
+    priorItems[index] = record.Item.ItemId
+end
+inventory.ClearHeld(peer)
+carry(peer, "Banana")
+local seed = tool(peer)
+plantRow(1, peer)
+plantRow(1, peer)
+check(
+    state(1) == "GROWING"
+        and farm.GetRowSnapshot(plot, 1).IngredientId == "Banana"
+        and #timers == previousTimers + 1
+        and seed.Destroyed
+        and #harvestReferences() == 0,
+    "teammate replants the row once and detaches the old harvest"
+)
+for index, object in leftovers do
+    local record = ingredients.GetRecord(object)
+    check(
+        record ~= nil
+            and record.Item.ItemId == priorItems[index]
+            and record.Item.Origin == "Farm"
+            and not record.FarmManaged
+            and not object.Anchored
+            and object:GetAttribute("FrozenUntilPickup") == nil
+            and object.AssemblyLinearVelocity.Y > 0,
+        "ejected crop stays the same item and pops free as a loose pickup"
+    )
+end
+setup(inventory.CarryWorldItem(owner, leftovers[1]), "pick up an ejected crop")
+ingredients.ClearLooseIngredients()
+check(ingredients.GetRecord(leftovers[2]) == nil, "loose sweep clears uncollected ejected crops")
+check(state(1) == "GROWING", "removing old crops cannot reset the replacement batch")
+table.clear(spawned)
+timers[#timers].Run()
+check(#spawned == 3 and ingredients.GetRecord(spawned[1]).Id == "Banana", "replacement batch grows normally")
+for _, object in spawned do
+    object:Destroy()
+end
 ingredients.Spawn = realSpawn
 inventory.ClearHeld(owner)
 -- Farm lifetime contracts use the real shared sweep, with no farm polling.

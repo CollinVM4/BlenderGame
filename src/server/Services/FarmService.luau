@@ -84,6 +84,9 @@ local function setState(row: any, state: string)
         row.Object:SetAttribute("FarmGrowEnd", nil)
     end
     row.Object:SetAttribute("FarmState", state)
+    -- Ready crops still use the ordinary pickup keys.
+    row.Prompt.KeyboardKeyCode = if state == "READY" then Enum.KeyCode.R else Enum.KeyCode.E
+    row.Prompt.GamepadKeyCode = if state == "READY" then Enum.KeyCode.ButtonY else Enum.KeyCode.ButtonX
     row.Prompt.Enabled = state == "EMPTY"
 end
 
@@ -187,13 +190,11 @@ local function grow(farm: any, row: any, session: string, generation: number, id
                     object:SetAttribute("SpawnSource", "Farm")
                     object:SetAttribute("FarmSpawnTime", workspace:GetServerTimeNow())
                     local connections: { RBXScriptConnection } = {}
-                    row.Products[object] = connections
                     local target = Instance.new("ObjectValue")
                     target.Name = "TutorialHarvestTarget"
                     target.Value = object
-                    target.Parent = row.Object
                     local function removed()
-                        if row.Products[object] ~= connections then
+                        if row.Products[object] ~= removed then
                             return
                         end
                         row.Products[object] = nil
@@ -203,6 +204,7 @@ local function grow(farm: any, row: any, session: string, generation: number, id
                         end
                         emptyWhenHarvestGone(farm, row, session, generation)
                     end
+                    row.Products[object] = removed
                     table.insert(connections, object.Destroying:Connect(removed))
                     table.insert(
                         connections,
@@ -213,6 +215,7 @@ local function grow(farm: any, row: any, session: string, generation: number, id
                             end
                         end)
                     )
+                    target.Parent = row.Object
                 end,
             }
         )
@@ -224,7 +227,11 @@ local function grow(farm: any, row: any, session: string, generation: number, id
     end
     if live(farm, session) and row.Generation == generation then
         row.Spawning = false
-        emptyWhenHarvestGone(farm, row, session, generation)
+        if next(row.Products) ~= nil then
+            row.Prompt.Enabled = true
+        else
+            emptyWhenHarvestGone(farm, row, session, generation)
+        end
     end
 end
 
@@ -349,8 +356,9 @@ local function plant(farm: any, row: any, player: Player)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if
         not authorized(farm, player)
-        or row.State ~= "EMPTY"
+        or (row.State ~= "EMPTY" and row.State ~= "READY")
         or row.Busy
+        or row.Spawning
         or not root
         or not root:IsA("BasePart")
         or (root.Position - row.Plant.WorldPosition).Magnitude > Config.PlantDistance
@@ -372,6 +380,18 @@ local function plant(farm: any, row: any, player: Player)
     if deps.InventoryService.ConsumeHeldIngredient(player, id) then
         row.IngredientId = id
         setState(row, "GROWING")
+        for product, remove in row.Products do
+            remove()
+            local part = deps.IngredientService.ReleaseFarmProduct(product)
+            if part then
+                local towardPlant = row.Plant.WorldPosition - part.Position
+                local horizontal = Vector3.new(towardPlant.X, 0, towardPlant.Z)
+                local sideways = if horizontal.Magnitude > 0.01
+                    then horizontal.Unit * Config.ReplantPopSideSpeed
+                    else Vector3.zero
+                part.AssemblyLinearVelocity = sideways + Vector3.new(0, Config.ReplantPopUpSpeed, 0)
+            end
+        end
         GameplaySfx.Emit("IngredientPlant", row.Plant.WorldPosition)
         scheduleGrowth(farm, row, duration)
     end
@@ -381,18 +401,9 @@ end
 
 local function resetRow(row: any)
     row.Generation += 1
-    local products = row.Products
-    row.Products = {}
-    for product, connections in products do
-        for _, connection in connections do
-            connection:Disconnect()
-        end
+    for product, remove in row.Products do
+        remove()
         product:Destroy()
-    end
-    for _, reference in row.Object:GetChildren() do
-        if reference.Name == "TutorialHarvestTarget" and reference:IsA("ObjectValue") then
-            reference:Destroy()
-        end
     end
     stopReveal(row)
     row.IngredientId, row.Busy, row.Spawning = nil, false, false
