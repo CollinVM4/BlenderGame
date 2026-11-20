@@ -91,25 +91,29 @@ function Controller.Init()
     end
     local function refresh(prompt: ProximityPrompt, row: Row, now: number)
         local state = row.Object:GetAttribute("FarmState")
-        row.Gui.Enabled = state == "GROWING" or state == "READY"
-        row.Title.TextColor3 = if state == "READY" then TextStyle.Green else TextStyle.White
-        row.Title.Text = if state == "READY"
-            then "READY!"
-            else "GROWING" .. string.rep(".", math.floor(now / 0.4) % 3 + 1)
+        local ready = state == "READY"
+        row.Gui.Enabled = state == "GROWING" or ready
+        row.Title.TextColor3 = if ready then TextStyle.Green else TextStyle.White
+        row.Title.Text = if ready then "READY!" else "GROWING" .. string.rep(".", math.floor(now / 0.4) % 3 + 1)
         local deadline = row.Object:GetAttribute("FarmGrowEnd")
         local remaining = if typeof(deadline) == "number" then math.max(0, math.ceil(deadline - now)) else 0
         row.Detail.Text = if state == "GROWING"
             then string.format("%d:%02d", math.floor(remaining / 60), remaining % 60)
             else ""
-        if state ~= "EMPTY" or not prompt.Enabled or not Prompts.Enabled then
+        if not prompt.Enabled or not Prompts.Enabled then
             hide(prompt)
         end
-        if row.InputTitle and row.InputName then
+        local inputGui = row.InputGui
+        if inputGui and row.InputTitle and row.InputName then
             -- InventoryService publishes its selected/fallback action target, including
             -- equipped smoothies. This is display metadata, never an activation payload.
             local id = player:GetAttribute("HeldIngredientId")
             local definition = if typeof(id) == "string" then Definitions[id] else nil
             local valid = Eligibility.CanPlant(definition)
+            inputGui.Enabled = state == "EMPTY" or (ready and valid)
+            if ready and inputGui.Enabled then
+                row.Gui.Enabled = false
+            end
             row.InputTitle.Text = if valid
                 then "PLANT"
                 elseif definition then "Cannot Plant This Item"
@@ -117,7 +121,7 @@ function Controller.Init()
             row.InputTitle.TextTransparency = if valid then 0 else 0.35
             row.InputName.Text = if valid and definition then definition.DisplayName or definition.Id else ""
             row.InputName.TextColor3 = if definition then definition.BlendColor else TextStyle.White
-            local action = row.InputGui and row.InputGui:FindFirstChild("Action")
+            local action = inputGui:FindFirstChild("Action")
             if action and action:IsA("TextButton") then
                 action.TextTransparency = if valid then 0 else 1
                 local outline = action:FindFirstChild("DialogueOutline")
@@ -159,7 +163,7 @@ function Controller.Init()
         bind(object)
         local prompt = object :: ProximityPrompt
         local row = rows[prompt]
-        if not row or row.Object:GetAttribute("FarmState") ~= "EMPTY" then
+        if not row then
             return
         end
         hide(prompt)
