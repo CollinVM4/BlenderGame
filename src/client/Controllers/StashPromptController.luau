@@ -105,7 +105,8 @@ function Controller.Init()
             button.BackgroundColor3 = Style.Dark
             button.BackgroundTransparency = 0.12
             button.AutoButtonColor = false
-            button.Selectable = true
+            -- Gamepad uses the direct prompt shortcuts. Pointer taps still use Activated.
+            button.Selectable = false
             Style.Apply(button, 20)
             local corner = Instance.new("UICorner")
             corner.CornerRadius = UDim.new(0, 12)
@@ -124,10 +125,6 @@ function Controller.Init()
             button.Parent = panel
             buttons[action] = button
         end
-        buttons.STORE.NextSelectionRight = buttons.TAKE
-        buttons.STORE.NextSelectionLeft = buttons.TAKE
-        buttons.TAKE.NextSelectionLeft = buttons.STORE
-        buttons.TAKE.NextSelectionRight = buttons.STORE
         gui.Parent = playerGui
         local focusHighlight = Instance.new("Highlight")
         focusHighlight.Name = "StashFocus"
@@ -142,22 +139,12 @@ function Controller.Init()
         local requestId = 0
         local feedbackUntil = 0
         local inputType = Enum.ProximityPromptInputType.Keyboard
-        local previousSelection: GuiObject? = nil
-        local function ownsSelection(): boolean
-            return GuiService.SelectedObject == buttons.STORE or GuiService.SelectedObject == buttons.TAKE
-        end
         local function hide()
             focused = nil
             focusHighlight.Enabled = false
             focusHighlight.Adornee = nil
             gui.Enabled = false
             ContextActionService:UnbindAction("StashTAKE")
-            if ownsSelection() then
-                GuiService.SelectedObject = if previousSelection and previousSelection.Parent
-                    then previousSelection
-                    else nil
-            end
-            previousSelection = nil
         end
         local function message(text: string)
             feedback.Text = text
@@ -255,10 +242,6 @@ function Controller.Init()
             gui.Enabled = true
             feedback.Text = ""
             feedbackUntil = 0
-            previousSelection = GuiService.SelectedObject
-            if inputType == Enum.ProximityPromptInputType.Gamepad then
-                GuiService.SelectedObject = buttons.STORE
-            end
             ContextActionService:BindAction("StashTAKE", function(_, state)
                 if UserInputService:GetFocusedTextBox() or GuiService.MenuIsOpen then
                     return Enum.ContextActionResult.Pass
@@ -292,12 +275,6 @@ function Controller.Init()
                 then Enum.ProximityPromptInputType.Touch
                 elseif string.find(last.Name, "Gamepad") then Enum.ProximityPromptInputType.Gamepad
                 else Enum.ProximityPromptInputType.Keyboard
-            if focused and inputType == Enum.ProximityPromptInputType.Gamepad and not ownsSelection() then
-                previousSelection = GuiService.SelectedObject
-                GuiService.SelectedObject = buttons.STORE
-            elseif inputType ~= Enum.ProximityPromptInputType.Gamepad and ownsSelection() then
-                GuiService.SelectedObject = nil
-            end
             refresh()
         end)
         RunService.Heartbeat:Connect(function()

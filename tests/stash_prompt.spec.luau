@@ -136,18 +136,29 @@ for _, input in { "Touch", "Keyboard", "Gamepad" } do
             "console uses platform-specific controller icons"
         )
         check(
-            services.GuiService.SelectedObject == store
-                and store.NextSelectionRight == take
-                and take.NextSelectionLeft == store,
-            "console focus and left/right navigation are usable without mouse"
+            services.GuiService.SelectedObject == nil and not store.Selectable and not take.Selectable,
+            "walking into stash range leaves gameplay focus and keeps stash buttons out of GUI navigation"
         )
-        take.Activated:Fire()
-        flush()
-        check(requests[#requests].Action == "TAKE", "controller GUI activation preserves TAKE")
     end
     services.ProximityPromptService.PromptHidden:Fire(prompt)
     check(not gui.Enabled and not bindings.StashSTORE and not bindings.StashTAKE, "hidden focus dismisses actions")
 end
+local upgradesButton = instance("TextButton")
+upgradesButton.Parent = playerGui
+services.GuiService.SelectedObject = upgradesButton
+services.ProximityPromptService.PromptShown:Fire(prompt, "Gamepad")
+check(services.GuiService.SelectedObject == upgradesButton, "stash leaves intentionally selected menus in focus")
+services.UserInputService.LastInputTypeChanged:Fire({ Name = "Keyboard" })
+check(store.Text == "[E] STORE", "switching to keyboard updates the stash hint")
+services.UserInputService.LastInputTypeChanged:Fire({ Name = "Gamepad1" })
+check(
+    store:FindFirstChild("InputIcon").Visible and services.GuiService.SelectedObject == upgradesButton,
+    "switching back to gamepad updates the hint without redirecting menu focus"
+)
+services.ProximityPromptService.PromptHidden:Fire(prompt)
+check(services.GuiService.SelectedObject == upgradesButton, "leaving stash range preserves menu focus")
+services.GuiService.SelectedObject = nil
+
 services.ProximityPromptService.PromptShown:Fire(prompt, "Touch")
 local positionStore, positionTake = store.Position, take.Position
 p:SetAttribute("HeldItemType", nil)
