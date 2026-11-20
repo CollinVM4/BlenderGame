@@ -265,7 +265,9 @@ local function marketTarget(name, position)
     return target
 end
 marketTarget("CentralMarketBase", vec(200, 0, 0))
-marketTarget("JUMP1HIGHLIGHT", vec(400, 30, 0))
+local jumpTarget = marketTarget("JUMP1HIGHLIGHT", vec(400, 30, 0))
+jumpTarget.CanCollide = false
+jumpTarget.CanTouch = false
 root.Position = vec(-100, 0, 0)
 advance(7)
 check(p:GetAttribute("TutorialStage") == "Market", "elapsed time alone cannot complete a present market objective")
@@ -275,20 +277,23 @@ check(p:GetAttribute("TutorialStage") == "Market", "jump guidance waits until th
 root.Position = vec(156, 0, 0)
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "MarketJump", "jump guidance activates 24 studs from the market edge")
-root.Position = vec(400, 39, 0)
-advance(60)
+root.Position = vec(400, 43, 0)
+advance(8)
 check(
     p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "a present jump target does not time out seven studs above the platform"
+    "a present jump target does not time out while the player is too high above the platform"
 )
-root.Position = vec(400, 27, 0)
+root.Position = vec(400, 31, 0)
 heartbeat:Fire(0.1)
 check(p:GetAttribute("TutorialStage") == "MarketJump", "passing below the top of the platform does not count")
-root.Position = vec(400, 38, 0)
+root.Position = vec(423, 36, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "jumping beside the platform does not count")
+root.Position = vec(421, 41, 0)
 heartbeat:Fire(0.1)
 check(
     p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete,
-    "reaching within six studs above the platform completes after the hint has had time to display"
+    "a jump over the platform edge completes on the next refresh with collision and touch disabled"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
 -- Fast players can cross the market and reach the jump platform before the handoff.
@@ -303,14 +308,16 @@ flush()
 advance(2)
 check(p:GetAttribute("TutorialStage") == "Market", "arrival holds the market hint for its reading window")
 root.Position = vec(400, 36, 0)
-advance(7)
+advance(1)
+check(p:GetAttribute("TutorialStage") == "Market", "an early jump leaves the market hint visible until its window ends")
+root.Position = vec(450, 36, 0)
+advance(6)
 check(
     p:GetAttribute("TutorialStage") == "MarketJump" and not progress(p).Complete,
-    "an early market visit advances to a visible jump hint even if the player is already at the platform"
+    "an early jump still allows the jump hint to display"
 )
-root.Position = vec(450, 36, 0)
-advance(3.9)
-check(p:GetAttribute("TutorialStage") == "MarketJump", "early arrival keeps the jump hint active for four seconds")
+advance(1.9)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "early arrival keeps the jump hint visible for two seconds")
 advance(0.2)
 check(progress(p).Complete, "a brief platform visit counts after the hint window even if the player moves on")
 market:Destroy() -- Later scenarios retain coverage of the missing-scenery timer fallback.

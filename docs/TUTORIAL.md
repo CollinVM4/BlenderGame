@@ -110,11 +110,12 @@ MarketJump bypass opening instruction retirement.
 The server records arrival within 24 studs of `CentralMarketBase` and shows
 MarketJump once the market hint has been active for seven seconds. MarketJump
 flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart), with "JUMP HIGHER to
-reach better ingredients!". A living player within six studs of the platform's
-bounds and at or above its top surface registers a visit. The hint stays active
-for at least four seconds, including when the visit registers at handoff. A
-missing jump target advances after seven seconds. Keep the exact highlight part
-in Studio, aligned with the first raised platform.
+reach better ingredients!". The server registers a visit when a living player's
+root reaches the first ten studs above the top surface, within the footprint
+plus two studs at each edge. Collision and touch settings have no effect on the
+check. Visits during the Market hint count, and MarketJump displays for at least
+two seconds. A missing jump target advances after seven seconds. Keep the
+highlight's top face aligned with the first raised platform in Studio.
 
 Farm guidance now follows BuyRow -> Plant -> quiet growth -> Harvest -> Done.
 FarmService's READY state and copied Products identify completed growth. It

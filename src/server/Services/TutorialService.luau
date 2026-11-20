@@ -31,8 +31,9 @@ type State = {
 local states: { [Player]: State } = {}
 local MARKET_ZONE_PADDING = 24
 local MARKET_HINT_SECONDS = 7
-local MARKET_JUMP_ZONE_PADDING = 6
-local MARKET_JUMP_HINT_SECONDS = 4
+local MARKET_JUMP_EDGE_PADDING = 2
+local MARKET_JUMP_HEIGHT = 10
+local MARKET_JUMP_HINT_SECONDS = 2
 local MISSING_JUMP_HINT_SECONDS = 7
 local function reachedMarketTarget(player: Player, stage: string): boolean?
     local target = Targets.GetRoots(nil, stage)[1]
@@ -48,16 +49,19 @@ local function reachedMarketTarget(player: Player, stage: string): boolean?
     -- Measure from the authored bounds, including rotated and elevated targets.
     local point = target.CFrame:PointToObjectSpace(root.Position)
     local half = target.Size * 0.5
-    if stage == "MarketJump" and point.Y < half.Y then
-        return false -- Passing underneath or alongside the platform is not a climb.
+    if stage == "MarketJump" then
+        local heightAbovePlatform = point.Y - half.Y
+        return heightAbovePlatform >= 0
+            and heightAbovePlatform <= MARKET_JUMP_HEIGHT
+            and math.abs(point.X) <= half.X + MARKET_JUMP_EDGE_PADDING
+            and math.abs(point.Z) <= half.Z + MARKET_JUMP_EDGE_PADDING
     end
     local nearest = Vector3.new(
         math.clamp(point.X, -half.X, half.X),
         math.clamp(point.Y, -half.Y, half.Y),
         math.clamp(point.Z, -half.Z, half.Z)
     )
-    local padding = if stage == "Market" then MARKET_ZONE_PADDING else MARKET_JUMP_ZONE_PADDING
-    return (point - nearest).Magnitude <= padding
+    return (point - nearest).Magnitude <= MARKET_ZONE_PADDING
 end
 local function climbedOwnLadder(player: Player, plot: Instance?): boolean
     local character = player.Character
@@ -235,6 +239,10 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         end
     end
     local now = os.clock()
+    local reachedJump = reachedMarketTarget(player, "MarketJump")
+    if reachedJump then
+        state.JumpReached = true
+    end
     if not state.JumpStartedAt then
         local marketStartedAt = state.MarketStartedAt or now
         state.MarketStartedAt = marketStartedAt
@@ -246,10 +254,6 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
             return "Market", nil, nil
         end
         state.JumpStartedAt = now
-    end
-    local reachedJump = reachedMarketTarget(player, "MarketJump")
-    if reachedJump then
-        state.JumpReached = true
     end
     local jumpElapsed = now - (state.JumpStartedAt :: number)
     if
