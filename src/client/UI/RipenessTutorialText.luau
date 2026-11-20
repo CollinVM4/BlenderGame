@@ -8,7 +8,7 @@ local duration = if seconds == 60
     elseif seconds % 60 == 0 then ("%g minutes"):format(seconds / 60)
     else ("%g seconds"):format(seconds)
 local bonus = ("%g%% more"):format((Ripeness.RipenessValueMultiplier - 1) * 100)
-local message = "Leave ingredients in the stash for %s.\nRipe ingredients are worth %s."
+local message = "Leave ingredients in the stash to ripen.\nRipe ingredients are worth %s."
 
 Text.Copy = message:format(duration, bonus)
 
