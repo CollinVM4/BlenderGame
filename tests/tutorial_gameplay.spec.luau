@@ -115,7 +115,7 @@ for count = 1, 3 do
     )
     check(
         p:GetAttribute("TutorialStage") == (if count == 3 then "Ladder" else "Stash"),
-        "ladder guidance waits for all three valid red ingredients"
+        "ladder guidance waits for enough ingredients to fill the blender"
     )
 end
 inventory.InitializeTutorialStash(p)
@@ -275,13 +275,6 @@ check(
     "disappeared customer rejects stale interactions without payout"
 )
 setup(customer.TakeOrder(q, replacement.Model), "accept replacement")
-inventory.GrantSmoothie(q, { BlendId = "bad-red", Ingredients = { "Banana", "Banana", "Banana" } })
-setup(customer.Serve(q, replacement.Model), "normal unfulfilled delivery")
-advance(0.5)
-check(
-    customer.GetQueueSnapshot(q)[1].RequestId == "Red" and not customer.GetTutorialSnapshot(q)[1].Served,
-    "unfulfilled serve recovers same request without advancing"
-)
 local sessionBefore = dependency.TycoonService.GetSessionId(q)
 local itemId = slot(q, 3).Ingredients[1].ItemId
 inventory.CleanupCharacter(q)
@@ -391,7 +384,7 @@ tutorial.ApplyCharacter(teammate, teammate.Character)
 flush()
 check(teammate:GetAttribute("TutorialStage") == "Complete", "returning runtime never resets a completed tutorial")
 
--- Loss and an unfulfilled delivery retry Red without completing or paying the floor.
+-- Losing a customer retries Red. Delivering a valid off-recipe cup advances onboarding.
 local retry = player()
 retry.Parent, retry.Character.WaitForChild = workspaceFake, retry.Character.FindFirstChild
 tutorial.AddPlayer(retry)
@@ -402,24 +395,39 @@ lost:Destroy()
 advance(0.5)
 local replacement = customer.GetQueueSnapshot(retry)[1]
 check(replacement.Model ~= lost and replacement.RequestId == "Red", "lost first customer is replaced with Red")
-setup(customer.TakeOrder(retry, replacement.Model), "take replacement Red")
 setup(
     inventory.GrantSmoothie(retry, { BlendId = "wrong-red", Ingredients = { "Banana", "Banana", "Banana" } }),
-    "wrong red cup"
+    "prepare a valid off-recipe cup before taking the order"
 )
-setup(customer.Serve(retry, replacement.Model), "deliver unfulfilled order")
+carry(retry, "Apple")
+setup(customer.TakeOrder(retry, replacement.Model), "take replacement Red")
+heartbeat:Fire(0.1)
+check(
+    retry:GetAttribute("TutorialStage") == "Serve" and inventory.GetHeldSmoothie(retry) == nil,
+    "an early off-recipe cup in the Backpack still leads to serving"
+)
+before = dependency.TycoonService.GetCash(retry)
+local servePrompt = replacement.Model:FindFirstChild("ServePrompt", true)
+setup(servePrompt and servePrompt.Enabled, "off-recipe smoothie can be served from the Backpack")
+servePrompt.Triggered:Fire(retry)
 advance(0.5)
 check(
-    not dataService.GetTutorialState(retry).FirstServeRewarded and not dataService.GetTutorialState(retry).Complete,
-    "unfulfilled first serve never spends reward or completion"
+    dependency.TycoonService.GetCash(retry) == before + 30000
+        and dataService.GetTutorialState(retry).FirstServeRewarded
+        and inventory.GetHeldIngredientId(retry) == "Apple",
+    "serving from the Backpack grants the floor and preserves the equipped ingredient"
 )
-replacement = customer.GetQueueSnapshot(retry)[1]
-check(replacement.RequestId == "Red", "unfulfilled Red is retried")
-setup(customer.TakeOrder(retry, replacement.Model), "take retry Red")
-setup(inventory.GrantSmoothie(retry, { BlendId = "valid-retry", Ingredients = order.Ingredients }), "valid retry cup")
-before = dependency.TycoonService.GetCash(retry)
-setup(customer.Serve(retry, replacement.Model), "fulfill retry Red")
-check(dependency.TycoonService.GetCash(retry) - before == 30000, "first successful retry still receives floor once")
+check(
+    replacement.Model:GetAttribute("Grade") == "D" and replacement.Model:GetAttribute("OrderSucceeded") == false,
+    "an off-recipe serve retains the real grade and failure feedback"
+)
+check(
+    customer.GetTutorialSnapshot(retry)[1].Served
+        and retry:GetAttribute("TutorialStage") == "Upgrades"
+        and #customer.GetQueueSnapshot(retry) == 0,
+    "the first delivery advances the tutorial without reissuing Red"
+)
+check(not customer.Serve(retry, replacement.Model), "the served customer cannot grant cash twice")
 
 -- Serving keeps working while optional recommendations are visible.
 advance(7)

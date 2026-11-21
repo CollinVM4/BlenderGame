@@ -15,7 +15,8 @@ for _, case in
         { Index = 1, Ingredients = { "Cherries", "Cherries", "Strawberry" }, Expected = 30000 },
         { Index = 2, Ingredients = { "Ice", "Ice", "Ice" }, Expected = 250 },
         { Index = 3, Ingredients = { "Hamburger", "Chili_Pepper", "Hamburger" }, Expected = 250 },
-        { Index = 1, Ingredients = { "Banana", "Banana", "Banana" }, Expected = 250 },
+        { Index = 1, Ingredients = { "Cherries", "Banana", "Banana" }, Expected = 30000 },
+        { Index = 1, Ingredients = { "Banana", "Banana", "Banana" }, Expected = 30000 },
         { Index = 1, Ingredients = { "Cherries" }, Expected = 250 },
         { Index = 1, Ingredients = { "Cherries", "Cherries", "Strawberry" }, Expected = 250, Normal = true },
     }
@@ -47,7 +48,10 @@ do
     table.clear(presentation)
     cup = { Ingredients = table.clone(case.Ingredients), BlendId = "floor-cup" }
     setup(customer.Serve(owner, model), "serve floor case")
-    check(data.GetCash(owner) == before + case.Expected, "only valid fulfilled tutorial records receive payout floor")
+    check(
+        data.GetCash(owner) == before + case.Expected,
+        "only valid first tutorial deliveries receive the payout floor"
+    )
     local reaction
     for _, event in presentation do
         if event.Moment == "CustomerReaction" then

@@ -7,7 +7,6 @@ local Evaluation = require(script.Parent.CustomerOrderEvaluation)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local Targets = require(Shared.TutorialTargets)
 local Economy = require(Shared.Constants.Economy)
-local Ingredients = require(Shared.Constants.Ingredients)
 local FarmConfig = require(Shared.Constants.FarmConfig)
 local Tutorial = {}
 local deps: any
@@ -19,7 +18,6 @@ type State = {
     SessionId: string?,
     Version: number,
     OrderIndex: number?,
-    BatchOrders: { [number]: number },
     FarmStep: number,
     NextCustomer: Instance?,
     RowPurchasedAt: number?,
@@ -35,6 +33,7 @@ local LADDER_CLIMB_SECONDS = 0.15
 local LADDER_CLIMB_HEIGHT = 0.5
 local MARKET_SURFACE_MARGIN = 1.5
 local MISSING_MARKET_TARGET_SECONDS = 7
+local MARKET_JUMP_PREVIEW_SECONDS = 3.5
 local marketProbe = RaycastParams.new()
 marketProbe.FilterType = Enum.RaycastFilterType.Include
 marketProbe.RespectCanCollide = false
@@ -143,25 +142,6 @@ local function climbedOwnLadder(player: Player, state: State, trusses: { BasePar
     state.LadderClimb = nil
     return false
 end
-local function hasFirstOrderIngredients(player: Player, request: Requests.Request?): boolean
-    if not request then
-        return false
-    end
-    local carried: { string } = deps.InventoryService.GetCarriedIngredientIds(player)
-    if request.Id == "Red" and #carried > Economy.MaxIngredients then
-        -- Prefer red ingredients when a carry upgrade lets the player hold extras.
-        table.sort(carried, function(a, b)
-            local aDefinition, bDefinition = Ingredients[a], Ingredients[b]
-            local aRed = aDefinition ~= nil and table.find(aDefinition.Tags, "Red") ~= nil
-            local bRed = bDefinition ~= nil and table.find(bDefinition.Tags, "Red") ~= nil
-            return aRed and not bRed
-        end)
-        carried = table.move(carried, 1, Economy.MaxIngredients, 1, {})
-    end
-    local prepared =
-        Evaluation.Evaluate(SmoothieItem.Result({ BlendId = "tutorial-carry", Ingredients = carried }), request)
-    return prepared.IsValid and prepared.IsFulfilled
-end
 local function currentTarget(player: Player, state: State, plot: Instance): (string, number?, number?)
     local progress = deps.PlayerDataService.GetTutorialState(player)
     if progress and progress.Complete then
@@ -208,66 +188,36 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
                 break
             end
         end
-        local batch = deps.BlendService.GetSnapshot(player)
-        if
-            batch
-            and batch.BatchId
-            and batch.AcceptedIngredientCount > 0
-            and state.BatchOrders[batch.BatchId] == nil
-        then
-            state.BatchOrders[batch.BatchId] = index
-        end
         if request then
             for _, cup in deps.InventoryService.GetSmoothieInventory(player) do
                 local evaluation = Evaluation.Evaluate(SmoothieItem.Result(cup.Data), request)
-                if evaluation.IsValid and evaluation.IsFulfilled then
+                if evaluation.IsValid and (not cup.Slot or evaluation.IsFulfilled) then
                     return "Serve", index, slot
                 end
             end
         end
-        if batch and batch.BatchId and batch.AcceptedIngredientCount > 0 then
-            local batchOrder = state.BatchOrders[batch.BatchId]
-            if batchOrder ~= index then
-                local prepared = if request and batch.Ingredients
-                    then Evaluation.Evaluate(
-                        SmoothieItem.Result({ BlendId = tostring(batch.BatchId), Ingredients = batch.Ingredients }),
-                        request
-                    )
-                    else nil
-                if prepared and prepared.IsValid and prepared.IsFulfilled then
-                    state.BatchOrders[batch.BatchId] = index
-                else
-                    -- Clear an old full batch through normal gameplay without crediting
-                    -- its ingredients to the new order or stranding a full blender.
-                    if batch.State ~= "DISPENSED" then
-                        if batch.ReadyToDispense and batch.ProgressPercent >= 100 then
-                            return "DrainBatch", index, slot
-                        elseif batch.AcceptedIngredientCount >= 3 then
-                            return "FinishBatch", index, slot
-                        end
-                    end
-                    batch = nil
-                end
-            end
-        end
+        local batch = deps.BlendService.GetSnapshot(player)
         if batch and batch.ReadyToDispense and batch.ProgressPercent >= 100 then
             return "Dispenser", index, slot
         end
-        if batch and batch.AcceptedIngredientCount >= 3 and batch.State ~= "DISPENSED" then
+        if batch and batch.AcceptedIngredientCount >= Economy.MaxIngredients and batch.State ~= "DISPENSED" then
             return "Turbine", index, slot
         end
         local inFlight = deps.InventoryService.HasIngredientInFlight(player)
         local hasCarried = deps.InventoryService.HasCarriedIngredient(player)
         local threwDuringLadder = state.Stage == "Ladder" and inFlight
         if
-            (hasCarried or threwDuringLadder)
+            (hasCarried or inFlight)
             and not state.Milestones.UsedLadder
             and not state.Milestones.LoadedBlender
             and (not batch or batch.AcceptedIngredientCount == 0)
         then
             local trusses = getLadderTrusses(plot)
             if #trusses > 0 then
-                if not threwDuringLadder and not hasFirstOrderIngredients(player, request) then
+                if
+                    not threwDuringLadder
+                    and #deps.InventoryService.GetCarriedIngredientIds(player) < Economy.MaxIngredients
+                then
                     return "Stash", index, slot
                 end
                 if not climbedOwnLadder(player, state, trusses) then
@@ -318,7 +268,11 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         end
         state.JumpStartedAt = now
     end
-    if reachedJump == nil and now - (state.JumpStartedAt :: number) >= MISSING_MARKET_TARGET_SECONDS then
+    local jumpHintSeconds = if not jumpOwned
+        then MARKET_JUMP_PREVIEW_SECONDS
+        elseif reachedJump == nil then MISSING_MARKET_TARGET_SECONDS
+        else nil
+    if jumpHintSeconds and now - (state.JumpStartedAt :: number) >= jumpHintSeconds then
         return "Complete", nil, nil
     end
     return "MarketJump", nil, nil
@@ -384,7 +338,6 @@ local function refresh(player: Player, state: State)
     local sessionId = deps.TycoonService.GetSessionId(player)
     if state.SessionId ~= sessionId then
         state.Milestones = {}
-        state.BatchOrders = {}
         state.LadderClimb = nil
         state.GuidanceStartedAt, state.MarketStartedAt, state.JumpStartedAt = nil, nil, nil
         state.NextCustomerInteractedAt = nil
@@ -464,7 +417,6 @@ function Tutorial.AddPlayer(player: Player)
         SessionId = nil,
         Version = 0,
         OrderIndex = nil,
-        BatchOrders = {},
         FarmStep = 0,
         RowPurchasedAt = nil,
     }

@@ -161,11 +161,22 @@ local movement = "Running"
 humanoid.GetState = function()
     return movement
 end
-for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Cherries", "Ice", "Banana" } } do
+for _, ids in { { "Cherries" }, { "Cherries", "Cherries" }, { "Ice", "Banana" } } do
     carried = ids
     heartbeat:Fire(0.1)
-    check(p:GetAttribute("TutorialStage") == "Stash", "incomplete multiset keeps gathering without ladder guidance")
+    check(p:GetAttribute("TutorialStage") == "Stash", "one or two ingredients keep the gathering hint")
 end
+ingredient, carried, flight = nil, {}, true
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Stash", "a loose market throw cannot skip the ladder")
+ingredient, carried, flight = "Banana", { "Banana", "Ice", "Banana" }, false
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Ladder", "a full market batch still teaches the ladder")
+batch = { AcceptedIngredientCount = 1, State = "LOADING", ProgressPercent = 0, ReadyToDispense = false }
+carried = { "Ice", "Banana" }
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Blender", "early ingestion goes directly to loading the rest of the batch")
+batch = nil
 carried = { "Strawberry", "Cherries", "Apple" }
 truss.Parent = nil
 heartbeat:Fire(0.1)
@@ -178,7 +189,7 @@ check(
 )
 carried = { "Ice", "Banana", "Strawberry", "Cherries", "Apple" }
 heartbeat:Fire(0.1)
-check(p:GetAttribute("TutorialStage") == "Ladder", "extra held ingredients do not hide a complete red set")
+check(p:GetAttribute("TutorialStage") == "Ladder", "extra held ingredients still lead to the ladder")
 tutorial.ApplyCharacter(p, p.Character)
 flush()
 check(p:GetAttribute("TutorialStage") == "Ladder", "respawn retains unfinished ladder guidance")
@@ -347,6 +358,36 @@ check(
     "reaching the rotated platform completes on the next refresh with touch and collision disabled"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
+-- A player without Jump 1 only needs to see the jump hint.
+progress(p).Complete = false
+tutorial.RemovePlayer(p)
+tutorial.AddPlayer(p)
+root.Position = vec(200, 5, 0)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+advance(8)
+advance(2)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "reaching the market shows the jump preview without Jump 1")
+advance(3.4)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "the preview stays active before 3.5 seconds")
+advance(0.11)
+check(p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete, "the preview expires without a jump")
+
+-- Players with Jump 1 still complete by reaching the raised platform.
+progress(p).Complete = false
+tutorial.RemovePlayer(p)
+tutorial.AddPlayer(p)
+p:SetAttribute("JumpPurchasedLevel", 1)
+p:SetAttribute("BatPurchasedLevel", 1)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+advance(2)
+advance(4)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "owning Jump 1 keeps the platform objective active")
+root.Position = vec(419, 35, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Complete", "the Jump 1 objective completes on arrival")
+
 -- Fast players can reach the jump platform without first crossing the market floor.
 progress(p).Complete = false
 tutorial.RemovePlayer(p)
