@@ -772,10 +772,10 @@ table.insert(requests, {
 })
 table.insert(requests, {
     Id = "Caseoh",
-    DisplayText = "whats good cuh, i'm bout that PROTEIN action, FAST FOOD & SPICY too",
+    DisplayText = "whats good cuh, i'm bout that FAST FOOD & SPICY action",
     GoodResponse = "You're safe this time buster.",
     BadResponse = "Don't cross me again simpleton",
-    RequiredTags = { "Protein", "Fast Food", "Spicy" },
+    RequiredTags = {"Fast Food", "Spicy" },
     BasePayout = 1050,
     MinJumpTier = 1,
     NPCOnly = true,
