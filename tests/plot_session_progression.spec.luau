@@ -57,7 +57,8 @@ check(
     "personal debug Jump cannot unlock special template"
 )
 customer.DeactivateForPlayer(manager)
-tycoon.SetCash(manager, 20000)
+local jumpUpgrades = loadModule("Upgrades").Jump
+tycoon.SetCash(manager, jumpUpgrades[2].Cost + jumpUpgrades[3].Cost)
 for tier = 2, 3 do
     setup(tycoon.PurchaseUpgrade(peer, "Jump", tier, tycoon.GetRequestContext(peer)), "buy shared Jump")
 end
@@ -96,14 +97,20 @@ check(#customer.GetQueueSnapshot(peer) == 3, "existing scheduler continues after
 customer.CleanupSession(sameId)
 config.SpecialCustomerChance = 0
 config.RegularRequestRecencyWindow = 2
-config.RegularTemplateRecencyWindow = 2
+config.RegularCustomerRecencyWindow = 2
+local groups = { "Color", "Trait", "Combo" }
+local tags = { { "Yellow" }, { "Sweet" }, { "Sweet", "Cold" } }
+env.math.random = function(low)
+    return low or 0.25
+end
 local regulars = instance("Folder")
 regulars.Name, regulars.Parent = "Regular", folder
 table.clear(config.Definitions)
 for index = 1, 3 do
     config.Definitions[index] = {
         Id = "Recent" .. index,
-        RequiredTags = { "Yellow" },
+        RequestGroup = groups[index],
+        RequiredTags = tags[index],
         DisplayText = "Recent",
         BasePayout = 25,
         MinJumpTier = 0,
@@ -124,5 +131,5 @@ tycoon.RemovePlayer(peer)
 local after = customer.SpawnForPlayer(manager)
 check(
     after:GetAttribute("RequestId") ~= previousRequest and after:GetAttribute("TestTemplate") ~= previousTemplate,
-    "request and template histories survive promotion"
+    "same roll favors a different request and template after promotion"
 )

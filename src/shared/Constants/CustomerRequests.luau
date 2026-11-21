@@ -929,7 +929,7 @@ local CustomerRequests = {
     Definitions = requests,
     TagGroups = tagGroups,
 
-    RegularWildcardChance = 0.16,
+    RegularWildcardChance = 0.11,
     SpecialWildcardChance = 0,
     -- Assigned separately so wildcard never enters the specific-request variety pool.
     WildcardRequest = {
@@ -963,8 +963,10 @@ local CustomerRequests = {
     -- Continuous special cooldown is configured in Economy.SpecialCustomerCooldownSeconds.
     RegularCustomerRecencyWindow = 3,
     RegularRequestRecencyWindow = 3,
-    RegularRequestGroupRecencyWindow = 2,
-    RegularRequestSimilarityRecencyWindow = 2,
+    -- Factors stack when an eligible request repeats multiple aspects of a recent order.
+    RepeatedRequestWeight = 0.20,
+    RepeatedRequestGroupWeight = 0.55,
+    RepeatedRequestIngredientWeight = 0.65,
 
     NPCs = {
         thief = {
