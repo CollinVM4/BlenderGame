@@ -378,7 +378,14 @@ new = function(class, name, parent)
                 props[key] = value
             end
             if previous ~= value then
-                sig(key):Fire()
+                local changed = sig(key)
+                if key == "Visible" and props.DeferVisibleChanged then
+                    task.defer(function()
+                        changed:Fire()
+                    end)
+                else
+                    changed:Fire()
+                end
             end
         end,
     })
@@ -1062,14 +1069,16 @@ run("overflow", "landscape lifts only when there is no room for one full slot at
     check(view.Bar.AbsolutePosition.Y + view.Bar.AbsoluteSize.Y == foot, "inventory count cannot lift the clear row")
     view.Root:Destroy()
 end)
-run("lifecycle", "same root across empty inventory respawn and new Backpack", function()
+run("lifecycle", "same custom hotbar across respawn with deferred visibility events", function()
     local f = fixture(390, 844, true)
     local ice = f.Tool("Ice")
     f.Start()
     local root = f.Root
+    f.Bar.DeferVisibleChanged = true
+    f.Humanoid.Health = 0
     ice:Destroy()
     flush()
-    check(not core.Enabled and not f.Bar.Visible, "empty inventory after takeover stays custom-owned")
+    check(not core.Enabled and not f.Bar.Visible, "empty inventory on death stays custom-owned")
     local oldCharacter = f.Character
     f.Player.CharacterRemoving:Fire(f.Character)
     f.Player.Character = nil
@@ -1082,8 +1091,8 @@ run("lifecycle", "same root across empty inventory respawn and new Backpack", fu
     local replacement = f.Tool("Ice")
     flush()
     check(
-        f.PlayerGui:FindFirstChild(Gui.Name) == root and #f.Slots() == 1,
-        "respawn retains one view with actual new Tools"
+        f.PlayerGui:FindFirstChild(Gui.Name) == root and f.Bar.Visible and #f.Slots() == 1 and not core.Enabled,
+        "respawn shows the same custom view with its replacement Tool and keeps native hidden"
     )
     f.Slots()[1].Activated:Fire()
     flush()
@@ -1124,6 +1133,7 @@ run("fallback", "disabled detached damaged and undersized view recovers", functi
     local f = fixture(390, 844, true)
     f.Tool("Ice")
     f.Start()
+    f.Bar.DeferVisibleChanged = true
     local function native()
         check(core.Enabled and not cas.Actions.HotbarSelect and not f.Bar.Visible, "native fallback usable")
     end
