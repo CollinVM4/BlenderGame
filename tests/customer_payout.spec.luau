@@ -123,7 +123,7 @@ for _, ids in { { "Blueberry", "Blueberry", "Blueberry" }, { "Dragon_Fruit", "Dr
         customer.CalculateOrderPayout(owner, cup(ids, { "Market", "Market", "Market" }), requests.WildcardRequest)
     check(amount == 250 and display == 0, "wildcard ignores every ingredient and provenance")
 end
-check(authoredWildcardChances[1] == 0.05 and authoredWildcardChances[2] == 0, "authored wildcard rates")
+check(authoredWildcardChances[1] == 0.16 and authoredWildcardChances[2] == 0, "authored wildcard rates")
 for index, expected in { { 0, 3 }, { 30000, 5 }, { 75000, 7 } } do
     check(
         upgrades.CarryCapacity[index].Cost == expected[1] and upgrades.CarryCapacity[index].Value == expected[2],
