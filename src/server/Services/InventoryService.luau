@@ -721,35 +721,50 @@ function InventoryService.CarryWorldSmoothie(player: Player, object: Instance): 
     end)
 end
 
--- The equipped Tool selects its server-owned reservation; attributes never authorize contents.
-function InventoryService.GetHeldSmoothie(player: Player, requested: Instance?): Types.SmoothieData?
+local function resolveSmoothie(player: Player, requested: Instance?, allowBackpack: boolean?): HeldItem?
     if not MovementService.CanPerformGameplayAction(player) then
         return nil
     end
-    local record = selectedItem(player)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if
-        not record
-        or record.ItemType ~= "Smoothie"
-        or not record.Smoothie
-        or record.Releasing
-        or record.Destroying
-        or record.Tool.Parent ~= player.Character
-        or not humanoid
-        or humanoid.Health <= 0
-        or (requested ~= nil and requested ~= record.Tool)
-    then
+    if not humanoid or humanoid.Health <= 0 then
         return nil
     end
-    return SmoothieItem.Copy(record.Smoothie)
+    local selected = selectedItem(player)
+    if selected and selected.Smoothie and not selected.Releasing and not selected.Destroying then
+        return if not requested or requested == selected.Tool then selected else nil
+    end
+    if requested or not allowBackpack then
+        return nil
+    end
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local stack = held[player]
+    if backpack and stack then
+        for index = #stack, 1, -1 do
+            local item = stack[index]
+            if item.Smoothie and not item.Releasing and not item.Destroying and item.Tool.Parent == backpack then
+                return item
+            end
+        end
+    end
+    return nil
 end
 
-function InventoryService.ConsumeHeldSmoothie(player: Player): Types.SmoothieData?
-    local record = selectedItem(player)
-    local data = InventoryService.GetHeldSmoothie(player)
-    if data and record then
-        removeAt(player, table.find(held[player], record))
+function InventoryService.GetHeldSmoothie(
+    player: Player,
+    requested: Instance?,
+    allowBackpack: boolean?
+): Types.SmoothieData?
+    local record = resolveSmoothie(player, requested, allowBackpack)
+    return if record and record.Smoothie then SmoothieItem.Copy(record.Smoothie) else nil
+end
+
+function InventoryService.ConsumeHeldSmoothie(player: Player, allowBackpack: boolean?): Types.SmoothieData?
+    local record = resolveSmoothie(player, nil, allowBackpack)
+    if not record or not record.Smoothie then
+        return nil
     end
+    local data = SmoothieItem.Copy(record.Smoothie)
+    removeAt(player, table.find(held[player], record))
     return data
 end
 

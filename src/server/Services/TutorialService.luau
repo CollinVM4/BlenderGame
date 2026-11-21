@@ -33,6 +33,7 @@ local LADDER_CLIMB_SECONDS = 0.15
 local LADDER_CLIMB_HEIGHT = 0.5
 local MARKET_SURFACE_MARGIN = 1.5
 local MISSING_MARKET_TARGET_SECONDS = 7
+local MARKET_JUMP_PREVIEW_SECONDS = 3.5
 local marketProbe = RaycastParams.new()
 marketProbe.FilterType = Enum.RaycastFilterType.Include
 marketProbe.RespectCanCollide = false
@@ -267,7 +268,11 @@ local function currentTarget(player: Player, state: State, plot: Instance): (str
         end
         state.JumpStartedAt = now
     end
-    if reachedJump == nil and now - (state.JumpStartedAt :: number) >= MISSING_MARKET_TARGET_SECONDS then
+    local jumpHintSeconds = if not jumpOwned
+        then MARKET_JUMP_PREVIEW_SECONDS
+        elseif reachedJump == nil then MISSING_MARKET_TARGET_SECONDS
+        else nil
+    if jumpHintSeconds and now - (state.JumpStartedAt :: number) >= jumpHintSeconds then
         return "Complete", nil, nil
     end
     return "MarketJump", nil, nil

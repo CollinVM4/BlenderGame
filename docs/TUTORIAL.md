@@ -27,6 +27,8 @@ Retain the existing visible paths in TutorialTargets:
 
 Serve targets the server-selected current customer, guarded by its plot session ID. All gleams remain local. ClaimPlot keeps its initial 4.5-second hint delay and then gleams indefinitely until claimed. Glass retains the transparent local UnionOperation proxy; authored Glass geometry is never changed. Death, membership changes, missing assets and controller shutdown remove stale highlights.
 
+The serve prompt uses the equipped smoothie first, then the newest smoothie in the player's Backpack. A stored smoothie must be taken out of the stash before serving.
+
 Arrival routing is unchanged: provide PlotIdentity > PlayerSpawnOrigin as an Attachment at the intended HumanoidRootPart position/facing outside ClaimZone. Optional unique numeric SpawnOrder controls plot order. InitialSpawnService reserves available marked plots for 25 seconds; claim hints retain their existing pin after reservation expiry.
 
 ## Focused validation
@@ -112,9 +114,11 @@ MarketJump flashes `Workspace/Central Market/JUMP1HIGHLIGHT` (BasePart), with
 checks straight down to the surface from the player's root, using their avatar's
 standing height plus 1.5 studs. Non-collidable markers can fall back to their
 oriented bounds. Reaching the first raised platform completes the step on the
-next server refresh, including during the preceding Market hint. A missing jump
-target advances after seven seconds. Use the top of the first raised platform as
-`JUMP1HIGHLIGHT` in Studio.
+next server refresh, including during the preceding Market hint. Players without
+Jump 1 complete the step after the jump hint has been active for 3.5 seconds.
+Players with Jump 1 reach the platform to complete the step or advance after
+seven seconds if the target is missing. Use the top of the first raised platform
+as `JUMP1HIGHLIGHT` in Studio.
 
 Farm guidance now follows BuyRow -> Plant -> quiet growth -> Harvest -> Done.
 FarmService's READY state and copied Products identify completed growth. It

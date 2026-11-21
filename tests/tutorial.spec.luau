@@ -358,6 +358,36 @@ check(
     "reaching the rotated platform completes on the next refresh with touch and collision disabled"
 )
 check(not orders[2].Served and not orders[3].Served, "completion never requires introductory customers two and three")
+-- A player without Jump 1 only needs to see the jump hint.
+progress(p).Complete = false
+tutorial.RemovePlayer(p)
+tutorial.AddPlayer(p)
+root.Position = vec(200, 5, 0)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+advance(8)
+advance(2)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "reaching the market shows the jump preview without Jump 1")
+advance(3.4)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "the preview stays active before 3.5 seconds")
+advance(0.11)
+check(p:GetAttribute("TutorialStage") == "Complete" and progress(p).Complete, "the preview expires without a jump")
+
+-- Players with Jump 1 still complete by reaching the raised platform.
+progress(p).Complete = false
+tutorial.RemovePlayer(p)
+tutorial.AddPlayer(p)
+p:SetAttribute("JumpPurchasedLevel", 1)
+p:SetAttribute("BatPurchasedLevel", 1)
+tutorial.ApplyCharacter(p, p.Character)
+flush()
+advance(2)
+advance(4)
+check(p:GetAttribute("TutorialStage") == "MarketJump", "owning Jump 1 keeps the platform objective active")
+root.Position = vec(419, 35, 0)
+heartbeat:Fire(0.1)
+check(p:GetAttribute("TutorialStage") == "Complete", "the Jump 1 objective completes on arrival")
+
 -- Fast players can reach the jump platform without first crossing the market floor.
 progress(p).Complete = false
 tutorial.RemovePlayer(p)

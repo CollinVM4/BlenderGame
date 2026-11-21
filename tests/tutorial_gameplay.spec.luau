@@ -399,15 +399,23 @@ setup(
     inventory.GrantSmoothie(retry, { BlendId = "wrong-red", Ingredients = { "Banana", "Banana", "Banana" } }),
     "prepare a valid off-recipe cup before taking the order"
 )
+carry(retry, "Apple")
 setup(customer.TakeOrder(retry, replacement.Model), "take replacement Red")
 heartbeat:Fire(0.1)
-check(retry:GetAttribute("TutorialStage") == "Serve", "an early off-recipe cup still leads to serving")
+check(
+    retry:GetAttribute("TutorialStage") == "Serve" and inventory.GetHeldSmoothie(retry) == nil,
+    "an early off-recipe cup in the Backpack still leads to serving"
+)
 before = dependency.TycoonService.GetCash(retry)
-setup(customer.Serve(retry, replacement.Model), "deliver unfulfilled order")
+local servePrompt = replacement.Model:FindFirstChild("ServePrompt", true)
+setup(servePrompt and servePrompt.Enabled, "off-recipe smoothie can be served from the Backpack")
+servePrompt.Triggered:Fire(retry)
 advance(0.5)
 check(
-    dependency.TycoonService.GetCash(retry) == before + 30000 and dataService.GetTutorialState(retry).FirstServeRewarded,
-    "a valid off-recipe first serve grants the floor once"
+    dependency.TycoonService.GetCash(retry) == before + 30000
+        and dataService.GetTutorialState(retry).FirstServeRewarded
+        and inventory.GetHeldIngredientId(retry) == "Apple",
+    "serving from the Backpack grants the floor and preserves the equipped ingredient"
 )
 check(
     replacement.Model:GetAttribute("Grade") == "D" and replacement.Model:GetAttribute("OrderSucceeded") == false,

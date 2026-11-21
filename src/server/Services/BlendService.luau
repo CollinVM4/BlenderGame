@@ -354,11 +354,11 @@ function BlendService.AddProgress(player: Player, wheel: BasePart, delta: number
     return result
 end
 function BlendService.GetCup(player: Player, requested: Instance?): Types.Smoothie?
-    local data = deps.InventoryService.GetHeldSmoothie(player, requested)
+    local data = deps.InventoryService.GetHeldSmoothie(player, requested, true)
     return if data then SmoothieItem.Result(data) else nil
 end
 function BlendService.ConsumeCup(player: Player): Types.Smoothie?
-    local data = deps.InventoryService.ConsumeHeldSmoothie(player)
+    local data = deps.InventoryService.ConsumeHeldSmoothie(player, true)
     return if data then SmoothieItem.Result(data) else nil
 end
 function BlendService.Dispense(player: Player, button: BasePart, context: any): (boolean, string?)

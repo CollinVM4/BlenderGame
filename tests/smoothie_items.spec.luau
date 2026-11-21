@@ -148,10 +148,7 @@ do
     check(customer.SpawnForPlayer(p) ~= nil, "next customer spawns")
     flush()
     flush()
-    check(
-        not customer.Serve(p) and inventory.GetCarryCount(p) == 2 and customer.GetSnapshot(p).Ready,
-        "ingredient cannot serve or lose pending customer"
-    )
+    check(customer.Serve(p) and inventory.GetCarryCount(p) == 1, "equipped ingredient leaves the Backpack cup servable")
     inventory.ClearHeld(p)
     table.clear(requests)
     for _, request in savedRequests do
