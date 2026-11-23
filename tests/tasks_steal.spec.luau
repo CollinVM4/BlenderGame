@@ -18,7 +18,11 @@ setup(inventory.Deposit(owner, "Banana", 1), "protected stash seed")
 check(not inventory.Withdraw(enemy, 1, owner), "protected withdrawal excluded")
 setup(inventory.Withdraw(teammate, 1, owner), "friendly teammate withdrawal")
 check(teammate:GetAttribute("TasksStealProgress") == 0 and stolen() == 0, "friendly take does not record theft")
-inventory.ClearHeld(teammate)
+local friendlyDrop = inventory.DropHeld(teammate)
+check(
+    friendlyDrop and ingredients.GetRecord(friendlyDrop).Item.WasStolen ~= true,
+    "friendly units earn no stolen bonus"
+)
 carry(owner, "Banana")
 setup(inventory.Deposit(owner, "Banana", 3), "ingredient seed")
 local locked = true
@@ -32,13 +36,18 @@ locked = false
 local backpack = enemy:FindFirstChildOfClass("Backpack")
 backpack.Parent = nil
 check(not inventory.Withdraw(enemy, 3, owner) and stolen() == 0, "failed equip excluded")
+check(slot(owner, 3).Ingredients[1].WasStolen ~= true, "failed theft leaves the stored unit unmarked")
 backpack.Parent = enemy
 setup(inventory.Steal(enemy, owner, 3), "Steal routes through successful Withdraw")
 check(
     enemy:GetAttribute("TasksStealProgress") == 1 and stolen() == 1,
     "ingredient transfer counts once in both independent counters"
 )
-inventory.ClearHeld(enemy)
+local stolenDrop = inventory.DropHeld(enemy)
+check(
+    stolenDrop and ingredients.GetRecord(stolenDrop).Item.WasStolen == true,
+    "a stolen unit retains its bonus when dropped"
+)
 grant(owner, "task-smoothie")
 setup(press(owner, "STORE", 3), "smoothie stash seed")
 setup(inventory.Withdraw(enemy, 3, owner), "smoothie theft")

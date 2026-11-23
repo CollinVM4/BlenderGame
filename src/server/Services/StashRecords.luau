@@ -15,6 +15,7 @@ local function encodeUnit(unit: Types.IngredientItem): any
         MuncherGeneration = unit.MuncherGeneration,
         RipenessStoredSeconds = Item.GetStoredRipenessSeconds(unit, workspace:GetServerTimeNow()),
         IsRipe = Item.IsRipe(unit, workspace:GetServerTimeNow()),
+        WasStolen = if unit.WasStolen == true then true else nil,
         SourceUserId = unit.SourceUserId,
         SourceDisplayName = unit.SourceDisplayName,
         SourceUsername = unit.SourceUsername,

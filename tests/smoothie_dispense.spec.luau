@@ -76,3 +76,29 @@ do
     check(details.Colors == "Red / Yellow", "colors come from grading tags, regardless of cup tint")
     check(details.Description:find("Fruit", 1, true) ~= nil, "blend description reflects ingredient traits")
 end
+
+do
+    local items = loadModule("IngredientItem")
+    local summary = loadModule("SmoothieSummary")
+    local mixedBlue = smoothie("triple-blue", { "Blueberry", "Ice", "Fish" })
+    local details = summary.Build(smoothieItem.Result(mixedBlue), now)
+    check(
+        details.ComboColor == "Blue" and details.ColorValue == 1100,
+        "three different blue ingredients match by order tag"
+    )
+    check(details.ComboIngredient == nil and details.IdenticalValue == 0, "color alone does not earn identical bonus")
+
+    local triple = smoothie("stolen-triple", { "Blueberry", "Blueberry", "Blueberry" })
+    local stolen = items.New("Blueberry", "stolen")
+    stolen.WasStolen = true
+    stolen.IsRipe = true
+    triple.IngredientItems = { stolen, items.New("Blueberry", "two"), items.New("Blueberry", "three") }
+    local bonuses = summary.Build(smoothieItem.Result(triple), now)
+    check(
+        bonuses.ComboIngredient == "Blueberry" and bonuses.IdenticalValue == 1125,
+        "three identical ingredients count"
+    )
+    check(bonuses.ComboColor == "Blue" and bonuses.ColorValue == 750, "identical can stack with a shared color")
+    check(bonuses.StolenValue == 250 and bonuses.StolenCount == 1, "theft applies only to marked units, at base value")
+    check(bonuses.Value == 10250, "ripeness and earned bonuses add to the finished blend value")
+end

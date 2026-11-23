@@ -1531,6 +1531,9 @@ function InventoryService.Withdraw(player: Player, index: number, stashOwner: Pl
     local taken = if unit then table.clone(unit) else nil
     if taken then
         Item.ExitStash(taken, now)
+        if not friendly(player, owner) then
+            taken.WasStolen = true
+        end
     end
     if not equipVisual(player, id, visual, smoothie, nil, ownership, taken) then
         stashes[owner][index] = previous

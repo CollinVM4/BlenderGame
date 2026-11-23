@@ -47,7 +47,7 @@ local function award(result, request, effective, multiplier, grade)
     check(evaluation.Grade == grade and amount == expected and display == effective, "real grade/payout/display chain")
     return amount
 end
-local a = award(cup({ "Cherries", "Cherries", "Strawberry" }), byId.Red, 7500, 1, "A")
+local a = award(cup({ "Cherries", "Cherries", "Strawberry" }), byId.Red, 8250, 1, "A")
 local b = award(cup({ "Cherries", "Strawberry", "Melon" }), byId.Red, 6750, 1, "B")
 local c = award(cup({ "Cherries", "Cherries", "Melon" }), byId.Red, 6750, 1, "B")
 check(b < a and c < a and b == c, "accepted final ordering under the real evaluator")
@@ -58,6 +58,10 @@ check(
 )
 local flags = customer.EvaluateOrder(cup({ "Cherries", "Strawberry", "Melon" }), byId.Red).Relevant
 check(#flags == 3 and flags[1] and flags[2] and not flags[3], "relevance is parallel to physical ingredient order")
+local stolen = cup({ "Cherries", "Strawberry", "Melon" })
+stolen.IngredientItems[1].WasStolen = true
+stolen.IngredientItems[3].WasStolen = true
+award(stolen, byId.Red, 7175, 1, "B") -- 5250 requested plus 25% of the 7700 filler.
 local recipe = {
     RequiredTags = {},
     RequiredIngredients = { "Cherries", "Strawberry", "Melon" },
@@ -83,7 +87,7 @@ check(
 award(ripe, byId.Red, 7375, 1, "B")
 local allRipe = cup({ "Cherries", "Cherries", "Strawberry" })
 allRipe.IngredientItems[1].IsRipe = true
-award(allRipe, byId.Red, items.GetSmoothieValue(allRipe, now), 1, "A")
+award(allRipe, byId.Red, items.GetSmoothieValue(allRipe, now) + 750, 1, "A")
 local sweet = { RequiredTags = { "Sweet" }, BasePayout = 250 }
 for _, origin in { "Market", "Event", "Farm", "Muncher", "Unknown" } do
     award(
@@ -97,11 +101,11 @@ end
 award(cup({ "Cherries", "Strawberry", "Melon" }, { "Farm", "Farm", "Market" }), byId.Red, 6750, 1, "B")
 award(cup({ "Crab", "Strawberry", "Melon" }, { "Market", "Farm", "Farm" }), byId.Red, 11250, 1.25, "B")
 award(cup({ "Pear", "Melon", "Cherries" }, { "Market", "Farm", "Farm" }), sweet, 14000, 1.1, "A")
-local farm = award(cup({ "Crab", "Cherries", "Strawberry" }, { "Farm", "Farm", "Farm" }), byId.Red, 12000, 1, "A")
+local farm = award(cup({ "Crab", "Cherries", "Strawberry" }, { "Farm", "Farm", "Farm" }), byId.Red, 13200, 1, "A")
 local market =
-    award(cup({ "Crab", "Cherries", "Strawberry" }, { "Market", "Farm", "Farm" }), byId.Red, 12000, 1.25, "A")
+    award(cup({ "Crab", "Cherries", "Strawberry" }, { "Market", "Farm", "Farm" }), byId.Red, 13200, 1.25, "A")
 check(
-    market == math.round((12000 + 250) * 1.25 * 1.25) and market > farm,
+    market == math.round((13200 + 250) * 1.25 * 1.25) and market > farm,
     "pedestal Crab multiplies otherwise identical drink"
 )
 local legacy = { Ingredients = { "Melon", "Cherries", "Strawberry" } }
@@ -130,20 +134,20 @@ for index, expected in { { 0, 3 }, { 30000, 5 }, { 75000, 7 } } do
         "carry tuning"
     )
 end
--- Approved regular-tier medians and mixed-floor order, outside tutorial/task grants.
+-- Triple combos across regular tiers and a mixed recipe, outside tutorial/task grants.
 for _, sample in
     {
-        { "Cherries", 2500, 1, 9688 },
-        { "Pear", 4500, 1.1, 18906 },
-        { "Coconut", 6000, 1.25, 28516 },
-        { "Golden_Potato", 8000, 1.5, 45469 },
+        { "Cherries", 9375, 1, 12031 },
+        { "Pear", 16875, 1.1, 23547 },
+        { "Coconut", 20700, 1.25, 32734 },
+        { "Golden_Potato", 27600, 1.5, 52219 },
     }
 do
-    local id, value, multiplier, expected = unpack(sample)
+    local id, effective, multiplier, expected = unpack(sample)
     local request = { RequiredIngredients = { id, id, id }, ExactIngredients = true, BasePayout = 250 }
     check(
-        award(cup({ id, id, id }, { "Market", "Market", "Market" }), request, value * 3, multiplier, "A") == expected,
-        "approved median payout"
+        award(cup({ id, id, id }, { "Market", "Market", "Market" }), request, effective, multiplier, "A") == expected,
+        "triple recipe payout including earned combos"
     )
 end
 local mixed =

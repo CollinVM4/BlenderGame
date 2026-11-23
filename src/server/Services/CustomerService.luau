@@ -797,6 +797,7 @@ end
 
 -- Called only with the consumed server cup and the customer's assigned request.
 local IngredientItem = require(game:GetService("ReplicatedStorage").Shared.IngredientItem)
+local SmoothieSummary = require(game:GetService("ReplicatedStorage").Shared.SmoothieSummary)
 function CustomerService.CalculateOrderPayout(
     player: Player,
     result: Types.Smoothie,
@@ -816,8 +817,9 @@ function CustomerService.CalculateOrderPayout(
     local now = workspace:GetServerTimeNow()
     local onRequestValue, fillerValue = 0, 0
     local originMultiplier = 1
+    local bonuses = SmoothieSummary.GetBonuses(result)
     for index, id in result.Ingredients do
-        local value = IngredientItem.GetSmoothieIngredientValue(result, index, now)
+        local value = IngredientItem.GetSmoothieIngredientValue(result, index, now) + bonuses.ByIngredient[index]
         if evaluated.Relevant[index] then
             onRequestValue += value
             local unit = result.IngredientItems and result.IngredientItems[index]

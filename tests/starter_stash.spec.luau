@@ -226,12 +226,17 @@ savedSlots[1].Smoothie.IngredientItems = {
     loadModule("IngredientItem").New("Banana", "cup-2", "Farm"),
     loadModule("IngredientItem").New("Strawberry", "cup-3", "Unknown"),
 }
+savedSlots[1].Smoothie.IngredientItems[2].WasStolen = true
 local cupReload = records.Decode(records.Encode(savedSlots))[1]
 check(
     cupReload.Count == 1 and cupReload.Capacity == 1 and cupReload.Smoothie.BlendId == "persisted-cup",
     "stored cups retain single-item capacity and identity"
 )
 check(cupReload.Smoothie.IngredientItems[2].Origin == "Farm", "stored cup unit provenance survives persistence")
+check(
+    cupReload.Smoothie.IngredientItems[2].WasStolen == true and cupReload.Smoothie.IngredientItems[1].WasStolen ~= true,
+    "saved cups retain per-unit theft provenance and read unmarked units as ordinary"
+)
 
 local generate = services.HttpService.GenerateGUID
 local attempts = 0

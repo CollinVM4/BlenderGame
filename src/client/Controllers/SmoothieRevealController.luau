@@ -12,6 +12,41 @@ local Viewport = require(script.Parent.Parent.UI.IngredientViewport)
 
 local Controller = {}
 local active: ScreenGui? = nil
+local palette = {
+    Ripe = Color3.fromRGB(152, 255, 107),
+    Mystery = Color3.fromRGB(235, 144, 255),
+    Stolen = Color3.fromRGB(255, 128, 111),
+    Identical = Color3.fromRGB(255, 157, 230),
+}
+local comboColors: { [string]: Color3 } = {
+    Red = Color3.fromRGB(255, 109, 122),
+    Yellow = Color3.fromRGB(255, 226, 100),
+    Green = Color3.fromRGB(146, 255, 136),
+    Blue = Color3.fromRGB(103, 213, 255),
+    Purple = Color3.fromRGB(213, 155, 255),
+}
+
+local function burst(panel: Frame, color: Color3)
+    for index = 1, 8 do
+        local angle = (index / 8) * 2 * math.pi
+        local chip = Instance.new("Frame")
+        chip.AnchorPoint = Vector2.new(0.5, 0.5)
+        chip.Position = UDim2.fromScale(0.5, 0.25)
+        chip.Size = UDim2.fromOffset(8, 8)
+        chip.Rotation = index * 33
+        chip.BackgroundColor3 = if index % 2 == 0 then color else Style.Gold
+        chip.BorderSizePixel = 0
+        chip.Parent = panel
+        TweenService:Create(chip, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Position = UDim2.fromScale(0.5 + math.cos(angle) * 0.38, 0.25 + math.sin(angle) * 0.25),
+            BackgroundTransparency = 1,
+            Rotation = chip.Rotation + 95,
+        }):Play()
+        task.delay(0.35, function()
+            chip:Destroy()
+        end)
+    end
+end
 
 local function clear()
     if active then
@@ -53,35 +88,42 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
 
     local panel = Instance.new("Frame")
     panel.AnchorPoint = Vector2.new(0.5, 0)
-    panel.Position = UDim2.fromScale(0.5, 0.09)
-    panel.Size = UDim2.new(0.86, 0, 0.51, 0)
-    panel.BackgroundColor3 = Style.Dark
-    panel.BackgroundTransparency = 0.12
+    panel.Position = UDim2.fromScale(0.5, 0.12)
+    panel.Size = UDim2.fromScale(0.89, 0.57)
+    panel.BackgroundColor3 = Color3.new(0, 0, 0)
+    panel.BackgroundTransparency = 0.35
     panel.Parent = gui
     local constraint = Instance.new("UISizeConstraint")
-    constraint.MaxSize = Vector2.new(332, 222)
+    constraint.MaxSize = Vector2.new(418, 268)
     constraint.Parent = panel
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 16)
     corner.Parent = panel
     local border = Instance.new("UIStroke")
-    border.Color = details.Tint:Lerp(Color3.new(1, 1, 1), 0.28)
+    border.Color = details.Tint:Lerp(Style.White, 0.35)
+    border.Transparency = 0.45
     border.Thickness = 2
     border.Parent = panel
     local scale = Instance.new("UIScale")
     scale.Scale = 0.92
     scale.Parent = panel
 
-    label(panel, "Blend value", 0.035, 0.09, 15)
-    local value = label(panel, "$0", 0.12, 0.17, 43, Style.Gold)
-    local beat = label(panel, "", 0.284, 0.10, 17)
-    local colors = label(panel, "Order colors: " .. details.Colors, 0.40, 0.10, 17)
-    colors.Position = UDim2.fromScale(0.12, 0.40)
-    colors.Size = UDim2.fromScale(0.84, 0.10)
+    label(panel, "BLEND VALUE", 0.025, 0.08, 19)
+    local value = label(panel, "$0", 0.095, 0.235, 64, Style.Gold)
+    value.ZIndex = 3
+    Style.Outline(value).Thickness = 4.5
+    local valueScale = Instance.new("UIScale")
+    valueScale.Parent = value
+    local beat = label(panel, "", 0.32, 0.12, 25)
+    beat.ZIndex = 3
+    Style.Outline(beat).Thickness = 3.5
+    local colors = label(panel, "Order colors: " .. details.Colors, 0.46, 0.075, 17)
+    colors.Position = UDim2.fromScale(0.12, 0.46)
+    colors.Size = UDim2.fromScale(0.84, 0.075)
     colors.TextXAlignment = Enum.TextXAlignment.Left
     local swatch = Instance.new("Frame")
     swatch.AnchorPoint = Vector2.new(0, 0.5)
-    swatch.Position = UDim2.fromScale(0.06, 0.45)
+    swatch.Position = UDim2.fromScale(0.06, 0.498)
     swatch.Size = UDim2.fromOffset(12, 12)
     swatch.BackgroundColor3 = details.Tint
     swatch.BorderSizePixel = 0
@@ -89,7 +131,7 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
     local swatchCorner = Instance.new("UICorner")
     swatchCorner.CornerRadius = UDim.new(1, 0)
     swatchCorner.Parent = swatch
-    label(panel, details.Description, 0.51, 0.10, 15)
+    label(panel, details.Description, 0.54, 0.075, 16)
 
     for index, id in details.Ingredients do
         local slot = Instance.new("Frame")
@@ -103,7 +145,15 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
         image.Parent = slot
         local definition = Ingredients[id]
         Viewport.Create(image, if definition then definition.Id else id)
-        label(slot, if definition then definition.DisplayName or id else id, 0.65, 0.35, 14)
+        label(slot, if definition then definition.DisplayName or id else id, 0.65, 0.35, 16)
+        local ingredientScale = Instance.new("UIScale")
+        ingredientScale.Scale = 0
+        ingredientScale.Parent = slot
+        task.delay((index - 1) * 0.07, function()
+            if active == gui then
+                TweenService:Create(ingredientScale, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+            end
+        end)
     end
 
     local tick = Instance.new("Sound")
@@ -122,18 +172,37 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
 
     task.spawn(function()
         local total = 0
-        local function count(amount: number, duration: number, heading: string)
+        local modifiers: { string } = {}
+        local pulse: Tween? = nil
+        local function pop(amount: number)
+            if pulse then
+                pulse:Cancel()
+            end
+            valueScale.Scale = amount
+            local tween = TweenService:Create(valueScale, TweenInfo.new(0.2, Enum.EasingStyle.Back), { Scale = 1 })
+            pulse = tween
+            tween:Play()
+        end
+        local function count(amount: number, heading: string, duration: number, color: Color3, modifier: boolean?)
             if amount <= 0 or active ~= gui or not gui.Parent then
                 return
             end
-            beat.Text = heading
+            beat.TextColor3 = color
+            value.TextColor3 = color
+            if modifier then
+                table.insert(modifiers, heading)
+                beat.Text = heading .. "  +" .. Money.Full(math.round(amount))
+                pop(1.12)
+            else
+                beat.Text = heading
+            end
             local elapsed, lastTick = 0, -1
             repeat
                 local progress = math.min(elapsed / duration, 1)
                 value.Text = Money.Full(math.round(total + amount * progress))
-                local step = math.floor(progress * 4)
+                local step = math.floor(progress * (if modifier then 2 else 4))
                 if step ~= lastTick then
-                    playTick(0.95 + step * 0.10)
+                    playTick((if modifier then 1.12 else 0.92) + step * 0.12)
                     lastTick = step
                 end
                 if progress == 1 then
@@ -143,28 +212,38 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
             until active ~= gui or not gui.Parent
             total += amount
         end
-        local modifiers = {}
-        count(details.BaseValue, 0.42, "Base value")
-        if details.RipenessValue > 0 then
-            local text = "Ripeness +" .. Money.Full(math.round(details.RipenessValue))
-            table.insert(modifiers, text)
-            count(details.RipenessValue, 0.30, text)
+        count(details.BaseValue, "BASE", 0.39, Style.Gold)
+        count(details.RipenessValue, "RIPE", 0.29, palette.Ripe, true)
+        count(details.MysteryValue, "MYSTERY", 0.29, palette.Mystery, true)
+        local stolen = if details.StolenCount > 1 then "STOLEN ×" .. tostring(details.StolenCount) else "STOLEN"
+        count(details.StolenValue, stolen, 0.29, palette.Stolen, true)
+        local comboColor = details.ComboColor
+        if comboColor then
+            count(
+                details.ColorValue,
+                string.upper(comboColor) .. " ×3",
+                0.31,
+                comboColors[comboColor] or Style.White,
+                true
+            )
         end
-        if details.MysteryValue > 0 then
-            local text = "Mystery +" .. Money.Full(math.round(details.MysteryValue))
-            table.insert(modifiers, text)
-            count(details.MysteryValue, 0.34, "Mystery ingredients +" .. Money.Full(math.round(details.MysteryValue)))
+        local identical = if details.ComboIngredient then Ingredients[details.ComboIngredient] else nil
+        if identical then
+            local name = string.upper(identical.DisplayName or identical.Id)
+            count(details.IdenticalValue, name .. " ×3", 0.31, palette.Identical, true)
         end
         if active ~= gui or not gui.Parent then
             return
         end
+        if #modifiers > 0 then
+            burst(panel, beat.TextColor3)
+        end
         value.Text = Money.Full(math.round(details.Value))
+        value.TextColor3 = Style.Gold
+        beat.TextColor3 = Style.White
         beat.Text = table.concat(modifiers, "  •  ")
-        local pop = Instance.new("UIScale")
-        pop.Scale = 1.12
-        pop.Parent = value
-        TweenService:Create(pop, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = 1 }):Play()
-        task.wait(1.75)
+        pop(1.19)
+        task.wait(1.45)
         if active == gui and gui.Parent then
             local exit = TweenService:Create(panel, TweenInfo.new(0.2), { Position = UDim2.fromScale(0.5, -0.55) })
             exit:Play()

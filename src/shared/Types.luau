@@ -11,6 +11,7 @@ export type IngredientItem = {
     RipenessStoredSeconds: number,
     RipenessStoredAt: number?,
     IsRipe: boolean,
+    WasStolen: boolean?,
     SourceUserId: number?,
     SourceDisplayName: string?,
     SourceUsername: string?,

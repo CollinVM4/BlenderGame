@@ -1,6 +1,6 @@
 for index, case in
     {
-        { { "Blueberry", "Blueberry", "Blueberry" }, 9688, "A", "Thanks!", "+$9,688", "$7.5K" },
+        { { "Blueberry", "Blueberry", "Blueberry" }, 12031, "A", "Thanks!", "+$12,031", "$9.4K" },
         { { "Blueberry", "Blueberry", "Banana" }, 6463, "B", "Thanks!", "+$6,463", "$5.6K" },
         { { "Rainbow_Trout", "Banana", "Banana" }, 38, "D", "Not blue!", "+$38", "$0" },
         { { "Melon", "Banana", "Banana" }, 38, "D", "Not blue!", "+$38", "$0" },
