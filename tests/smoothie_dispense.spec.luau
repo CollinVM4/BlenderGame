@@ -9,7 +9,11 @@ do
     p.Near = false
     check(not blend.Dispense(p, button), "distance validation still rejects remote dispensing")
     p.Near = true
-    check(blend.Dispense(p, button), "first dispense")
+    local poured, _, result = blend.Dispense(p, button)
+    check(
+        poured and result and result.BlendId == first,
+        "successful dispense returns the committed batch for the reveal"
+    )
     check(
         inventory.GetHeldSmoothie(p).BlendId == first and inventory.GetCarryCount(p) == 1,
         "exactly one authoritative reservation"
@@ -23,9 +27,9 @@ do
     flush()
     carry(p)
     local third = complete(p)
-    local ok, reason = blend.Dispense(p, button)
+    local ok, reason, failedResult = blend.Dispense(p, button)
     check(
-        not ok and reason == "Inventory full" and inventory.GetCarryCount(p) == 3,
+        not ok and reason == "Inventory full" and failedResult == nil and inventory.GetCarryCount(p) == 3,
         "full inventory fails without loss"
     )
     flush()
@@ -54,4 +58,21 @@ do
     check(inventory.ConsumeHeldSmoothie(p).BlendId == first, "first smoothie survives later dispense")
     check(inventory.ConsumeHeldSmoothie(p) == nil, "no extra smoothie")
     flush()
+end
+
+do
+    local items = loadModule("IngredientItem")
+    local ingredients = loadModule("Ingredients")
+    local summary = loadModule("SmoothieSummary")
+    local data = smoothie("breakdown", { "Apple", "Dragon_Fruit", "Banana" })
+    local ripe = items.New("Apple", "ripe-apple")
+    ripe.IsRipe = true
+    data.IngredientItems = { ripe, items.New("Dragon_Fruit", "dragon"), items.New("Banana", "banana") }
+    local details = summary.Build(smoothieItem.Result(data), now)
+    check(details.BaseValue == ingredients.Apple.Value + ingredients.Banana.Value, "base excludes mystery contribution")
+    check(details.MysteryValue == ingredients.Dragon_Fruit.Value, "mystery uses the real ingredient value")
+    check(details.RipenessValue == items.GetIngredientValue(ripe, now) - ingredients.Apple.Value, "ripe premium")
+    check(details.Value == items.GetSmoothieValue(data, now), "every beat adds up to the server's blend value")
+    check(details.Colors == "Red / Yellow", "colors come from grading tags, regardless of cup tint")
+    check(details.Description:find("Fruit", 1, true) ~= nil, "blend description reflects ingredient traits")
 end

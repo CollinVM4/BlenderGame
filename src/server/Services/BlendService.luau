@@ -361,7 +361,7 @@ function BlendService.ConsumeCup(player: Player): Types.Smoothie?
     local data = deps.InventoryService.ConsumeHeldSmoothie(player, true)
     return if data then SmoothieItem.Result(data) else nil
 end
-function BlendService.Dispense(player: Player, button: BasePart, context: any): (boolean, string?)
+function BlendService.Dispense(player: Player, button: BasePart, context: any): (boolean, string?, Types.Smoothie?)
     local batch = batches[key(player)]
     if not batch or batch.State ~= "COMPLETE" or not batch.Result or batch.Dispensing then
         return false, "Not ready"
@@ -376,10 +376,11 @@ function BlendService.Dispense(player: Player, button: BasePart, context: any): 
     if deps.InventoryService.GetCarryCount(player) >= deps.InventoryService.GetCarryCapacity(player) then
         return false, "Inventory full"
     end
+    local result = batch.Result
     local data: Types.SmoothieData = {
-        BlendId = batch.Result.BlendId :: string,
-        Ingredients = table.clone(batch.Result.Ingredients),
-        IngredientItems = Item.CopyAll(batch.Result.IngredientItems),
+        BlendId = result.BlendId :: string,
+        Ingredients = table.clone(result.Ingredients),
+        IngredientItems = Item.CopyAll(result.IngredientItems),
     }
     -- Grant is synchronous. Guard signals from equip/presentation against a
     -- reentrant dispense of this same batch, including while it is still COMPLETE.
@@ -406,10 +407,10 @@ function BlendService.Dispense(player: Player, button: BasePart, context: any): 
             BlendService.Reset(owner)
         end
     end)
-    Film.Emit(player, "SmoothieDispensed", { BlendId = data.BlendId, Color = batch.Result.Color })
+    Film.Emit(player, "SmoothieDispensed", { BlendId = data.BlendId, Color = result.Color })
     Film.Log("Blend", "DISPENSED blend=" .. data.BlendId)
     deps.TycoonService.EndTransaction(sessionId)
-    return true
+    return true, nil, result
 end
 function BlendService.CleanupSession(sessionId: string)
     batches[sessionId] = nil

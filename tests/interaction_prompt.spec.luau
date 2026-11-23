@@ -395,6 +395,11 @@ local server = module("DispenseButton", {
             return serverPrompt
         end,
     },
+    SmoothieSummary = {
+        Build = function(smoothie)
+            return smoothie
+        end,
+    },
     AudioService = {
         CreateBlendGroup = function()
             return { pourSound = { Play = function() end, Destroy = function() end } }
@@ -402,12 +407,10 @@ local server = module("DispenseButton", {
     },
 })
 server.Init({
-    GameplayService = {
-        RegisterPlotInteraction = function(p, callback)
-            p.Triggered:Connect(callback)
-        end,
-    },
     TycoonService = {
+        GetRequestContext = function()
+            return {}
+        end,
         IsMember = function(actor)
             return actor == owner
         end,
@@ -422,6 +425,18 @@ server.Init({
 })
 local detach = attach(button)
 check(serverPrompt.Style == "Custom", "actual dispense prompt hides default presentation")
+check(serverPrompt.HoldDuration == 0.65, "the actual prompt requires a short native hold")
+for _, kind in { "Keyboard", "Gamepad", "Touch" } do
+    serverPrompt.KeyboardKeyCode, serverPrompt.GamepadKeyCode = { Name = "E" }, { Name = "ButtonX" }
+    local cleanup, billboard = view.Create(serverPrompt, origin, playerGui, kind, {})
+    local expected = if kind == "Touch"
+        then "HOLD TO DISPENSE"
+        elseif kind == "Gamepad" then "HOLD [ButtonX] TO DISPENSE"
+        else "HOLD [E] TO DISPENSE"
+    check(billboard:FindFirstChild("Action").Text == expected, "hold text reflects the active input")
+    check(billboard:FindFirstChild("HoldProgress") ~= nil, "hold prompt shows its progress bar")
+    cleanup()
+end
 check(
     serverPrompt.MaxActivationDistance == loadModule("Economy").InteractionDistance,
     "dispenser uses server legal range"

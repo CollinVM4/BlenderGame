@@ -20,9 +20,9 @@ local hints: { [string]: string } = {
     Stash = "Take three " .. keyword("RED", "#FF5555") .. " ingredients from the stash!",
     Ladder = "Climb the ladder to your blender!",
     Turbine = "Climb down and " .. keyword("SPIN") .. " to blend!",
-    Dispenser = "Dispense your smoothie!",
+    Dispenser = "Hold the dispense button to pour your smoothie!",
     FinishBatch = "Spin to finish the previous batch!",
-    DrainBatch = "Dispense the previous batch to clear your blender!",
+    DrainBatch = "Hold the dispense button to clear the previous batch!",
     Serve = "Serve customer to get " .. keyword("CASH") .. "!",
 }
 function Text.Get(stage: string, preferred: Enum.PreferredInput, button: string): string?

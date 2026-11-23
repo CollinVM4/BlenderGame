@@ -1,6 +1,7 @@
 --!strict
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local Style = require(script.Parent.WorldBillboardStyle)
 local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local TouchTargets = require(script.Parent.MobilePromptTouchTargets)
@@ -101,12 +102,30 @@ function Presentation.Create(
         table.insert(connections, player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(refreshDrawDistance))
         refreshDrawDistance()
     end
+    local fill: Frame? = nil
+    local fillTween: Tween? = nil
+    if prompt.Name == "DispensePrompt" and (prompt.HoldDuration or 0) > 0 then
+        local bar = Instance.new("Frame")
+        bar.Name = "HoldProgress"
+        bar.AnchorPoint = Vector2.new(0.5, 1)
+        bar.Position = UDim2.fromScale(0.5, 1.14)
+        bar.Size = UDim2.fromScale(0.52, 0.09)
+        bar.BackgroundColor3 = TextStyle.Dark
+        bar.BorderSizePixel = 0
+        bar.Parent = gui
+        local progress = Instance.new("Frame")
+        progress.BackgroundColor3 = TextStyle.Gold
+        progress.BorderSizePixel = 0
+        progress.Size = UDim2.fromScale(0, 1)
+        progress.Parent = bar
+        fill = progress
+    end
     local holding = false
     local function refresh()
         local key = config.KeyText
         if not key then
             if inputType == Enum.ProximityPromptInputType.Touch then
-                key = "TAP"
+                key = if fill then "TOUCH" else "TAP"
             elseif inputType == Enum.ProximityPromptInputType.Gamepad then
                 key = prompt.GamepadKeyCode.Name
             else
@@ -122,6 +141,11 @@ function Presentation.Create(
             if holding then "HOLD " else "",
             config.ActionText or prompt.ActionText
         )
+        if fill then
+            text.Text = if inputType == Enum.ProximityPromptInputType.Touch
+                then "HOLD TO DISPENSE"
+                else string.format("HOLD [%s] TO DISPENSE", key or "")
+        end
         if config.FormatText then
             text.Text = config.FormatText(key or "", holding)
         end
@@ -136,6 +160,17 @@ function Presentation.Create(
         connections,
         prompt.PromptButtonHoldBegan:Connect(function()
             holding = true
+            if fill then
+                if fillTween then
+                    fillTween:Cancel()
+                end
+                fill.Size = UDim2.fromScale(0, 1)
+                local tween = TweenService:Create(fill, TweenInfo.new(prompt.HoldDuration, Enum.EasingStyle.Linear), {
+                    Size = UDim2.fromScale(1, 1),
+                })
+                fillTween = tween
+                tween:Play()
+            end
             refresh()
         end)
     )
@@ -143,6 +178,13 @@ function Presentation.Create(
         connections,
         prompt.PromptButtonHoldEnded:Connect(function()
             holding = false
+            if fillTween then
+                fillTween:Cancel()
+                fillTween = nil
+            end
+            if fill then
+                fill.Size = UDim2.fromScale(0, 1)
+            end
             refresh()
         end)
     )
@@ -287,6 +329,9 @@ function Presentation.Create(
     refresh()
     return function()
         alive = false
+        if fillTween then
+            fillTween:Cancel()
+        end
         if unregister then
             unregister()
         end

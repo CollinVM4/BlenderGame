@@ -8,6 +8,9 @@ services.CollectionService:AddTag(smoothieObject, "SmoothieWorldItem")
 for index, id in { "Strawberry", "Banana", "Strawberry" } do
     smoothieObject:SetAttribute("IngredientId" .. index, id)
 end
+smoothieObject:SetAttribute("SmoothieColors", "Red / Yellow")
+smoothieObject:SetAttribute("SmoothieDescription", "Fruit • Sweet")
+smoothieObject:SetAttribute("SmoothieValue", 9250)
 local smoothiePrompt = uiInstance("ProximityPrompt", "SmoothieCarryPrompt", smoothieObject)
 smoothiePrompt.Style, smoothiePrompt.Enabled = "Custom", true
 smoothiePrompt:SetAttribute("SmoothiePickupPrompt", true)
@@ -16,33 +19,19 @@ smoothiePrompt.ActionText, smoothiePrompt.ClickablePrompt, smoothiePrompt.HoldDu
 prompts.PromptShown:Fire(smoothiePrompt, "Keyboard")
 local smoothieGui = playerGui:FindFirstChild("SmoothiePickupPromptDisplay")
 check(smoothieGui ~= nil and smoothieView.Width > style.BillboardSize.X, "smoothie panel wider than fruit")
-local rowCount = 0
-for _, child in smoothieGui:GetChildren() do
-    if string.match(child.Name, "^IngredientRow") then
-        rowCount += 1
-    end
-end
-check(rowCount == 3, "exactly three ingredient rows")
 check(
-    smoothieGui:FindFirstChild("SmoothieValue").Text
-        == load("MoneyFormat").Compact(definitions.Strawberry.Value * 2 + definitions.Banana.Value),
-    "world smoothie subtotal includes duplicate ingredients"
+    smoothieGui:FindFirstChild("SmoothieValue").Text == "$9,250 blend value",
+    "world smoothie displays the authoritative value"
 )
-for index, id in { "Strawberry", "Banana", "Strawberry" } do
-    local row = smoothieGui:FindFirstChild("IngredientRow" .. index)
-    local rarity = row:FindFirstChild("Rarity")
-    local name = row:FindFirstChild("IngredientName")
-    check(
-        rarity.Text == definitions[id].Rarity and name.Text == definitions[id].DisplayName,
-        "full rarity and ingredient name without separator"
-    )
-    check(
-        rarity.Position.X.Scale + rarity.Size.X.Scale < name.Position.X.Scale,
-        "rarity first with spacing before name"
-    )
-    check(rarity.TextColor3 == style.RarityStyles[definitions[id].Rarity].TextColor, "existing rarity color")
-    check(name.TextColor3 == style.NameColor and name.Font == style.Font, "normal ingredient name styling")
-end
+check(
+    smoothieGui:FindFirstChild("SmoothieColors").Text == "Order colors: Red / Yellow"
+        and smoothieGui:FindFirstChild("SmoothieDescription").Text == "Fruit • Sweet",
+    "world smoothie exposes real order colors and blend traits"
+)
+check(
+    smoothieGui:FindFirstChild("SmoothieIngredients").Text == "Strawberry + Banana + Strawberry",
+    "world smoothie lists all ingredients in batch order, including duplicates"
+)
 check(string.find(smoothieGui:FindFirstChild("Action").Text, "E") ~= nil, "existing E input presentation")
 prompts.PromptHidden:Fire(smoothiePrompt)
 check(playerGui:FindFirstChild("SmoothiePickupPromptDisplay") == nil, "smoothie panel hides")
@@ -80,4 +69,4 @@ check(beginCount == 1 and endCount == 1, "smoothie target forwards native hold A
 local inputGui = target.Parent
 prompts.PromptHidden:Fire(smoothiePrompt)
 check(smoothieGui.Destroyed and inputGui.Destroyed, "smoothie cleanup destroys both billboards")
-print("PASS: smoothie pickup panel contracts")
+print(string.format("PASS: %d smoothie pickup panel assertions", count))
