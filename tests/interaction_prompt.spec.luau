@@ -194,6 +194,25 @@ local function module(name, requires)
 end
 local style = module("WorldBillboardStyle", {})
 local debug = module("MobilePromptDebug", {})
+local currentFillTween
+env.Enum.EasingStyle = { Linear = "Linear" }
+env.TweenInfo = {
+    new = function(duration)
+        return duration
+    end,
+}
+services.TweenService = {
+    Create = function(_, _, duration, goal)
+        local tween = { Duration = duration, Goal = goal }
+        function tween:Play()
+            currentFillTween = self
+        end
+        function tween:Cancel()
+            self.Cancelled = true
+        end
+        return tween
+    end,
+}
 local view = module("Presentation", {
     WorldBillboardStyle = style,
     DialogueTextStyle = loadModule("DialogueTextStyle"),
@@ -395,6 +414,11 @@ local server = module("DispenseButton", {
             return serverPrompt
         end,
     },
+    SmoothieSummary = {
+        Build = function(smoothie)
+            return smoothie
+        end,
+    },
     AudioService = {
         CreateBlendGroup = function()
             return { pourSound = { Play = function() end, Destroy = function() end } }
@@ -402,12 +426,10 @@ local server = module("DispenseButton", {
     },
 })
 server.Init({
-    GameplayService = {
-        RegisterPlotInteraction = function(p, callback)
-            p.Triggered:Connect(callback)
-        end,
-    },
     TycoonService = {
+        GetRequestContext = function()
+            return {}
+        end,
         IsMember = function(actor)
             return actor == owner
         end,
@@ -422,6 +444,35 @@ server.Init({
 })
 local detach = attach(button)
 check(serverPrompt.Style == "Custom", "actual dispense prompt hides default presentation")
+check(serverPrompt.HoldDuration == 0.65, "the actual prompt requires a short native hold")
+for _, kind in { "Keyboard", "Gamepad", "Touch" } do
+    serverPrompt.KeyboardKeyCode, serverPrompt.GamepadKeyCode = { Name = "E" }, { Name = "ButtonX" }
+    local cleanup, billboard = view.Create(serverPrompt, origin, playerGui, kind, {})
+    local expected = if kind == "Touch"
+        then "HOLD TO POUR"
+        elseif kind == "Gamepad" then "HOLD [ButtonX] TO POUR"
+        else "HOLD [E] TO POUR"
+    check(billboard:FindFirstChild("Action").Text == expected, "hold text reflects the active input")
+    local fill = billboard:FindFirstChild("HoldProgress"):FindFirstChild("Fill")
+    local action = billboard:FindFirstChild("Action")
+    serverPrompt.PromptButtonHoldBegan:Fire()
+    check(
+        action.Text == "FILLING CUP..."
+            and fill.Size.X.Scale > 0
+            and currentFillTween.Duration == serverPrompt.HoldDuration
+            and currentFillTween.Goal.Size.X.Scale == 1,
+        "held input immediately starts a synchronized fill"
+    )
+    serverPrompt.PromptButtonHoldEnded:Fire()
+    check(
+        currentFillTween.Cancelled and fill.Size.X.Scale == 0 and action.Text == expected,
+        "early release drains the bar"
+    )
+    serverPrompt.PromptButtonHoldBegan:Fire()
+    serverPrompt.Triggered:Fire({})
+    check(action.Text == "POURING!" and fill.Size.X.Scale == 1, "completed input fills the bar")
+    cleanup()
+end
 check(
     serverPrompt.MaxActivationDistance == loadModule("Economy").InteractionDistance,
     "dispenser uses server legal range"

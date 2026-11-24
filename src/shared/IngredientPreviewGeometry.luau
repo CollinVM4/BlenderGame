@@ -5,7 +5,7 @@ local Geometry = {}
 -- An allowlist of geometry classes excludes scripts, joints, constraints, audio,
 -- prompts, effects and object references before the copy enters a live tree.
 function Geometry.Clone(source: Instance?): Model?
-    if not source or not (source:IsA("BasePart") or source:IsA("Model")) then
+    if not source or not (source:IsA("BasePart") or source:IsA("Model") or source:IsA("Tool")) then
         return nil
     end
     local clone: Instance? = nil
@@ -16,6 +16,14 @@ function Geometry.Clone(source: Instance?): Model?
         return nil
     end
     local copy = clone :: Instance
+    if copy:IsA("Tool") then
+        local model = Instance.new("Model")
+        for _, child in copy:GetChildren() do
+            child.Parent = model
+        end
+        copy:Destroy()
+        copy = model
+    end
     local descendants = copy:GetDescendants()
     table.insert(descendants, 1, copy)
     local parts = 0

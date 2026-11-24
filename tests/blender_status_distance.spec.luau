@@ -1,7 +1,7 @@
 local distanceChecks = count
-local pops = {}
-env.Enum.EasingStyle = { Quad = "Quad" }
-env.Enum.EasingDirection = { Out = "Out" }
+local pops, hops = {}, {}
+env.Enum.EasingStyle = { Quad = "Quad", Back = "Back", Sine = "Sine" }
+env.Enum.EasingDirection = { Out = "Out", InOut = "InOut" }
 env.TweenInfo = {
     new = function(...)
         return { ... }
@@ -11,8 +11,12 @@ services.TweenService = {
     Create = function(_, object, info, goal)
         local tween = { Object = object, Info = info, Goal = goal }
         function tween:Play()
-            object.Scale = goal.Scale
-            table.insert(pops, self)
+            if goal.Scale then
+                object.Scale = goal.Scale
+                table.insert(pops, self)
+            else
+                table.insert(hops, self)
+            end
         end
         function tween:Cancel()
             self.Cancelled = true
@@ -106,10 +110,24 @@ check(
     #counter.Label:GetChildren() == 1 and counter.Gui.MaxDistance == 40,
     "stream-in and repeated registration retain a single presentation scale"
 )
+counter.Label.Text = "1 / 3"
+counter.TextChanged:Fire()
+check(#pops == 1 and pops[1].Goal.Scale == 1.09, "an accepted ingredient gets a small count pop")
+check(
+    #hops == 1 and counter.Label.Position.Y.Scale < 0.5 and counter.Label.Rotation ~= 0,
+    "ingredient entry hops and tilts off the authored center"
+)
+counter.Label.Text = "0 / 3"
+counter.TextChanged:Fire()
+check(
+    hops[1].Cancelled and counter.Label.Position.Y.Scale == 0.5 and counter.Label.Rotation == 0,
+    "reset settles motion"
+)
+table.clear(pops)
 counter.Label.Text = "3 / 3\nLOADING COMPLETE!"
 counter.TextChanged:Fire()
 check(
-    #pops == 1 and pops[1].Goal.Scale == 1.1 and pops[1].Info[1] == 0.12 and pops[1].Info[5],
+    #pops == 1 and pops[1].Goal.Scale == 1.16 and pops[1].Info[1] == 0.12 and pops[1].Info[5],
     "reaching capacity makes one short reversing pop"
 )
 counter.TextChanged:Fire()
@@ -130,4 +148,23 @@ check(
 counter.Label.Text = "3 / 3\nLOADING COMPLETE!"
 workspaceFake.DescendantAdded:Fire(counter.Label)
 check(counter.Label.Text == "3 / 3\nLOADING COMPLETE!", "registration preserves server-updated count text")
+turbine.Label.Text = "BLENDING..."
+turbine.TextChanged:Fire()
+local wobble = hops[#hops]
+check(wobble.Goal.Rotation == 4 and wobble.Info[4] == -1, "blending status rocks gently while active")
+turbine.Label.Text = "READY TO DISPENSE!"
+turbine.TextChanged:Fire()
+local readyPulse = pops[#pops]
+check(wobble.Cancelled and readyPulse.Goal.Scale == 1.10, "ready swaps the blending wobble for a pulse")
+turbine.Label.Text = "LOAD INGREDIENTS TO BLEND!"
+turbine.TextChanged:Fire()
+check(
+    readyPulse.Cancelled and turbine.Label.Rotation == 0 and turbine.Label:FindFirstChildOfClass("UIScale").Scale == 1,
+    "leaving readiness restores the neutral pose"
+)
+turbine.Label.Text = "BLENDING..."
+turbine.TextChanged:Fire()
+local streamedWobble = hops[#hops]
+workspaceFake.DescendantRemoving:Fire(turbine.Label)
+check(streamedWobble.Cancelled, "streaming out cancels the active status animation")
 print(string.format("PASS: %d client distance assertions (mocked Roblox boundary).", count - distanceChecks))

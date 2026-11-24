@@ -76,12 +76,18 @@ instance("UnionOperation", "Union", multipart)
 local helper = instance("Part", "InvisibleRoot", multipart)
 helper.Transparency = 1
 instance("Script", "Unsafe", multipart)
+local cupSource = instance("Tool", "Smoothie", serverStorage)
+local cupHandle = instance("Part", "Handle", cupSource)
+local cupDetails = instance("Model", "Details", cupSource)
+instance("MeshPart", "Straw", cupDetails)
+instance("WeldConstraint", "GripJoint", cupHandle)
+instance("Script", "Unsafe", cupSource)
 local published
 shared.FindFirstChild = function(_, name)
     return if name == "ScrapbookPreviewAssets" then published else nil
 end
 local publishWarnings = {}
--- Init publishes sanitized copies of only allowlisted existing prefabs.
+-- Init publishes sanitized copies of the allowlisted prefabs and the authored cup.
 local assetsModule = load("ScrapbookPreviewAssets")
 local assetsEnv = getfenv(assetsModule.Init)
 assetsEnv.warn = function(message)
@@ -94,7 +100,21 @@ for _, child in shared.children or {} do
 end
 check(published ~= nil, "visual assets published")
 check(published:FindFirstChild("Apple") and published:FindFirstChild("Grapes"), "single and multipart assets published")
-check(#published:GetChildren() == 2 and #publishWarnings == #entries - 2, "allowlisted missing assets reported")
+check(#published:GetChildren() == 3 and #publishWarnings == #entries - 2, "allowlisted missing assets reported")
+local cup = published:FindFirstChild("SmoothieCup")
+local previewParts = cup:GetChildren()[1]
+check(cup:IsA("Model") and not previewParts:IsA("Tool"), "cup preview publishes geometry only")
+check(
+    previewParts:FindFirstChild("Handle").Anchored and previewParts:FindFirstChild("Details"):FindFirstChild("Straw"),
+    "cup keeps its tint target and authored straw"
+)
+check(
+    not previewParts:FindFirstChild("Unsafe")
+        and #previewParts:FindFirstChild("Handle"):GetChildren() == 0
+        and cupSource:FindFirstChild("Unsafe")
+        and cupHandle:FindFirstChild("GripJoint"),
+    "cup preview removes behavior and joints from its copy"
+)
 check(multipart:FindFirstChild("Unsafe") ~= nil, "publishing preserves server prefab")
 local host = instance("Frame", "Card")
 local image = instance("ImageLabel", "FruitImage", host)

@@ -1,6 +1,8 @@
 --!strict
 local CollectionService = game:GetService("CollectionService")
-local Types = require(game:GetService("ReplicatedStorage").Shared.Types)
+local Shared = game:GetService("ReplicatedStorage").Shared
+local Types = require(Shared.Types)
+local Summary = require(Shared.SmoothieSummary)
 local SmoothieItem = require(script.Parent.SmoothieItem)
 local Geometry = require(script.Parent.SmoothieGeometry)
 local Service = {}
@@ -29,6 +31,10 @@ function Service.Spawn(data: Types.SmoothieData, at: CFrame): Model?
     for index = 1, 3 do
         object:SetAttribute("IngredientId" .. index, data.Ingredients[index])
     end
+    local details = Summary.Build(SmoothieItem.Result(data), workspace:GetServerTimeNow())
+    object:SetAttribute("SmoothieValue", details.Value)
+    object:SetAttribute("SmoothieColors", details.Colors)
+    object:SetAttribute("SmoothieDescription", details.Description)
     object:PivotTo(at)
     local root = object.PrimaryPart :: BasePart
     root.CanCollide, root.CanQuery, root.Massless = true, true, false

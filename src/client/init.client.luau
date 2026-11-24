@@ -4,6 +4,7 @@ for _, controller in
         script.Controllers.SprintController,
         script.Controllers.CarryInputController,
         script.Controllers.HotbarController,
+        script.Controllers.SmoothieRevealController,
     }
 do
     task.spawn(function()

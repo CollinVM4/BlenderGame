@@ -382,6 +382,7 @@ local shared = {
     MobilePromptDebug = "MobilePromptDebug",
     IngredientName = "IngredientName",
     IngredientItem = "IngredientItem",
+    SmoothieSummary = "SmoothieSummary",
     Constants = {},
     Types = "Types",
     MoneyFormat = "MoneyFormat",

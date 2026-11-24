@@ -51,7 +51,8 @@ for _, refs in labels do
     check(refs.CountGui.Adornee == refs.CountOrigin, "Attachment is the adornee")
     check(refs.CountGui.AlwaysOnTop and refs.CountGui.MaxDistance == 40, "explicit plot read distance")
     check(
-        refs.Count.BackgroundTransparency == 1 and refs.Count:FindFirstChild("DialogueOutline").Thickness == 2.5,
+        refs.Count.BackgroundTransparency == 1
+            and refs.Count:FindFirstChild("DialogueOutline"):GetAttribute("WorldThicknessStuds") == 0.05,
         "NPC outline treatment"
     )
     check(

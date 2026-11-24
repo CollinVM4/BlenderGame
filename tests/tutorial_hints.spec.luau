@@ -609,7 +609,7 @@ advance()
 check(hintContains("Climb down and SPIN to blend!") and label() ~= previous, "GUI destruction is recovered")
 p:SetAttribute("TutorialStage", "Dispenser")
 check(
-    hintContains("Dispense your smoothie!")
+    hintContains("Hold the dispense button to pour your smoothie!")
         and highlights()[1].Adornee == dispenser
         and beams()[1].Attachment1 == dispenserMarker,
     "ready smoothie shows the original dispensing instruction with dispenser highlight"
@@ -650,10 +650,20 @@ check(
     "completed blend retargets the existing pair immediately to the dispenser"
 )
 check(
-    hintContains("Dispense your smoothie!") and label().TextTransparency == 0,
+    hintContains("Hold the dispense button to pour your smoothie!") and label().TextTransparency == 0,
     "dispensing readiness cancels an outgoing animation immediately"
 )
+local smoothieReveal = instance("ScreenGui")
+smoothieReveal.Name, smoothieReveal.Parent = "SmoothieReveal", gui
 p:SetAttribute("TutorialStage", "Serve")
+advance()
+check(
+    not hintContains("Serve customer to get CASH!")
+        and not hintContains("Hold the dispense button to pour your smoothie!"),
+    "smoothie reveal defers the serve hint and promptly hides the previous hint"
+)
+check(highlights()[1].Adornee == customer, "customer guidance remains visible in the world during the reveal")
+smoothieReveal:Destroy()
 advance()
 check(
     hintContains("Serve customer to get CASH!")
@@ -752,7 +762,7 @@ local finalCopy = {
     Stash = "Take three RED ingredients from the stash!",
     Ladder = "Climb the ladder to your blender!",
     Turbine = "Climb down and SPIN to blend!",
-    Dispenser = "Dispense your smoothie!",
+    Dispenser = "Hold the dispense button to pour your smoothie!",
     Serve = "Serve customer to get CASH!",
     Upgrades = "Open UPGRADES: buy JUMP 1 and BAT 1!",
     UpgradeJump = "Buy JUMP 1 in UPGRADES!",

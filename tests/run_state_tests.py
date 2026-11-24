@@ -270,6 +270,7 @@ sources["MuncherPresentationController"] = (ROOT / "src/client/Controllers/Munch
 sources["MuncherComponent"] = (ROOT / "src/server/Components/Muncher.luau").read_text(encoding="utf-8")
 sources["AnnouncementFormat"] = (ROOT / "src/shared/AnnouncementFormat.luau").read_text(encoding="utf-8")
 sources["IngredientName"] = (ROOT / "src/shared/IngredientName.luau").read_text(encoding="utf-8")
+sources["SmoothieSummary"] = (ROOT / "src/shared/SmoothieSummary.luau").read_text(encoding="utf-8")
 sources["IngredientItem"] = (ROOT / "src/shared/IngredientItem.luau").read_text(encoding="utf-8")
 sources["RipenessDisplayState"] = (ROOT / "src/client/UI/RipenessDisplayState.luau").read_text(encoding="utf-8")
 sources["RadialProgress"] = (ROOT / "src/client/UI/RadialProgress.luau").read_text(encoding="utf-8")

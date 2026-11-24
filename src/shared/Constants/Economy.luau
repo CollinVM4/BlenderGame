@@ -17,6 +17,11 @@ return {
     FillerCapFraction = 0.5,
     OriginMultiplier = { [0] = 1, [1] = 1.1, [2] = 1.25, [3] = 1.5 },
     MaxIngredients = 3,
+    SmoothieBonuses = {
+        SharedColor = 0.10,
+        IdenticalIngredient = 0.15,
+        StolenIngredient = 0.10,
+    },
     RequiredProgress = 65,
     BlendProgressScale = 3, -- Progress per radian of physical blade rotation.
     InteractionDistance = 12,

@@ -60,7 +60,13 @@ function Controller.Init()
         end
         local object = Controller.Resolve(prompt)
         local rows = if object then Presentation.Rows(object) else nil
-        local id = if rows then rows[1].Id .. "/" .. rows[2].Id .. "/" .. rows[3].Id else nil
+        local id = if rows and object
+            then rows[1].Id .. "/" .. rows[2].Id .. "/" .. rows[3].Id .. "/" .. tostring(
+                object:GetAttribute("SmoothieValue")
+            ) .. "/" .. tostring(object:GetAttribute("SmoothieColors")) .. "/" .. tostring(
+                object:GetAttribute("SmoothieDescription")
+            )
+            else nil
         if object and object:IsA("Model") and not object:FindFirstChildWhichIsA("BasePart", true) then
             clear(entry)
             return
