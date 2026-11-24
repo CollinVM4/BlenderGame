@@ -171,7 +171,12 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
     local inventoryReason, inventoryAt = "not updated", os.clock()
     local writeError, readError = "", ""
     local externallyHidden = false
+    local expectedBarVisible = view.Bar.Visible
     local schedule: () -> ()
+    local function setBarVisible(visible: boolean)
+        expectedBarVisible = visible
+        view.Bar.Visible = visible
+    end
     local function requestInventory(why: string)
         inventoryTrigger = why
         if mutating then
@@ -203,7 +208,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         if native then
             enabled = false
             unbind()
-            view.Bar.Visible = false
+            setBarVisible(false)
         end
         if coreTarget ~= native then
             coreTarget, coreDone, coreAttempts = native, false, 0
@@ -236,11 +241,11 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             reason = transition
             -- Input is prepared before the API write. Visibility and ownership
             -- commit here without yielding, in the same update as that write.
-            view.Bar.Visible = enabled and #items > 0
+            setBarVisible(enabled and #items > 0)
         else
             enabled = false
             unbind()
-            view.Bar.Visible = false
+            setBarVisible(false)
             reason = transition .. " (CoreGui pending)"
             if coreAttempts < 8 then
                 retryQueued = true
@@ -590,7 +595,7 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
             bindKeys()
             requestCore(false, "custom ready")
         end
-        view.Bar.Visible = enabled and #items > 0
+        setBarVisible(enabled and #items > 0)
     end
     schedule = function()
         if stopped or queued or mutating then
@@ -665,12 +670,15 @@ function Controller.Start(player: Player, playerGui: PlayerGui): () -> ()
         table.insert(
             connections,
             object:GetPropertyChangedSignal(if object:IsA("ScreenGui") then "Enabled" else "Visible"):Connect(function()
-                if not mutating then
-                    if object == view.Bar then
-                        externallyHidden = not view.Bar.Visible
+                if object == view.Bar then
+                    -- Visible can notify after the controller's update has finished.
+                    local visible = view.Bar.Visible
+                    if visible == expectedBarVisible then
+                        return
                     end
-                    schedule()
+                    externallyHidden = not visible
                 end
+                schedule()
             end)
         )
     end
