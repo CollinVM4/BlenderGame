@@ -60,6 +60,7 @@ tycoon.RemovePlayer(teammate)
 setup(tycoon.JoinSession(teammate, owner, tycoon.GetRequestContext(owner)), "join shared admin stand")
 assignTestSession(visitor)
 local grantedTo = {}
+local wingsGrantedTo = {}
 local debugRequests = {}
 services.ReplicatedStorage.Shared.Events = {
     HotbarDebug = {
@@ -73,6 +74,12 @@ admin.Init({
     IceGunService = {
         GrantOnce = function(target)
             table.insert(grantedTo, target)
+            return true
+        end,
+    },
+    WingsService = {
+        GrantOnce = function(target)
+            table.insert(wingsGrantedTo, target)
             return true
         end,
     },
@@ -95,7 +102,7 @@ check(
     "decimal award intentionally floors"
 )
 clock += 1
-for _, text in { "0", "-1", "banana", "1000000001", "1e309", "nan", "0.9", "1000000000.1", "", "100 other" } do
+for _, text in { "0", "-1", "banana", "1000000001", "1e309", "nan", "0.9", "1000000000.1", "", "100 other extra" } do
     check(
         not admin.HandleCommand(owner, ";addCash " .. text) and tycoon.GetCash(owner) == 1012,
         "invalid amount rejected: " .. text
@@ -157,6 +164,45 @@ else
     owner.Chatted:Fire(";giveicegun KarmaReaper2")
 end
 check(grantedTo[2] == visitor, "server chat dispatches grant for the specified player")
+clock += 1
+local ownerCash = tycoon.GetCash(owner)
+for _, username in { "Missing", "Karma", "NoPlot" } do
+    chat(owner, ";addcash 50 " .. username)
+end
+check(
+    tycoon.GetCash(owner) == ownerCash and tycoon.GetCash(visitor) == 0,
+    "bad usernames and targets without a stand leave cash untouched"
+)
+chat(visitor, ";addcash 50 ConfiguredAdmin")
+check(tycoon.GetCash(owner) == ownerCash, "non-admin cannot credit someone else's stand")
+chat(absent, ";addcash 50 kArMaReApEr2")
+check(
+    tycoon.GetCash(visitor) == 50 and tycoon.GetCash(owner) == ownerCash,
+    "admin without a stand can credit only the named player's stand"
+)
+chat(owner, ";addcash 50 eAtAnDpOoP")
+check(
+    owner:GetAttribute("playerCash") == ownerCash + 50 and teammate:GetAttribute("playerCash") == ownerCash + 50,
+    "targeting a teammate credits and publishes their shared balance once"
+)
+clock += 1
+check(not admin.HandleCommand(visitor, ";givewings Eatandpoop"), "non-admin cannot grant wings")
+for _, message in { ";givewings", ";givewings Missing", ";givewings Eatandpoop extra" } do
+    check(not admin.HandleCommand(owner, message), "wings command rejects invalid target: " .. message)
+end
+check(#wingsGrantedTo == 0, "invalid commands never reach the wings service")
+if modern then
+    local command = services.TextChatService:FindFirstChild("Admin_givewings")
+    setup(command and command.PrimaryAlias == ";givewings", "wings command registered")
+    command.Triggered:Fire({ UserId = owner.UserId }, ";GIVEWINGS nOpLoT")
+else
+    owner.Chatted:Fire(";GIVEWINGS nOpLoT")
+end
+check(wingsGrantedTo[1] == absent, "chat grants wings to the named player without a stand")
+check(
+    not admin.HandleCommand(owner, ";givewings NoPlot") and #wingsGrantedTo == 1,
+    "wings grant uses the admin cooldown"
+)
 clock += 1
 local function debugChat(player, text)
     if modern then

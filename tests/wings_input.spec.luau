@@ -21,7 +21,7 @@ services.UserInputService = {
     end,
 }
 services.GuiService = { MenuOpened = signal(), MenuIsOpen = false }
-local p, h, root = subject(true)
+local p, h, root = subject(false)
 services.Players.LocalPlayer = p
 services.Players.GetPlayers = function()
     return { p }
@@ -41,6 +41,7 @@ local sensor = loadModule("WingsHoldSensor").Attach(gui, function(held)
 end)
 h.Mode, h.FloorMaterial = "Running", "Concrete"
 wings.ApplyCharacter(p, p.Character)
+setup(wings.GrantOnce(p), "one-life wings equipped for input and onboarding")
 local key = {}
 check(action("", "Begin", key) == "Pass", "hold sensor preserves engine jump action")
 action("", "Begin", key)
@@ -100,8 +101,9 @@ check(
     "first grant shows verbatim onboarding once"
 )
 wings.ApplyCharacter(p, p.Character)
+setup(wings.GrantOnce(p), "one-life wings re-granted after respawn")
 services.RunService.RenderStepped:Fire(1 / 60)
-check(#messages == 1, "respawn never repeats session onboarding")
+check(#messages == 1, "a new grant after respawn never repeats session onboarding")
 
 -- Exercise the actual local RenderStepped lift independently of pose rendering.
 local function renderLift(stateValue, y, dt)

@@ -17,11 +17,18 @@ or publish. Existing Ice Gun assets are required; no additional Studio setup is
 needed. In a private server, grant to a nonowner, select and fire the weapon,
 then reset and confirm it is gone. Also check a non-admin cannot grant one.
 
-After claiming or joining a stand, type `;addCash 100000` in Roblox chat.
-Command names are case-insensitive and argument whitespace is tolerant.
-There is one amount argument and no player targeting. Positive finite amounts
-up to 1,000,000,000 are accepted; decimals are floored and results below 1 are
-rejected. Successful executions have a 0.35-second per-player cooldown.
+Type `;givewings ExactUsername` to equip an online player's living character
+with Flight Wings for their current life. They can hold Jump to fly and glide.
+The grant ends on death, character removal, or leaving. Gamepass ownership
+continues to control automatic grants on future spawns.
+
+Type `;addcash 100000` to credit your stand, or
+`;addcash 100000 ExactUsername` to credit the named online player's stand.
+Only the recipient needs to have claimed or joined a stand. The command uses
+exact, case-insensitive Roblox usernames. Positive finite amounts up to
+1,000,000,000 are accepted, decimals are floored, and results below 1 are
+rejected. Command names are case-insensitive. Successful executions have
+a 0.35-second cooldown per admin.
 
 `src/server/Admin/AdminConfig.luau` is server-only. Numeric `AdminUserIds` are
 canonical. The configured bootstrap names are Eatandpoop, KarmaReaper2, and
@@ -43,9 +50,10 @@ Cash follows `TycoonService.AddCash` -> `SetCash` -> active session transaction
 teammate's existing `playerCash` projections both update through that publisher.
 No economy, persistence, membership, or cash UI behavior was changed.
 
-With TextChatService chat, the service registers a `TextChatCommand` for
-`;addcash` and `;giveicegun`, hidden from autocomplete. Roblox intercepts recognized commands
-without broadcasting them, including unauthorized attempts. Unknown commands
+With TextChatService chat, the service registers hidden `TextChatCommand`
+instances for `;addcash`, `;giveicegun`, `;givewings`, and `;hotbardebug`.
+Roblox intercepts recognized commands without broadcasting them, including
+unauthorized attempts. Unknown commands
 remain ordinary chat. Legacy chat uses server `Player.Chatted` and commands
 remain visible. The chat mode is read from the existing place, not changed.
 The dispatcher is shared, so command registration and parsing use the same
@@ -57,20 +65,22 @@ and publish the updated server scripts. Keep normal Roblox chat enabled. Studio
 test players usually have synthetic IDs and will not match the real admins;
 use the real accounts in a private server for the final chat smoke test.
 
-Focused automated integration suites use real TycoonService cash storage and
-publication, with Roblox chat and username lookups simulated:
+Focused suites cover real TycoonService cash storage and publication, wings
+grants and input, and simulated Roblox chat and username lookups.
 
 ```text
-python tests/run_state_tests.py --suite admin --suite admin-legacy
+python tests/run_state_tests.py --suite admin --suite admin-legacy --suite wings-ownership --suite wings-input
 ```
 
 In a private server, verify the three identity mapping logs, then run
-`;addCash 100000` while sharing a stand and check that both cash UIs increase
-by the same amount. Check mixed case, a duplicate within 0.35 seconds, and a
-non-admin attempt. Modern chat interception needs this engine smoke test;
-the CLI fixture does not emulate Roblox's alias matcher or network delivery.
+`;addcash 100000` while sharing a stand and check that both cash UIs increase
+by the same amount. Run `;addcash 100000 ExactUsername` with a player on another
+stand and check their balance. Give wings to a nonowner, test holding Jump,
+and reset to verify the grant expires. Check mixed case, a duplicate within
+0.35 seconds, and a non-admin attempt. Modern chat interception needs this engine smoke test.
+The CLI fixture does not emulate Roblox's alias matcher or network delivery.
 
-Implementation validation: both admin suites pass (31 behavioral checks per
+Original admin command validation: both admin suites passed (31 behavioral checks per
 chat adapter). StyLua and Rojo build pass. The admin modules have no focused
 type diagnostics; full-source typecheck has the same diagnostics as a snapshot
 of the pre-admin working tree. Existing `plot-session` and `plot-session-races`

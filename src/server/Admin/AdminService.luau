@@ -11,6 +11,16 @@ local adminUserIds: { [number]: boolean } = {}
 local lastExecution: { [Player]: number? } = {}
 local chatConnections: { [Player]: RBXScriptConnection } = {}
 
+local function findOnlinePlayer(username: string): Player?
+    local normalized = string.lower(username)
+    for _, candidate in Players:GetPlayers() do
+        if string.lower(candidate.Name) == normalized then
+            return candidate
+        end
+    end
+    return nil
+end
+
 local commands: { [string]: (Player, { string }) -> boolean } = {}
 commands.hotbardebug = function(player: Player, args: { string }): boolean
     local hide = #args == 1 and string.lower(args[1]) == "hide"
@@ -26,14 +36,7 @@ commands.giveicegun = function(player: Player, args: { string }): boolean
         warn("[Admin] Usage: ;giveicegun username")
         return false
     end
-    local username = string.lower(args[1])
-    local target: Player? = nil
-    for _, candidate in Players:GetPlayers() do
-        if string.lower(candidate.Name) == username then
-            target = candidate
-            break
-        end
-    end
+    local target = findOnlinePlayer(args[1])
     if not target or not deps.IceGunService.GrantOnce(target) then
         warn("[Admin] giveicegun requires an online player with a living character and Backpack")
         return false
@@ -49,8 +52,33 @@ commands.giveicegun = function(player: Player, args: { string }): boolean
     )
     return true
 end
+commands.givewings = function(player: Player, args: { string }): boolean
+    if #args ~= 1 then
+        warn("[Admin] Usage: ;givewings username")
+        return false
+    end
+    local target = findOnlinePlayer(args[1])
+    if not target or not deps.WingsService.GrantOnce(target) then
+        warn("[Admin] givewings requires an online player with a living character that can receive wings")
+        return false
+    end
+    print(
+        string.format(
+            "[Admin] %s (%d) gave one-life Flight Wings to %s (%d)",
+            player.Name,
+            player.UserId,
+            target.Name,
+            target.UserId
+        )
+    )
+    return true
+end
 commands.addcash = function(player: Player, args: { string }): boolean
-    local amount = if #args == 1 then tonumber(args[1]) else nil
+    if #args < 1 or #args > 2 then
+        warn("[Admin] Usage: ;addcash amount [username]")
+        return false
+    end
+    local amount = tonumber(args[1])
     if not amount or amount ~= amount or amount <= 0 or amount > Config.MaxAddCash then
         warn("[Admin] Rejected addCash amount " .. table.concat(args, " "))
         return false
@@ -60,17 +88,32 @@ commands.addcash = function(player: Player, args: { string }): boolean
         warn("[Admin] addCash amount must floor to a positive integer")
         return false
     end
-    if not deps.TycoonService.GetSessionId(player) then
-        warn("[Admin] addCash requires an active plot/session for " .. player.Name)
+    local target = if args[2] then findOnlinePlayer(args[2]) else player
+    if not target then
+        warn("[Admin] addCash could not find online username " .. args[2])
         return false
     end
-    local before = deps.TycoonService.GetCash(player)
-    local balance = deps.TycoonService.AddCash(player, amount)
+    if not deps.TycoonService.GetSessionId(target) then
+        warn("[Admin] addCash requires an active plot/session for " .. target.Name)
+        return false
+    end
+    local before = deps.TycoonService.GetCash(target)
+    local balance = deps.TycoonService.AddCash(target, amount)
     if balance ~= before + amount then
-        warn("[Admin] addCash could not commit for " .. player.Name)
+        warn("[Admin] addCash could not commit for " .. target.Name)
         return false
     end
-    print(string.format("[Admin] %s (%d) executed addCash %d -> %.0f", player.Name, player.UserId, amount, balance))
+    print(
+        string.format(
+            "[Admin] %s (%d) added %d cash to %s (%d) -> %.0f",
+            player.Name,
+            player.UserId,
+            amount,
+            target.Name,
+            target.UserId,
+            balance
+        )
+    )
     return true
 end
 
