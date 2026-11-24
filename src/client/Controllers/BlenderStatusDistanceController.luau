@@ -27,19 +27,49 @@ function Controller.Init()
         if not maxDistance then
             return
         end
-        if gui.Name == "TurbineStatusDisplay" then
-            local function guidanceRange()
-                gui.MaxDistance = if object.Text == "LOAD INGREDIENTS TO BLEND!" then maxDistance else 40
-            end
-            guidanceRange()
-            if not cleanups[object] then
-                local changed = object:GetPropertyChangedSignal("Text"):Connect(guidanceRange)
-                cleanups[object] = function()
-                    changed:Disconnect()
+        gui.MaxDistance = maxDistance
+        if gui.Name == "TurbineStatusDisplay" and not cleanups[object] then
+            local tween: Tween? = nil
+            local scale = Instance.new("UIScale")
+            scale.Scale = 1
+            scale.Parent = object
+            local function resetMotion()
+                if tween then
+                    tween:Cancel()
+                    tween = nil
                 end
+                scale.Scale = 1
+                object.Rotation = 0
             end
-        else
-            gui.MaxDistance = maxDistance
+            local function animateStatus()
+                resetMotion()
+                local animation: Tween
+                if object.Text == "BLENDING..." then
+                    object.Rotation = -4
+                    animation = TweenService:Create(
+                        object,
+                        TweenInfo.new(0.23, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                        { Rotation = 4 }
+                    )
+                elseif object.Text == "READY TO DISPENSE!" then
+                    animation = TweenService:Create(
+                        scale,
+                        TweenInfo.new(0.38, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                        { Scale = 1.10 }
+                    )
+                else
+                    return
+                end
+                tween = animation
+                animation:Play()
+            end
+            local changed = object:GetPropertyChangedSignal("Text"):Connect(animateStatus)
+            animateStatus()
+            cleanups[object] = function()
+                changed:Disconnect()
+                resetMotion()
+                scale:Destroy()
+            end
         end
         if gui.Name == "IngredientCountDisplay" then
             -- Retain the label's existing centered layout inside the stud canvas.

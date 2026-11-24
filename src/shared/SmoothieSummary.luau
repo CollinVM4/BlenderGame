@@ -2,12 +2,25 @@
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Economy = require(Shared.Constants.Economy)
 local Ingredients = require(Shared.Constants.Ingredients)
+local CustomerRequests = require(Shared.Constants.CustomerRequests)
 local Item = require(Shared.IngredientItem)
 local Types = require(Shared.Types)
 
 local Summary = {}
 -- Color requirements use the ingredients’ tags, independently of the rendered tint.
 local colorTags = { Red = true, Yellow = true, Green = true, Blue = true, Purple = true } :: { [string]: boolean }
+
+-- Only named categories that can affect an order are useful on the reveal.
+local orderTags: { [string]: boolean } = {}
+for _, request in CustomerRequests.Definitions do
+    for _, tags in { request.RequiredTags, request.ForbiddenTags or {} } do
+        for _, tag in tags do
+            if tag ~= "*" then
+                orderTags[tag] = true
+            end
+        end
+    end
+end
 
 type Batch = { Ingredients: { string }, IngredientItems: { Types.IngredientItem }? }
 
@@ -25,6 +38,7 @@ export type Details = {
     Ingredients: { string },
     Tint: Color3,
     Colors: string,
+    Categories: { string },
     Description: string,
     BaseValue: number,
     RipenessValue: number,
@@ -93,18 +107,27 @@ function Summary.Build(smoothie: Types.Smoothie, now: number): Details
         end
         ripeness += Item.GetSmoothieIngredientValue(smoothie, index, now) - ingredient.Value
     end
-    local colorNames, traits = {}, {}
+    local colorNames, traits, categories = {}, {}, {}
     for _, tag in smoothie.Tags do
         if colorTags[tag] then
             table.insert(colorNames, tag)
-        elseif #traits < 3 then
-            table.insert(traits, tag)
+        else
+            if #traits < 3 then
+                table.insert(traits, tag)
+            end
+            if orderTags[tag] then
+                table.insert(categories, tag)
+            end
         end
+    end
+    for index = #colorNames, 1, -1 do
+        table.insert(categories, 1, colorNames[index])
     end
     local bonuses = Summary.GetBonuses(smoothie)
     return {
         Ingredients = table.clone(smoothie.Ingredients),
         Tint = smoothie.Color,
+        Categories = categories,
         Colors = if #colorNames > 0 then table.concat(colorNames, " / ") else "None",
         Description = if #traits > 0 then table.concat(traits, " • ") else "Mixed blend",
         BaseValue = base,

@@ -1,7 +1,7 @@
 local distanceChecks = count
 local pops, hops = {}, {}
-env.Enum.EasingStyle = { Quad = "Quad", Back = "Back" }
-env.Enum.EasingDirection = { Out = "Out" }
+env.Enum.EasingStyle = { Quad = "Quad", Back = "Back", Sine = "Sine" }
+env.Enum.EasingDirection = { Out = "Out", InOut = "InOut" }
 env.TweenInfo = {
     new = function(...)
         return { ... }
@@ -148,4 +148,23 @@ check(
 counter.Label.Text = "3 / 3\nLOADING COMPLETE!"
 workspaceFake.DescendantAdded:Fire(counter.Label)
 check(counter.Label.Text == "3 / 3\nLOADING COMPLETE!", "registration preserves server-updated count text")
+turbine.Label.Text = "BLENDING..."
+turbine.TextChanged:Fire()
+local wobble = hops[#hops]
+check(wobble.Goal.Rotation == 4 and wobble.Info[4] == -1, "blending status rocks gently while active")
+turbine.Label.Text = "READY TO DISPENSE!"
+turbine.TextChanged:Fire()
+local readyPulse = pops[#pops]
+check(wobble.Cancelled and readyPulse.Goal.Scale == 1.10, "ready swaps the blending wobble for a pulse")
+turbine.Label.Text = "LOAD INGREDIENTS TO BLEND!"
+turbine.TextChanged:Fire()
+check(
+    readyPulse.Cancelled and turbine.Label.Rotation == 0 and turbine.Label:FindFirstChildOfClass("UIScale").Scale == 1,
+    "leaving readiness restores the neutral pose"
+)
+turbine.Label.Text = "BLENDING..."
+turbine.TextChanged:Fire()
+local streamedWobble = hops[#hops]
+workspaceFake.DescendantRemoving:Fire(turbine.Label)
+check(streamedWobble.Cancelled, "streaming out cancels the active status animation")
 print(string.format("PASS: %d client distance assertions (mocked Roblox boundary).", count - distanceChecks))

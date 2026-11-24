@@ -102,3 +102,14 @@ do
     check(bonuses.StolenValue == 250 and bonuses.StolenCount == 1, "theft applies only to marked units, at base value")
     check(bonuses.Value == 10250, "ripeness and earned bonuses add to the finished blend value")
 end
+
+do
+    local summary = loadModule("SmoothieSummary")
+    local ice = summary.Build(smoothieItem.Result(smoothie("ice", { "Ice", "Ice", "Ice" })), now)
+    check(table.concat(ice.Categories, ", ") == "Blue, Cold", "ice exposes only named order categories")
+    local mixed = summary.Build(smoothieItem.Result(smoothie("mixed", { "Ice", "Fish", "Melon" })), now)
+    check(
+        #mixed.Categories > 5 and table.find(mixed.Categories, "Protein") and table.find(mixed.Categories, "Fruit"),
+        "the reveal keeps order traits beyond the old three-trait limit"
+    )
+end

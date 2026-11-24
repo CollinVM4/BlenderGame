@@ -117,13 +117,15 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
     local beat = label(detailsPanel, "", 0.32, 0.12, 25)
     beat.ZIndex = 3
     Style.Outline(beat).Thickness = 3.5
-    local colors = label(detailsPanel, "Order colors: " .. details.Colors, 0.46, 0.075, 17)
-    colors.Position = UDim2.fromScale(0.12, 0.46)
-    colors.Size = UDim2.fromScale(0.84, 0.075)
-    colors.TextXAlignment = Enum.TextXAlignment.Left
+    local categoryText = if #details.Categories > 0 then table.concat(details.Categories, ", ") else "Mixed blend"
+    local categories = label(detailsPanel, "Categories: " .. categoryText, 0.44, 0.20, 18)
+    categories.Position = UDim2.fromScale(0.12, 0.44)
+    categories.Size = UDim2.fromScale(0.84, 0.20)
+    categories.TextXAlignment = Enum.TextXAlignment.Left
+    categories.TextWrapped = true
     local swatch = Instance.new("Frame")
     swatch.AnchorPoint = Vector2.new(0, 0.5)
-    swatch.Position = UDim2.fromScale(0.06, 0.498)
+    swatch.Position = UDim2.fromScale(0.06, 0.54)
     swatch.Size = UDim2.fromOffset(12, 12)
     swatch.BackgroundColor3 = details.Tint
     swatch.BorderSizePixel = 0
@@ -131,13 +133,12 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
     local swatchCorner = Instance.new("UICorner")
     swatchCorner.CornerRadius = UDim.new(1, 0)
     swatchCorner.Parent = swatch
-    label(detailsPanel, details.Description, 0.54, 0.075, 16)
 
     for index, id in details.Ingredients do
         local slot = Instance.new("Frame")
         slot.BackgroundTransparency = 1
-        slot.Position = UDim2.fromScale(0.04 + (index - 1) * 0.31, 0.62)
-        slot.Size = UDim2.fromScale(0.30, 0.35)
+        slot.Position = UDim2.fromScale(0.04 + (index - 1) * 0.31, 0.66)
+        slot.Size = UDim2.fromScale(0.30, 0.31)
         slot.Parent = detailsPanel
         local image = Instance.new("ImageLabel")
         image.BackgroundTransparency = 1
@@ -258,7 +259,7 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
         beat.TextColor3 = Style.White
         beat.Text = table.concat(modifiers, "  •  ")
         pop(1.19)
-        task.wait(2.8)
+        task.wait(3.4)
         if active == gui and gui.Parent then
             local exit = TweenService:Create(panel, TweenInfo.new(0.2), { Position = UDim2.fromScale(0.5, -0.55) })
             exit:Play()
