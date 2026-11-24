@@ -56,6 +56,7 @@ local function refresh()
         and humanoid ~= nil
         and humanoid.Health > 0
         and not Banner.IsGlobalActive()
+        and (not gui or not gui:FindFirstChild("SmoothieReveal"))
     if not visible or not gui then
         if surface then
             surface.Hide() -- Priority is synchronous: never overlap even during exit.
