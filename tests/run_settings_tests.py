@@ -3,10 +3,14 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from framewisp_export import load_prepared_export
 
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root))
+from tools.prepare_framewisp_ui import semantic
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--luau", default="luau")
 args = parser.parse_args()
@@ -28,7 +32,9 @@ def visit(item, parent):
     nodes.append([index, parent, item.attrib["class"], item.findtext("./Properties/string[@name='Name']"),
                   geometry("UDim2", "Position", ("XS", "XO", "YS", "YO")),
                   geometry("UDim2", "Size", ("XS", "XO", "YS", "YO")),
-                  geometry("Vector2", "AnchorPoint", ("X", "Y"))])
+                  geometry("Vector2", "AnchorPoint", ("X", "Y")),
+                  item.findtext("./Properties/string[@name='Text']", ""),
+                  semantic(item, "FigmaNodeId") or ""])
     for child in item.findall("Item"):
         visit(child, index)
 

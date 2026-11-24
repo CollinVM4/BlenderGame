@@ -56,10 +56,14 @@ local registry = loadModule("UIRegistry")
 check(registry.PanelId(panel) == "Shop", "export Shop matches actual panel registry")
 local w, i, c = wings.Resolve(panel), ice.Resolve(panel), cash.Resolve(panel)
 setup(w and i and c, "all three authored cards resolve")
-check(
-    w.Buy.Parent.Name == "Angel WingsContent" and i.Buy.Parent.Name == "Ice GunContent",
-    "pass buttons bind through exact authored Content layers"
-)
+for name, button in { ["Angel Wings"] = w.Buy, ["Ice Gun"] = i.Buy, ["2x Cash"] = c.Buy10 } do
+    local content = button.Parent
+    check(
+        content:IsA("CanvasGroup")
+            and (content.Name == name or (content.Name == name .. "Content" and content.Parent.Name == name)),
+        "button binds inside its own authored card: " .. name
+    )
+end
 check(c.Buy10.Name == "Buy10" and c.Buy30.Name == "Buy30", "cash durations resolve distinct authored controls")
 -- An ambiguous authored control must never bind an arbitrary sibling.
 local duplicate = instance("TextButton")

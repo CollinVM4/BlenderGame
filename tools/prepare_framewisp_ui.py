@@ -58,8 +58,8 @@ def remove_legacy_hotbar(text, tree):
     return text
 
 
-def semantic(item):
-    """Read BlenderUI without changing Roblox's serialized attributes.
+def semantic(item, attribute="BlenderUI"):
+    """Read an attribute without changing Roblox's serialized attributes.
 
     Attribute encoding follows rojo-rbx/rbx-dom rbx_types/src/attributes.
     Unknown/malformed encodings fail closed instead of falling back to names.
@@ -92,7 +92,7 @@ def semantic(item):
         kind = take(1)[0]
         if kind == 2:
             value = string()
-            if key == "BlenderUI":
+            if key == attribute:
                 result = value.decode("utf-8")
         elif kind in fixed:
             take(fixed[kind])

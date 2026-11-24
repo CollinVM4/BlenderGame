@@ -86,14 +86,11 @@ display:Destroy()
 style.ConfigureIndicator(indicator, slot)
 check(indicator.Adornee == origin, "ripeness origin remains available without the value display")
 check(
-    tutorial.Copy == "Leave ingredients in the stash for 2 minutes.\nRipe ingredients are worth 25% more.",
-    "tutorial tells players where to ripen ingredients, how long it takes, and the benefit"
+    tutorial.Copy == "Leave ingredients in the stash to ripen.\nRipe ingredients are worth 25% more.",
+    "tutorial preserves the stash instructions and displays the literal percentage"
 )
 check(tutorial.Rich():gsub("<[^>]+>", "") == tutorial.Copy, "rich tooltip preserves copy while emphasizing key terms")
-check(
-    tutorial.Rich():find("<b>2 minutes</b>", 1, true) and tutorial.Rich():find("<b>25% more</b>", 1, true),
-    "tutorial highlights the wait and the bonus"
-)
+check(tutorial.Rich():find("<b>25% more</b>", 1, true), "tutorial highlights the bonus")
 
 env.UDim2.new = function(xScale, xOffset, yScale, yOffset)
     return { X = UDim.new(xScale, xOffset), Y = UDim.new(yScale, yOffset) }

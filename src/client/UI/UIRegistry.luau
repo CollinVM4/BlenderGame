@@ -31,6 +31,19 @@ function Registry.Child(parent: Instance?, role: string, names: { string }, clas
     return found
 end
 
+function Registry.ShopCardContent(panel: Instance, role: string, name: string): Instance?
+    local scroll = Registry.Child(panel, role .. ":Scroll", { "ShopScroll" }, "GuiObject")
+    local list = Registry.Child(scroll, role .. ":List", { "ShopList" }, "GuiObject")
+    local card = Registry.Child(list, role .. ":Card", { name }, "GuiObject")
+    if card and card:IsA("CanvasGroup") then
+        return card -- Framewisp can flatten the card and its content into one CanvasGroup.
+    end
+    if card and card:IsA("Frame") then
+        return Registry.Child(card, role .. ":Content", { name .. "Content" }, "CanvasGroup")
+    end
+    return nil
+end
+
 local function isDesktop(instance: Instance): boolean
     return Registry.Matches(instance, "Desktop", { "Be a Blender! Desktop" })
         and (instance:IsA("GuiObject") or instance:IsA("ScreenGui"))

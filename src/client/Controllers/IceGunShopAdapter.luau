@@ -71,10 +71,7 @@ function Adapter.RequestEquip()
 end
 
 function Adapter.Resolve(panel: Instance): { Buy: GuiButton }?
-    local scroll = Registry.Child(panel, "IceGun:Scroll", { "ShopScroll" }, "GuiObject")
-    local list = Registry.Child(scroll, "IceGun:List", { "ShopList" }, "GuiObject")
-    local card = Registry.Child(list, "IceGun:Card", { "Ice Gun" }, "Frame")
-    local content = Registry.Child(card, "IceGun:Content", { "Ice GunContent" }, "CanvasGroup")
+    local content = Registry.ShopCardContent(panel, "IceGun", "Ice Gun")
     local buy = Registry.Child(content, "IceGun:Buy", { "Buy" }, "GuiButton")
     if not buy then
         return nil
@@ -96,7 +93,7 @@ function Adapter.Init()
         if not view then
             if not warned then
                 warned = true
-                warn("[IceGun] Authored Shop card/Buy/price missing or ambiguous.")
+                warn("[IceGun] Could not bind the authored Shop card and Buy button.")
             end
             return
         end
