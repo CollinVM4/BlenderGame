@@ -102,30 +102,46 @@ function Presentation.Create(
         table.insert(connections, player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(refreshDrawDistance))
         refreshDrawDistance()
     end
+    local track: Frame? = nil
     local fill: Frame? = nil
     local fillTween: Tween? = nil
     if prompt.Name == "DispensePrompt" and (prompt.HoldDuration or 0) > 0 then
+        text.Size = UDim2.fromScale(1, 0.76)
         local bar = Instance.new("Frame")
         bar.Name = "HoldProgress"
         bar.AnchorPoint = Vector2.new(0.5, 1)
-        bar.Position = UDim2.fromScale(0.5, 1.14)
-        bar.Size = UDim2.fromScale(0.52, 0.09)
+        bar.Position = UDim2.fromScale(0.5, 0.98)
+        bar.Size = UDim2.fromScale(0.64, 0.19)
         bar.BackgroundColor3 = TextStyle.Dark
+        bar.BackgroundTransparency = 0.3
         bar.BorderSizePixel = 0
         bar.Parent = gui
+        local outline = Instance.new("UIStroke")
+        outline.Color = TextStyle.White
+        outline.Transparency = 0.55
+        outline.Parent = bar
         local progress = Instance.new("Frame")
+        progress.Name = "Fill"
         progress.BackgroundColor3 = TextStyle.Gold
         progress.BorderSizePixel = 0
         progress.Size = UDim2.fromScale(0, 1)
         progress.Parent = bar
-        fill = progress
+        local foam = Instance.new("Frame")
+        foam.Name = "Foam"
+        foam.BackgroundColor3 = TextStyle.White
+        foam.BackgroundTransparency = 0.22
+        foam.BorderSizePixel = 0
+        foam.Size = UDim2.fromScale(1, 0.22)
+        foam.Parent = progress
+        track, fill = bar, progress
     end
     local holding = false
+    local triggered = false
     local function refresh()
         local key = config.KeyText
         if not key then
             if inputType == Enum.ProximityPromptInputType.Touch then
-                key = if fill then "TOUCH" else "TAP"
+                key = "TAP"
             elseif inputType == Enum.ProximityPromptInputType.Gamepad then
                 key = prompt.GamepadKeyCode.Name
             else
@@ -142,9 +158,13 @@ function Presentation.Create(
             config.ActionText or prompt.ActionText
         )
         if fill then
-            text.Text = if inputType == Enum.ProximityPromptInputType.Touch
-                then "HOLD TO DISPENSE"
-                else string.format("HOLD [%s] TO DISPENSE", key or "")
+            text.Text = if triggered
+                then "POURING!"
+                elseif holding then "FILLING CUP..."
+                elseif inputType == Enum.ProximityPromptInputType.Touch then "HOLD TO POUR"
+                else string.format("HOLD [%s] TO POUR", key or "")
+            text.TextColor3 = if holding or triggered then TextStyle.Gold else TextStyle.White
+            text.TextTransparency = 0
         end
         if config.FormatText then
             text.Text = config.FormatText(key or "", holding)
@@ -156,38 +176,58 @@ function Presentation.Create(
     for _, property in { "ActionText", "KeyboardKeyCode", "GamepadKeyCode" } do
         table.insert(connections, prompt:GetPropertyChangedSignal(property):Connect(refresh))
     end
-    table.insert(
-        connections,
-        prompt.PromptButtonHoldBegan:Connect(function()
-            holding = true
-            if fill then
+    local function startHold()
+        if holding then
+            return
+        end
+        holding, triggered = true, false
+        if fill and track then
+            track.BackgroundTransparency = 0.05
+            fill.Size = UDim2.fromScale(0.06, 1)
+            fill.BackgroundColor3 = Color3.fromRGB(255, 155, 81)
+            local tween = TweenService:Create(fill, TweenInfo.new(prompt.HoldDuration, Enum.EasingStyle.Linear), {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundColor3 = TextStyle.Gold,
+            })
+            fillTween = tween
+            tween:Play()
+        end
+        refresh()
+    end
+    local function stopHold()
+        holding, triggered = false, false
+        if fillTween then
+            fillTween:Cancel()
+            fillTween = nil
+        end
+        if fill and track then
+            fill.Size = UDim2.fromScale(0, 1)
+            track.BackgroundTransparency = 0.3
+        end
+        refresh()
+    end
+    table.insert(connections, prompt.PromptButtonHoldBegan:Connect(startHold))
+    table.insert(connections, prompt.PromptButtonHoldEnded:Connect(stopHold))
+    if fill then
+        table.insert(
+            connections,
+            prompt.Triggered:Connect(function()
+                if not holding then
+                    return
+                end
+                triggered = true
                 if fillTween then
                     fillTween:Cancel()
+                    fillTween = nil
                 end
-                fill.Size = UDim2.fromScale(0, 1)
-                local tween = TweenService:Create(fill, TweenInfo.new(prompt.HoldDuration, Enum.EasingStyle.Linear), {
-                    Size = UDim2.fromScale(1, 1),
-                })
-                fillTween = tween
-                tween:Play()
-            end
-            refresh()
-        end)
-    )
-    table.insert(
-        connections,
-        prompt.PromptButtonHoldEnded:Connect(function()
-            holding = false
-            if fillTween then
-                fillTween:Cancel()
-                fillTween = nil
-            end
-            if fill then
-                fill.Size = UDim2.fromScale(0, 1)
-            end
-            refresh()
-        end)
-    )
+                if fill then
+                    fill.Size = UDim2.fromScale(1, 1)
+                    fill.BackgroundColor3 = TextStyle.Green
+                end
+                refresh()
+            end)
+        )
+    end
     local activeInput: InputObject? = nil
     local alive = true
     local function release()
@@ -195,6 +235,9 @@ function Presentation.Create(
             activeInput = nil
             if paddedTouch then
                 text.TextTransparency = 0
+            end
+            if fill then
+                stopHold()
             end
             if prompt.Parent then
                 prompt:InputHoldEnd()
@@ -222,7 +265,9 @@ function Presentation.Create(
         end
         activeInput = input
         -- Immediate, display-only feedback. Inventory still waits for the server.
-        if paddedTouch then
+        if fill then
+            startHold()
+        elseif paddedTouch then
             text.TextTransparency = 0.25
         end
         if paddedTouch then
@@ -325,7 +370,15 @@ function Presentation.Create(
             end)
         )
     end
-    table.insert(connections, UserInputService.WindowFocusReleased:Connect(release))
+    table.insert(
+        connections,
+        UserInputService.WindowFocusReleased:Connect(function()
+            release()
+            if fill and (holding or triggered) then
+                stopHold()
+            end
+        end)
+    )
     refresh()
     return function()
         alive = false

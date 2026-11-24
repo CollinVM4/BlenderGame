@@ -1,6 +1,6 @@
 local distanceChecks = count
-local pops = {}
-env.Enum.EasingStyle = { Quad = "Quad" }
+local pops, hops = {}, {}
+env.Enum.EasingStyle = { Quad = "Quad", Back = "Back" }
 env.Enum.EasingDirection = { Out = "Out" }
 env.TweenInfo = {
     new = function(...)
@@ -11,8 +11,12 @@ services.TweenService = {
     Create = function(_, object, info, goal)
         local tween = { Object = object, Info = info, Goal = goal }
         function tween:Play()
-            object.Scale = goal.Scale
-            table.insert(pops, self)
+            if goal.Scale then
+                object.Scale = goal.Scale
+                table.insert(pops, self)
+            else
+                table.insert(hops, self)
+            end
         end
         function tween:Cancel()
             self.Cancelled = true
@@ -108,14 +112,22 @@ check(
 )
 counter.Label.Text = "1 / 3"
 counter.TextChanged:Fire()
-check(#pops == 1 and pops[1].Goal.Scale == 1.06, "an accepted ingredient gets a small count pop")
+check(#pops == 1 and pops[1].Goal.Scale == 1.09, "an accepted ingredient gets a small count pop")
+check(
+    #hops == 1 and counter.Label.Position.Y.Scale < 0.5 and counter.Label.Rotation ~= 0,
+    "ingredient entry hops and tilts off the authored center"
+)
 counter.Label.Text = "0 / 3"
 counter.TextChanged:Fire()
+check(
+    hops[1].Cancelled and counter.Label.Position.Y.Scale == 0.5 and counter.Label.Rotation == 0,
+    "reset settles motion"
+)
 table.clear(pops)
 counter.Label.Text = "3 / 3\nLOADING COMPLETE!"
 counter.TextChanged:Fire()
 check(
-    #pops == 1 and pops[1].Goal.Scale == 1.1 and pops[1].Info[1] == 0.12 and pops[1].Info[5],
+    #pops == 1 and pops[1].Goal.Scale == 1.16 and pops[1].Info[1] == 0.12 and pops[1].Info[5],
     "reaching capacity makes one short reversing pop"
 )
 counter.TextChanged:Fire()

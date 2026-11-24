@@ -48,8 +48,6 @@ for _, refs in labels do
     refs.PromptGui = refs.PromptOrigin:FindFirstChild("TurbineStatusDisplay")
     refs.Count = refs.CountGui:FindFirstChild("Status")
     refs.Prompt = refs.PromptGui:FindFirstChild("Status")
-    refs.Color = refs.CountGui:FindFirstChild("ColorCombo")
-    refs.Identical = refs.CountGui:FindFirstChild("IdenticalCombo")
     check(refs.CountGui.Adornee == refs.CountOrigin, "Attachment is the adornee")
     check(refs.CountGui.AlwaysOnTop and refs.CountGui.MaxDistance == 40, "explicit plot read distance")
     check(
@@ -79,31 +77,6 @@ check(labels[1].Count.Text == "2 / 3", "rejection preserves displayed count")
 check(labels[2].Prompt.Text == "LOAD INGREDIENTS TO BLEND!", "rejection is plot-local")
 owner:SetAttribute("BlendNeedsItems", false)
 check(labels[1].Prompt.Text == "LOAD INGREDIENTS TO BLEND!", "expiry restores loading prompt")
-local preview = labels[1]
-owner:SetAttribute("BlendComboColor", "Blue")
-owner:SetAttribute("BlendComboIngredient", "Blueberry")
-check(preview.Count.Text == "2 / 3", "combo keeps the main count readable")
-check(
-    preview.Color.Visible
-        and preview.Color.Text == "BLUE ×2"
-        and preview.Identical.Visible
-        and preview.Identical.Text == "BLUEBERRY ×2",
-    "live color and matching ingredient previews share the existing count display"
-)
-check(not labels[2].Color.Visible and not labels[2].Identical.Visible, "combos never carry across plots")
-owner:SetAttribute("BlendComboIngredient", nil)
-publish("READY", 3)
-check(
-    preview.Count.Text == "3 / 3" and preview.Color.Text == "BLUE ×3 READY" and not preview.Identical.Visible,
-    "earned color remains visible when the third unit breaks the identical match"
-)
-publish("BLENDING", 3)
-check(preview.Color.Text == "BLUE ×3", "blending keeps the earned combo without loading guidance")
-publish("DISPENSED", 3)
-check(not preview.Color.Visible and not preview.Identical.Visible, "dispense hides the finished preview")
-publish("EMPTY", 0)
-owner:SetAttribute("BlendComboColor", nil)
-publish("LOADING", 2)
 owner:SetAttribute("BlendNeedsItems", true)
 publish("READY", 3)
 check(labels[1].Count.Text == "3 / 3\nLOADING COMPLETE!", "full count has explicit loading completion")

@@ -4,7 +4,6 @@ local HttpService = game:GetService("HttpService")
 local Economy = require(Shared.Constants.Economy)
 local Types = require(Shared.Types)
 local Item = require(Shared.IngredientItem)
-local Summary = require(Shared.SmoothieSummary)
 local WorldUtil = require(script.Parent.WorldUtil)
 local Film = require(script.Parent.FilmingUtil)
 local SmoothieItem = require(script.Parent.SmoothieItem)
@@ -46,8 +45,6 @@ end
 type Batch = {
     IngredientItems: { Types.IngredientItem },
     NotificationToken: number,
-    ComboColor: string?,
-    ComboIngredient: string?,
     State: Types.BlendState,
     Ingredients: { string },
     Progress: number,
@@ -92,8 +89,6 @@ local function publish(player: Player)
         member:SetAttribute("BlendColor", if batch.Result then batch.Result.Color else batchColor(batch.Ingredients))
         member:SetAttribute("BlendState", batch.State)
         member:SetAttribute("BlendProgress", batch.Progress)
-        member:SetAttribute("BlendComboColor", batch.ComboColor)
-        member:SetAttribute("BlendComboIngredient", batch.ComboIngredient)
         member:SetAttribute("BlendIngredientCount", #batch.Ingredients)
         member:SetAttribute(
             "BlendNeedsItems",
@@ -209,7 +204,6 @@ function BlendService.TryInput(player: Player, object: Instance, input: BasePart
     end
     table.insert(batch.Ingredients, id)
     table.insert(batch.IngredientItems, record.Item)
-    batch.ComboColor, batch.ComboIngredient = Summary.GetCombos(batch.Ingredients)
     Film.Log("Blend", string.format("%s accepted (%d/3)", id, #batch.Ingredients))
     batch.State = if #batch.Ingredients == Economy.MaxIngredients then "READY" else "LOADING"
     publish(player)
@@ -425,8 +419,6 @@ function BlendService.RemovePlayer(player: Player)
     player:SetAttribute("BlendState", "EMPTY")
     player:SetAttribute("BlendProgress", 0)
     player:SetAttribute("BlendIngredientCount", 0)
-    player:SetAttribute("BlendComboColor", nil)
-    player:SetAttribute("BlendComboIngredient", nil)
     player:SetAttribute("BlendColor", nil)
     player:SetAttribute("BlendNeedsItems", false)
 end

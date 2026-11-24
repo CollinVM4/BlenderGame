@@ -51,6 +51,19 @@ function Controller.Init()
                 scale.Scale = 1
                 scale.Parent = object
                 local tween: Tween? = nil
+                local settle: Tween? = nil
+                local rest = object.Position
+                local function resetMotion()
+                    if tween then
+                        tween:Cancel()
+                    end
+                    if settle then
+                        settle:Cancel()
+                    end
+                    scale.Scale = 1
+                    object.Position = rest
+                    object.Rotation = 0
+                end
                 local function readCount(): (number, number)
                     local loaded, required = string.match(object.Text, "^(%d+)%s*/%s*(%d+)")
                     return tonumber(loaded) or 0, tonumber(required) or math.huge
@@ -61,16 +74,22 @@ function Controller.Init()
                     if loaded == previousCount then
                         return
                     end
-                    if tween then
-                        tween:Cancel()
-                        tween = nil
-                    end
-                    scale.Scale = 1
+                    resetMotion()
                     if loaded > previousCount then
+                        local full = loaded >= required
+                        object.Position = UDim2.fromScale(0.5, if full then 0.40 else 0.44)
+                        object.Rotation = if loaded % 2 == 0 then 6 else -6
+                        local spring = TweenService:Create(
+                            object,
+                            TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                            { Position = rest, Rotation = 0 }
+                        )
+                        settle = spring
+                        spring:Play()
                         local pop = TweenService:Create(
                             scale,
                             TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true),
-                            { Scale = if loaded >= required then 1.1 else 1.06 }
+                            { Scale = if full then 1.16 else 1.09 }
                         )
                         tween = pop
                         pop:Play()
@@ -79,9 +98,7 @@ function Controller.Init()
                 end)
                 cleanups[object] = function()
                     changed:Disconnect()
-                    if tween then
-                        tween:Cancel()
-                    end
+                    resetMotion()
                     scale:Destroy()
                 end
             end

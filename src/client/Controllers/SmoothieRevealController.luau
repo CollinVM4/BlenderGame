@@ -258,7 +258,7 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
         beat.TextColor3 = Style.White
         beat.Text = table.concat(modifiers, "  •  ")
         pop(1.19)
-        task.wait(1.45)
+        task.wait(2.8)
         if active == gui and gui.Parent then
             local exit = TweenService:Create(panel, TweenInfo.new(0.2), { Position = UDim2.fromScale(0.5, -0.55) })
             exit:Play()

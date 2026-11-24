@@ -12,14 +12,12 @@ args = parser.parse_args()
 sources = {
     "WorldBillboardStyle": (ROOT / "src/shared/WorldBillboardStyle.luau").read_text(),
     "DialogueTextStyle": (ROOT / "src/shared/Constants/DialogueTextStyle.luau").read_text(),
-    "Ingredients": (ROOT / "src/shared/Constants/Ingredients.luau").read_text(),
-    "SmoothieComboStyle": (ROOT / "src/shared/Constants/SmoothieComboStyle.luau").read_text(),
     "Economy": (ROOT / "src/shared/Constants/Economy.luau").read_text(),
     "BlenderStatusPresentation": (ROOT / "src/server/Components/BlenderStatusPresentation.luau").read_text(),
     "BlenderStatusDistanceController": (ROOT / "src/client/Controllers/BlenderStatusDistanceController.luau").read_text(),
 }
 bundle = "local sources = {\n" + "\n".join(
-    f"[{json.dumps(name)}] = {json.dumps(source, ensure_ascii=False)}," for name, source in sources.items()
+    f"[{json.dumps(name)}] = {json.dumps(source)}," for name, source in sources.items()
 ) + "\n}\n"
 bundle += (ROOT / "tests/fixtures/roblox.luau").read_text()
 bundle += (ROOT / "tests/blender_status.spec.luau").read_text()

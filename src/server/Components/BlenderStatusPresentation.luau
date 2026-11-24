@@ -1,11 +1,8 @@
 --!strict
-local Shared = game:GetService("ReplicatedStorage").Shared
-local BillboardStyle = require(Shared.WorldBillboardStyle)
+local BillboardStyle = require(game:GetService("ReplicatedStorage").Shared.WorldBillboardStyle)
 local Players = game:GetService("Players")
-local Economy = require(Shared.Constants.Economy)
-local Ingredients = require(Shared.Constants.Ingredients)
-local TextStyle = require(Shared.Constants.DialogueTextStyle)
-local ComboStyle = require(Shared.Constants.SmoothieComboStyle)
+local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
+local TextStyle = require(game:GetService("ReplicatedStorage").Shared.Constants.DialogueTextStyle)
 local WorldUtil = require(script.Parent.Parent.Services.WorldUtil)
 local BlenderStatusPresentation = {}
 
@@ -68,19 +65,6 @@ local function billboard(marker: Instance, name: string, size: Vector2, offset: 
     return gui, text
 end
 
-local function comboLabel(gui: BillboardGui, name: string): TextLabel
-    local label = Instance.new("TextLabel")
-    label.Name = name
-    label.Size = UDim2.fromScale(1.3, 0.4)
-    label.AnchorPoint = Vector2.new(0.5, 0)
-    label.BackgroundTransparency = 1
-    label.Visible = false
-    TextStyle.Apply(label, TEXT_SIZE, gui)
-    label.TextScaled = true
-    label.Parent = gui
-    return label
-end
-
 function BlenderStatusPresentation.Init(services: any)
     WorldUtil.BindTag("PlayerPlot", function(plot)
         local blender = if plot.Name == "Blender" then plot else plot:FindFirstChild("Blender")
@@ -88,16 +72,12 @@ function BlenderStatusPresentation.Init(services: any)
         local promptOrigin = origin(plot, "TurbinePromptOrigin")
         local guis: { BillboardGui } = {}
         local countText: TextLabel? = nil
-        local colorText: TextLabel? = nil
-        local identicalText: TextLabel? = nil
         local promptText: TextLabel? = nil
         local promptGui: BillboardGui? = nil
         if countOrigin then
             local gui, text = billboard(countOrigin, "IngredientCountDisplay", COUNT_SIZE, COUNT_OFFSET)
             table.insert(guis, gui)
             countText = text
-            colorText = comboLabel(gui, "ColorCombo")
-            identicalText = comboLabel(gui, "IdenticalCombo")
         end
         if promptOrigin then
             local gui, text = billboard(promptOrigin, "TurbineStatusDisplay", PROMPT_SIZE, PROMPT_OFFSET)
@@ -112,30 +92,10 @@ function BlenderStatusPresentation.Init(services: any)
             local accepted = if owner then owner:GetAttribute("BlendIngredientCount") else 0
             local loaded = if state == "EMPTY" or typeof(accepted) ~= "number" then 0 else accepted :: number
             local full = loaded >= Economy.MaxIngredients
-            if countText and colorText and identicalText then
-                local preview = state ~= "DISPENSED" and loaded >= 2
-                local color = if preview and owner then owner:GetAttribute("BlendComboColor") else nil
-                local id = if preview and owner then owner:GetAttribute("BlendComboIngredient") else nil
-                local colorTint = if typeof(color) == "string" then ComboStyle.Colors[color] else nil
-                local ingredient = if typeof(id) == "string" then Ingredients[id] else nil
-                local hasCombo = colorTint ~= nil or ingredient ~= nil
+            if countText then
                 countText.Text = string.format("%d / %d", loaded, Economy.MaxIngredients)
-                    .. (if full and not hasCombo then "\nLOADING COMPLETE!" else "")
+                    .. (if full then "\nLOADING COMPLETE!" else "")
                 countText.TextColor3 = if full then FULL_COLOR else WHITE
-
-                local suffix = string.format(" ×%d%s", loaded, if full and state == "READY" then " READY" else "")
-                colorText.Visible = colorTint ~= nil
-                if colorTint and typeof(color) == "string" then
-                    colorText.Text = string.upper(color) .. suffix
-                    colorText.TextColor3 = colorTint
-                    colorText.Position = UDim2.fromScale(0.5, 0.94)
-                end
-                identicalText.Visible = ingredient ~= nil
-                if ingredient then
-                    identicalText.Text = string.upper(ingredient.DisplayName or ingredient.Id) .. suffix
-                    identicalText.TextColor3 = ComboStyle.Identical
-                    identicalText.Position = UDim2.fromScale(0.5, if colorTint then 1.34 else 0.94)
-                end
             end
             if promptText then
                 promptText.TextColor3 = if state == "COMPLETE" then FULL_COLOR else WHITE
@@ -171,15 +131,7 @@ function BlenderStatusPresentation.Init(services: any)
             disconnectOwner()
             owner = if plot:GetAttribute("OwnerUserId") ~= nil then services.TycoonService.GetOwner(plot) else nil
             if owner then
-                for _, attribute in
-                    {
-                        "BlendIngredientCount",
-                        "BlendComboColor",
-                        "BlendComboIngredient",
-                        "BlendState",
-                        "BlendNeedsItems",
-                    }
-                do
+                for _, attribute in { "BlendIngredientCount", "BlendState", "BlendNeedsItems" } do
                     table.insert(ownerConnections, owner:GetAttributeChangedSignal(attribute):Connect(refresh))
                 end
             end

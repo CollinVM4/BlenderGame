@@ -5,7 +5,7 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local Geometry = require(Shared.IngredientPreviewGeometry)
 local Style = require(Shared.Constants.DialogueTextStyle)
 
-local Reveal = { Duration = 0.65 }
+local Reveal = { Duration = 0.95 }
 
 function Reveal.Mount(parent: Frame, tint: Color3): Frame?
     local assets = Shared:FindFirstChild("ScrapbookPreviewAssets")
@@ -82,7 +82,7 @@ function Reveal.Mount(parent: Frame, tint: Color3): Frame?
     local tilt = CFrame.Angles(0, 0, math.rad(-24))
     local elapsed = 0
     local function pose()
-        local progress = math.clamp(elapsed / (Reveal.Duration - 0.1), 0, 1)
+        local progress = math.clamp(elapsed / (Reveal.Duration - 0.14), 0, 1)
         local easedTurn = 1 - (1 - progress) ^ 1.4
         model:PivotTo(tilt * CFrame.Angles(0, math.rad(-40 + 360 * easedTurn), 0) * pivot)
         rays.Rotation = -16 + progress * 31
