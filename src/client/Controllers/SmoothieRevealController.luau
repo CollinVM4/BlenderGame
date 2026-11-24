@@ -6,6 +6,7 @@ local Shared = game:GetService("ReplicatedStorage").Shared
 local Summary = require(Shared.SmoothieSummary)
 local Ingredients = require(Shared.Constants.Ingredients)
 local Style = require(Shared.Constants.DialogueTextStyle)
+local ComboStyle = require(Shared.Constants.SmoothieComboStyle)
 local Audio = require(Shared.Constants.GameplayAudio)
 local Money = require(Shared.MoneyFormat)
 local Viewport = require(script.Parent.Parent.UI.IngredientViewport)
@@ -16,14 +17,6 @@ local palette = {
     Ripe = Color3.fromRGB(152, 255, 107),
     Mystery = Color3.fromRGB(235, 144, 255),
     Stolen = Color3.fromRGB(255, 128, 111),
-    Identical = Color3.fromRGB(255, 157, 230),
-}
-local comboColors: { [string]: Color3 } = {
-    Red = Color3.fromRGB(255, 109, 122),
-    Yellow = Color3.fromRGB(255, 226, 100),
-    Green = Color3.fromRGB(146, 255, 136),
-    Blue = Color3.fromRGB(103, 213, 255),
-    Purple = Color3.fromRGB(213, 155, 255),
 }
 
 local function burst(panel: Frame, color: Color3)
@@ -223,14 +216,14 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
                 details.ColorValue,
                 string.upper(comboColor) .. " ×3",
                 0.31,
-                comboColors[comboColor] or Style.White,
+                ComboStyle.Colors[comboColor] or Style.White,
                 true
             )
         end
         local identical = if details.ComboIngredient then Ingredients[details.ComboIngredient] else nil
         if identical then
             local name = string.upper(identical.DisplayName or identical.Id)
-            count(details.IdenticalValue, name .. " ×3", 0.31, palette.Identical, true)
+            count(details.IdenticalValue, name .. " ×3", 0.31, ComboStyle.Identical, true)
         end
         if active ~= gui or not gui.Parent then
             return

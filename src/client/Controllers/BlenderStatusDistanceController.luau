@@ -51,29 +51,31 @@ function Controller.Init()
                 scale.Scale = 1
                 scale.Parent = object
                 local tween: Tween? = nil
-                local function complete(): boolean
+                local function readCount(): (number, number)
                     local loaded, required = string.match(object.Text, "^(%d+)%s*/%s*(%d+)")
-                    return loaded ~= nil and required ~= nil and tonumber(loaded) >= tonumber(required)
+                    return tonumber(loaded) or 0, tonumber(required) or math.huge
                 end
-                local wasComplete = complete()
+                local previousCount = readCount()
                 local changed = object:GetPropertyChangedSignal("Text"):Connect(function()
-                    local full = complete()
-                    if full ~= wasComplete then
-                        if tween then
-                            tween:Cancel()
-                        end
-                        scale.Scale = 1
-                        if full then
-                            local pop = TweenService:Create(
-                                scale,
-                                TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true),
-                                { Scale = 1.1 }
-                            )
-                            tween = pop
-                            pop:Play()
-                        end
+                    local loaded, required = readCount()
+                    if loaded == previousCount then
+                        return
                     end
-                    wasComplete = full
+                    if tween then
+                        tween:Cancel()
+                        tween = nil
+                    end
+                    scale.Scale = 1
+                    if loaded > previousCount then
+                        local pop = TweenService:Create(
+                            scale,
+                            TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true),
+                            { Scale = if loaded >= required then 1.1 else 1.06 }
+                        )
+                        tween = pop
+                        pop:Play()
+                    end
+                    previousCount = loaded
                 end)
                 cleanups[object] = function()
                     changed:Disconnect()

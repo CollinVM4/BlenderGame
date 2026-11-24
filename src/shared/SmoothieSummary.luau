@@ -38,21 +38,43 @@ export type Details = {
     Value: number,
 }
 
-function Summary.GetBonuses(batch: Batch): Bonuses
-    local config = Economy.SmoothieBonuses
-    local color, identical
-    local ids = batch.Ingredients
-    if #ids == Economy.MaxIngredients then
-        local first, second, third = Ingredients[ids[1]], Ingredients[ids[2]], Ingredients[ids[3]]
-        for _, tag in first.Tags do
-            if colorTags[tag] and table.find(second.Tags, tag) and table.find(third.Tags, tag) then
-                color = tag
+-- The live counter uses the same match as the final bonus, starting at two accepted ingredients.
+function Summary.GetCombos(ids: { string }): (string?, string?)
+    if #ids < 2 or #ids > Economy.MaxIngredients then
+        return nil, nil
+    end
+    local first = Ingredients[ids[1]]
+    local color: string? = nil
+    for _, tag in first.Tags do
+        if not colorTags[tag] then
+            continue
+        end
+        local shared = true
+        for index = 2, #ids do
+            if not table.find(Ingredients[ids[index]].Tags, tag) then
+                shared = false
                 break
             end
         end
-        if first.Id == second.Id and first.Id == third.Id then
-            identical = first.Id
+        if shared then
+            color = tag
+            break
         end
+    end
+    for index = 2, #ids do
+        if Ingredients[ids[index]].Id ~= first.Id then
+            return color, nil
+        end
+    end
+    return color, first.Id
+end
+
+function Summary.GetBonuses(batch: Batch): Bonuses
+    local config = Economy.SmoothieBonuses
+    local ids = batch.Ingredients
+    local color, identical
+    if #ids == Economy.MaxIngredients then
+        color, identical = Summary.GetCombos(ids)
     end
 
     local bonuses: Bonuses = {

@@ -106,6 +106,12 @@ check(
     #counter.Label:GetChildren() == 1 and counter.Gui.MaxDistance == 40,
     "stream-in and repeated registration retain a single presentation scale"
 )
+counter.Label.Text = "1 / 3"
+counter.TextChanged:Fire()
+check(#pops == 1 and pops[1].Goal.Scale == 1.06, "an accepted ingredient gets a small count pop")
+counter.Label.Text = "0 / 3"
+counter.TextChanged:Fire()
+table.clear(pops)
 counter.Label.Text = "3 / 3\nLOADING COMPLETE!"
 counter.TextChanged:Fire()
 check(

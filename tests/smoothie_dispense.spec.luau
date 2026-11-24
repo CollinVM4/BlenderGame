@@ -102,3 +102,34 @@ do
     check(bonuses.StolenValue == 250 and bonuses.StolenCount == 1, "theft applies only to marked units, at base value")
     check(bonuses.Value == 10250, "ripeness and earned bonuses add to the finished blend value")
 end
+
+do
+    local p = player()
+    local input = references[p].BlenderInput
+    local function add(id)
+        local object = ingredients.Spawn(id, frame(), p, true)
+        input.Overlaps = { object }
+        setup(blend.TryInput(p, object, input), "load preview ingredient")
+    end
+    add("Blueberry")
+    check(p:GetAttribute("BlendComboColor") == nil, "one ingredient does not show a combo")
+    add("Blueberry")
+    check(
+        p:GetAttribute("BlendComboColor") == "Blue" and p:GetAttribute("BlendComboIngredient") == "Blueberry",
+        "two accepted ingredients preview both combos"
+    )
+    add("Ice")
+    check(
+        p:GetAttribute("BlendComboColor") == "Blue" and p:GetAttribute("BlendComboIngredient") == nil,
+        "third ingredient keeps only the matching color"
+    )
+    blend.Reset(p)
+    check(p:GetAttribute("BlendComboColor") == nil, "batch reset clears the last combo")
+    add("Ice")
+    add("Ice")
+    add("Apple")
+    check(
+        p:GetAttribute("BlendComboColor") == nil and p:GetAttribute("BlendComboIngredient") == nil,
+        "an off-color third ingredient clears both previews"
+    )
+end
