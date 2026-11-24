@@ -3,7 +3,6 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Marketplace = game:GetService("MarketplaceService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
-local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local Eligibility = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmEligibility)
 local WorldUtil = require(script.Parent.WorldUtil)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
@@ -84,8 +83,6 @@ local function setState(row: any, state: string)
         row.Object:SetAttribute("FarmGrowEnd", nil)
     end
     row.Object:SetAttribute("FarmState", state)
-    -- Ready crops still use the ordinary pickup keys.
-    row.Prompt.KeyboardKeyCode = if state == "READY" then Enum.KeyCode.R else Enum.KeyCode.E
     row.Prompt.GamepadKeyCode = if state == "READY" then Enum.KeyCode.ButtonY else Enum.KeyCode.ButtonX
     row.Prompt.Enabled = state == "EMPTY"
 end
@@ -371,7 +368,7 @@ local function plant(farm: any, row: any, player: Player)
     if not id or not definition or not Eligibility.CanPlant(definition) then
         return
     end
-    local duration = Economy.RefillSeconds[definition.JumpLocation] * #row.Grow / farm.Multiplier
+    local duration = Config.GrowSecondsByJumpLocation[definition.JumpLocation] / farm.Multiplier
     local token = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
     if not token then
         return
@@ -547,6 +544,7 @@ local function bind(plot: Instance): (() -> ())?
         end
         local prompt = Instance.new("ProximityPrompt")
         prompt.Name, prompt.ActionText, prompt.ObjectText = "FarmPlantPrompt", "Plant ingredient", "Farm row " .. index
+        prompt.KeyboardKeyCode = Enum.KeyCode.E
         prompt.MaxActivationDistance, prompt.RequiresLineOfSight = Config.PlantDistance, false
         prompt.Style = Enum.ProximityPromptStyle.Custom
         prompt.Parent = row.Plant

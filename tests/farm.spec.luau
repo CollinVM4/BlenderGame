@@ -39,6 +39,11 @@ check(
     not rows[1].Pad.CanTouch and rows[2].Pad.CanTouch and rows[1].Dirt.Transparency == 0,
     "purchase reveals row and advances pad"
 )
+local plantPrompt = rows[1].Plant:FindFirstChild("FarmPlantPrompt")
+check(
+    plantPrompt.Enabled and plantPrompt.KeyboardKeyCode == "E" and plantPrompt.GamepadKeyCode == "ButtonX",
+    "empty row offers planting on E or ButtonX"
+)
 for _, motion in motions do
     motion:Finish()
 end
@@ -71,9 +76,9 @@ check(
     state(1) == "GROWING" and inventory.GetCarryCount(owner) == 1 and selected.Destroyed,
     "plant consumes exactly the selected authoritative instance"
 )
-check(timers[#timers].Seconds == 9, "JL0 per-row supply parity")
+check(timers[#timers].Seconds == 30, "JL0 batch grows in 30 seconds")
 check(farm.GetRowSnapshot(plot, 1).IngredientId == "Apple", "farm snapshot reports authoritative planted ingredient")
-check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 9, "client receives synchronized growth deadline")
+check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 30, "client receives synchronized growth deadline")
 check(
     #sounds == 1 and sounds[1].Id == "IngredientPlant" and sounds[1].Position == rows[1].Plant.WorldPosition,
     "plant sound only follows successful consumption"
@@ -141,10 +146,9 @@ table.clear(spawned)
 plantRow(1, owner)
 timers[#timers].Run()
 setup(inventory.CarryWorldItem(peer, spawned[2]), "harvest middle slot only")
-local readyPrompt = rows[1].Plant:FindFirstChild("FarmPlantPrompt")
 check(
-    readyPrompt.Enabled and readyPrompt.KeyboardKeyCode == "R" and readyPrompt.GamepadKeyCode == "ButtonY",
-    "ready row exposes planting separately from ordinary ingredient pickup"
+    plantPrompt.Enabled and plantPrompt.KeyboardKeyCode == "E" and plantPrompt.GamepadKeyCode == "ButtonY",
+    "ready row offers replanting on E or ButtonY"
 )
 local previousTimers = #timers
 carry(outsider, "Banana")
@@ -233,14 +237,14 @@ local function crops()
 end
 local epoch = now
 ingredients.Init({ AnnouncementService = { Publish = function() end } })
-local commonSeconds = economy.RefillSeconds[0]
-economy.RefillSeconds[0] = 140
+local commonSeconds = config.GrowSecondsByJumpLocation[0]
+config.GrowSecondsByJumpLocation[0] = 420
 carry(owner, "Apple")
 plantRow(1, owner)
 advance(epoch + 360)
 check(state(1) == "GROWING" and #crops() == 0, "growing row survives six-minute sweep before products exist")
 advance(epoch + 420)
-economy.RefillSeconds[0] = commonSeconds
+config.GrowSecondsByJumpLocation[0] = commonSeconds
 carry(owner, "Banana")
 plantRow(2, owner)
 carry(owner, "Strawberry")
@@ -325,29 +329,24 @@ check(
     "secret planting preserves item and row"
 )
 inventory.ClearHeld(owner)
-carry(owner, "Blueberry")
-plantRow(1, owner)
-check(state(1) == "GROWING" and timers[#timers].Seconds == 9, "ordinary JL0 Blueberry plants normally")
-timers[#timers].Run()
-for _, object in crops() do
-    object:Destroy()
-end
-carry(owner, "Melon")
-plantRow(1, owner)
-check(state(1) == "GROWING" and timers[#timers].Seconds == 270, "JL3 Melon grows in 270 seconds")
-timers[#timers].Run()
-for _, object in crops() do
-    object:Destroy()
+for id, seconds in { Blueberry = 30, Pear = 60, Crab = 120, Melon = 270 } do
+    carry(owner, id)
+    plantRow(1, owner)
+    check(state(1) == "GROWING" and timers[#timers].Seconds == seconds, id .. " grows in " .. seconds .. " seconds")
+    timers[#timers].Run()
+    for _, object in crops() do
+        object:Destroy()
+    end
 end
 local definition = ingredients.GetDefinition("Apple")
 local originalRarity = definition.Rarity
 for _, mode in { "omitted", "true" } do
     definition.Farmable = if mode == "true" then true else nil
-    for rarity, seconds in { Uncommon = 9, Rare = 9, Mystery = 9, Unknown = 9 } do
+    for _, rarity in { "Uncommon", "Rare", "Mystery", "Unknown" } do
         definition.Rarity = rarity
         carry(owner, "Apple")
         plantRow(1, owner)
-        check(timers[#timers].Seconds == seconds, rarity .. " cannot alter tier-based duration")
+        check(timers[#timers].Seconds == 30, rarity .. " cannot alter tier-based duration")
         timers[#timers].Run()
         for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
             if ingredients.GetRecord(object) then

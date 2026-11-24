@@ -2,8 +2,8 @@
 local function touch(index, member)
     rows[index].Pad.Touched:Fire(member.Character:FindFirstChild("HumanoidRootPart"))
 end
-local function plantRow(index, member)
-    carry(member, "Apple")
+local function plantRow(index, member, id)
+    carry(member, id or "Apple")
     rows[index].Plant:FindFirstChild("FarmPlantPrompt").Triggered:Fire(member)
 end
 local function deadline(index)
@@ -19,7 +19,7 @@ flush()
 tycoon.SetCash(owner, 1000000)
 touch(1, peer)
 plantRow(1, owner)
-check(deadline(1) == now + 9, "absent optional pad leaves regular farming playable")
+check(deadline(1) == now + 30, "absent optional pad leaves regular farming playable")
 detach()
 
 local pad = part("FarmSpeedRobux", folder)
@@ -61,12 +61,10 @@ prompt.Triggered:Fire(owner)
 promptFailure = false
 check(prompt.Enabled, "prompt error releases pending state")
 
-local refill = economy.RefillSeconds[0]
-economy.RefillSeconds[0] = 12
 plantRow(1, owner)
 local obsolete = timers[#timers]
-check(deadline(1) == now + 36, "normal crop duration is 36 seconds")
-now += 12
+check(deadline(1) == now + 30, "normal JL0 crop duration is 30 seconds")
+now += 6
 prompt.Triggered:Fire(peer)
 finish(peer, true)
 local accelerated = timers[#timers]
@@ -88,28 +86,28 @@ obsolete.Run()
 accelerated.Run()
 check(products(1) == 3, "completion and obsolete replays yield exactly one unchanged harvest")
 touch(2, peer)
-plantRow(2, owner)
-check(deadline(2) == now + 18, "rows unlocked later and seeds from either member share boost")
+plantRow(2, owner, "Pear")
+check(deadline(2) == now + 30, "later rows and either member's seeds share the 2x boost on JL1")
 now += 6
 local boostedTimer = timers[#timers]
 tycoon.RemovePlayer(peer)
-check(deadline(2) == now + 24 and prompt.Enabled, "sole holder leaving restores 1x with crop progress intact")
+check(deadline(2) == now + 48 and prompt.Enabled, "sole holder leaving restores 1x with crop progress intact")
 check(products(1) == 3, "ready harvest stays ready on multiplier change")
 boostedTimer.Run()
 check(products(2) == 0, "obsolete fast timer cannot spawn after holder leaves")
 
 -- Ownership follows the buyer into a new membership without a second purchase.
 setup(tycoon.JoinSession(peer, owner, tycoon.GetRequestContext(owner)), "holder rejoins")
-check(deadline(2) == now + 12 and not prompt.Enabled, "returning holder restores shared boost")
+check(deadline(2) == now + 24 and not prompt.Enabled, "returning holder restores shared boost")
 -- Simulate owner reconnect: the next async lookup discovers existing ownership.
 tycoon.RemovePlayer(owner)
 services.Players.PlayerRemoving:Fire(owner)
 passOwners[owner.UserId] = true
 setup(tycoon.JoinSession(owner, peer, tycoon.GetRequestContext(peer)), "second holder rejoins")
 flush()
-check(deadline(2) == now + 12, "two pass holders still get exactly 2x")
+check(deadline(2) == now + 24, "two pass holders still get exactly 2x")
 tycoon.RemovePlayer(peer)
-check(deadline(2) == now + 12, "one of two holders leaving keeps 2x")
+check(deadline(2) == now + 24, "one of two holders leaving keeps 2x")
 tycoon.RemovePlayer(owner)
 check(pad.Transparency == 1 and not prompt.Enabled, "unclaimed plot is hidden and inactive")
 setup(tycoon.AssignPlot(peer, plot), "holder reclaims reset plot")
@@ -120,7 +118,7 @@ check(
 tycoon.SetCash(peer, 20000)
 touch(1, peer)
 plantRow(1, peer)
-check(deadline(1) == now + 18, "reclaimed plot uses new team's entitlement")
+check(deadline(1) == now + 15, "reclaimed plot uses new team's entitlement on JL0")
 local resetTimer = timers[#timers]
 tycoon.RemovePlayer(peer)
 resetTimer.Run()
@@ -135,15 +133,12 @@ touch(1, owner)
 check(not prompt.Enabled and pad.Transparency == 1, "pending ownership hides unlocked purchase point")
 flush()
 check(not prompt.Enabled and pad.Transparency == 1, "failed lookup remains hidden")
+local ownershipRetry = timers[#timers]
+check(ownershipRetry.Seconds == config.OwnershipRetrySeconds, "failed ownership lookup schedules a retry")
 plantRow(1, owner)
-check(deadline(1) == now + 36, "Marketplace outage leaves normal farm growth playable")
+check(deadline(1) == now + 30, "Marketplace outage leaves normal farm growth playable")
 ownershipFailure = false
--- Run only the ownership retry; do not complete the crop.
-for _, timer in table.clone(timers) do
-    if timer.Seconds == config.OwnershipRetrySeconds then
-        timer.Run()
-    end
-end
+ownershipRetry.Run()
 flush()
 check(prompt.Enabled, "ownership retry restores eligible purchase point")
 
@@ -200,5 +195,4 @@ detach = attachFarm(plot)
 check(malformedPart.Transparency == 1 and not malformedPart.CanCollide, "malformed optional assembly stays hidden")
 check(farm.GetRowSnapshot(plot, 1) ~= nil, "malformed pad leaves farm bound")
 detach()
-economy.RefillSeconds[0] = refill
 print("PASS: farm boost")

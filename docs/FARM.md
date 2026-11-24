@@ -1,8 +1,6 @@
-# Farm v1
+# Farm
 
-Timing and supply rules were superseded by the [2026-10-23 economy redesign](ECONOMY_REDESIGN.md). Ordinary pedestal timers now come from Economy.RefillSeconds / SpecialRefillSeconds; farm rows use tier refill times multiplied by yield. Announced spawn timing remains authored.
-
-Each plot session owns three sequential row purchases ($1,000 / $3,000 / $8,000).
+Each plot session owns three sequential row purchases ($20,000 / $55,000 / $110,000).
 `TycoonService` stores their count as the shared `FarmRows` upgrade (tier 1 means
 zero rows), using its existing cash ledger and synchronous transaction lock.
 Only server touch interactions with the plot's purchase pads can purchase rows;
@@ -13,27 +11,53 @@ same authoritative selected/fallback carry record used by throwing, validates
 its live Tool, and consumes exactly one through `InventoryService`. Equipped
 smoothies cannot be planted. Set `Farmable = false` on any entry in
 `src/shared/Constants/Ingredients.luau` to disable planting regardless of rarity.
-`PlayerHead` and `Dragon_Fruit` are opted out. Omitted/true preserves legacy
-eligibility and all server ownership, distance, movement, and row restrictions;
-true does not override another restriction. There is no blanket Mystery rarity
-ban: the existing Dragon Fruit restriction is its definition's opt-out.
+`Dragon_Fruit`, `Gummy_Bear`, `Mystery`, `Player_Head`, and `Rainbow_Trout` are
+opted out. Omitted/true preserves ingredient eligibility. The server also
+checks ownership, distance, movement, and row state. Rarity is independent of
+planting eligibility.
 `src/shared/Constants/FarmEligibility.luau` resolves the definition rule for both
 the farm prompt and authoritative planting. Ineligible selections show
-"Cannot Plant This Item"; server rejection precedes consumption or row mutation,
-including for dynamically created PlayerHead drops. Unknown/missing rarity warns and uses
-Common. `FarmConfig` owns prices, growth durations and reveal/proximity tuning.
+"Cannot Plant This Item". The server rejects these attempts before consuming an
+item or changing row state, including for dynamically created PlayerHead drops.
+`FarmConfig` owns prices and reveal/proximity tuning.
 
-After 30 / 45 / 90 / 180 seconds for Common / Uncommon / Rare / Mystery, the
-normal `IngredientService.Spawn` creates three exact copies at the attachments.
-They remain anchored until pickup and retain normal public pickup and world-item
-expiry behavior (including pickup by opponents). Opponents cannot buy or plant.
-Destroying/removal signals keep a row READY until all products are gone. Failed
-spawns warn; any successful products still block planting until removed.
+On PC, press **E** when the plant prompt is visible to plant or replant. Aim
+toward a crop's pickup prompt and press **E** to harvest it. Replanting ejects
+any remaining crops as loose items. On a controller, use ButtonX on an empty
+row and ButtonY to replant a ready row. On mobile, tap the plant or crop prompt.
+
+`IngredientService.Spawn` creates three copies at the grow attachments. Crops
+stay anchored and exempt from the loose-item sweep while in the row. Anyone
+can harvest them. The last removal empties the row. Opponents cannot buy or
+plant. Failed spawns warn, and each successfully spawned crop is still available.
 
 Membership promotion preserves crops and purchases. Final session release
 invalidates timers, destroys harvests, cancels reveals, restores authored
 transforms and resets the pads. Plot unbinding also cleans up. Timers capture both
 session identity and row generation. No persistence or new remotes are added.
+
+## Grow times
+
+One seed yields three copies. The server looks up the ingredient's
+`JumpLocation` in `FarmConfig.GrowSecondsByJumpLocation` and divides that batch
+duration by the plot's active farm multiplier. All three rows use the same timing.
+
+| JumpLocation | Farmable catalog entries | Examples | 1× growth | 2× growth | Time saved |
+| --- | ---: | --- | ---: | ---: | ---: |
+| 0 | 20 | Apple, Blueberry, Ice | 30s | 15s | 15s |
+| 1 | 11 | Pear, Pineapple, Steak | 60s | 30s | 30s |
+| 2 | 10 | Crab, Fish, Milk | 2m | 1m | 1m |
+| 3 | 7 | Melon, Pizza, Golden Potato | 4m 30s | 2m 15s | 2m 15s |
+
+The table shows server durations. The on-screen countdown rounds remaining
+time up to a whole second. The [shared pass](FARM_SPEED_PASS.md) scales only
+the remaining work when a teammate with the pass joins or leaves. World spawns
+use `Economy.RefillSeconds`, per-ingredient overrides, or authored timers for
+announced spawns.
+
+The boost saves 15s per JL0 batch and 30s per JL1 batch. A boosted JL1 batch
+takes 30s against the configured 25–45s interval between successful normal
+customer spawns.
 
 ## Studio setup
 
@@ -83,8 +107,7 @@ Server planting still resolves its own records independently.
 
 Existing row `FarmState` is supplemented by `FarmGrowEnd` (server time, present
 only while growing). Countdown and 0.4-second ellipsis run locally without remotes.
-Harvests receive `SpawnSource = "Farm"` and `FarmSpawnTime`; their normal models,
-rarity/name labels, public pickup prompts, anchoring and expiry remain unchanged.
+Harvests receive `SpawnSource = "Farm"` and `FarmSpawnTime` for presentation.
 Clients animate fresh harvest pivots up from `HarvestPopDepth` over
 `HarvestPopSeconds` (defaults 0.65 studs / 0.32 seconds, Back/Out), finishing at
 the Grow attachment plus `HarvestVerticalOffset` (default zero, world Y).

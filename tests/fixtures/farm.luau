@@ -2,7 +2,6 @@
 -- Engine signals, authored geometry and elapsed time are controlled at the boundary.
 local tycoon = dependency.TycoonService
 local config = loadModule("FarmConfig")
-local economy = loadModule("Economy")
 local audio = loadModule("GameplaySfxService")
 local sounds = {}
 audio.Emit = function(id, position)

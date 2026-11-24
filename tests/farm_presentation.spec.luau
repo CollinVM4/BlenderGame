@@ -155,17 +155,25 @@ check(
     "ready replaces countdown"
 )
 prompt.Enabled = true
-prompt.KeyboardKeyCode, prompt.GamepadKeyCode = { Name = "R" }, { Name = "ButtonY" }
+prompt.GamepadKeyCode = { Name = "ButtonY" }
 prompts.PromptShown:Fire(prompt, "Keyboard")
 planting = playerGui:FindFirstChild("FarmPlantDisplay")
 check(
-    planting.Enabled and planting:FindFirstChild("Action").Text == "[R]" and not display(origin).Enabled,
-    "ready row shows planting with its own key and without overlapping status"
+    planting.Enabled and planting:FindFirstChild("Action").Text == "[E]" and not display(origin).Enabled,
+    "ready row shows planting on E without overlapping status"
 )
+prompts.PromptShown:Fire(prompt, "Gamepad")
+planting = playerGui:FindFirstChild("FarmPlantDisplay")
+check(planting:FindFirstChild("Action").Text == "[ButtonY]", "ready row retains its gamepad key")
 heldId = nil
 tick()
-check(not planting.Enabled and display(origin).Enabled, "ready row keeps ordinary status without an eligible seed")
+check(
+    not planting.Enabled and display(origin).Enabled and prompt.MaxActivationDistance == 0,
+    "ready row leaves E available to harvest without an eligible seed"
+)
 heldId = "Banana"
+tick()
+check(prompt.MaxActivationDistance == load("FarmConfig").PlantDistance, "selecting a seed restores planting range")
 prompts.PromptShown:Fire(prompt, "Touch")
 planting = playerGui:FindFirstChild("FarmPlantDisplay")
 planting:FindFirstChild("Action").InputBegan:Fire({ UserInputType = "Touch" })
