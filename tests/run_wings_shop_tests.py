@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+from framewisp_export import load_prepared_export
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -19,14 +20,17 @@ paths = {
     'IceGunShopAdapter': 'src/client/Controllers/IceGunShopAdapter.luau',
     'CashBoostShopAdapter': 'src/client/Controllers/CashBoostShopAdapter.luau',
 }
-for export in ('newestExport11426.rbxmx', 'Framewisp_Hotbar.prepared.rbxmx'):
+for export, tree in (
+    ("export1162.rbxmx", ET.parse(ROOT / "export1162.rbxmx")),
+    ("Rojo-mapped export", load_prepared_export()),
+):
     nodes = []
     def visit(item, parent):
         index = len(nodes) + 1
         nodes.append([index, parent, item.attrib['class'], item.findtext("Properties/string[@name='Name']"), item.findtext("Properties/string[@name='Text']", "")])
         for child in item.findall('Item'):
             visit(child, index)
-    for item in ET.parse(ROOT / export).getroot().findall('Item'):
+    for item in tree.getroot().findall('Item'):
         visit(item, 0)
     bundle = 'local sources = {\n' + '\n'.join(
         f'[{json.dumps(name)}] = {json.dumps((ROOT / path).read_text(encoding="utf-8"))},'

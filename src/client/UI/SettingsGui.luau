@@ -21,6 +21,27 @@ export type View = {
     Issues: { string },
 }
 
+local function plotStatus(content: Instance?): TextLabel?
+    if not content then
+        return nil
+    end
+    -- The exported heading and prompt share the name Title. Figma keeps the
+    -- prompt's node ID stable across exports and while feedback changes its text.
+    local found: TextLabel? = nil
+    for _, candidate in content:GetChildren() do
+        if
+            Registry.Matches(candidate, "Title", { "PlotStatus" })
+            or (candidate:GetAttribute("FigmaNodeId") == "153:19" and Registry.Matches(candidate, "Title", { "Title" }))
+        then
+            if found or not candidate:IsA("TextLabel") then
+                return nil
+            end
+            found = candidate
+        end
+    end
+    return found or Registry.Child(content, "Title", { "Title" }, "TextLabel") :: TextLabel?
+end
+
 function Gui.Resolve(playerGui: PlayerGui): View?
     local selected: Instance? = nil
     local root: ScreenGui? = nil
@@ -69,13 +90,17 @@ function Gui.Resolve(playerGui: PlayerGui): View?
     local thumb = child(track, "Knob", { "Knob" }, "GuiObject")
     local fill = child(track, "ProgressBar", { "ProgressBar" }, "GuiObject")
     local kick = child(plotContent, "Kick", { "Kick", "Kick_button_smooth" }, "GuiButton") :: GuiButton?
+    local status = plotStatus(plotContent)
+    if not status then
+        table.insert(issues, "PlotStatus")
+    end
     return {
         Root = root,
         Panel = panel :: GuiObject,
         Modes = modes,
         MusicOn = child(musicContent, "MusicOn", { "MusicOn", "MusicOn_button_smooth" }, "GuiButton") :: GuiButton?,
         MusicOff = child(musicContent, "MusicOff", { "MusicOff", "MusicOff_button_smooth" }, "GuiButton") :: GuiButton?,
-        Status = child(plotContent, "Title", { "Title" }, "TextLabel") :: TextLabel?,
+        Status = status,
         Rename = child(plotContent, "Rename", { "Rename", "Rename_button_smooth" }, "GuiButton") :: GuiButton?,
         Kick = kick,
         KickLabel = Registry.Child(kick, "BuyLabel", { "BuyLabel" }, "TextLabel") :: TextLabel?,

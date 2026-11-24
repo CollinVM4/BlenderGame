@@ -61,10 +61,7 @@ function Adapter.RequestPurchase30()
     end
 end
 function Adapter.Resolve(panel: Instance): { Buy10: GuiButton, Buy30: GuiButton }?
-    local scroll = Registry.Child(panel, "CashBoost:Scroll", { "ShopScroll" }, "GuiObject")
-    local list = Registry.Child(scroll, "CashBoost:List", { "ShopList" }, "GuiObject")
-    local card = Registry.Child(list, "CashBoost:Card", { "2x Cash" }, "Frame")
-    local content = Registry.Child(card, "CashBoost:Content", { "2x CashContent" }, "CanvasGroup")
+    local content = Registry.ShopCardContent(panel, "CashBoost", "2x Cash")
     local buy10 = Registry.Child(content, "CashBoost:Buy10", { "Buy10" }, "GuiButton")
     local buy30 = Registry.Child(content, "CashBoost:Buy30", { "Buy30" }, "GuiButton")
     if not buy10 or not buy30 then
@@ -88,7 +85,7 @@ function Adapter.Init()
         if not view then
             if not warned then
                 warned = true
-                warn("[CashBoost] Authored Shop card/Buy/price missing or ambiguous.")
+                warn("[CashBoost] Could not bind the authored Shop card and its Buy10/Buy30 buttons.")
             end
             return
         end

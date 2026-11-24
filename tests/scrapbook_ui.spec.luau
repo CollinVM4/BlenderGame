@@ -249,19 +249,18 @@ for _, tier in { "Common", "Uncommon", "Rare", "Mystery" } do
     )
 end
 -- Resolve authored title wrappers one level at a time, retaining old exports.
-for _, layout in { "wrapped", "direct", "empty-wrapper" } do
+for _, layout in { "shipped", "wrapped", "direct", "empty-wrapper" } do
     playerGui.children = {}
     local root = import()
     local title = assert(descend(root, "INDEX"))
-    local header = title.Parent.Parent
-    check(title.Parent.Name == "HeaderContent", "prepared export authors INDEX in HeaderContent")
-    if layout ~= "wrapped" then
-        local wrapper = title.Parent
-        table.remove(wrapper.children, table.find(wrapper.children, title))
+    local wrapper = if title.Parent.Name == "HeaderContent" then title.Parent else nil
+    local header = if wrapper then wrapper.Parent else title.Parent
+    if layout == "wrapped" or layout == "empty-wrapper" then
+        wrapper = wrapper or instance("Frame", "HeaderContent", header)
+        title.Parent = if layout == "wrapped" then wrapper else header
+    elseif layout == "direct" and wrapper then
         title.Parent = header
-        if layout == "direct" then
-            wrapper:Destroy()
-        end
+        wrapper:Destroy()
     end
     local binding = assert(presentation.Resolve(playerGui))
     check(binding.Title == title, layout .. " title resolves")

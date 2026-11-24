@@ -187,6 +187,12 @@ local function import()
         if #node[7] > 0 then
             object.AnchorPoint = { X = node[7][1], Y = node[7][2] }
         end
+        if object:IsA("TextLabel") then
+            object.Text = node[8]
+            if node[9] ~= "" then
+                object:SetAttribute("FigmaNodeId", node[9])
+            end
+        end
     end
     return nodes[1]
 end
@@ -200,9 +206,12 @@ check(
 check(view.Rename.Name == "Rename" and view.Kick.Name == "Kick", "verified export rename and kick names")
 check(view.KickLabel and view.KickLabel.Name == "BuyLabel", "verified export has a reusable team action caption")
 check(view.Track.Name == "Slider" and view.Thumb and view.Fill, "shipped slider binds its knob and fill")
-check(view.Status == nil, "duplicate Title remains ambiguous")
-table.sort(view.Issues)
-check(table.concat(view.Issues, ",") == "Title", "only the shipped ambiguous heading is reported")
+check(view.Status and view.Status.Text == "Who can join..?", "the shipped plot prompt receives feedback")
+check(#view.Issues == 0, "all shipped settings controls bind")
+local nodeId = view.Status:GetAttribute("FigmaNodeId")
+view.Status:SetAttribute("FigmaNodeId", nil)
+check(gui.Resolve(playerGui).Status == nil, "ambiguous labels without an identifier still fail closed")
+view.Status:SetAttribute("FigmaNodeId", nodeId)
 check(
     view.Modes.Open.Parent.Name == "PLOT" and view.MusicOn.Parent.Name == "MUSIC",
     "shipped plot and music sections bind"
@@ -223,18 +232,14 @@ load("SettingsController").Init()
 view.Modes.Closed.Activated:Fire()
 check(sent[#sent][1] == "SetJoinMode" and sent[#sent][3] == "Closed", "shipped Locked reaches controller as Closed")
 remote.OnClientEvent:Fire("PlotRequestResult", { success = false })
-check(gui.Resolve(playerGui).Status == nil, "controller handles feedback without ambiguous Status")
+check(
+    gui.Resolve(playerGui).Status == view.Status and string.find(view.Status.Text, "unavailable") ~= nil,
+    "feedback updates the prompt and resolution stays stable"
+)
 for _, fn in delays do
     fn()
 end
 -- Give the shipped controls deterministic geometry for the slider checks.
-local plotContent = view.Modes.Open.Parent
-for _, label in plotContent:GetChildren() do
-    if label.Name == "Title" then
-        label.Name = "Authored heading"
-    end
-end
-instance("TextLabel", "Title", plotContent).Text = "PLOT"
 local function geometry(object)
     object.Position = { X = { Scale = 0, Offset = 0 }, Y = { Scale = 0.5, Offset = 0 } }
     object.Size = { X = { Scale = 0.1, Offset = 0 }, Y = { Scale = 1, Offset = 0 } }
@@ -259,8 +264,6 @@ outer.AbsolutePosition, outer.AbsoluteSize = { X = 100 }, { X = 200 }
 thumb.AbsoluteSize = { X = 20 }
 plot:SetAttribute("StandName", "Fresh Stand")
 plot:SetAttribute("TeammateUserId", 303)
-view.Status.Text = "PLOT"
-view.Status.Text = "PLOT"
 load("SettingsController").Init()
 load("SettingsController").Init()
 view = assert(gui.Resolve(playerGui))
@@ -348,7 +351,7 @@ check(string.find(view.Status.Text, "unavailable") ~= nil, "rejection surfaces f
 for _, fn in delays do
     fn()
 end
-check(view.Status.Text == "PLOT", "failure window restores authored title")
+check(view.Status.Text == "Who can join..?", "failure window restores the authored prompt")
 local function checkEdges(range)
     local trackLeft, trackWidth = track.AbsolutePosition.X, track.AbsoluteSize.X
     local knobCenter = trackLeft + thumb.Position.X.Scale * trackWidth + thumb.Position.X.Offset

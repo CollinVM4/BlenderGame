@@ -64,10 +64,7 @@ end
 -- Every bound child is resolved through the importer's tagged-child contract,
 -- scoped to this authored card. No descendant-wide Buy/RobuxCost guessing.
 function Adapter.Resolve(panel: Instance): { Buy: GuiButton }?
-    local scroll = Registry.Child(panel, "Wings:Scroll", { "ShopScroll" }, "GuiObject")
-    local list = Registry.Child(scroll, "Wings:List", { "ShopList" }, "GuiObject")
-    local card = Registry.Child(list, "Wings:Card", { "Angel Wings" }, "Frame")
-    local content = Registry.Child(card, "Wings:Content", { "Angel WingsContent" }, "CanvasGroup")
+    local content = Registry.ShopCardContent(panel, "Wings", "Angel Wings")
     local buy = Registry.Child(content, "Wings:Buy", { "Buy" }, "GuiButton")
     if not buy then
         return nil
@@ -89,7 +86,7 @@ function Adapter.Init()
         if not view then
             if not warned then
                 warned = true
-                warn("[Wings] Authored Shop card/Buy/price missing or ambiguous.")
+                warn("[Wings] Could not bind the authored Shop card and Buy button.")
             end
             return
         end
