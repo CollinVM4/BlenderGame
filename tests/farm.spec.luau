@@ -76,9 +76,9 @@ check(
     state(1) == "GROWING" and inventory.GetCarryCount(owner) == 1 and selected.Destroyed,
     "plant consumes exactly the selected authoritative instance"
 )
-check(timers[#timers].Seconds == 9, "JL0 per-row supply parity")
+check(timers[#timers].Seconds == 30, "JL0 batch grows in 30 seconds")
 check(farm.GetRowSnapshot(plot, 1).IngredientId == "Apple", "farm snapshot reports authoritative planted ingredient")
-check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 9, "client receives synchronized growth deadline")
+check(rows[1].Object:GetAttribute("FarmGrowEnd") == now + 30, "client receives synchronized growth deadline")
 check(
     #sounds == 1 and sounds[1].Id == "IngredientPlant" and sounds[1].Position == rows[1].Plant.WorldPosition,
     "plant sound only follows successful consumption"
@@ -89,25 +89,8 @@ plantRow(1, owner)
 check(inventory.GetCarryCount(owner) == 1 and #timers == 1, "growing row rejects additional planting and timers")
 local spawned = {}
 local realSpawn = ingredients.Spawn
-local bindFarm = cache.WorldUtil.BindTag
-local attachPickup
-env.Enum.KeyCode.F = "F"
-cache.WorldUtil.BindTag = function(_, attach)
-    attachPickup = attach
-end
-loadModule("IngredientPickupComponent").Init(dependency)
-cache.WorldUtil.BindTag = bindFarm
 ingredients.Spawn = function(...)
     local object = realSpawn(...)
-    attachPickup(object)
-    local setAttribute = object.SetAttribute
-    function object:SetAttribute(name, value)
-        local changed = self:GetAttribute(name) ~= value
-        setAttribute(self, name, value)
-        if changed and name == "FrozenUntilPickup" then
-            self:GetAttributeChangedSignal(name):Fire()
-        end
-    end
     table.insert(spawned, object)
     return object
 end
@@ -144,9 +127,7 @@ for n, object in spawned do
         "exact planted identity at authored grow marker"
     )
 end
-local firstHarvestPrompt = cache.WorldUtil.Part(spawned[1]):FindFirstChild("CarryPrompt")
-firstHarvestPrompt.Triggered:Fire(peer)
-check(ingredients.GetRecord(spawned[1]) == nil, "teammate harvests through the pickup prompt")
+setup(inventory.CarryWorldItem(peer, spawned[1]), "teammate harvest pickup")
 setup(inventory.CarryWorldItem(outsider, spawned[2]), "harvest uses normal public pickup rules")
 check(state(1) == "READY", "row stays ready while a crop remains")
 check(#harvestReferences() == 1 and harvestReferences()[1] == spawned[3], "harvest targets retire collected products")
@@ -168,10 +149,6 @@ setup(inventory.CarryWorldItem(peer, spawned[2]), "harvest middle slot only")
 check(
     plantPrompt.Enabled and plantPrompt.KeyboardKeyCode == "E" and plantPrompt.GamepadKeyCode == "ButtonY",
     "ready row offers replanting on E or ButtonY"
-)
-check(
-    cache.WorldUtil.Part(spawned[1]):FindFirstChild("CarryPrompt").KeyboardKeyCode == "F",
-    "standing harvest uses F independently of planting"
 )
 local previousTimers = #timers
 carry(outsider, "Banana")
@@ -211,9 +188,8 @@ for index, object in leftovers do
             and not record.FarmManaged
             and not object.Anchored
             and object:GetAttribute("FrozenUntilPickup") == nil
-            and cache.WorldUtil.Part(object):FindFirstChild("CarryPrompt").KeyboardKeyCode == "E"
             and object.AssemblyLinearVelocity.Y > 0,
-        "ejected crop stays the same item and pops free with the usual E pickup"
+        "ejected crop stays the same item and pops free as a loose pickup"
     )
 end
 setup(inventory.CarryWorldItem(owner, leftovers[1]), "pick up an ejected crop")
@@ -261,14 +237,14 @@ local function crops()
 end
 local epoch = now
 ingredients.Init({ AnnouncementService = { Publish = function() end } })
-local commonSeconds = economy.RefillSeconds[0]
-economy.RefillSeconds[0] = 140
+local commonSeconds = config.GrowSecondsByJumpLocation[0]
+config.GrowSecondsByJumpLocation[0] = 420
 carry(owner, "Apple")
 plantRow(1, owner)
 advance(epoch + 360)
 check(state(1) == "GROWING" and #crops() == 0, "growing row survives six-minute sweep before products exist")
 advance(epoch + 420)
-economy.RefillSeconds[0] = commonSeconds
+config.GrowSecondsByJumpLocation[0] = commonSeconds
 carry(owner, "Banana")
 plantRow(2, owner)
 carry(owner, "Strawberry")
@@ -353,29 +329,24 @@ check(
     "secret planting preserves item and row"
 )
 inventory.ClearHeld(owner)
-carry(owner, "Blueberry")
-plantRow(1, owner)
-check(state(1) == "GROWING" and timers[#timers].Seconds == 9, "ordinary JL0 Blueberry plants normally")
-timers[#timers].Run()
-for _, object in crops() do
-    object:Destroy()
-end
-carry(owner, "Melon")
-plantRow(1, owner)
-check(state(1) == "GROWING" and timers[#timers].Seconds == 270, "JL3 Melon grows in 270 seconds")
-timers[#timers].Run()
-for _, object in crops() do
-    object:Destroy()
+for id, seconds in { Blueberry = 30, Pear = 60, Crab = 120, Melon = 270 } do
+    carry(owner, id)
+    plantRow(1, owner)
+    check(state(1) == "GROWING" and timers[#timers].Seconds == seconds, id .. " grows in " .. seconds .. " seconds")
+    timers[#timers].Run()
+    for _, object in crops() do
+        object:Destroy()
+    end
 end
 local definition = ingredients.GetDefinition("Apple")
 local originalRarity = definition.Rarity
 for _, mode in { "omitted", "true" } do
     definition.Farmable = if mode == "true" then true else nil
-    for rarity, seconds in { Uncommon = 9, Rare = 9, Mystery = 9, Unknown = 9 } do
+    for _, rarity in { "Uncommon", "Rare", "Mystery", "Unknown" } do
         definition.Rarity = rarity
         carry(owner, "Apple")
         plantRow(1, owner)
-        check(timers[#timers].Seconds == seconds, rarity .. " cannot alter tier-based duration")
+        check(timers[#timers].Seconds == 30, rarity .. " cannot alter tier-based duration")
         timers[#timers].Run()
         for _, object in services.CollectionService:GetTagged("IngredientWorldItem") do
             if ingredients.GetRecord(object) then

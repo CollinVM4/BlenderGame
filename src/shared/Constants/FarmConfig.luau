@@ -4,6 +4,7 @@ return {
     SpeedMultiplier = 2,
     OwnershipRetrySeconds = 15,
     RowPrices = { 20000, 55000, 110000 },
+    GrowSecondsByJumpLocation = { [0] = 30, [1] = 60, [2] = 120, [3] = 270 },
     PlantDistance = 10,
     RevealSeconds = 0.8,
     RevealDepth = 3.5,

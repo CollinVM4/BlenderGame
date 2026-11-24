@@ -21,10 +21,10 @@ the farm prompt and authoritative planting. Ineligible selections show
 item or changing row state, including for dynamically created PlayerHead drops.
 `FarmConfig` owns prices and reveal/proximity tuning.
 
-On PC, press **E** at the plant point on an empty or ready row. Press **F** to
-pick up a standing crop. Replanting ejects any remaining crops as loose items
-with the usual **E** pickup. On a controller, use ButtonX on an empty row and
-ButtonY to replant a ready row. On mobile, tap the plant or crop prompt.
+On PC, press **E** when the plant prompt is visible to plant or replant. Aim
+toward a crop's pickup prompt and press **E** to harvest it. Replanting ejects
+any remaining crops as loose items. On a controller, use ButtonX on an empty
+row and ButtonY to replant a ready row. On mobile, tap the plant or crop prompt.
 
 `IngredientService.Spawn` creates three copies at the grow attachments. Crops
 stay anchored and exempt from the loose-item sweep while in the row. Anyone
@@ -36,39 +36,28 @@ invalidates timers, destroys harvests, cancels reveals, restores authored
 transforms and resets the pads. Plot unbinding also cleans up. Timers capture both
 session identity and row generation. No persistence or new remotes are added.
 
-## Grow time audit
+## Grow times
 
-One seed yields three copies. The server multiplies `Economy.RefillSeconds`
-for the ingredient's `JumpLocation` by three, then divides by the plot's active
-farm multiplier. All three rows use the same timing.
+One seed yields three copies. The server looks up the ingredient's
+`JumpLocation` in `FarmConfig.GrowSecondsByJumpLocation` and divides that batch
+duration by the plot's active farm multiplier. All three rows use the same timing.
 
 | JumpLocation | Farmable catalog entries | Examples | 1× growth | 2× growth | Time saved |
 | --- | ---: | --- | ---: | ---: | ---: |
-| 0 | 20 | Apple, Blueberry, Ice | 9s | 4.5s | 4.5s |
-| 1 | 11 | Pear, Pineapple, Steak | 36s | 18s | 18s |
+| 0 | 20 | Apple, Blueberry, Ice | 30s | 15s | 15s |
+| 1 | 11 | Pear, Pineapple, Steak | 60s | 30s | 30s |
 | 2 | 10 | Crab, Fish, Milk | 2m | 1m | 1m |
 | 3 | 7 | Melon, Pizza, Golden Potato | 4m 30s | 2m 15s | 2m 15s |
 
 The table shows server durations. The on-screen countdown rounds remaining
 time up to a whole second. The [shared pass](FARM_SPEED_PASS.md) scales only
-the remaining work when a teammate with the pass joins or leaves. The farm
-calculation uses the tier refill table. World spawns also have per-ingredient
-overrides and separate authored timers for announced spawns.
+the remaining work when a teammate with the pass joins or leaves. World spawns
+use `Economy.RefillSeconds`, per-ingredient overrides, or authored timers for
+announced spawns.
 
-**First balance playtest.** Keep JL0 at 9s / 4.5s and JL1 at 36s / 18s. JL1 is
-already the clearest convenience upgrade. A boosted batch takes 18s against the
-configured 25–45s interval between successful normal customer spawns.
-Try **JL2 at 60s / 30s** so a boosted batch can finish while the player serves
-another customer. Use actual plant-to-return times from the playtest to check
-that cadence. Start with JL3 at 4m 30s / 2m 15s for planning ahead. If boosted
-JL3 still takes too long to fit normal sessions, try 3m / 1m 30s in a later pass.
-
-Use a dedicated farm duration table for any tuning pass. The current formula
-gives one unboosted row the same theoretical gross supply as one standard
-pedestal. Cutting JL2 to 60s doubles that row's current output rate at either
-speed. Three boosted JL2 rows would yield nine copies every 30s if replanted
-immediately, with six net copies after reserving three replacement seeds.
-Check ingredient availability and payouts before applying that cut.
+The boost saves 15s per JL0 batch and 30s per JL1 batch. A boosted JL1 batch
+takes 30s against the configured 25–45s interval between successful normal
+customer spawns.
 
 ## Studio setup
 

@@ -3,7 +3,6 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Marketplace = game:GetService("MarketplaceService")
 local Config = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmConfig)
-local Economy = require(game:GetService("ReplicatedStorage").Shared.Constants.Economy)
 local Eligibility = require(game:GetService("ReplicatedStorage").Shared.Constants.FarmEligibility)
 local WorldUtil = require(script.Parent.WorldUtil)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
@@ -369,7 +368,7 @@ local function plant(farm: any, row: any, player: Player)
     if not id or not definition or not Eligibility.CanPlant(definition) then
         return
     end
-    local duration = Economy.RefillSeconds[definition.JumpLocation] * #row.Grow / farm.Multiplier
+    local duration = Config.GrowSecondsByJumpLocation[definition.JumpLocation] / farm.Multiplier
     local token = deps.TycoonService.BeginTransaction(player, deps.TycoonService.GetRequestContext(player))
     if not token then
         return

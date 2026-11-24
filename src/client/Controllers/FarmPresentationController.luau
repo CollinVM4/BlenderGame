@@ -92,6 +92,15 @@ function Controller.Init()
     local function refresh(prompt: ProximityPrompt, row: Row, now: number)
         local state = row.Object:GetAttribute("FarmState")
         local ready = state == "READY"
+        -- InventoryService publishes the selected/fallback target for presentation.
+        local id = player:GetAttribute("HeldIngredientId")
+        local definition = if typeof(id) == "string" then Definitions[id] else nil
+        local valid = Eligibility.CanPlant(definition)
+        -- Keep the harvest prompt available when the player has no valid seed.
+        local plantDistance = if ready and not valid then 0 else Config.PlantDistance
+        if prompt.MaxActivationDistance ~= plantDistance then
+            prompt.MaxActivationDistance = plantDistance
+        end
         row.Gui.Enabled = state == "GROWING" or ready
         row.Title.TextColor3 = if ready then TextStyle.Green else TextStyle.White
         row.Title.Text = if ready then "READY!" else "GROWING" .. string.rep(".", math.floor(now / 0.4) % 3 + 1)
@@ -105,11 +114,6 @@ function Controller.Init()
         end
         local inputGui = row.InputGui
         if inputGui and row.InputTitle and row.InputName then
-            -- InventoryService publishes its selected/fallback action target, including
-            -- equipped smoothies. This is display metadata, never an activation payload.
-            local id = player:GetAttribute("HeldIngredientId")
-            local definition = if typeof(id) == "string" then Definitions[id] else nil
-            local valid = Eligibility.CanPlant(definition)
             inputGui.Enabled = state == "EMPTY" or (ready and valid)
             if ready and inputGui.Enabled then
                 row.Gui.Enabled = false
