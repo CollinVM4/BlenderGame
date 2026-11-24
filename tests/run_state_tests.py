@@ -153,6 +153,7 @@ SUITES = {
     "legacy-state": ("integration", ("server_state.spec.luau",)),
     "legacy-movement": ("integration", ("legacy_movement.spec.luau",)),
     "request-selection": ("integration", ("fixtures/customer_requests.luau", "customer_request_selection.spec.luau")),
+    "customer-order-simulation": ("integration", ("customer_order_simulation.spec.luau",)),
     "customer-wildcard": ("integration", ("fixtures/customer_requests.luau", "customer_wildcard.spec.luau")),
     "requests": ("integration", ("fixtures/customer_requests.luau", "customer_requests.spec.luau")),
     "world": ("integration", ("ingredient_world.spec.luau",)),

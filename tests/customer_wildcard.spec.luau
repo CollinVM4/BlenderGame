@@ -1,6 +1,6 @@
 local wildcard = requestConfig.WildcardRequest
-check(authoredWildcardChances[1] == 0.05 and authoredWildcardChances[2] == 0, "authored wildcard probabilities")
-requestConfig.RegularWildcardChance, requestConfig.SpecialWildcardChance = 0.60, 0.30
+check(authoredWildcardChances[1] == 0.11 and authoredWildcardChances[2] == 0, "authored wildcard probabilities")
+requestConfig.RegularWildcardChance, requestConfig.SpecialWildcardChance = authoredWildcardChances[1], 0.30
 check(wildcard.Wildcard and #wildcard.DisplayTexts >= 5, "explicit wildcard has varied dialogue")
 check(#customer.ValidateRequestDefinition(wildcard) == 0, "wildcard definition is valid")
 for _, ids in { { "Apple", "Apple", "Apple" }, { "Tire", "Fish", "Ice" } } do
@@ -61,14 +61,14 @@ local function depart(model)
     model:Destroy()
     flush()
 end
-for _, sample in { { 0, true }, { 0.5999, true }, { 0.60, false }, { 0.9999, false } } do
+for _, sample in { { 0, true }, { 0.1099, true }, { 0.11, false }, { 0.9999, false } } do
     roll = sample[1]
     local model, snapshot = spawn()
     check((snapshot.RequestId == wildcard.Id) == sample[2], "regular probability boundary")
     depart(model)
 end
 
--- History must survive more wildcard arrivals than every recency window.
+-- Wildcards leave the previous specific order in history.
 table.clear(requests)
 for _, entry in
     {
@@ -89,9 +89,9 @@ do
     })
 end
 customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
-roll = 0.9
+roll = 0.20
 local model, snapshot = spawn()
-check(snapshot.RequestId == "Red", "specific fallback seeds history")
+check(snapshot.RequestId == "Red", "first specific order uses the uniform roll")
 depart(model)
 roll = 0
 for _ = 1, 5 do
@@ -99,9 +99,9 @@ for _ = 1, 5 do
     check(snapshot.RequestId == wildcard.Id, "wildcard stays outside specific selection")
     depart(model)
 end
-roll = 0.9
+roll = 0.20
 model, snapshot = spawn()
-check(snapshot.RequestId == "Red", "regular prompt repeats remain available after wildcards")
+check(snapshot.RequestId == "Green", "specific order is still downweighted after five wildcards")
 depart(model)
 
 local function child(class, name, parent)

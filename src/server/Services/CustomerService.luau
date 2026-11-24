@@ -30,6 +30,7 @@ local Film = require(script.Parent.FilmingUtil)
 local BatConfig = require(Shared.Constants.BatConfig)
 local Knockback = require(script.Parent.BatKnockback)
 local GameplaySfx = require(script.Parent.GameplaySfxService)
+local OrderSelection = require(script.Parent.CustomerOrderSelection)
 local OrderEvaluation = require(script.Parent.CustomerOrderEvaluation)
 local BadCustomers = require(Shared.Constants.BadCustomers)
 local BadBehavior = require(script.Parent.BadCustomerBehavior)
@@ -53,6 +54,7 @@ local lastSpecialSpawn: { [string]: number } = {}
 local lastTemplates: { [string]: Model } = {}
 -- Runtime-only regular selections survive flow restarts.
 local recentTemplates: { [string]: { Model } } = {}
+local recentOrders: { [string]: { OrderSelection.Candidate } } = {}
 
 local function remember<T>(histories: { [string]: { T } }, player: Player, value: T, window: number)
     local history = histories[key(player)] or {}
@@ -235,27 +237,26 @@ function CustomerService.ValidateRequest(result: Types.Smoothie, request: Custom
         evaluation.Reason
 end
 
-local function eligibleRequests(player: Player): { CustomerRequests.Request }
-    -- Purchased session progression; personal Studio movement overrides are irrelevant.
-    local playerJumpTier = deps.TycoonService.GetJumpTier(player)
+function CustomerService.GetEligibleRegularRequests(jumpTier: number): { CustomerRequests.Request }
     local eligible: { CustomerRequests.Request } = {}
     for _, request in CustomerRequests.Definitions do
         if
             not request.NPCOnly
             and not request.Wildcard
-            and #CustomerService.ValidateRequestDefinition(request, playerJumpTier) == 0
+            and #CustomerService.ValidateRequestDefinition(request, jumpTier) == 0
         then
             table.insert(eligible, request)
         end
     end
+    return eligible
+end
+
+local function eligibleRequests(player: Player): { CustomerRequests.Request }
+    -- Purchased session progression; personal Studio movement overrides are irrelevant.
+    local tier = deps.TycoonService.GetJumpTier(player)
+    local eligible = CustomerService.GetEligibleRegularRequests(tier)
     if #eligible == 0 then
-        warn(
-            string.format(
-                "[CustomerService] No eligible requests for %s at jump tier %s",
-                player.Name,
-                tostring(playerJumpTier)
-            )
-        )
+        warn(string.format("[CustomerService] No eligible requests for %s at jump tier %d", player.Name, tier))
     end
     return eligible
 end
@@ -277,7 +278,7 @@ local function assignRequest(player: Player, record: any): boolean
         local chance = if record.CustomerType == "Special"
             then CustomerRequests.SpecialWildcardChance
             else CustomerRequests.RegularWildcardChance
-        record.Wildcard = chance > 0 and math.random() < chance
+        record.Wildcard = OrderSelection.RollWildcard(chance, math.random)
     end
     if record.Wildcard then
         selectedRequest = CustomerRequests.WildcardRequest
@@ -288,7 +289,14 @@ local function assignRequest(player: Player, record: any): boolean
             record.Model:Destroy()
             return false
         end
-        selectedRequest = eligible[math.random(1, #eligible)]
+        local sessionId = key(player)
+        local history = recentOrders[sessionId] or {}
+        local candidate = OrderSelection.Pick(OrderSelection.Prepare(eligible), history, math.random())
+        selectedRequest = candidate.Request
+        if selectedRequest.Id ~= record.RequestId then
+            OrderSelection.Remember(history, candidate)
+            recentOrders[sessionId] = history
+        end
     end
     local request = selectedRequest :: CustomerRequests.Request
     record.Request = request
@@ -2090,6 +2098,7 @@ function CustomerService.CleanupSession(sessionId: string)
     cleanupFlow(sessionId)
     lastSpecialSpawn[sessionId], lastTemplates[sessionId] = nil, nil
     recentTemplates[sessionId] = nil
+    recentOrders[sessionId] = nil
 end
 -- Explicit server flow reset, not a departing-player cleanup path.
 function CustomerService.DeactivateForPlayer(player: Player)

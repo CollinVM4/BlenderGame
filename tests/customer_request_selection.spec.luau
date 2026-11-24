@@ -59,21 +59,14 @@ local blocked = definition({ "Red" }, { "Apple" })
 blocked.ForbiddenIngredients = { "Apple" }
 check(not eligible(blocked, 3), "prohibited ingredients cannot fulfill a required slot")
 
--- Exhaust the authored reachable pool with an injected request-index sequence.
--- Repeated picks remain available across arrivals and refresh; group metadata has no weighting.
+-- With no history, every reachable authored order has the same selection interval.
 do
-    local owner = player("UniformOrders")
+    local owner = player("FreshPlotOrders")
     data.AddPlayer(owner)
-    assignTestSession(owner)
     local savedRandom = env.math.random
     for tier = 0, 3 do
         setTestJump(owner, tier)
-        local pool = {}
-        for _, request in requests do
-            if not request.NPCOnly and not request.Wildcard and eligible(request, tier) then
-                table.insert(pool, request)
-            end
-        end
+        local pool = customer.GetEligibleRegularRequests(tier)
         setup(#pool > 0, "authored accessible pool exists")
         if tier == 0 then
             local complex = false
@@ -83,29 +76,99 @@ do
             check(complex, "tier zero can draw authored complex requests despite their labels")
         end
         for index, expected in pool do
-            env.math.random = function(low, high)
-                if low == 1 and high == #pool then
-                    return index
-                end
-                return low or 0.99
+            env.math.random = function(low)
+                return low or (index - 0.5) / #pool
             end
             local model = spawnFor(owner)
             flush()
-            flush()
             setup(model ~= nil, "accessible regular spawns")
-            check(
-                customer.GetSnapshot(owner).RequestId == expected.Id,
-                "uniform whole-pool index selects " .. expected.Id
-            )
-            customer:RefreshOrder(model)
-            check(customer.GetSnapshot(owner).RequestId == expected.Id, "recency permits immediate repeat")
-            model:Destroy()
-            flush()
+            check(customer.GetSnapshot(owner).RequestId == expected.Id, "fresh plot can draw " .. expected.Id)
+            customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
         end
-        customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
     end
     env.math.random = savedRandom
 end
+
+-- The same roll in two plots gives different results only when their local history differs.
+do
+    local saved = table.clone(requests)
+    table.clear(requests)
+    requests[1] = {
+        Id = "Red",
+        RequestGroup = "Color",
+        DisplayText = "Red",
+        RequiredTags = { "Red" },
+        BasePayout = 25,
+        MinJumpTier = 0,
+    }
+    requests[2] = {
+        Id = "Sweet",
+        RequestGroup = "Trait",
+        DisplayText = "Sweet",
+        RequiredTags = { "Sweet" },
+        BasePayout = 25,
+        MinJumpTier = 0,
+    }
+    local owner, another = player("HistoryOwner"), player("HistoryNeighbor")
+    data.AddPlayer(owner)
+    data.AddPlayer(another)
+    local savedRandom = env.math.random
+    env.math.random = function(low)
+        return low or 0.25
+    end
+    local first = spawnFor(owner)
+    check(first:GetAttribute("RequestId") == "Red", "first request is uniform")
+    customer.DeactivateForPlayer(owner)
+    local nextModel = spawnFor(owner)
+    check(nextModel:GetAttribute("RequestId") == "Sweet", "plot history survives a flow restart")
+    local neighbor = spawnFor(another)
+    check(neighbor:GetAttribute("RequestId") == "Red", "another plot starts with no history")
+    local teammate = player("HistoryTeammate")
+    data.AddPlayer(teammate)
+    sessionTestAuthority.RemovePlayer(teammate)
+    setup(
+        sessionTestAuthority.JoinSession(teammate, another, sessionTestAuthority.GetRequestContext(another)),
+        "join active plot"
+    )
+    local teammateOrder = customer.SpawnForPlayer(teammate)
+    check(teammateOrder:GetAttribute("RequestId") == "Sweet", "teammates share their plot's recent orders")
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
+    local fresh = spawnFor(owner)
+    check(fresh:GetAttribute("RequestId") == "Red", "session cleanup clears order history")
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(owner))
+    customer.CleanupSession(sessionTestAuthority.GetSessionId(another))
+    env.math.random = savedRandom
+    table.clear(requests)
+    for _, request in saved do
+        table.insert(requests, request)
+    end
+end
+
+-- A different ID with the same constraints receives the exact-repeat penalty.
+do
+    local selection = loadModule("CustomerOrderSelection")
+    local original = definition({ "Red", "Sweet" }, { { "Apple", "Green_Apple" }, "Banana" })
+    original.RequestGroup = "Combo"
+    local alias = definition({ "SWEET", "red" }, { "Banana", { "Green_Apple", "Apple" } })
+    alias.Id, alias.RequestGroup = "Alias", "Recipe"
+    local near = definition({}, { "Apple", "Banana", "Banana" })
+    near.Id, near.RequestGroup = "Near", "Combo"
+    local other = definition({ "Cold" }, nil)
+    other.Id, other.RequestGroup = "Other", "Trait"
+    local choices = selection.Prepare({ original, alias, near, other })
+    local history = { choices[1] }
+    check(selection.Pick(choices, history, 0).Request == original, "exact repeats remain possible")
+    check(selection.Pick(choices, history, 0.1).Request == alias, "equivalent requirements remain possible")
+    check(
+        selection.Pick(choices, history, 0.2).Request == near,
+        "equivalent requirements are downweighted across groups"
+    )
+    check(
+        selection.Pick({ choices[3], choices[4] }, history, 0.3).Request == other,
+        "group and ingredient penalties stack"
+    )
+end
+
 -- NPCOnly, explicit wildcard and unreachable definitions cannot enter a regular pool.
 do
     local saved = table.clone(requests)
@@ -244,7 +307,7 @@ do
     data.RemovePlayer(owner)
 end
 
--- Template recency remains independent of uniform prompt selection.
+-- Template recency remains independent of request history.
 do
     local saved = table.clone(requests)
     table.clear(requests)
@@ -293,7 +356,7 @@ do
     end
     env.math.random, requestConfig.SpecialCustomerChance = savedRandom, savedChance
 end
-print("PASS: reachable uniform request selection")
+print("PASS: reachable weighted request selection")
 
 -- Reporting only: max-tier ground-floor demand from authored slots and tag carriers.
 do
