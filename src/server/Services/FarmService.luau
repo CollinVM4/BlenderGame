@@ -84,8 +84,6 @@ local function setState(row: any, state: string)
         row.Object:SetAttribute("FarmGrowEnd", nil)
     end
     row.Object:SetAttribute("FarmState", state)
-    -- Ready crops still use the ordinary pickup keys.
-    row.Prompt.KeyboardKeyCode = if state == "READY" then Enum.KeyCode.R else Enum.KeyCode.E
     row.Prompt.GamepadKeyCode = if state == "READY" then Enum.KeyCode.ButtonY else Enum.KeyCode.ButtonX
     row.Prompt.Enabled = state == "EMPTY"
 end
@@ -547,6 +545,7 @@ local function bind(plot: Instance): (() -> ())?
         end
         local prompt = Instance.new("ProximityPrompt")
         prompt.Name, prompt.ActionText, prompt.ObjectText = "FarmPlantPrompt", "Plant ingredient", "Farm row " .. index
+        prompt.KeyboardKeyCode = Enum.KeyCode.E
         prompt.MaxActivationDistance, prompt.RequiresLineOfSight = Config.PlantDistance, false
         prompt.Style = Enum.ProximityPromptStyle.Custom
         prompt.Parent = row.Plant

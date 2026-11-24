@@ -39,6 +39,11 @@ check(
     not rows[1].Pad.CanTouch and rows[2].Pad.CanTouch and rows[1].Dirt.Transparency == 0,
     "purchase reveals row and advances pad"
 )
+local plantPrompt = rows[1].Plant:FindFirstChild("FarmPlantPrompt")
+check(
+    plantPrompt.Enabled and plantPrompt.KeyboardKeyCode == "E" and plantPrompt.GamepadKeyCode == "ButtonX",
+    "empty row offers planting on E or ButtonX"
+)
 for _, motion in motions do
     motion:Finish()
 end
@@ -84,8 +89,25 @@ plantRow(1, owner)
 check(inventory.GetCarryCount(owner) == 1 and #timers == 1, "growing row rejects additional planting and timers")
 local spawned = {}
 local realSpawn = ingredients.Spawn
+local bindFarm = cache.WorldUtil.BindTag
+local attachPickup
+env.Enum.KeyCode.F = "F"
+cache.WorldUtil.BindTag = function(_, attach)
+    attachPickup = attach
+end
+loadModule("IngredientPickupComponent").Init(dependency)
+cache.WorldUtil.BindTag = bindFarm
 ingredients.Spawn = function(...)
     local object = realSpawn(...)
+    attachPickup(object)
+    local setAttribute = object.SetAttribute
+    function object:SetAttribute(name, value)
+        local changed = self:GetAttribute(name) ~= value
+        setAttribute(self, name, value)
+        if changed and name == "FrozenUntilPickup" then
+            self:GetAttributeChangedSignal(name):Fire()
+        end
+    end
     table.insert(spawned, object)
     return object
 end
@@ -122,7 +144,9 @@ for n, object in spawned do
         "exact planted identity at authored grow marker"
     )
 end
-setup(inventory.CarryWorldItem(peer, spawned[1]), "teammate harvest pickup")
+local firstHarvestPrompt = cache.WorldUtil.Part(spawned[1]):FindFirstChild("CarryPrompt")
+firstHarvestPrompt.Triggered:Fire(peer)
+check(ingredients.GetRecord(spawned[1]) == nil, "teammate harvests through the pickup prompt")
 setup(inventory.CarryWorldItem(outsider, spawned[2]), "harvest uses normal public pickup rules")
 check(state(1) == "READY", "row stays ready while a crop remains")
 check(#harvestReferences() == 1 and harvestReferences()[1] == spawned[3], "harvest targets retire collected products")
@@ -141,10 +165,13 @@ table.clear(spawned)
 plantRow(1, owner)
 timers[#timers].Run()
 setup(inventory.CarryWorldItem(peer, spawned[2]), "harvest middle slot only")
-local readyPrompt = rows[1].Plant:FindFirstChild("FarmPlantPrompt")
 check(
-    readyPrompt.Enabled and readyPrompt.KeyboardKeyCode == "R" and readyPrompt.GamepadKeyCode == "ButtonY",
-    "ready row exposes planting separately from ordinary ingredient pickup"
+    plantPrompt.Enabled and plantPrompt.KeyboardKeyCode == "E" and plantPrompt.GamepadKeyCode == "ButtonY",
+    "ready row offers replanting on E or ButtonY"
+)
+check(
+    cache.WorldUtil.Part(spawned[1]):FindFirstChild("CarryPrompt").KeyboardKeyCode == "F",
+    "standing harvest uses F independently of planting"
 )
 local previousTimers = #timers
 carry(outsider, "Banana")
@@ -184,8 +211,9 @@ for index, object in leftovers do
             and not record.FarmManaged
             and not object.Anchored
             and object:GetAttribute("FrozenUntilPickup") == nil
+            and cache.WorldUtil.Part(object):FindFirstChild("CarryPrompt").KeyboardKeyCode == "E"
             and object.AssemblyLinearVelocity.Y > 0,
-        "ejected crop stays the same item and pops free as a loose pickup"
+        "ejected crop stays the same item and pops free with the usual E pickup"
     )
 end
 setup(inventory.CarryWorldItem(owner, leftovers[1]), "pick up an ejected crop")
