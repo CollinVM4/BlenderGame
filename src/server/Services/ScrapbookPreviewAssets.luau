@@ -22,6 +22,12 @@ function Assets.Init()
             warn("[Scrapbook] Preview prefab unavailable: " .. id)
         end
     end
+    local cup = ServerStorage:FindFirstChild("Smoothie")
+    local preview = Geometry.Clone(if cup and cup:IsA("Tool") then cup else nil)
+    if preview then
+        preview.Name = "SmoothieCup"
+        preview.Parent = folder
+    end
     -- Publish only sanitized allowlisted visuals. No remotes or inventory APIs.
     folder.Parent = Shared
 end

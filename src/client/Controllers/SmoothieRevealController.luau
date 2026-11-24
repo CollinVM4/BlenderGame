@@ -10,6 +10,7 @@ local ComboStyle = require(Shared.Constants.SmoothieComboStyle)
 local Audio = require(Shared.Constants.GameplayAudio)
 local Money = require(Shared.MoneyFormat)
 local Viewport = require(script.Parent.Parent.UI.IngredientViewport)
+local CupReveal = require(script.Parent.Parent.UI.SmoothieCupReveal)
 
 local Controller = {}
 local active: ScreenGui? = nil
@@ -101,16 +102,22 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
     scale.Scale = 0.92
     scale.Parent = panel
 
-    label(panel, "BLEND VALUE", 0.025, 0.08, 19)
-    local value = label(panel, "$0", 0.095, 0.235, 64, Style.Gold)
+    local detailsPanel = Instance.new("Frame")
+    detailsPanel.Name = "BlendDetails"
+    detailsPanel.BackgroundTransparency = 1
+    detailsPanel.Size = UDim2.fromScale(1, 1)
+    detailsPanel.Parent = panel
+    local ingredientScales: { UIScale } = {}
+    label(detailsPanel, "BLEND VALUE", 0.025, 0.08, 19)
+    local value = label(detailsPanel, "$0", 0.095, 0.235, 64, Style.Gold)
     value.ZIndex = 3
     Style.Outline(value).Thickness = 4.5
     local valueScale = Instance.new("UIScale")
     valueScale.Parent = value
-    local beat = label(panel, "", 0.32, 0.12, 25)
+    local beat = label(detailsPanel, "", 0.32, 0.12, 25)
     beat.ZIndex = 3
     Style.Outline(beat).Thickness = 3.5
-    local colors = label(panel, "Order colors: " .. details.Colors, 0.46, 0.075, 17)
+    local colors = label(detailsPanel, "Order colors: " .. details.Colors, 0.46, 0.075, 17)
     colors.Position = UDim2.fromScale(0.12, 0.46)
     colors.Size = UDim2.fromScale(0.84, 0.075)
     colors.TextXAlignment = Enum.TextXAlignment.Left
@@ -120,18 +127,18 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
     swatch.Size = UDim2.fromOffset(12, 12)
     swatch.BackgroundColor3 = details.Tint
     swatch.BorderSizePixel = 0
-    swatch.Parent = panel
+    swatch.Parent = detailsPanel
     local swatchCorner = Instance.new("UICorner")
     swatchCorner.CornerRadius = UDim.new(1, 0)
     swatchCorner.Parent = swatch
-    label(panel, details.Description, 0.54, 0.075, 16)
+    label(detailsPanel, details.Description, 0.54, 0.075, 16)
 
     for index, id in details.Ingredients do
         local slot = Instance.new("Frame")
         slot.BackgroundTransparency = 1
         slot.Position = UDim2.fromScale(0.04 + (index - 1) * 0.31, 0.62)
         slot.Size = UDim2.fromScale(0.30, 0.35)
-        slot.Parent = panel
+        slot.Parent = detailsPanel
         local image = Instance.new("ImageLabel")
         image.BackgroundTransparency = 1
         image.Size = UDim2.fromScale(1, 0.68)
@@ -142,16 +149,14 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
         local ingredientScale = Instance.new("UIScale")
         ingredientScale.Scale = 0
         ingredientScale.Parent = slot
-        task.delay((index - 1) * 0.07, function()
-            if active == gui then
-                TweenService:Create(ingredientScale, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = 1 }):Play()
-            end
-        end)
+        table.insert(ingredientScales, ingredientScale)
     end
 
     local tick = Instance.new("Sound")
     tick.SoundId, tick.Volume = Audio.IngredientPickupSoundId, 0.28
     tick.Parent = gui
+    local showcase = CupReveal.Mount(panel, details.Tint)
+    detailsPanel.Visible = showcase == nil
     gui.Parent = playerGui
     local entrance = TweenService:Create(scale, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = 1 })
     entrance:Play()
@@ -164,6 +169,23 @@ local function show(playerGui: PlayerGui, details: Summary.Details)
     end
 
     task.spawn(function()
+        if showcase then
+            playTick(0.86)
+            task.wait(CupReveal.Duration)
+            if active ~= gui or not gui.Parent then
+                return
+            end
+            showcase:Destroy()
+            detailsPanel.Visible = true
+        end
+        for index, ingredientScale in ingredientScales do
+            task.delay((index - 1) * 0.07, function()
+                if active == gui and gui.Parent then
+                    TweenService:Create(ingredientScale, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = 1 })
+                        :Play()
+                end
+            end)
+        end
         local total = 0
         local modifiers: { string } = {}
         local pulse: Tween? = nil
