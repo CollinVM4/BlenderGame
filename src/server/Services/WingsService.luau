@@ -18,6 +18,7 @@ type Flight = {
     Clone: Instance?,
     Connections: { RBXScriptConnection },
     Granted: boolean,
+    TemporaryGrant: boolean?,
     Energy: number,
     PoweredTime: number,
     JumpHeld: boolean,
@@ -102,13 +103,9 @@ local function groundEvidence(flight: Flight): boolean
     -- requires 0.2s of state AND floor evidence; a raycast graze cannot refill.
     return grounded[flight.Humanoid:GetState()] == true and flight.Humanoid.FloorMaterial ~= Enum.Material.Air
 end
-function Service.GrantIfOwned(player: Player): Instance?
-    local state = states[player]
-    local flight = state and state.Flight
+local function attachWings(player: Player, flight: Flight?): Instance?
     if
-        not configured
-        or not state
-        or state.Owned ~= true
+        player.Parent ~= Players
         or not flight
         or player.Character ~= flight.Character
         or flight.Humanoid.Health <= 0
@@ -184,6 +181,28 @@ function Service.GrantIfOwned(player: Player): Instance?
     flight.Clone, flight.Granted = clone, true
     return clone
 end
+function Service.GrantIfOwned(player: Player): Instance?
+    local state = states[player]
+    if not configured or not state or state.Owned ~= true then
+        return nil
+    end
+    return attachWings(player, state.Flight)
+end
+
+-- Server-only admin grant. The permission lives on this character's flight state.
+function Service.GrantOnce(player: Player): Instance?
+    local state = states[player]
+    local flight = state and state.Flight
+    if not flight then
+        return nil
+    end
+    local clone = attachWings(player, flight)
+    if clone then
+        flight.TemporaryGrant = true
+    end
+    return clone
+end
+
 function Service.PlayerOwns(player: Player, force: boolean?): boolean?
     local state = states[player]
     if not configured or player.Parent ~= Players or not state then
@@ -213,8 +232,15 @@ function Service.PlayerOwns(player: Player, force: boolean?): boolean?
     )
     -- Confirmed revocation waits for a sustained landing or respawn. A failed
     -- lookup never yanks an already granted character out of flight.
-    if state.Owned == false and state.Flight and state.Flight.State == "Grounded" and groundEvidence(state.Flight) then
-        removeWings(state.Flight)
+    local flight = state.Flight
+    if
+        state.Owned == false
+        and flight
+        and not flight.TemporaryGrant
+        and flight.State == "Grounded"
+        and groundEvidence(flight)
+    then
+        removeWings(flight)
     end
     if not ok then
         warnOnce("marketplace", "Marketplace ownership check failed: " .. tostring(owns))
@@ -442,7 +468,7 @@ local function step(player: Player, state: State, flight: Flight, dt: number)
         if flight.GroundedTime >= Config.GroundedConfirmSeconds then
             flight.Energy, flight.PoweredTime = Config.FlightDurationSeconds, 0
             publish(player, flight, "Grounded")
-            if state.Owned == false then
+            if state.Owned == false and not flight.TemporaryGrant then
                 removeWings(flight)
             end
         else

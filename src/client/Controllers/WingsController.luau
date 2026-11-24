@@ -136,14 +136,9 @@ function Controller.Init()
     end)
     local function onboard()
         local character = player.Character
-        -- A confirmed grant is the registered server accessory, not Shop opening
-        -- or the ownership check finishing before a character has been attached.
-        if
-            WingsOnboardingShown
-            or player:GetAttribute("WingsOwnership") ~= "Owned"
-            or not character
-            or not character:FindFirstChild("AngelWings")
-        then
+        local wings = character and character:FindFirstChild("AngelWings")
+        -- The registered server accessory confirms both purchased and one-life grants.
+        if WingsOnboardingShown or not wings or wings:GetAttribute("WingsAccessory") ~= true then
             return
         end
         WingsOnboardingShown = true

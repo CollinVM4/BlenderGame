@@ -75,3 +75,28 @@ check(
     "failed purchase prompt fails closed"
 )
 promptFailure = false
+
+local guest, guestHumanoid, guestRoot = subject(false)
+local guestWings = wings.GrantOnce(guest)
+check(guestWings and guestWings.Parent == guest.Character, "one-life grant equips regular Wings on a nonowner")
+check(wings.GrantOnce(guest) == guestWings, "repeated one-life grant reuses the accessory")
+for _ = 1, 9 do
+    tick(guest, guestHumanoid, guestRoot, 0.025, 0, true)
+end
+wings.PlayerOwns(guest, true)
+check(
+    guest.Character:FindFirstChild("AngelWings") == guestWings and guest:GetAttribute("WingsOwnership") == "Unowned",
+    "landing and marketplace refresh preserve the one-life grant without changing ownership"
+)
+wings.SetJumpHeld(guest, true)
+tick(guest, guestHumanoid, guestRoot, 0.025, 0, false)
+check(wings.IsWingControlled(guest), "one-life grant enables flight for a nonowner")
+guestHumanoid.Health = 0
+guestHumanoid.Died:Fire()
+check(
+    guestWings.Destroyed and wings.GrantOnce(guest) == nil,
+    "death removes the grant and prevents re-grant until respawn"
+)
+guestHumanoid.Health = 1000
+wings.ApplyCharacter(guest, guest.Character)
+check(not guest.Character:FindFirstChild("AngelWings"), "one-life grant expires on respawn")
